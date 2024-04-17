@@ -1,0 +1,3 @@
+[submodule "deps/cpuinfo"]
+	path = deps/cpuinfo
+	url = https://github.com/pytorch/cpuinfo.git
