@@ -4,100 +4,120 @@
 #include "VxMathDefines.h"
 #include "XUtil.h"
 
-// Template class Describing a 2D Matrix of variable width and height.
+/**
+ * @class XMatrix
+ * @brief A template class for a 2D matrix of variable width and height.
+ *
+ * @tparam T The type of elements to be stored in the matrix.
+ */
 template <class T>
-class XMatrix
-{
+class XMatrix {
 public:
-    XMatrix(int iWidth = 0, int iHeight = 0) : m_Data(NULL), m_Width(0), m_Height(0)
-    {
+    /**
+     * @brief Constructs a matrix with specified dimensions.
+     * @param iWidth The width (number of columns) of the matrix.
+     * @param iHeight The height (number of rows) of the matrix.
+     */
+    XMatrix(int iWidth = 0, int iHeight = 0) : m_Data(NULL), m_Width(0), m_Height(0) {
         Allocate(iWidth, iHeight);
     }
 
-    ~XMatrix()
-    {
+    /**
+     * @brief Destructor. Frees the memory allocated for the matrix data.
+     */
+    ~XMatrix() {
         delete[] m_Data;
     }
 
-    ///
-    // Accessors
+    /// @name Accessors
+    ///@{
 
-    // Returns the width of the matrix (Number of columns)
-    int GetWidth() const
-    {
-        return m_Width;
-    }
+    /**
+     * @brief Returns the width of the matrix (number of columns).
+     */
+    int GetWidth() const { return m_Width; }
 
-    // Returns the height of the matrix (Number of rows)
-    int GetHeight() const
-    {
-        return m_Height;
-    }
+    /**
+     * @brief Returns the height of the matrix (number of rows).
+     */
+    int GetHeight() const { return m_Height; }
 
-    // Returns the memory taken by the matrix in bytes
-    int Size() const
-    {
-        return m_Width * m_Height * sizeof(T);
-    }
+    /**
+     * @brief Returns the total memory size of the matrix data in bytes.
+     */
+    int Size() const { return m_Width * m_Height * sizeof(T); }
 
-    // Free the memory taken by the matrix.
-    void Clear()
-    {
+    /**
+     * @brief Frees the memory used by the matrix and resets its dimensions to zero.
+     */
+    void Clear() {
         delete[] m_Data;
         m_Data = NULL;
         m_Width = 0;
         m_Height = 0;
     }
 
-    // Creation of the matrix (automatically calls Clear)
-    void Create(int iWidth, int iHeight)
-    {
+    /**
+     * @brief Creates a matrix with new dimensions, clearing any previous data.
+     * @param iWidth The new width.
+     * @param iHeight The new height.
+     */
+    void Create(int iWidth, int iHeight) {
         Clear();
         Allocate(iWidth, iHeight);
     }
 
-    // Access to an element of the matrix
-    const T &operator()(const int iX, const int iY) const
-    {
-        XASSERT(iX < m_Width);
-        XASSERT(iY < m_Height);
+    /**
+     * @brief Provides const access to an element of the matrix.
+     * @param iX The column index.
+     * @param iY The row index.
+     * @return A const reference to the element at (iX, iY).
+     */
+    const T &operator()(const int iX, const int iY) const {
+        XASSERT(iX < m_Width && iY < m_Height);
         return m_Data[iY * m_Width + iX];
     }
 
-    T &operator()(const int iX, const int iY)
-    {
-        XASSERT(iX < m_Width);
-        XASSERT(iY < m_Height);
+    /**
+     * @brief Provides mutable access to an element of the matrix.
+     * @param iX The column index.
+     * @param iY The row index.
+     * @return A reference to the element at (iX, iY).
+     */
+    T &operator()(const int iX, const int iY) {
+        XASSERT(iX < m_Width && iY < m_Height);
         return m_Data[iY * m_Width + iX];
     }
+    ///@}
 
 private:
-    // allocate the space for the matrix
-    void Allocate(int iWidth, int iHeight)
-    {
+    /**
+     * @brief Allocates the memory for the matrix data.
+     * @internal
+     * @param iWidth The width of the matrix.
+     * @param iHeight The height of the matrix.
+     */
+    void Allocate(int iWidth, int iHeight) {
         int count = iWidth * iHeight;
-        if (count)
-        {
+        if (count > 0) {
             m_Data = new T[count];
-            XASSERT(m_Data); // No more free space ???
+            XASSERT(m_Data); // Assert on allocation failure
             m_Width = iWidth;
             m_Height = iHeight;
         }
     }
 
-    ///
-    // members
+    /// @name Members
+    ///@{
 
-    // data
+    /// @brief Pointer to the raw data of the matrix, stored in row-major order.
     T *m_Data;
 
-    ///
-    // dimensions
-
-    // width
+    /// @brief The width of the matrix (number of columns).
     int m_Width;
-    // height
+    /// @brief The height of the matrix (number of rows).
     int m_Height;
+    ///@}
 };
 
 #endif // XSMATRIX_H

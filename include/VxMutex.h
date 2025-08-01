@@ -3,176 +3,203 @@
 
 #include "VxMathDefines.h"
 
-/*************************************************
-Summary: Represent an objet used for mutual-exclusion synchronization
-between threads.
-
-See also: VxThread,VxMutexLock
-*************************************************/
-class VxMutex
-{
-
+/**
+ * @brief Represents a mutual-exclusion synchronization object.
+ * @remarks A mutex is used to protect shared resources from being simultaneously
+ * accessed by multiple threads.
+ * @see VxThread, VxMutexLock
+ */
+class VxMutex {
 public:
+    /// @brief Constructs the mutex object.
     VX_EXPORT VxMutex();
+    /// @brief Destroys the mutex object.
     VX_EXPORT ~VxMutex();
 
+    /**
+     * @brief Acquires a lock on the mutex, blocking if necessary.
+     * @return TRUE if the lock was acquired successfully, FALSE otherwise.
+     */
     VX_EXPORT XBOOL EnterMutex();
+
+    /**
+     * @brief Releases the lock on the mutex.
+     * @return TRUE if the lock was released successfully, FALSE otherwise.
+     */
     VX_EXPORT XBOOL LeaveMutex();
 
+    /**
+     * @brief Acquires a lock on the mutex (postfix increment operator).
+     * @return The result of EnterMutex().
+     */
     VX_EXPORT XBOOL operator++(int);
+
+    /**
+     * @brief Releases the lock on the mutex (postfix decrement operator).
+     * @return The result of LeaveMutex().
+     */
     VX_EXPORT XBOOL operator--(int);
 
 private:
-    void *m_Mutex;
+    void *m_Mutex; ///< A handle to the underlying OS-specific mutex object.
 
+    /// @brief Private copy constructor to prevent copying.
     VxMutex(const VxMutex &);
-
+    /// @brief Private assignment operator to prevent assignment.
     VxMutex &operator=(const VxMutex &);
 };
 
-/*************************************************
-Summary: Represent an objet used for mutual-exclusion synchronization
-between threads.
-
-See also: VxThread,VxMutex
-*************************************************/
-class VxMutexLock
-{
+/**
+ * @brief A RAII-style lock guard for a VxMutex.
+ * @remarks This class acquires a mutex lock upon construction and releases it
+ * upon destruction, ensuring the mutex is properly unlocked even if exceptions occur.
+ * @see VxThread, VxMutex
+ */
+class VxMutexLock {
     VxMutex &m_Mutex;
 
 public:
+    /**
+     * @brief Constructs the lock guard and acquires a lock on the provided mutex.
+     * @param Mutex The VxMutex object to lock.
+     */
     VxMutexLock(VxMutex &Mutex) : m_Mutex(Mutex) { m_Mutex++; }
+    /**
+     * @brief Destructs the lock guard and releases the mutex lock.
+     */
     ~VxMutexLock() { m_Mutex--; }
 };
 
-/*************************************************
-Summary: This class ensure that a data is access by only one thread.
-
-Remarks:
-To ensure that the access to your data is thread safe you need
-to create the VxDataMutexed. Then, if a thread want to modify or do anything on it,
-you create its accessor in a scope. You can modify the value using the Value on the accessor.
-
-Example
-
-  VxDataMutexed<int> val;
-  {
-    VxDataMutexed<int>::Accessor access(val);
-    access.Value() = 1;
-  }
-
-
-See also: VxThread,VxMutexLock,VxMutex
-*************************************************/
+/**
+ * @brief A template class that bundles data with a mutex to ensure thread-safe access.
+ * @tparam T The type of the data to be protected.
+ * @remarks To ensure thread-safe access to your data, wrap it in this class.
+ * Then, to modify or read the data, create a scoped Accessor or ConstAccessor object.
+ * The lock is held for the lifetime of the accessor object.
+ *
+ * @example
+ * @code
+ *   VxDataMutexed<int> shared_value;
+ *
+ *   // In a thread that writes to the value:
+ *   {
+ *     VxDataMutexed<int>::Accessor access(&shared_value);
+ *     access.Value() = 42;
+ *   } // Mutex is automatically released here
+ *
+ *   // In a thread that reads the value:
+ *   int local_copy;
+ *   {
+ *     VxDataMutexed<int>::ConstAccessor access(&shared_value);
+ *     local_copy = access.Value();
+ *   } // Mutex is automatically released here
+ * @endcode
+ *
+ * @see VxThread, VxMutexLock, VxMutex
+ */
 template <class T>
-class VxDataMutexed
-{
+class VxDataMutexed {
 public:
-    /*************************************************
-    Summary: Default constructor. Nothing is done.
-    *************************************************/
-    VxDataMutexed()
-    {
-    }
+    /// @brief Default constructor.
+    VxDataMutexed() {}
 
-    /*************************************************
-    Summary: Initialization constructor. The internal value is initialized.
-    Remarks: The type associated with "T" must have an affectation operator.
-    *************************************************/
-    VxDataMutexed(const T &value)
-    {
+    /**
+     * @brief Initialization constructor.
+     * @param value The initial value for the protected data.
+     * @remarks The type T must have a copy assignment operator.
+     */
+    VxDataMutexed(const T &value) {
         m_Value = value;
     }
 
-    /*************************************************
-    Summary: This class give you a thread safe access to the VxDataMutexed Value. Look the example in the VxDataMutexed.
-    *************************************************/
-    class Accessor
-    {
+    /**
+     * @brief A nested class that provides thread-safe, mutable access to the protected data.
+     */
+    class Accessor {
     public:
-        /*************************************************
-        Summary: Construct an accessor on your data. The data is locked by its mutex.
-        *************************************************/
-        Accessor(VxDataMutexed<T> *dm)
-        {
+        /**
+         * @brief Constructs an accessor and locks the associated VxDataMutexed object.
+         * @param dm Pointer to the VxDataMutexed object to access.
+         */
+        Accessor(VxDataMutexed<T> *dm) {
             m_DataM = dm;
             m_DataM->m_Mutex.EnterMutex();
         }
 
-        /*************************************************
-        Summary: Destruct the accessor on your data. The data is unlocked by its mutex.
-        *************************************************/
-        ~Accessor()
-        {
+        /**
+         * @brief Destroys the accessor and unlocks the associated VxDataMutexed object.
+         */
+        ~Accessor() {
             m_DataM->m_Mutex.LeaveMutex();
         }
 
-        /*************************************************
-        Summary: access to the Value
-        *************************************************/
-        T &Value()
-        {
+        /**
+         * @brief Provides a reference to the protected data.
+         * @return A mutable reference to the value.
+         */
+        T &Value() {
             return m_DataM->m_Value;
         }
 
     private:
+        /// @brief Private default constructor.
         Accessor();
-
+        /// @brief Private copy constructor.
         Accessor(const Accessor &);
-
+        /// @brief Private assignment operator.
         Accessor &operator=(const Accessor &);
 
         VxDataMutexed<T> *m_DataM;
     };
 
-    /*************************************************
-    Summary: This class give you a thread safe access to the VxDataMutexed Value. Look the example in the VxDataMutexed.
-    *************************************************/
-    class ConstAccessor
-    {
+    /**
+     * @brief A nested class that provides thread-safe, const access to the protected data.
+     */
+    class ConstAccessor {
     public:
-        /*************************************************
-        Summary: Construct an accessor on your data. The data is locked by its mutex.
-        *************************************************/
-        ConstAccessor(const VxDataMutexed<T> *dm)
-        {
+        /**
+         * @brief Constructs an accessor and locks the associated VxDataMutexed object.
+         * @param dm Pointer to the VxDataMutexed object to access.
+         */
+        ConstAccessor(const VxDataMutexed<T> *dm) {
             m_DataM = dm;
             m_DataM->m_Mutex.EnterMutex();
         }
 
-        /*************************************************
-        Summary: Destruct the accessor on your data. The data is unlocked by its mutex.
-        *************************************************/
-        ~ConstAccessor()
-        {
+        /**
+         * @brief Destroys the accessor and unlocks the associated VxDataMutexed object.
+         */
+        ~ConstAccessor() {
             m_DataM->m_Mutex.LeaveMutex();
         }
 
-        /*************************************************
-        Summary: access to the Value
-        *************************************************/
-        const T &Value() const
-        {
+        /**
+         * @brief Provides a const reference to the protected data.
+         * @return A const reference to the value.
+         */
+        const T &Value() const {
             return m_DataM->m_Value;
         }
 
     private:
+        /// @brief Private default constructor.
         ConstAccessor();
-
+        /// @brief Private copy constructor.
         ConstAccessor(const ConstAccessor &);
-
+        /// @brief Private assignment operator.
         ConstAccessor &operator=(const ConstAccessor &);
 
         const VxDataMutexed<T> *m_DataM;
     };
 
-    mutable VxMutex m_Mutex;
+    mutable VxMutex m_Mutex; ///< The mutex protecting the data.
 
-    T m_Value;
+    T m_Value; ///< The data being protected.
 
 private:
+    /// @brief Private copy constructor to prevent copying of the container itself.
     VxDataMutexed(const VxDataMutexed &);
-
+    /// @brief Private assignment operator to prevent assignment.
     VxDataMutexed &operator=(const VxDataMutexed &);
 };
 

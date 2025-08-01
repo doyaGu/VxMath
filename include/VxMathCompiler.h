@@ -3,24 +3,6 @@
 
 // Compiler-specific macros for VxMath.
 
-#ifndef __cplusplus
-#   error "C++ compiler required."
-#endif
-
-#ifndef VX_CXX_STD_VER
-#   if __cplusplus == 199711L
-#       define VX_CXX_STD_VER 98
-#   elif __cplusplus == 201103L
-#       define VX_CXX_STD_VER 11
-#   elif __cplusplus == 201402L
-#       define VX_CXX_STD_VER 14
-#   elif __cplusplus == 201703L
-#       define VX_CXX_STD_VER 17
-#   elif __cplusplus == 202002L
-#       define VX_CXX_STD_VER 20
-#   endif
-#endif
-
 #if defined(_MSC_VER)
 #   define VX_MSVC _MSC_VER
 #elif defined(__GNUC__)
@@ -30,11 +12,8 @@
 #if defined(_MSC_VER) // Microsoft Visual C++
 #   if _MSC_VER < 1200 // Visual Studio 6.0
 #       error "Unsupported compiler."
-#   endif
-#   if _MSC_VER >= 1400 // .Net 2005 and higher
-#       ifndef _CRT_SECURE_NO_WARNINGS
-#           define _CRT_SECURE_NO_WARNINGS
-#       endif
+#   elif _MSC_VER >= 1400 // .Net 2005 and higher
+#       pragma warning(disable : 4996)
 #   endif
 #endif
 
@@ -57,6 +36,8 @@
 #       endif // VX_API
 #   endif // VX_LIB
 #endif // !VX_EXPORT
+
+#define CK_PRIVATE_VERSION_VIRTOOLS
 
 // EXPORT DEFINES FOR LIB / DLL VERSIONS
 #ifndef CK_LIB
@@ -81,6 +62,14 @@
 #else
 #   define BEGIN_CDECLS
 #   define END_CDECLS
+#endif
+
+#ifndef VX_NOEXCEPT
+#   if (__cplusplus >= 201103L) || (defined(_MSC_VER) && _MSC_VER >= 1900)
+#       define VX_NOEXCEPT noexcept
+#   else
+#       define VX_NOEXCEPT throw()
+#   endif
 #endif
 
 #ifndef VX_DEPRECATED
@@ -156,6 +145,22 @@
 #       define VX_SECTION(x) __declspec(code_seg(x))
 #   elif defined(__GNUC__)
 #       define VX_SECTION(x) __attribute__(__section__(x)))
+#   endif
+#endif
+
+#ifndef VX_SELECTANY
+#   if defined(_MSC_VER)
+#       define VX_SELECTANY __declspec(selectany)
+#   elif defined(__GNUC__)
+#       define VX_SELECTANY
+#   endif
+#endif
+
+#ifndef VX_HAS_CXX11
+#   if __cplusplus >= 201103L
+#       define VX_HAS_CXX11 1
+#   else
+#       define VX_HAS_CXX11 0
 #   endif
 #endif
 

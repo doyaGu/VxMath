@@ -13,266 +13,160 @@
 #include <intrin.h>
 #endif
 
-#include "cpuinfo.h"
+#include "VxEigenMatrix.h"
 
 HINSTANCE g_hinstDLL;
 CRITICAL_SECTION g_CriticalSection;
 
-VxMatrix g_IdentityMatrix;
-int g_QuantizationSamplingFactor;
-float g_MSecondsPerCycle;
-
-ProcessorsType g_ProcessorType;
-int g_ProcessorFrequency;
-XULONG g_ProcessorFeatures;
-XULONG g_InstructionSetExtensions;
-char g_ProcDescription[64];
-
-typedef struct CpuIdRegs {
-    XULONG eax;
-    XULONG ebx;
-    XULONG ecx;
-    XULONG edx;
-} CpuIdRegs;
-
-static inline CpuIdRegs cpuid(XULONG eax) {
-    CpuIdRegs regs;
-#if defined(__GNUC__)
-    __cpuid(eax, regs.eax, regs.ebx, regs.ecx, regs.edx);
-#else
-    int regs_array[4];
-    __cpuid(regs_array, (int) eax);
-    regs.eax = regs_array[0];
-    regs.ebx = regs_array[1];
-    regs.ecx = regs_array[2];
-    regs.edx = regs_array[3];
-#endif
-    return regs;
-}
-
 void InitVxMath() {
     VxDetectProcessor();
     ::InitializeCriticalSection(&g_CriticalSection);
-    g_IdentityMatrix.SetIdentity();
-    g_QuantizationSamplingFactor = 15;
-}
-
-void VxDetectProcessor() {
-    static XBOOL ProcessorDetected = FALSE;
-    if (ProcessorDetected)
-        return;
-
-    ::OutputDebugString("VxMath: Detecting processor------------------------\n");
-    HANDLE hThread = ::GetCurrentThread();
-    int priority = ::GetThreadPriority(hThread);
-    ::SetThreadPriority(hThread, THREAD_PRIORITY_IDLE);
-    ::Sleep(10);
-    static LARGE_INTEGER freq;
-    ::QueryPerformanceFrequency(&freq);
-    DWORD64 timeStamp1 = __rdtsc();
-    LARGE_INTEGER freq1;
-    ::QueryPerformanceFrequency(&freq1);
-    DWORD64 timeStamp2 = __rdtsc();
-    {
-        int x = 0, y = 0, z = 0;
-        for (int i = 0; i < 500000; ++i) {
-            x += ++y;
-            z += x;
-            x -= z;
-        }
-    }
-    LARGE_INTEGER freq2;
-    ::QueryPerformanceFrequency(&freq2);
-    DWORD64 timeStamp3 = __rdtsc();
-    double t1 = (double) (freq2.LowPart - freq1.LowPart) / (double) freq.LowPart;
-    double t2 = (double) (timeStamp3 - timeStamp2);
-    g_MSecondsPerCycle = (float) (1000.0 * t1 / t2);
-    g_ProcessorFrequency = t2 / t1 / 1000000.0;
-    ::SetThreadPriority(hThread, priority);
-
-    cpuinfo_initialize();
-    switch (cpuinfo_get_uarch(0)->uarch) {
-        case cpuinfo_uarch_p5:
-            if (!cpuinfo_has_x86_mmx())
-                g_ProcessorType = PROC_PENTIUM;
-            else
-                g_ProcessorType = PROC_PENTIUMMMX;
-            break;
-        case cpuinfo_uarch_p6:
-            g_ProcessorType = PROC_PENTIUM3;
-            break;
-        case cpuinfo_uarch_willamette:
-            g_ProcessorType = PROC_PENTIUM4;
-            break;
-        case cpuinfo_uarch_k8:
-            g_ProcessorType = PROC_ATHLON;
-            break;
-        default:
-            break;
-    }
-
-    strncpy(g_ProcDescription, cpuinfo_get_processor(0)->package->name, 64);
-
-    CpuIdRegs regs = cpuid(0);
-    g_ProcessorFeatures = regs.edx;
-
-    g_InstructionSetExtensions = ISEX_NONE;
-    if (cpuinfo_has_x86_sse())
-        g_InstructionSetExtensions |= ISEX_SSE;
-    if (cpuinfo_has_x86_sse2())
-        g_InstructionSetExtensions |= ISEX_SSE2;
-    if (cpuinfo_has_x86_sse3())
-        g_InstructionSetExtensions |= ISEX_SSE3;
-    if (cpuinfo_has_x86_ssse3())
-        g_InstructionSetExtensions |= ISEX_SSSE3;
-    if (cpuinfo_has_x86_sse4_1())
-        g_InstructionSetExtensions |= ISEX_SSE41;
-    if (cpuinfo_has_x86_sse4_2())
-        g_InstructionSetExtensions |= ISEX_SSE42;
-    if (cpuinfo_has_x86_avx())
-        g_InstructionSetExtensions |= ISEX_AVX;
-    if (cpuinfo_has_x86_avx2())
-        g_InstructionSetExtensions |= ISEX_AVX2;
-
-    if (g_ProcessorFrequency < 1000)
-        sprintf(g_ProcDescription, "%s %d Mhz", g_ProcDescription, g_ProcessorFrequency);
-    else
-        sprintf(g_ProcDescription, "%s %g Ghz", g_ProcDescription, g_ProcessorFrequency / 1000.0);
-
-    ProcessorDetected = TRUE;
-}
-
-void InterpolateFloatArray(void *Res, void *array1, void *array2, float factor, int count) {
-
-}
-
-void InterpolateVectorArray(void *Res, void *Inarray1, void *Inarray2, float factor, int count, XULONG StrideRes, XULONG StrideIn) {
-
-}
-
-XBOOL VxTransformBox2D(const VxMatrix &World_ProjectionMat, const VxBbox &box, VxRect *ScreenSize, VxRect *Extents, VXCLIP_FLAGS &OrClipFlags,
-                       VXCLIP_FLAGS &AndClipFlags) {
-    return 0;
-}
-
-void VxProjectBoxZExtents(const VxMatrix &World_ProjectionMat, const VxBbox &box, float &ZhMin, float &ZhMax) {
-
-}
-
-XBOOL VxFillStructure(int Count, void *Dst, XULONG Stride, XULONG SizeSrc, void *Src) {
-    return 0;
-}
-
-XBOOL VxCopyStructure(int Count, void *Dst, XULONG OutStride, XULONG SizeSrc, void *Src, XULONG InStride) {
-    return 0;
-}
-
-XBOOL VxIndexedCopy(const VxStridedData &Dst, const VxStridedData &Src, XULONG SizeSrc, int *Indices, int IndexCount) {
-    return 0;
-}
-
-void VxDoBlit(const VxImageDescEx &src_desc, const VxImageDescEx &dst_desc) {
-
-}
-
-void VxDoBlitUpsideDown(const VxImageDescEx &src_desc, const VxImageDescEx &dst_desc) {
-
-}
-
-void VxDoAlphaBlit(const VxImageDescEx &dst_desc, XBYTE AlphaValue) {
-
-}
-
-void VxDoAlphaBlit(const VxImageDescEx &dst_desc, XBYTE *AlphaValues) {
-
-}
-
-void VxGetBitCounts(const VxImageDescEx &desc, XULONG &Rbits, XULONG &Gbits, XULONG &Bbits, XULONG &Abits) {
-
-}
-
-void VxGetBitShifts(const VxImageDescEx &desc, XULONG &Rshift, XULONG &Gshift, XULONG &Bshift, XULONG &Ashift) {
-
-}
-
-void VxGenerateMipMap(const VxImageDescEx &src_desc, XBYTE *DestBuffer) {
-
-}
-
-void VxResizeImage32(const VxImageDescEx &src_desc, const VxImageDescEx &dst_desc) {
-
-}
-
-XBOOL VxConvertToNormalMap(const VxImageDescEx &image, XULONG ColorMask) {
-    return 0;
-}
-
-XBOOL VxConvertToBumpMap(const VxImageDescEx &image) {
-    return 0;
-}
-
-XULONG GetBitCount(XULONG dwMask) {
-    return 0;
-}
-
-XULONG GetBitShift(XULONG dwMask) {
-    return 0;
-}
-
-VX_PIXELFORMAT VxImageDesc2PixelFormat(const VxImageDescEx &desc) {
-    return _16_RGB555;
-}
-
-void VxPixelFormat2ImageDesc(VX_PIXELFORMAT Pf, VxImageDescEx &desc) {
-
-}
-
-const char *VxPixelFormat2String(VX_PIXELFORMAT Pf) {
-    return nullptr;
-}
-
-void VxBppToMask(VxImageDescEx &desc) {
-
-}
-
-int GetQuantizationSamplingFactor() {
-    return 0;
-}
-
-void SetQuantizationSamplingFactor(int sf) {
-
 }
 
 XBOOL VxPtInRect(CKRECT *rect, CKPOINT *pt) {
-    return 0;
+    if (pt->x < rect->left)
+        return FALSE;
+    if (pt->x > rect->right)
+        return FALSE;
+    return pt->y <= rect->bottom && pt->y >= rect->top;
 }
 
-char *GetProcessorDescription() {
-    return g_ProcDescription;
-}
+// Compute best fit oriented bounding box for a set of points
+XBOOL VxComputeBestFitBBox(const XBYTE *Points, const XULONG Stride, const int Count,
+                           VxMatrix &BBoxMatrix, const float AdditionalBorder) {
+    // Check for valid input
+    if (Count <= 0 || !Points) {
+        BBoxMatrix.SetIdentity();
+        return FALSE;
+    }
 
-int GetProcessorFrequency() {
-    return g_ProcessorFrequency;
-}
+    // Create and compute covariance matrix
+    VxEigenMatrix eigenMat;
+    eigenMat.Covariance((float *) Points, Stride, Count);
+    eigenMat.EigenStuff3();
 
-XULONG GetProcessorFeatures() {
-    return g_ProcessorFeatures;
-}
+    // Copy eigenvectors to the bounding box matrix
+    for (int i = 0; i < 3; i++) {
+        for (int j = 0; j < 3; j++) {
+            BBoxMatrix[i][j] = eigenMat[i][j];
+        }
+    }
 
-void ModifyProcessorFeatures(XULONG Add, XULONG Remove) {
-    g_ProcessorFeatures = ~Remove & (Add | g_ProcessorFeatures);
-}
+    // Normalize the first two axes
+    ((VxVector *) &BBoxMatrix[0])->Normalize();
+    ((VxVector *) &BBoxMatrix[1])->Normalize();
 
-ProcessorsType GetProcessorType() {
-    return g_ProcessorType;
-}
+    // Compute the third axis using cross product for orthogonality
+    float x = BBoxMatrix[1][1] * BBoxMatrix[0][0] - BBoxMatrix[0][1] * BBoxMatrix[1][0];
+    float y = BBoxMatrix[1][0] * BBoxMatrix[0][2] - BBoxMatrix[1][2] * BBoxMatrix[0][0];
+    float z = BBoxMatrix[0][1] * BBoxMatrix[1][2] - BBoxMatrix[1][1] * BBoxMatrix[0][2];
 
-XULONG GetInstructionSetExtensions() {
-    return g_InstructionSetExtensions;
-}
+    BBoxMatrix[2][0] = x;
+    BBoxMatrix[2][1] = y;
+    BBoxMatrix[2][2] = z;
 
-XBOOL VxComputeBestFitBBox(const XBYTE *Points, const XULONG Stride, const int Count, VxMatrix &BBoxMatrix, const float AdditionalBorder) {
-    return 0;
+    // Project all points onto the principal axes to find min/max extents
+    const float *firstPoint = (const float *) Points;
+
+    // Initialize min/max with the first point
+    float projX = firstPoint[0] * BBoxMatrix[0][0] +
+        firstPoint[1] * BBoxMatrix[0][1] +
+        firstPoint[2] * BBoxMatrix[0][2];
+    float minX = projX, maxX = projX;
+
+    float projY = firstPoint[0] * BBoxMatrix[1][0] +
+        firstPoint[1] * BBoxMatrix[1][1] +
+        firstPoint[2] * BBoxMatrix[1][2];
+    float minY = projY, maxY = projY;
+
+    float projZ = firstPoint[0] * BBoxMatrix[2][0] +
+        firstPoint[1] * BBoxMatrix[2][1] +
+        firstPoint[2] * BBoxMatrix[2][2];
+    float minZ = projZ, maxZ = projZ;
+
+    // Find min/max extents for all points
+    for (int i = 1; i < Count; i++) {
+        const float *point = (const float *) (Points + i * Stride);
+
+        float x = point[0] * BBoxMatrix[0][0] +
+            point[1] * BBoxMatrix[0][1] +
+            point[2] * BBoxMatrix[0][2];
+
+        float y = point[0] * BBoxMatrix[1][0] +
+            point[1] * BBoxMatrix[1][1] +
+            point[2] * BBoxMatrix[1][2];
+
+        float z = point[0] * BBoxMatrix[2][0] +
+            point[1] * BBoxMatrix[2][1] +
+            point[2] * BBoxMatrix[2][2];
+
+        // Update min/max values
+        if (x < minX) minX = x;
+        if (x > maxX) maxX = x;
+        if (y < minY) minY = y;
+        if (y > maxY) maxY = y;
+        if (z < minZ) minZ = z;
+        if (z > maxZ) maxZ = z;
+    }
+
+    // Calculate center point in principal axis space
+    float centerX = (minX + maxX) * 0.5f;
+    float centerY = (minY + maxY) * 0.5f;
+    float centerZ = (minZ + maxZ) * 0.5f;
+
+    // Store center temporarily
+    BBoxMatrix[3][0] = centerX;
+    BBoxMatrix[3][1] = centerY;
+    BBoxMatrix[3][2] = centerZ;
+
+    // Transform center from principal axis space to world space
+    float cx = centerX * BBoxMatrix[0][0];
+    float cy = centerX * BBoxMatrix[0][1];
+    float cz = centerX * BBoxMatrix[0][2];
+
+    float tx = centerY * BBoxMatrix[1][0];
+    float ty = centerY * BBoxMatrix[1][1];
+    float tz = centerY * BBoxMatrix[1][2];
+
+    float rx = centerZ * BBoxMatrix[2][0];
+    float ry = centerZ * BBoxMatrix[2][1];
+    float rz = centerZ * BBoxMatrix[2][2];
+
+    // Set transformed center position
+    BBoxMatrix[3][0] = cx + tx + rx;
+    BBoxMatrix[3][1] = cy + ty + ry;
+    BBoxMatrix[3][2] = cz + tz + rz;
+
+    // Calculate half-extents with additional border
+    float halfExtentX = (maxX - minX) * 0.5f + AdditionalBorder;
+    float halfExtentY = (maxY - minY) * 0.5f + AdditionalBorder;
+    float halfExtentZ = (maxZ - minZ) * 0.5f + AdditionalBorder;
+
+    // Create the extent vector for each axis
+    VxVector extentVector;
+
+    // Scale the axes by their respective half-extents
+    for (int i = 0; i < 3; i++) {
+        float extent = (i == 0) ? halfExtentX : (i == 1) ? halfExtentY : halfExtentZ;
+
+        BBoxMatrix[i][0] *= extent;
+        BBoxMatrix[i][1] *= extent;
+        BBoxMatrix[i][2] *= extent;
+        BBoxMatrix[i][3] = 0.0f; // Set homogeneous component to 0
+    }
+
+    // Set homogeneous component of translation to 1
+    BBoxMatrix[3][3] = 1.0f;
+
+    // Validate matrix for reasonable values
+    for (int i = 0; i < 4; i++) {
+        for (int j = 0; j < 3; j++) {
+            if (fabs(BBoxMatrix[i][j]) >= 1000000.0f)
+                return FALSE;
+        }
+    }
+
+    return TRUE;
 }
 
 BOOL APIENTRY DllMain(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID lpReserved) {

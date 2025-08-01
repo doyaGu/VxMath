@@ -3,92 +3,141 @@
 
 #include "XUtil.h"
 
-/************************************************
-{filename:XBitArray}
-Summary: Set of bit flags.
-
-Remarks:
-
-    o This class  define a set of bit flags that may be treated as a virtual array but are stored in an efficient manner.
-    o The class has methods to set, clear and return the i-th bit, resize the array, etc.
-************************************************/
-class XBitArray
-{
+/**
+ * @class XBitArray
+ * @brief An efficient class for managing a set of bit flags.
+ *
+ * @remarks
+ * This class provides a way to handle a large number of boolean flags
+ * by treating them as a virtual array of bits, but storing them compactly
+ * in an array of integers. The array automatically resizes itself as needed
+ * when bits beyond its current capacity are accessed.
+ *
+ * It offers methods to set, clear, and test individual bits, as well as
+ * perform bitwise logical operations (AND, OR, XOR) with other XBitArray instances.
+ */
+class XBitArray {
 public:
-    XBitArray(int initialize = 1)
-    {
+    /**
+     * @brief Constructs a XBitArray.
+     * @param initialize The initial number of 32-bit `XDWORD`s to allocate.
+     *                   Defaults to 1, creating an array with a capacity of 32 bits.
+     */
+    explicit XBitArray(int initialize = 1) {
         if (initialize < 1) initialize = 1;
-        m_Size = (initialize << 5);
+        m_Size = (initialize << 5); // size in bits
         m_Data = Allocate(initialize);
         Clear();
     }
 
-    ~XBitArray()
+    /**
+     * @brief Copy constructor. Creates a deep copy of another XBitArray.
+     * @param a The XBitArray to copy from.
+     */
+    XBitArray(const XBitArray &a) {
+        m_Size = a.m_Size;
+        m_Data = Allocate(m_Size >> 5);
+        if (m_Data && a.m_Data)
+            memcpy(m_Data, a.m_Data, m_Size >> 3);
+    }
+
+#if VX_HAS_CXX11
+    /**
+     * @brief Move constructor (C++11).
+     * @param a The XBitArray to move from.
+     */
+    XBitArray(XBitArray &&a) VX_NOEXCEPT
     {
+        m_Data = a.m_Data;
+        m_Size = a.m_Size;
+        a.m_Data = NULL;
+        a.m_Size = 0;
+    }
+#endif
+
+    /**
+     * @brief Destructor. Frees the allocated memory.
+     */
+    ~XBitArray() {
         Free();
     }
 
-    // copy Ctor
-    XBitArray(const XBitArray &a)
-    {
-        m_Size = a.m_Size;
-        m_Data = Allocate(m_Size >> 5);
-        memcpy(m_Data, a.m_Data, m_Size >> 3);
-    }
-
-    // operator =
-    XBitArray &operator=(const XBitArray &a)
-    {
-        if (this != &a)
-        {
-            if (m_Size != a.m_Size)
-            {
+    /**
+     * @brief Assignment operator.
+     * @param a The XBitArray to assign from.
+     * @return A reference to this object.
+     */
+    XBitArray &operator =(const XBitArray &a) {
+        if (this != &a) {
+            if (m_Size != a.m_Size) {
                 Free();
                 m_Size = a.m_Size;
                 m_Data = Allocate(m_Size >> 5);
-                memcpy(m_Data, a.m_Data, m_Size >> 3);
             }
-            else
-            {
+            if (m_Data && a.m_Data)
                 memcpy(m_Data, a.m_Data, m_Size >> 3);
-            }
         }
         return *this;
     }
 
-    // Reallocation if necessary
-    void CheckSize(int n)
+#if VX_HAS_CXX11
+    /**
+     * @brief Move assignment operator (C++11).
+     * @param a The XBitArray to move from.
+     * @return A reference to this object.
+     */
+    XBitArray &operator=(XBitArray &&a) VX_NOEXCEPT
     {
-        while (n >= m_Size)
+        if (this != &a)
         {
-            int size = (m_Size >> 5);
-            XDWORD *temp = Allocate(size + size);
+            Free();
+            m_Data = a.m_Data;
+            m_Size = a.m_Size;
+            a.m_Data = NULL;
+            a.m_Size = 0;
+        }
+        return *this;
+    }
+#endif
 
-            // Copy the old bits
-            memcpy(temp, m_Data, size * sizeof(XDWORD));
+    /**
+     * @brief Ensures the array is large enough to hold a specific bit index.
+     * @remarks If the index `n` is out of bounds, the array's capacity is doubled
+     * until it is large enough. New bits are initialized to 0.
+     * @param n The bit index to check for.
+     */
+    void CheckSize(int n) {
+        while (n >= m_Size) {
+            int dwords = (m_Size >> 5);
+            int newDwords = dwords ? dwords * 2 : 1;
+            XDWORD *temp = Allocate(newDwords);
 
-            // Clear the new bits
-            memset(temp + size, 0, size * sizeof(XDWORD));
+            if (temp && m_Data) {
+                memcpy(temp, m_Data, dwords * sizeof(XDWORD));
+                memset(temp + dwords, 0, (newDwords - dwords) * sizeof(XDWORD));
+            }
 
             Free();
 
             m_Data = temp;
-            m_Size += m_Size;
+            m_Size = newDwords * 32;
         }
     }
 
-    void CheckSameSize(XBitArray &a)
-    {
-        if (m_Size < a.m_Size)
-        {
-            int size = a.m_Size >> 5;
-            int oldsize = m_Size >> 5;
-            XDWORD *temp = Allocate(size);
-            // Copy the old bits
-            memcpy(temp, m_Data, oldsize * sizeof(XDWORD));
+    /**
+     * @brief Ensures this array is at least as large as another one.
+     * @param a The other XBitArray to compare size with.
+     */
+    void CheckSameSize(XBitArray &a) {
+        if (m_Size < a.m_Size) {
+            int newDwords = a.m_Size >> 5;
+            int dwords = m_Size >> 5;
+            XDWORD *temp = Allocate(newDwords);
 
-            // Clear the new bits
-            memset(temp + oldsize, 0, (size - oldsize) * sizeof(XDWORD));
+            if (temp && m_Data) {
+                memcpy(temp, m_Data, dwords * sizeof(XDWORD));
+                memset(temp + dwords, 0, (newDwords - dwords) * sizeof(XDWORD));
+            }
 
             Free();
 
@@ -97,224 +146,221 @@ public:
         }
     }
 
-    // Summary: Returns if the n-th bit is set to 1
-    int IsSet(int n)
-    {
-        if (n >= m_Size)
-            return 0; // Out of range
-        return (m_Data[n >> 5] & (1 << (n & 31))); // Allocated after the first DWORD
+    /**
+     * @brief Checks if the n-th bit is set to 1.
+     * @param n The index of the bit to check.
+     * @return A non-zero value if the bit is set, or 0 if it is not set or `n` is out of range.
+     */
+    int IsSet(int n) const {
+        if (n >= m_Size) return 0;
+        return (m_Data[n >> 5] & (1U << (n & 31)));
     }
 
-    // Summary: Returns if the n-th bit is set to 1
-    int operator[](int n)
-    {
+    /**
+     * @brief Provides read-only array-style access to check if a bit is set.
+     * @param n The index of the bit to check.
+     * @return The result of `IsSet(n)`.
+     */
+    int operator[](int n) const {
         return IsSet(n);
     }
 
-    // Summary: Appends the bitcount first bits of integer v to the array
-    void AppendBits(int n, int v, int bitcount)
-    {
+    /**
+     * @brief Appends a sequence of bits from an integer to the array.
+     * @param n The starting bit index in the array to write to.
+     * @param v The integer containing the source bits.
+     * @param bitcount The number of bits to append from `v`.
+     */
+    void AppendBits(int n, int v, int bitcount) {
         int mask = 1;
-        bitcount += n;
-        for (int i = n; i < bitcount; ++i, mask <<= 1)
-        {
-            if (mask & v)
-                Set(i);
-            else
-                Unset(i);
+        int end = n + bitcount;
+        for (int i = n; i < end; ++i, mask <<= 1) {
+            if (mask & v) Set(i);
+            else Unset(i);
         }
     }
 
-    // Summary: Sets the n-th bit to 1
-    void Set(int n)
-    {
-        if (n < m_Size)
-        {
-            m_Data[n >> 5] |= 1 << (n & 31);
-        }
-        else
-        {
-            // we have to reallocate
+    /**
+     * @brief Sets the n-th bit to 1.
+     * @param n The index of the bit to set. The array will be resized if necessary.
+     */
+    void Set(int n) {
+        if (n < 0) return;
+        CheckSize(n);
+        m_Data[n >> 5] |= (1U << (n & 31));
+    }
+
+    /**
+     * @brief Sets the n-th bit to 1 and reports its previous state.
+     * @param n The index of the bit to set.
+     * @return 1 if the bit was previously 0, or 0 if it was already 1.
+     */
+    int TestSet(int n) {
+        if (n < 0) return 0;
+        if (n >= m_Size) {
             CheckSize(n);
-            m_Data[n >> 5] |= 1 << (n & 31);
-        }
-    }
-
-    // Summary: Sets the n-th bit to 1 and return 0 if it was set, 1 otherwise
-    int TestSet(int n)
-    {
-        if (n < m_Size)
-        {
+            m_Data[n >> 5] |= (1U << (n & 31));
+            return 1;
+        } else {
             int pos = n >> 5;
-            int mask = 1 << (n & 31);
-
+            unsigned int mask = 1U << (n & 31);
             if (m_Data[pos] & mask)
                 return 0;
             m_Data[pos] |= mask;
             return 1;
         }
-        else
-        {
-            // we have to reallocate
-            CheckSize(n);
-            m_Data[n >> 5] |= 1 << (n & 31);
-            return 1;
+    }
+
+    /**
+     * @brief Sets the n-th bit to 0.
+     * @param n The index of the bit to unset.
+     */
+    void Unset(int n) {
+        if (n < m_Size && n >= 0) {
+            m_Data[n >> 5] &= ~(1U << (n & 31));
         }
     }
 
-    // Summary: Sets the n-th bit to 0
-    void Unset(int n)
-    {
-        if (n < m_Size)
-        {
-            m_Data[n >> 5] &= ~(1 << (n & 31));
-        }
-    }
-
-    // Summary: Sets the n-th bit to 0 and return 1 if it was set, 0 otherwise
-    int TestUnset(int n)
-    {
-        if (n < m_Size)
-        {
+    /**
+     * @brief Sets the n-th bit to 0 and reports its previous state.
+     * @param n The index of the bit to unset.
+     * @return 1 if the bit was previously 1, or 0 if it was already 0.
+     */
+    int TestUnset(int n) {
+        if (n < m_Size && n >= 0) {
             int pos = n >> 5;
-            int mask = 1 << (n & 31);
-            if (m_Data[pos] & mask)
-            {
+            unsigned int mask = 1U << (n & 31);
+            if (m_Data[pos] & mask) {
                 m_Data[pos] &= ~mask;
                 return 1;
             }
-            return 0;
         }
-        else
-            return 0;
+        return 0;
     }
 
-    // Summary: Returns the number of bits
-    int Size() const
-    {
+    /**
+     * @brief Returns the total number of allocated bits (the capacity).
+     */
+    int Size() const {
         return m_Size;
     }
 
-    // Summary: Resets the array
-    void Clear()
-    {
-        memset(m_Data, 0, (m_Size >> 3));
+    /**
+     * @brief Resets all bits in the array to 0.
+     */
+    void Clear() {
+        if (m_Data) memset(m_Data, 0, (m_Size >> 3));
     }
 
-    // Summary: Sets all bits of the array to 1
-    // Warning : this functions sets all the allocated bits, not only the
-    // used bits
-    void Fill()
-    {
-        memset(m_Data, 0xff, (m_Size >> 3));
+    /**
+     * @brief Sets all allocated bits in the array to 1.
+     */
+    void Fill() {
+        if (m_Data) memset(m_Data, 0xff, (m_Size >> 3));
     }
 
-    // Summary: Performs a binary AND with another array
-    void And(XBitArray &a)
-    {
-        int size = a.m_Size >> 5;
-        int i = 0;
-        for (; i < size; ++i)
-        {
-            m_Data[i] &= a.m_Data[i];
-        }
-        // clear the remaining bytes
-        int rsize = m_Size >> 5;
-        for (; i < rsize; ++i)
-        {
-            m_Data[i] = 0;
-        }
+    /**
+     * @brief Performs a bitwise AND operation with another array, storing the result in this array.
+     * @param a The other XBitArray.
+     */
+    void And(XBitArray &a) {
+        int dwords1 = m_Size >> 5;
+        int dwords2 = a.m_Size >> 5;
+        int dwords = XMin(dwords1, dwords2);
+        int i;
+        for (i = 0; i < dwords; ++i) m_Data[i] &= a.m_Data[i];
+        for (i = dwords; i < dwords1; ++i) m_Data[i] = 0;
     }
 
-    // Summary: subtract bits from another bitarray
-    XBitArray &operator-=(XBitArray &a)
-    {
-        int size = a.m_Size >> 5;
-        int i = 0;
-        for (; i < size; ++i)
-        {
+    /**
+     * @brief Performs a bitwise subtraction (`this = this & ~a`).
+     * @param a The XBitArray containing bits to clear from this array.
+     * @return A reference to this modified array.
+     */
+    XBitArray &operator-=(XBitArray &a) {
+        int dwords1 = m_Size >> 5;
+        int dwords2 = a.m_Size >> 5;
+        int dwords = XMin(dwords1, dwords2);
+        for (int i = 0; i < dwords; ++i) {
             m_Data[i] &= ~a.m_Data[i];
         }
         return *this;
     }
 
-    // Summary: Returns TRUE if at least one common bit is set in two arrays
-    XBOOL CheckCommon(XBitArray &a)
-    {
-        int size = a.m_Size >> 5;
-        for (int i = 0; i < size; ++i)
-        {
-            if (m_Data[i] & a.m_Data[i])
-                return TRUE;
+    /**
+     * @brief Checks if there is at least one common set bit between this array and another.
+     * @param a The other XBitArray.
+     * @return TRUE if `(this & a)` is not zero, FALSE otherwise.
+     */
+    XBOOL CheckCommon(XBitArray &a) {
+        int dwords1 = m_Size >> 5;
+        int dwords2 = a.m_Size >> 5;
+        int dwords = XMin(dwords1, dwords2);
+        for (int i = 0; i < dwords; ++i) {
+            if (m_Data[i] & a.m_Data[i]) return TRUE;
         }
         return FALSE;
     }
 
-    // Summary: Performs a binary OR with another array
-    void Or(XBitArray &a)
-    {
+    /**
+     * @brief Performs a bitwise OR operation with another array, storing the result in this array.
+     * @param a The other XBitArray. This array will be resized if `a` is larger.
+     */
+    void Or(XBitArray &a) {
         CheckSameSize(a);
         int size = a.m_Size >> 5;
-        for (int i = 0; i < size; ++i)
-        {
-            m_Data[i] |= a.m_Data[i];
-        }
+        for (int i = 0; i < size; ++i) m_Data[i] |= a.m_Data[i];
     }
 
-    // Summary: Performs a binary XOR with another array
-    void XOr(XBitArray &a)
-    {
+    /**
+     * @brief Performs a bitwise XOR operation with another array, storing the result in this array.
+     * @param a The other XBitArray. This array will be resized if `a` is larger.
+     */
+    void XOr(XBitArray &a) {
         CheckSameSize(a);
         int size = a.m_Size >> 5;
-        for (int i = 0; i < size; ++i)
-        {
-            m_Data[i] ^= a.m_Data[i];
-        }
+        for (int i = 0; i < size; ++i) m_Data[i] ^= a.m_Data[i];
     }
 
-    // Summary: Inverts all bits value in the array
-    void Invert()
-    {
+    /**
+     * @brief Inverts all bits in the array.
+     */
+    void Invert() {
         int size = m_Size >> 5;
-        for (int i = 0; i < size; ++i)
-        {
-            m_Data[i] = ~m_Data[i];
-        }
+        for (int i = 0; i < size; ++i) m_Data[i] = ~m_Data[i];
     }
 
-    // Summary: Returns the number of bits set
-    int BitSet()
-    {
+    /**
+     * @brief Counts the number of set bits (1s) in the array.
+     * @return The total number of set bits.
+     */
+    int BitSet() {
         int set = 0;
         int size = m_Size >> 5;
-        for (int i = 0; i < size; ++i)
-        {
+        for (int i = 0; i < size; ++i) {
             int mask = 1;
-            for (int j = 0; j < 32; ++j)
-            {
-                if (m_Data[i] & mask)
-                    ++set;
+            for (int j = 0; j < 32; ++j) {
+                if (m_Data[i] & mask) ++set;
                 mask <<= 1;
             }
         }
         return set;
     }
 
-    // Summary: Returns the position of the n-th set(1) bit
-    int GetSetBitPosition(int n)
-    {
+    /**
+     * @brief Finds the index of the n-th set bit (1).
+     * @param n The zero-based index of the set bit to find (e.g., n=0 for the first set bit).
+     * @return The bit index of the n-th set bit, or -1 if not found.
+     */
+    int GetSetBitPosition(int n) {
         int set = 0;
         int pos = 0;
         int size = m_Size >> 5;
-        for (int i = 0; i < size; ++i)
-        {
+        for (int i = 0; i < size; ++i) {
             int mask = 1;
-            for (int j = 0; j < 32; ++j, ++pos)
-            {
-                if (m_Data[i] & mask)
-                {
-                    if (set == n)
-                        return pos;
+            for (int j = 0; j < 32; ++j, ++pos) {
+                if (m_Data[i] & mask) {
+                    if (set == n) return pos;
                     ++set;
                 }
                 mask <<= 1;
@@ -323,73 +369,84 @@ public:
         return -1;
     }
 
-    // Summary: Returns the position of the n-th unset(0) bit
-    int GetUnsetBitPosition(int n)
-    {
+    /**
+     * @brief Finds the index of the n-th unset bit (0).
+     * @param n The zero-based index of the unset bit to find.
+     * @return The bit index of the n-th unset bit. The array may be resized if not found within the current capacity.
+     */
+    int GetUnsetBitPosition(int n) {
         int unset = 0;
         int pos = 0;
         int size = m_Size >> 5;
-        for (int i = 0; i < size; ++i)
-        {
+        for (int i = 0; i < size; ++i) {
             int mask = 1;
-            for (int j = 0; j < 32; ++j, ++pos)
-            {
-                if (!(m_Data[i] & mask))
-                {
-                    if (unset == n)
-                        return pos;
+            for (int j = 0; j < 32; ++j, ++pos) {
+                if (!(m_Data[i] & mask)) {
+                    if (unset == n) return pos;
                     ++unset;
                 }
                 mask <<= 1;
             }
         }
-        // We haven't found an unsetted bit yet : we reallocate
         CheckSize(pos);
         return pos;
     }
 
-    char *ConvertToString(char *buffer)
-    {
-        if (buffer)
-        {
-            int count = 0;
-            for (int i = 0; i < (m_Size >> 5); i++)
-            {
-                for (int j = 0; j < 32; j++)
-                {
-                    if (m_Data[i] & (1 << j))
-                        buffer[count] = '1';
-                    else
-                        buffer[count] = '0';
-                    count++;
-                }
+    /**
+     * @brief Converts the bit array to a string representation.
+     * @param buffer A character buffer to store the resulting string of '0's and '1's.
+     *               It must be large enough to hold `Size()` characters plus a null terminator.
+     * @return The provided buffer containing the string representation.
+     */
+    char *ConvertToString(char *buffer) {
+        if (buffer) {
+            for (int i = 0; i < m_Size; i++) {
+                buffer[i] = (m_Data[i >> 5] & (1U << (i & 31))) ? '1' : '0';
             }
-            buffer[m_Size] = 0;
+            buffer[m_Size] = '\0';
         }
         return buffer;
     }
 
-    // Summary: Returns the occupied size in memory in bytes
-    int GetMemoryOccupation(XBOOL addstatic = FALSE) const
-    {
+    /**
+     * @brief Returns the total memory occupied by the allocated buffer in bytes.
+     * @param addstatic If TRUE, adds the `sizeof(XBitArray)` to the result.
+     * @return The memory size in bytes.
+     */
+    int GetMemoryOccupation(XBOOL addstatic = FALSE) const {
         return (m_Size >> 5) * sizeof(XDWORD) + (addstatic ? sizeof(*this) : 0);
     }
 
 private:
-    XDWORD *Allocate(int size)
-    {
-        return (XDWORD *)VxNew(sizeof(XDWORD) * size);
+    /**
+     * @brief Allocates raw memory for a given number of XDWORDs.
+     * @internal
+     */
+    XDWORD *Allocate(int size) {
+#ifdef NO_VX_MALLOC
+        return new XDWORD[size];
+#else
+        return (XDWORD *) VxMalloc(sizeof(XDWORD) * size);
+#endif
     }
 
-    void Free()
-    {
-        VxDelete(m_Data);
+    /**
+     * @brief Frees the raw memory block.
+     * @internal
+     */
+    void Free() {
+        if (m_Data) {
+#ifdef NO_VX_MALLOC
+            delete[] m_Data;
+#else
+            VxFree(m_Data);
+#endif
+            m_Data = NULL;
+        }
     }
 
-    // the array itself {secret}
-    XDWORD *m_Data;
-    // real size already allocated {secret}
-    int m_Size;
+    XDWORD *m_Data; ///< @internal Pointer to the array of 32-bit integers storing the bits.
+    int m_Size;     ///< @internal The total allocated size of the array, in bits.
 };
 
-#endif // BITARRAY_H
+#endif // XBITARRAY_H

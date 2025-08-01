@@ -11,104 +11,132 @@
 #pragma warning(disable:4996)
 #endif
 
-/***********************************************************************
-Summary: Utility class for filenames extraction
-
-Remarks:
-    CKPathSplitter & CKPathMaker are useful for manipulation of filenames and paths.
-    CKPathSplitter class is used to break a path into its four components (Drive, Directory Filename and extension).
-    CKPathMaker class creates a path string from its four components..
-
-
-Example:
-        // for example to change the name of a file :
-        CKPathSplitter	splitter(OldFilename);
-
-        char* OldName = splitter.GetName();
-        char* newname = ChangeName(OldName);
-        CKPathMaker maker(splitter.GetDrive(),splitter.GetDir(),newname,splitter.GetExtension());
-        char* NewFilename = maker.GetFileName();
-
-
-
-See also: CKPathMaker
-***********************************************************************/
-class VX_EXPORT CKPathSplitter
-{
+/**
+ * @brief Utility class for extracting components from a file path.
+ *
+ * @remarks
+ * CKPathSplitter and CKPathMaker are useful for manipulating filenames and paths.
+ * The CKPathSplitter class is used to break a path into its four components:
+ * Drive, Directory, Filename, and Extension.
+ * The CKPathMaker class creates a path string from these four components.
+ *
+ * @example
+ * @code
+ * // Example of changing a file's name:
+ * CKPathSplitter splitter(OldFilename);
+ *
+ * char* OldName = splitter.GetName();
+ * char* newname = ChangeName(OldName); // A hypothetical function to change the name
+ * CKPathMaker maker(splitter.GetDrive(), splitter.GetDir(), newname, splitter.GetExtension());
+ * char* NewFilename = maker.GetFileName();
+ * @endcode
+ *
+ * @see CKPathMaker
+ */
+class VX_EXPORT CKPathSplitter {
 public:
-    // Constructs the object from a full path.
+    /**
+     * @brief Constructs the object from a full path string.
+     * @param file A pointer to the full path of the file.
+     */
     explicit CKPathSplitter(char *file);
 
+    /**
+     * @brief Destructor.
+     */
     ~CKPathSplitter();
 
-    // Returns the optional drive letter, followed by a colon (:)
+    /**
+     * @brief Returns the drive letter, followed by a colon (e.g., "C:").
+     * @return A pointer to the string containing the drive.
+     */
     char *GetDrive();
-    // Returns the optional directory path, including trailing slash (\)
+
+    /**
+     * @brief Returns the directory path, including the trailing slash (e.g., "\\path\\to\\file\\").
+     * @return A pointer to the string containing the directory path.
+     */
     char *GetDir();
-    // Returns the file name without extension
+
+    /**
+     * @brief Returns the file name without its extension.
+     * @return A pointer to the string containing the file name.
+     */
     char *GetName();
-    // Returns the file extension including period (.)
+
+    /**
+     * @brief Returns the file extension, including the leading period (e.g., ".txt").
+     * @return A pointer to the string containing the file extension.
+     */
     char *GetExtension();
 
 protected:
-    char m_Drive[_MAX_DRIVE];
-    char m_Dir[_MAX_DIR];
-    char m_Fname[_MAX_FNAME];
-    char m_Ext[_MAX_EXT];
+    char m_Drive[_MAX_DRIVE]; ///< Buffer to store the drive component.
+    char m_Dir[_MAX_DIR];     ///< Buffer to store the directory component.
+    char m_Filename[_MAX_FNAME]; ///< Buffer to store the filename component.
+    char m_Ext[_MAX_EXT];     ///< Buffer to store the extension component.
 };
 
-/***********************************************************************
-Summary: Utility class for directory and filenames concatenation
-
-Remarks:
-    CKPathSplitter & CKPathMaker are useful for manipulation of filenames and paths.
-    CKPathMaker class creates a path string from its four components..
-
-
-Example:
-        // for example to change the name of a file :
-        CKPathSplitter	splitter(OldFilename);
-
-        char* OldName = splitter.GetName();
-        char* newname = ChangeName(OldName);
-        CKPathMaker maker(splitter.GetDrive(),splitter.GetDir(),newname,splitter.GetExtension());
-        char* NewFilename = maker.GetFileName();
-
-
-
-See also: CKPathSplitter
-***********************************************************************/
-class VX_EXPORT CKPathMaker
-{
+/**
+ * @brief Utility class for creating a full path from its components.
+ *
+ * @remarks
+ * CKPathSplitter and CKPathMaker are useful for manipulating filenames and paths.
+ * The CKPathMaker class creates a path string from its four components:
+ * Drive, Directory, Filename, and Extension.
+ *
+ * @example
+ * @code
+ * // Example of changing a file's name:
+ * CKPathSplitter splitter(OldFilename);
+ *
+ * char* OldName = splitter.GetName();
+ * char* newname = ChangeName(OldName); // A hypothetical function to change the name
+ * CKPathMaker maker(splitter.GetDrive(), splitter.GetDir(), newname, splitter.GetExtension());
+ * char* NewFilename = maker.GetFileName();
+ * @endcode
+ *
+ * @see CKPathSplitter
+ */
+class VX_EXPORT CKPathMaker {
 public:
-    // Constructs the object from an optional Drive letter,Directory,Filename and Extension.
+    /**
+     * @brief Constructs a path from its individual components.
+     * @param Drive The drive letter (e.g., "C:"). Can be NULL.
+     * @param Directory The directory path (e.g., "\\path\\"). Can be NULL.
+     * @param Fname The file name without extension. Can be NULL.
+     * @param Extension The file extension with a leading dot (e.g., ".txt"). Can be NULL.
+     */
     CKPathMaker(char *Drive, char *Directory, char *Fname, char *Extension);
-    // Returns the full path.
+
+    /**
+     * @brief Returns the constructed full path.
+     * @return A pointer to the string containing the full path.
+     */
     char *GetFileName();
 
 protected:
-    char m_FileName[_MAX_PATH];
+    char m_FileName[_MAX_PATH]; ///< Buffer to store the constructed full path.
 };
 
-/***********************************************************************
-Summary: Storage class for filename extensions
+/**
+ * @brief A simple storage class for filename extensions.
+ * @see CKPathSplitter, CKPathMaker
+ */
+struct CKFileExtension {
+    /**
+     * @brief Default constructor. Initializes the extension to an empty string.
+     */
+    CKFileExtension() : m_Data() {}
 
-
-
-
-See also: CKPathSplitter,CKPathMaker
-***********************************************************************/
-struct CKFileExtension
-{
-    // Ctor
-    CKFileExtension() { memset(m_Data, 0, 4); }
-
-    CKFileExtension(const char *s)
-    {
+    /**
+     * @brief Constructs a CKFileExtension from a string.
+     * @param s A character pointer to the extension string (e.g., ".txt" or "txt"). Stores up to 3 characters.
+     */
+    CKFileExtension(const char *s) {
         if (!s)
             m_Data[0] = 0;
-        else
-        {
+        else {
             if (s[0] == '.')
                 s = &s[1];
             int len = strlen(s);
@@ -119,15 +147,28 @@ struct CKFileExtension
         }
     }
 
-    int operator==(const CKFileExtension &s)
-    {
+    /**
+     * @brief Compares two extensions for equality, case-insensitively.
+     * @param s The CKFileExtension to compare against.
+     * @return Non-zero if the extensions are equal, zero otherwise.
+     */
+    int operator==(const CKFileExtension &s) {
         return !strcmpi(m_Data, s.m_Data);
     }
 
+    /**
+     * @brief Implicit conversion to a non-constant character pointer.
+     * @return A `char*` pointing to the internal extension data.
+     */
     operator char *() { return m_Data; }
+
+    /**
+     * @brief Implicit conversion to a constant character pointer.
+     * @return A `const char*` pointing to the internal extension data.
+     */
     operator const char *() { return m_Data; }
 
-    // Members secret
+    /// @brief Internal storage for the extension string (up to 3 characters plus null terminator).
     char m_Data[4];
 };
 

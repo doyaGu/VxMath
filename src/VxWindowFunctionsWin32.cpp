@@ -9,13 +9,13 @@
 #include "VxImageDescEx.h"
 #include "VxSharedLibrary.h"
 
-char VxScanCodeToAscii(XULONG scancode, unsigned char keystate[256])
-{
+extern void VxDoBlitUpsideDown(const VxImageDescEx &src_desc, const VxImageDescEx &dst_desc);
+
+char VxScanCodeToAscii(XULONG scancode, unsigned char keystate[256]) {
     unsigned char state[256];
 
     GetKeyboardState(state);
-    if (keystate[VK_PRINT])
-    {
+    if (keystate[VK_PRINT]) {
         state[VK_SHIFT] |= 0x81; // 0x81: the key is down and toggled
         state[VK_LSHIFT] |= 0x81;
     }
@@ -36,8 +36,7 @@ char VxScanCodeToAscii(XULONG scancode, unsigned char keystate[256])
         state[VK_LCONTROL] |= 0x81;
         state[VK_RMENU] |= 0x81;
     }
-    if (keystate[VK_NONCONVERT])
-    {
+    if (keystate[VK_NONCONVERT]) {
         state[VK_CONTROL] |= 0x81;
         state[VK_LCONTROL] |= 0x81;
     }
@@ -52,8 +51,7 @@ char VxScanCodeToAscii(XULONG scancode, unsigned char keystate[256])
     return (ret != 0) ? ch : '\0';
 }
 
-int VxScanCodeToName(XULONG scancode, char *keyName)
-{
+int VxScanCodeToName(XULONG scancode, char *keyName) {
     DWORD code = (scancode & 0x7F) << 16;
     if (scancode > 0x7F)
         code |= 0x1000000;
@@ -65,25 +63,22 @@ int VxScanCodeToName(XULONG scancode, char *keyName)
     return len + 1;
 }
 
-int VxShowCursor(XBOOL show)
-{
+int VxShowCursor(XBOOL show) {
     return ShowCursor(show);
 }
 
-XBOOL VxSetCursor(VXCURSOR_POINTER cursorID)
-{
+XBOOL VxSetCursor(VXCURSOR_POINTER cursorID) {
     HCURSOR cursorNew = NULL;
     HCURSOR cursorNow = GetCursor();
-    switch (cursorID)
-    {
+    switch (cursorID) {
     case 1:
-        cursorNew = LoadCursorA(0, (LPCSTR)IDC_ARROW);
+        cursorNew = LoadCursorA(0, (LPCSTR) IDC_ARROW);
         break;
     case 2:
-        cursorNew = LoadCursorA(0, (LPCSTR)IDC_WAIT);
+        cursorNew = LoadCursorA(0, (LPCSTR) IDC_WAIT);
         break;
     case 3:
-        cursorNew = LoadCursorA(0, (LPCSTR)IDC_SIZEALL);
+        cursorNew = LoadCursorA(0, (LPCSTR) IDC_SIZEALL);
         break;
     default:
         return TRUE;
@@ -93,21 +88,13 @@ XBOOL VxSetCursor(VXCURSOR_POINTER cursorID)
     return TRUE;
 }
 
-XWORD VxGetFPUControlWord()
-{
-    return 0;
-}
+XWORD VxGetFPUControlWord() { return 0; }
 
-void VxSetFPUControlWord(XWORD Fpu)
-{
-}
+void VxSetFPUControlWord(XWORD Fpu) {}
 
-void VxSetBaseFPUControlWord()
-{
-}
+void VxSetBaseFPUControlWord() {}
 
-void VxAddLibrarySearchPath(char *path)
-{
+void VxAddLibrarySearchPath(char *path) {
     char buffer[4096];
     GetEnvironmentVariableA("PATH", buffer, sizeof(buffer));
     XString newPath;
@@ -117,8 +104,7 @@ void VxAddLibrarySearchPath(char *path)
     SetEnvironmentVariableA("PATH", newPath.CStr());
 }
 
-XBOOL VxGetEnvironmentVariable(char *envName, XString &envValue)
-{
+XBOOL VxGetEnvironmentVariable(char *envName, XString &envValue) {
     char buffer[4096];
     if (GetEnvironmentVariableA("PATH", buffer, sizeof(buffer)) == 0)
         return FALSE;
@@ -126,80 +112,66 @@ XBOOL VxGetEnvironmentVariable(char *envName, XString &envValue)
     return TRUE;
 }
 
-XBOOL VxSetEnvironmentVariable(char *envName, char *envValue)
-{
+XBOOL VxSetEnvironmentVariable(char *envName, char *envValue) {
     return SetEnvironmentVariableA(envName, envValue);
 }
 
 //------ Window Functions
-WIN_HANDLE VxWindowFromPoint(CKPOINT pt)
-{
-    return (WIN_HANDLE)WindowFromPoint(*(LPPOINT)&pt);
+WIN_HANDLE VxWindowFromPoint(CKPOINT pt) {
+    return WindowFromPoint(*(LPPOINT) &pt);
 }
 
-XBOOL VxGetClientRect(WIN_HANDLE Win, CKRECT *rect)
-{
-    return GetClientRect((HWND)Win, (LPRECT)rect);
+XBOOL VxGetClientRect(WIN_HANDLE Win, CKRECT *rect) {
+    return GetClientRect((HWND) Win, (LPRECT) rect);
 }
 
-XBOOL VxGetWindowRect(WIN_HANDLE Win, CKRECT *rect)
-{
-    return GetWindowRect((HWND)Win, (LPRECT)rect);
+XBOOL VxGetWindowRect(WIN_HANDLE Win, CKRECT *rect) {
+    return GetWindowRect((HWND) Win, (LPRECT) rect);
 }
 
-XBOOL VxScreenToClient(WIN_HANDLE Win, CKPOINT *pt)
-{
-    return ScreenToClient((HWND)Win, (LPPOINT)pt);
+XBOOL VxScreenToClient(WIN_HANDLE Win, CKPOINT *pt) {
+    return ScreenToClient((HWND) Win, (LPPOINT) pt);
 }
 
-XBOOL VxClientToScreen(WIN_HANDLE Win, CKPOINT *pt)
-{
-    return ClientToScreen((HWND)Win, (LPPOINT)pt);
+XBOOL VxClientToScreen(WIN_HANDLE Win, CKPOINT *pt) {
+    return ClientToScreen((HWND) Win, (LPPOINT) pt);
 }
 
-WIN_HANDLE VxSetParent(WIN_HANDLE Child, WIN_HANDLE Parent)
-{
-    return (WIN_HANDLE)SetParent((HWND)Child, (HWND)Parent);
+WIN_HANDLE VxSetParent(WIN_HANDLE Child, WIN_HANDLE Parent) {
+    return SetParent((HWND) Child, (HWND) Parent);
 }
 
-WIN_HANDLE VxGetParent(WIN_HANDLE Win)
-{
-    return (WIN_HANDLE)GetParent((HWND)Win);
+WIN_HANDLE VxGetParent(WIN_HANDLE Win) {
+    return GetParent((HWND) Win);
 }
 
-XBOOL VxMoveWindow(WIN_HANDLE Win, int x, int y, int Width, int Height, XBOOL Repaint)
-{
-    return MoveWindow((HWND)Win, x, y, Width, Height, Repaint);
+XBOOL VxMoveWindow(WIN_HANDLE Win, int x, int y, int Width, int Height, XBOOL Repaint) {
+    return MoveWindow((HWND) Win, x, y, Width, Height, Repaint);
 }
 
-XString VxGetTempPath()
-{
+XString VxGetTempPath() {
     XString path(512);
     GetTempPathA(512, path.Str());
     return path;
 }
 
-XBOOL VxMakeDirectory(char *path)
-{
+XBOOL VxMakeDirectory(char *path) {
     return mkdir(path) == 0;
 }
 
-XBOOL VxRemoveDirectory(char *path)
-{
+XBOOL VxRemoveDirectory(char *path) {
     return RemoveDirectoryA(path);
 }
 
-XBOOL VxDeleteDirectory(char *path)
-{
+XBOOL VxDeleteDirectory(char *path) {
     VxSharedLibrary lib;
     if (!lib.Load("Shell32.dll"))
         return FALSE;
 
     int ret = FALSE;
-    typedef int(WINAPI * LPFSHPROC)(LPSHFILEOPSTRUCTA);
-    LPFSHPROC mySHFileOperation = (LPFSHPROC)lib.GetFunctionPtr("SHFileOperation");
-    if (mySHFileOperation || (mySHFileOperation = (LPFSHPROC)lib.GetFunctionPtr("SHFileOperationA")))
-    {
+    typedef int (WINAPI *LPFSHPROC)(LPSHFILEOPSTRUCTA);
+    LPFSHPROC mySHFileOperation = (LPFSHPROC) lib.GetFunctionPtr("SHFileOperation");
+    if (mySHFileOperation || (mySHFileOperation = (LPFSHPROC) lib.GetFunctionPtr("SHFileOperationA"))) {
         SHFILEOPSTRUCTA fileOp;
         memset(&fileOp, 0, sizeof(SHFILEOPSTRUCTA));
         fileOp.pFrom = path;
@@ -210,45 +182,47 @@ XBOOL VxDeleteDirectory(char *path)
     return ret;
 }
 
-XBOOL VxGetCurrentDirectory(char *path)
-{
+XBOOL VxGetCurrentDirectory(char *path) {
     return getcwd(path, MAX_PATH) != NULL;
 }
 
-XBOOL VxSetCurrentDirectory(char *path)
-{
+XBOOL VxSetCurrentDirectory(char *path) {
     return chdir(path) == 0;
 }
 
-XBOOL VxMakePath(char *fullpath, char *path, char *file)
-{
+XBOOL VxMakePath(char *fullpath, char *path, char *file) {
+    if (!path || !file || !fullpath)
+        return FALSE;
+
     strcpy(fullpath, path);
     int pathLen = strlen(path);
-    if (pathLen >= MAX_PATH)
+
+    if (pathLen >= MAX_PATH - strlen(file) - 1)  // Check total length
         return FALSE;
-    if (fullpath[pathLen - 1] != '\\' && fullpath[pathLen - 1] != '/')
+
+    // Check if we need to add a path separator
+    if (pathLen > 0 && fullpath[pathLen - 1] != '\\' && fullpath[pathLen - 1] != '/') {
         fullpath[pathLen] = '\\';
-    strcpy(&fullpath[pathLen + 1], file);
+        pathLen++;  // Increment position since we added a separator
+    }
+
+    strcpy(&fullpath[pathLen], file);  // Use current pathLen, not pathLen + 1
     return TRUE;
 }
 
-XBOOL VxTestDiskSpace(const char *dir, XULONG size)
-{
+XBOOL VxTestDiskSpace(const char *dir, XULONG size) {
     HMODULE hKernel32 = GetModuleHandleA("kernel32.dll");
-    typedef BOOL(__stdcall * LPFNGETDISKFREESPACEEXA)(LPCSTR, PULARGE_INTEGER, PULARGE_INTEGER, PULARGE_INTEGER);
-    LPFNGETDISKFREESPACEEXA lpfnGetDiskFreeSpaceExA = (LPFNGETDISKFREESPACEEXA)GetProcAddress(hKernel32, "GetDiskFreeSpaceExA");
+    typedef BOOL (__stdcall *LPFNGETDISKFREESPACEEXA)(LPCSTR, PULARGE_INTEGER, PULARGE_INTEGER, PULARGE_INTEGER);
+    LPFNGETDISKFREESPACEEXA lpfnGetDiskFreeSpaceExA = (LPFNGETDISKFREESPACEEXA) GetProcAddress(hKernel32, "GetDiskFreeSpaceExA");
 
     XBOOL ret;
-    if (lpfnGetDiskFreeSpaceExA)
-    {
+    if (lpfnGetDiskFreeSpaceExA) {
         ULARGE_INTEGER freeBytesAvailableToCaller;
         ULARGE_INTEGER totalNumberOfBytes;
         ULARGE_INTEGER totalNumberOfFreeBytes;
         ret = lpfnGetDiskFreeSpaceExA(dir, &freeBytesAvailableToCaller, &totalNumberOfBytes, &totalNumberOfFreeBytes);
         return ret && size <= freeBytesAvailableToCaller.QuadPart;
-    }
-    else
-    {
+    } else {
         DWORD sectorsPerCluster = 0;
         DWORD bytesPerSector = 0;
         DWORD numberOfFreeClusters = 0;
@@ -258,29 +232,24 @@ XBOOL VxTestDiskSpace(const char *dir, XULONG size)
     }
 }
 
-int VxMessageBox(WIN_HANDLE hWnd, char *lpText, char *lpCaption, XULONG uType)
-{
-    return MessageBoxA((HWND)hWnd, lpText, lpCaption, uType);
+int VxMessageBox(WIN_HANDLE hWnd, char *lpText, char *lpCaption, XULONG uType) {
+    return MessageBoxA((HWND) hWnd, lpText, lpCaption, uType);
 }
 
-XULONG VxGetModuleFileName(INSTANCE_HANDLE Handle, char *string, XULONG StringSize)
-{
-    return GetModuleFileNameA((HMODULE)Handle, string, StringSize);
+XULONG VxGetModuleFileName(INSTANCE_HANDLE Handle, char *string, XULONG StringSize) {
+    return GetModuleFileNameA((HMODULE) Handle, string, StringSize);
 }
 
-INSTANCE_HANDLE VxGetModuleHandle(const char *filename)
-{
-    return (INSTANCE_HANDLE)GetModuleHandleA(filename);
+INSTANCE_HANDLE VxGetModuleHandle(const char *filename) {
+    return GetModuleHandleA(filename);
 }
 
-XBOOL VxCreateFileTree(char *file)
-{
+XBOOL VxCreateFileTree(char *file) {
     XString filepath = file;
     if (filepath.Length() <= 2)
         return FALSE;
 
-    for (char *pch = &filepath[3]; *pch != '\0'; ++pch)
-    {
+    for (char *pch = &filepath[3]; *pch != '\0'; ++pch) {
         if (*pch != '/' && *pch != '\\')
             continue;
         *pch = '\0';
@@ -292,8 +261,7 @@ XBOOL VxCreateFileTree(char *file)
     return TRUE;
 }
 
-XULONG VxURLDownloadToCacheFile(char *File, char *CachedFile, int szCachedFile)
-{
+XULONG VxURLDownloadToCacheFile(char *File, char *CachedFile, int szCachedFile) {
     char *cachedFile = CachedFile;
     CachedFile[0] = '\0';
 
@@ -301,8 +269,8 @@ XULONG VxURLDownloadToCacheFile(char *File, char *CachedFile, int szCachedFile)
     if (!sl.Load("Urlmon.dll"))
         return E_FAIL;
 
-    typedef HRESULT(__stdcall * LPFNURLDOWNLOADTOCACHEFILE)(LPUNKNOWN, LPCSTR, LPTSTR, DWORD, DWORD, IBindStatusCallback *);
-    LPFNURLDOWNLOADTOCACHEFILE lpfnURLDownloadToCacheFileA = (LPFNURLDOWNLOADTOCACHEFILE)sl.GetFunctionPtr("URLDownloadToCacheFileA");
+    typedef HRESULT (__stdcall *LPFNURLDOWNLOADTOCACHEFILE)(LPUNKNOWN, LPCSTR, LPTSTR, DWORD, DWORD, IBindStatusCallback *);
+    LPFNURLDOWNLOADTOCACHEFILE lpfnURLDownloadToCacheFileA = (LPFNURLDOWNLOADTOCACHEFILE) sl.GetFunctionPtr("URLDownloadToCacheFileA");
     XULONG ret = E_FAIL;
     if (lpfnURLDownloadToCacheFileA)
         ret = lpfnURLDownloadToCacheFileA(NULL, File, cachedFile, szCachedFile, 0, NULL);
@@ -310,34 +278,234 @@ XULONG VxURLDownloadToCacheFile(char *File, char *CachedFile, int szCachedFile)
     return ret;
 }
 
-BITMAP_HANDLE VxCreateBitmap(const VxImageDescEx &desc)
-{
-    return NULL;
+BITMAP_HANDLE VxCreateBitmap(const VxImageDescEx &desc) {
+    // Create a bitmap information header
+    BITMAPINFO bmi;
+    memset(&bmi, 0, sizeof(BITMAPINFO));
+
+    bmi.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+    bmi.bmiHeader.biWidth = desc.Width;
+    bmi.bmiHeader.biHeight = desc.Height;
+    bmi.bmiHeader.biPlanes = 1;
+    bmi.bmiHeader.biBitCount = 24; // Always create 24-bit bitmap
+    bmi.bmiHeader.biCompression = BI_RGB;
+
+    // Create a DIB section
+    void *bits = NULL;
+    HBITMAP bitmap = CreateDIBSection(NULL, &bmi, DIB_RGB_COLORS, &bits, NULL, 0);
+
+    if (!bitmap || !bits) {
+        return NULL;
+    }
+
+    // Get bitmap information
+    BITMAP bm;
+    GetObject(bitmap, sizeof(BITMAP), &bm);
+
+    // Create a temporary image description for the bitmap
+    VxImageDescEx tempDesc;
+    tempDesc.Size = sizeof(VxImageDescEx);
+    tempDesc.Width = bm.bmWidth;
+    tempDesc.Height = bm.bmHeight;
+    tempDesc.BytesPerLine = bm.bmWidthBytes;
+    tempDesc.BitsPerPixel = bm.bmBitsPixel;
+    tempDesc.Image = static_cast<XBYTE *>(bits);
+    tempDesc.RedMask = 0xFF0000;
+    tempDesc.GreenMask = 0xFF00;
+    tempDesc.BlueMask = 0xFF;
+    tempDesc.AlphaMask = 0;
+
+    // Copy the source image to the bitmap if it exists
+    if (desc.Image) {
+        VxDoBlitUpsideDown(desc, tempDesc);
+    }
+
+    return bitmap;
 }
 
-XBYTE *VxConvertBitmap(BITMAP_HANDLE Bitmap, VxImageDescEx &desc)
-{
-    return NULL;
+void VxDeleteBitmap(BITMAP_HANDLE Bitmap) {
+    if (Bitmap) {
+        DeleteObject(Bitmap);
+    }
 }
 
-XBOOL VxCopyBitmap(BITMAP_HANDLE Bitmap, const VxImageDescEx &desc)
-{
+XBYTE *VxConvertBitmap(BITMAP_HANDLE Bitmap, VxImageDescEx &desc) {
+    // Convert to 24-bit bitmap first
+    BITMAP_HANDLE bitmap24 = VxConvertBitmapTo24(Bitmap);
+    if (!bitmap24) {
+        return NULL;
+    }
+
+    // Get bitmap information
+    BITMAP bm;
+    GetObject(bitmap24, sizeof(BITMAP), &bm);
+
+    if (!bm.bmBits) {
+        if (bitmap24 != Bitmap) {
+            DeleteObject(bitmap24);
+        }
+        return NULL;
+    }
+
+    // Create a source description for the bitmap
+    VxImageDescEx srcDesc;
+    srcDesc.Size = sizeof(VxImageDescEx);
+    srcDesc.Width = bm.bmWidth;
+    srcDesc.Height = bm.bmHeight;
+    srcDesc.BytesPerLine = bm.bmWidthBytes;
+    srcDesc.BitsPerPixel = bm.bmBitsPixel;
+    srcDesc.RedMask = 0xFF0000;
+    srcDesc.GreenMask = 0xFF00;
+    srcDesc.BlueMask = 0xFF;
+    srcDesc.AlphaMask = 0;
+    srcDesc.Image = static_cast<XBYTE *>(bm.bmBits);
+
+    // Create a destination description
+    VxImageDescEx dstDesc = srcDesc;
+    dstDesc.BitsPerPixel = 32;
+    dstDesc.BytesPerLine = 4 * dstDesc.Width;
+    dstDesc.AlphaMask = 0xFF000000;
+
+    // Allocate memory for the new image
+    XBYTE *newImage = new XBYTE[dstDesc.BytesPerLine * dstDesc.Height];
+    if (!newImage) {
+        if (bitmap24 != Bitmap) {
+            DeleteObject(bitmap24);
+        }
+        return NULL;
+    }
+
+    dstDesc.Image = newImage;
+
+    // Copy the bitmap data to the new image
+    VxDoBlitUpsideDown(srcDesc, dstDesc);
+
+    // Clean up
+    if (bitmap24 != Bitmap) {
+        DeleteObject(bitmap24);
+    }
+
+    // Copy the destination description to the output
+    desc = dstDesc;
+
+    return newImage;
+}
+
+BITMAP_HANDLE VxConvertBitmapTo24(BITMAP_HANDLE Bitmap) {
+    // Get bitmap information
+    BITMAP bm;
+    GetObject(Bitmap, sizeof(BITMAP), &bm);
+
+    // If already 24-bit, just return the original
+    if (bm.bmBitsPixel == 24) {
+        return Bitmap;
+    }
+
+    // Create device contexts
+    HDC srcDC = CreateCompatibleDC(NULL);
+    if (!srcDC) {
+        return NULL;
+    }
+
+    HGDIOBJ oldSrcObj = SelectObject(srcDC, Bitmap);
+
+    // Create a 24-bit bitmap
+    BITMAPINFO bmi;
+    memset(&bmi, 0, sizeof(BITMAPINFO));
+
+    bmi.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+    bmi.bmiHeader.biWidth = bm.bmWidth;
+    bmi.bmiHeader.biHeight = bm.bmHeight;
+    bmi.bmiHeader.biPlanes = 1;
+    bmi.bmiHeader.biBitCount = 24;
+    bmi.bmiHeader.biCompression = BI_RGB;
+
+    void *bits = NULL;
+    HBITMAP bitmap24 = CreateDIBSection(NULL, &bmi, DIB_RGB_COLORS, &bits, NULL, 0);
+
+    if (!bitmap24) {
+        SelectObject(srcDC, oldSrcObj);
+        DeleteDC(srcDC);
+        return NULL;
+    }
+
+    // Create a destination DC
+    HDC dstDC = CreateCompatibleDC(srcDC);
+    if (!dstDC) {
+        SelectObject(srcDC, oldSrcObj);
+        DeleteDC(srcDC);
+        DeleteObject(bitmap24);
+        return NULL;
+    }
+
+    HGDIOBJ oldDstObj = SelectObject(dstDC, bitmap24);
+
+    // Copy the bitmap
+    BitBlt(dstDC, 0, 0, bm.bmWidth, bm.bmHeight, srcDC, 0, 0, SRCCOPY);
+
+    // Clean up
+    SelectObject(dstDC, oldDstObj);
+    SelectObject(srcDC, oldSrcObj);
+    DeleteDC(dstDC);
+    DeleteDC(srcDC);
+
+    return bitmap24;
+}
+
+XBOOL VxCopyBitmap(BITMAP_HANDLE Bitmap, const VxImageDescEx &desc) {
+    // Convert to 24-bit bitmap first
+    BITMAP_HANDLE bitmap24 = VxConvertBitmapTo24(Bitmap);
+    if (!bitmap24) {
+        return FALSE;
+    }
+
+    // Get bitmap information
+    BITMAP bm;
+    GetObject(bitmap24, sizeof(BITMAP), &bm);
+
+    if (!bm.bmBits) {
+        if (bitmap24 != Bitmap) {
+            DeleteObject(bitmap24);
+        }
+        return FALSE;
+    }
+
+    // Make sure the bytes per line is aligned properly
+    int bytesPerLine = bm.bmWidthBytes;
+    if ((bytesPerLine & 3) != 0 && bytesPerLine != bm.bmWidth * (bm.bmBitsPixel / 8)) {
+        bytesPerLine = bm.bmWidth * (bm.bmBitsPixel / 8);
+    }
+
+    // Create a source description for the bitmap
+    VxImageDescEx srcDesc;
+    srcDesc.Size = sizeof(VxImageDescEx);
+    srcDesc.Width = bm.bmWidth;
+    srcDesc.Height = bm.bmHeight;
+    srcDesc.BytesPerLine = bytesPerLine;
+    srcDesc.BitsPerPixel = bm.bmBitsPixel;
+    srcDesc.RedMask = 0xFF0000;
+    srcDesc.GreenMask = 0xFF00;
+    srcDesc.BlueMask = 0xFF;
+    srcDesc.AlphaMask = 0;
+    srcDesc.Image = static_cast<XBYTE *>(bm.bmBits);
+
+    // Copy the bitmap data to the destination
+    VxDoBlitUpsideDown(srcDesc, desc);
+
+    // Clean up
+    if (bitmap24 != Bitmap) {
+        DeleteObject(bitmap24);
+    }
+
     return TRUE;
 }
 
-BITMAP_HANDLE VxConvertBitmapTo24(BITMAP_HANDLE Bitmap)
-{
-    return NULL;
-}
-
-VX_OSINFO VxGetOs()
-{
+VX_OSINFO VxGetOs() {
     OSVERSIONINFOA osvi;
     memset(&osvi, 0, sizeof(OSVERSIONINFOA));
     osvi.dwOSVersionInfoSize = sizeof(OSVERSIONINFOA);
     GetVersionExA(&osvi);
-    switch (osvi.dwPlatformId)
-    {
+    switch (osvi.dwPlatformId) {
     case VER_PLATFORM_WIN32s:
         return VXOS_WIN31;
     case VER_PLATFORM_WIN32_WINDOWS:
@@ -354,5 +522,132 @@ VX_OSINFO VxGetOs()
             return VXOS_WIN2K;
     default:
         return VXOS_UNKNOWN;
+    }
+}
+
+FONT_HANDLE VxCreateFont(char *FontName, int FontSize, int Weight, XBOOL italic, XBOOL underline) {
+    // Create a compatible DC to get device capabilities
+    HDC hDC = CreateCompatibleDC(NULL);
+    if (!hDC) {
+        return NULL;
+    }
+
+    // Convert point size to logical units
+    int logicalHeight = -MulDiv(FontSize, GetDeviceCaps(hDC, LOGPIXELSY), 72);
+
+    // Create the font
+    HFONT hFont = CreateFontA(
+        logicalHeight,      // Height
+        0,                  // Width (0 means "match height")
+        0,                  // Escapement
+        0,                  // Orientation
+        Weight,             // Weight
+        italic,             // Italic
+        underline,          // Underline
+        0,                  // StrikeOut
+        ANSI_CHARSET,       // CharSet
+        OUT_DEFAULT_PRECIS, // OutputPrecision
+        CLIP_DEFAULT_PRECIS,// ClipPrecision
+        ANTIALIASED_QUALITY,// Quality
+        DEFAULT_PITCH | FF_DONTCARE, // Pitch and Family
+        FontName            // FaceName
+    );
+
+    // Clean up
+    DeleteDC(hDC);
+
+    return (FONT_HANDLE)hFont;
+}
+
+XBOOL VxGetFontInfo(FONT_HANDLE Font, VXFONTINFO &desc) {
+    if (!Font) {
+        return FALSE;
+    }
+
+    // Buffer to hold LOGFONT structure
+    LOGFONTA logFont;
+    if (!GetObjectA((HFONT)Font, sizeof(LOGFONTA), &logFont)) {
+        return FALSE;
+    }
+
+    // Copy data to the VXFONTINFO structure
+    desc.FaceName = logFont.lfFaceName;
+    desc.Height = abs(logFont.lfHeight);  // Store as positive value
+    desc.Weight = logFont.lfWeight;
+    desc.Italic = logFont.lfItalic ? TRUE : FALSE;
+    desc.Underline = logFont.lfUnderline ? TRUE : FALSE;
+
+    return TRUE;
+}
+
+XBOOL VxDrawBitmapText(BITMAP_HANDLE Bitmap, FONT_HANDLE Font, char *string, CKRECT *rect,
+                       XULONG Align, XULONG BkColor, XULONG FontColor) {
+    // Validate parameters
+    if (!Bitmap || !Font || !string || !rect) {
+        return FALSE;
+    }
+
+    // Create a device context compatible with the display
+    HDC hDC = CreateCompatibleDC(NULL);
+    if (!hDC) {
+        return FALSE;
+    }
+
+    // Select the bitmap and font into the DC
+    HGDIOBJ oldBitmap = SelectObject(hDC, (HBITMAP)Bitmap);
+    HGDIOBJ oldFont = SelectObject(hDC, (HFONT)Font);
+
+    // Convert RGB values (the original code swaps R and B components)
+    COLORREF textColor = RGB(
+        (FontColor & 0xFF),       // B
+        ((FontColor >> 8) & 0xFF),// G
+        ((FontColor >> 16) & 0xFF)// R
+    );
+
+    COLORREF bkColor = RGB(
+        (BkColor & 0xFF),         // B
+        ((BkColor >> 8) & 0xFF),  // G
+        ((BkColor >> 16) & 0xFF)  // R
+    );
+
+    // Set text and background colors
+    SetTextColor(hDC, textColor);
+    SetBkColor(hDC, bkColor);
+
+    // Convert alignment flags
+    UINT drawFlags = 0;
+
+    // Horizontal alignment
+    if (Align & VXTEXT_CENTER || Align & VXTEXT_HCENTER) {
+        drawFlags |= DT_CENTER;
+    } else if (Align & VXTEXT_RIGHT) {
+        drawFlags |= DT_RIGHT;
+    } else if (Align & VXTEXT_LEFT) {
+        drawFlags |= DT_LEFT;
+    }
+
+    // Vertical alignment
+    if (Align & VXTEXT_BOTTOM) {
+        drawFlags |= DT_BOTTOM | DT_SINGLELINE;
+    } else if (Align & VXTEXT_VCENTER) {
+        drawFlags |= DT_VCENTER | DT_SINGLELINE;
+    } else if (Align & VXTEXT_TOP) {
+        drawFlags |= DT_TOP | DT_SINGLELINE;
+    }
+
+    // Draw the text
+    DrawTextA(hDC, string, -1, (LPRECT)rect, drawFlags);
+
+    // Restore original objects and clean up
+    SelectObject(hDC, oldFont);
+    SelectObject(hDC, oldBitmap);
+    DeleteDC(hDC);
+
+    return TRUE;
+}
+
+void VxDeleteFont(FONT_HANDLE Font) {
+    if (Font) {
+        DeleteObject(Font);
     }
 }

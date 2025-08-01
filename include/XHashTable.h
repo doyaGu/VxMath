@@ -3,135 +3,193 @@
 
 #include "XClassArray.h"
 #include "XArray.h"
-#include "XSArray.h"
 #include "XHashFun.h"
 
 #ifdef VX_MSVC
 #pragma warning(disable : 4786)
 #endif
 
+/// @brief The default load factor that determines when the hash table should be resized.
 const float L = 0.75f;
 
 template <class T, class K, class H, class Eq>
 class XHashTable;
 
+/**
+ * @class XHashTableEntry
+ * @brief Represents a single entry (key-value pair) within a hash table bucket.
+ *
+ * @tparam T The type of the data stored.
+ * @tparam K The type of the key used for hashing and lookup.
+ *
+ * @remarks This class is used internally by XHashTable to manage collisions via chaining.
+ * Each entry points to the next entry in the same bucket, forming a linked list.
+ */
 template <class T, class K>
-class XHashTableEntry
-{
+class XHashTableEntry {
     typedef XHashTableEntry<T, K> *tEntry;
 
 public:
-    XHashTableEntry() : m_Key(0), m_Data(0), m_Next(NULL) {}
+    /**
+     * @brief Default constructor.
+     */
+    XHashTableEntry() : m_Key(), m_Data(), m_Next(NULL) {}
+
+    /**
+     * @brief Constructor to initialize with a key and a value.
+     * @param k The key for the entry.
+     * @param v The data for the entry.
+     */
     XHashTableEntry(const K &k, const T &v) : m_Key(k), m_Data(v), m_Next(NULL) {}
+
+    /**
+     * @brief Copy constructor.
+     * @param e The entry to copy.
+     */
     XHashTableEntry(const XHashTableEntry<T, K> &e) : m_Key(e.m_Key), m_Data(e.m_Data), m_Next(NULL) {}
+
+#if VX_HAS_CXX11
+    /**
+     * @brief Move constructor (C++11).
+     * @param e The entry to move from.
+     */
+    XHashTableEntry(XHashTableEntry<T, K> &&e) VX_NOEXCEPT : m_Key(std::move(e.m_Key)), m_Data(std::move(e.m_Data)), m_Next(e.m_Next) {
+        e.m_Next = NULL;
+    }
+#endif
+    /**
+     * @brief Destructor.
+     */
     ~XHashTableEntry() {}
 
+    /// The key associated with this entry.
     K m_Key;
+    /// The data stored in this entry.
     T m_Data;
+    /// Pointer to the next entry in the same bucket (for collision resolution).
     tEntry m_Next;
 };
 
-/************************************************
-Summary: Iterator on a hash table.
-
-Remarks: This iterator is the only way to iterate on
-elements in a hash table. The iteration will be in no
-specific order, not in the insertion order. Here is an example
-of how to use it:
-
-Example:
-
-    XHashTableIt<T,K,H> it = hashtable.Begin();
-    while (it != hashtable.End()) {
-        // access to the key
-        it.GetKey();
-
-        // access to the element
-        *it;
-
-        // next element
-        ++it;
-    }
-
-
-************************************************/
+/**
+ * @class XHashTableIt
+ * @brief An iterator for traversing an XHashTable.
+ *
+ * @tparam T The type of the value stored in the hash table.
+ * @tparam K The type of the key used in the hash table.
+ * @tparam H The hash function class.
+ * @tparam Eq The equality comparison class for keys.
+ *
+ * @remarks
+ * This iterator is the primary way to iterate over the elements in a hash table.
+ * The iteration order is not guaranteed and will not necessarily match the insertion order.
+ *
+ * @example
+ * @code
+ * XHashTableIt<MyType, MyKey, MyHash> it = hashtable.Begin();
+ * while (it != hashtable.End()) {
+ *     // access the key
+ *     it.GetKey();
+ *
+ *     // access the element
+ *     MyType& value = *it;
+ *
+ *     // move to the next element
+ *     ++it;
+ * }
+ * @endcode
+ */
 template <class T, class K, class H = XHashFun<K>, class Eq = XEqual<K> >
 class XHashTableIt {
-    typedef XHashTableEntry <T, K> *tEntry;
+    typedef XHashTableEntry<T, K> *tEntry;
     typedef XHashTableIt<T, K, H, Eq> tIterator;
-    typedef XHashTable <T, K, H, Eq> *tTable;
+    typedef XHashTable<T, K, H, Eq> *tTable;
 
     friend class XHashTable<T, K, H, Eq>;
+
 public:
-    /************************************************
-    Summary: Default constructor of the iterator.
-    ************************************************/
+    /**
+     * @brief Default constructor. Initializes a null iterator.
+     */
     XHashTableIt() : m_Node(0), m_Table(0) {}
 
-    /************************************************
-    Summary: Copy constructor of the iterator.
-    ************************************************/
+    /**
+     * @brief Copy constructor.
+     * @param n The iterator to copy.
+     */
     XHashTableIt(const tIterator &n) : m_Node(n.m_Node), m_Table(n.m_Table) {}
 
-    /************************************************
-    Summary: Operator Equal of the iterator.
-    ************************************************/
+#if VX_HAS_CXX11
+    /**
+     * @brief Move constructor (C++11).
+     * @param n The iterator to move from.
+     */
+    XHashTableIt(tIterator &&n) VX_NOEXCEPT : m_Node(n.m_Node), m_Table(n.m_Table) {
+        n.m_Node = NULL;
+        n.m_Table = NULL;
+    }
+#endif
+
+    /**
+     * @brief Equality operator.
+     * @param it The iterator to compare against.
+     * @return Non-zero if the iterators point to the same element, zero otherwise.
+     */
     int operator==(const tIterator &it) const { return m_Node == it.m_Node; }
 
-    /************************************************
-    Summary: Operator Not Equal of the iterator.
-    ************************************************/
+    /**
+     * @brief Inequality operator.
+     * @param it The iterator to compare against.
+     * @return Non-zero if the iterators point to different elements, zero otherwise.
+     */
     int operator!=(const tIterator &it) const { return m_Node != it.m_Node; }
 
-    /************************************************
-    Summary: Returns a constant reference on the data
-    pointed	by the iterator.
-
-    Remarks:
-        The returned reference is constant, so you can't
-    modify its value. Use the other * operator for this
-    purpose.
-    ************************************************/
+    /**
+     * @brief Dereference operator (const).
+     * @return A constant reference to the data pointed to by the iterator.
+     */
     const T &operator*() const { return (*m_Node).m_Data; }
 
-    /************************************************
-    Summary: Returns a reference on the data pointed
-    by the iterator.
-
-    Remarks:
-        The returned reference is not constant, so you
-    can modify its value.
-    ************************************************/
+    /**
+     * @brief Dereference operator.
+     * @return A reference to the data pointed to by the iterator, allowing modification.
+     */
     T &operator*() { return (*m_Node).m_Data; }
 
-    /************************************************
-    Summary: Returns a pointer on a T object.
-    ************************************************/
+    /**
+     * @brief Conversion to a const pointer to the data.
+     * @return A const pointer to the T object.
+     */
     operator const T *() const { return &(m_Node->m_Data); }
 
-    /************************************************
-    Summary: Returns a pointer on a T object.
-    ************************************************/
+    /**
+     * @brief Conversion to a pointer to the data.
+     * @return A pointer to the T object.
+     */
     operator T *() { return &(m_Node->m_Data); }
 
-    /************************************************
-    Summary: Returns a const reference on the key of
-    the pointed entry.
-    ************************************************/
+    /**
+     * @brief Gets the key of the entry pointed to by the iterator.
+     * @return A constant reference to the key.
+     */
     const K &GetKey() const { return m_Node->m_Key; }
+
+    /**
+     * @brief Gets the key of the entry pointed to by the iterator.
+     * @return A reference to the key.
+     */
     K &GetKey() { return m_Node->m_Key; }
 
-    /************************************************
-    Summary: Jumps to next entry in the hashtable.
-    ************************************************/
-    tIterator &operator++()
-    { // Prefixe
+    /**
+     * @brief Pre-increment operator. Advances the iterator to the next element.
+     * @return A reference to the incremented iterator.
+     */
+    tIterator &operator++() {
+        // Prefixe
         tEntry old = m_Node;
         // next element of the linked list
         m_Node = m_Node->m_Next;
 
-        if (!m_Node)
-        {
+        if (!m_Node) {
             // end of linked list, we have to find next filled bucket
             // OPTIM : maybe keep the index current : save a %
             int index = m_Table->Index(old->m_Key);
@@ -141,113 +199,134 @@ public:
         return *this;
     }
 
-    /************************************************
-    Summary: Jumps to next entry in the hashtable.
-    ************************************************/
-    tIterator operator++(int)
-    {
+    /**
+     * @brief Post-increment operator. Advances the iterator to the next element.
+     * @return A copy of the iterator before it was incremented.
+     */
+    tIterator operator++(int) {
         tIterator tmp = *this;
         ++*this;
         return tmp;
     }
 
+private:
+    /**
+     * @brief Internal constructor used by XHashTable.
+     * @param n Pointer to the hash table entry.
+     * @param t Pointer to the hash table container.
+     */
     XHashTableIt(tEntry n, tTable t) : m_Node(n), m_Table(t) {}
 
+    /// Pointer to the current hash table entry.
     tEntry m_Node;
 
+    /// Pointer to the hash table this iterator belongs to.
     tTable m_Table;
 };
 
-
-/************************************************
-Summary: Constant Iterator on a hash table.
-
-Remarks: This iterator is the only way to iterate on
-elements in a constant hash table. The iteration will be in no
-specific order, not in the insertion order. Here is an example
-of how to use it:
-
-Example:
-
-    void MyClass::MyMethod() const
-    {
-        XHashTableConstIt<T,K,H> it = m_Hashtable.Begin();
-        while (it != m_Hashtable.End()) {
-            // access to the key
-            it.GetKey();
-
-            // access to the element
-            *it;
-
-            // next element
-            ++it;
-        }
-    }
-
-
-************************************************/
+/**
+ * @class XHashTableConstIt
+ * @brief A constant iterator for traversing an XHashTable.
+ *
+ * @tparam T The type of the value stored in the hash table.
+ * @tparam K The type of the key used in the hash table.
+ * @tparam H The hash function class.
+ * @tparam Eq The equality comparison class for keys.
+ *
+ * @remarks
+ * This iterator is used for traversing a `const` hash table. It does not allow modification
+ * of the elements. The iteration order is not guaranteed.
+ *
+ * @example
+ * @code
+ * void MyClass::MyMethod() const
+ * {
+ *     XHashTableConstIt<MyType, MyKey, MyHash> it = m_Hashtable.Begin();
+ *     while (it != m_Hashtable.End()) {
+ *         // access the key
+ *         it.GetKey();
+ *
+ *         // access the element (read-only)
+ *         const MyType& value = *it;
+ *
+ *         // move to the next element
+ *         ++it;
+ *     }
+ * }
+ * @endcode
+ */
 template <class T, class K, class H = XHashFun<K>, class Eq = XEqual<K> >
-class XHashTableConstIt
-{
+class XHashTableConstIt {
     typedef XHashTableEntry<T, K> *tEntry;
     typedef XHashTableConstIt<T, K, H, Eq> tConstIterator;
     typedef XHashTable<T, K, H, Eq> const *tConstTable;
     friend class XHashTable<T, K, H, Eq>;
 
 public:
-    /************************************************
-    Summary: Default constructor of the iterator.
-    ************************************************/
+    /**
+     * @brief Default constructor. Initializes a null iterator.
+     */
     XHashTableConstIt() : m_Node(0), m_Table(0) {}
 
-    /************************************************
-    Summary: Copy constructor of the iterator.
-    ************************************************/
+    /**
+     * @brief Copy constructor.
+     * @param n The iterator to copy.
+     */
     XHashTableConstIt(const tConstIterator &n) : m_Node(n.m_Node), m_Table(n.m_Table) {}
 
-    /************************************************
-    Summary: Operator Equal of the iterator.
-    ************************************************/
+#if VX_HAS_CXX11
+    /**
+     * @brief Move constructor (C++11).
+     * @param n The iterator to move from.
+     */
+    XHashTableConstIt(tConstIterator &&n) VX_NOEXCEPT : m_Node(n.m_Node), m_Table(n.m_Table) {
+        n.m_Node = NULL;
+        n.m_Table = NULL;
+    }
+#endif
+
+    /**
+     * @brief Equality operator.
+     * @param it The iterator to compare against.
+     * @return Non-zero if the iterators point to the same element, zero otherwise.
+     */
     int operator==(const tConstIterator &it) const { return m_Node == it.m_Node; }
 
-    /************************************************
-    Summary: Operator Not Equal of the iterator.
-    ************************************************/
+    /**
+     * @brief Inequality operator.
+     * @param it The iterator to compare against.
+     * @return Non-zero if the iterators point to different elements, zero otherwise.
+     */
     int operator!=(const tConstIterator &it) const { return m_Node != it.m_Node; }
 
-    /************************************************
-    Summary: Returns a constant reference on the data
-    pointed	by the iterator.
-
-    Remarks:
-        The returned reference is constant, so you can't
-    modify its value. Use the other * operator for this
-    purpose.
-    ************************************************/
+    /**
+     * @brief Dereference operator.
+     * @return A constant reference to the data pointed to by the iterator.
+     */
     const T &operator*() const { return (*m_Node).m_Data; }
 
-    /************************************************
-    Summary: Returns a pointer on a T object.
-    ************************************************/
+    /**
+     * @brief Conversion to a const pointer to the data.
+     * @return A const pointer to the T object.
+     */
     operator const T *() const { return &(m_Node->m_Data); }
 
-    /************************************************
-    Summary: Returns a const reference on the key of
-    the pointed entry.
-    ************************************************/
+    /**
+     * @brief Gets the key of the entry pointed to by the iterator.
+     * @return A constant reference to the key.
+     */
     const K &GetKey() const { return m_Node->m_Key; }
 
-    /************************************************
-    Summary: Jumps to next entry in the hashtable.
-    ************************************************/
-    tConstIterator &operator++()
-    { // Prefixe
+    /**
+     * @brief Pre-increment operator. Advances the iterator to the next element.
+     * @return A reference to the incremented iterator.
+     */
+    tConstIterator &operator++() {
         tEntry old = m_Node;
         // next element of the linked list
         m_Node = m_Node->m_Next;
 
-        if (!m_Node)
-        {
+        if (!m_Node) {
             // end of linked list, we have to find next filled bucket
             // OPTIM : maybe keep the index current : save a %
             int index = m_Table->Index(old->m_Key);
@@ -257,168 +336,172 @@ public:
         return *this;
     }
 
-    /************************************************
-    Summary: Jumps to next entry in the hashtable.
-    ************************************************/
-    tConstIterator operator++(int)
-    {
+    /**
+     * @brief Post-increment operator. Advances the iterator to the next element.
+     * @return A copy of the iterator before it was incremented.
+     */
+    tConstIterator operator++(int) {
         tConstIterator tmp = *this;
         ++*this;
         return tmp;
     }
 
+private:
+    /**
+     * @brief Internal constructor used by XHashTable.
+     * @param n Pointer to the hash table entry.
+     * @param t Pointer to the const hash table container.
+     */
     XHashTableConstIt(tEntry n, tConstTable t) : m_Node(n), m_Table(t) {}
 
+    /// Pointer to the current hash table entry.
     tEntry m_Node;
 
+    /// Pointer to the const hash table this iterator belongs to.
     tConstTable m_Table;
 };
 
-/************************************************
-Summary: Struct containing an iterator on an object
-inserted and a BOOL determining if it were really
-inserted (TRUE) or already there (FALSE).
-
-
-************************************************/
+/**
+ * @class XHashTablePair
+ * @brief A helper struct returned by TestInsert.
+ *
+ * @tparam T The type of the value stored in the hash table.
+ * @tparam K The type of the key used in the hash table.
+ * @tparam H The hash function class.
+ * @tparam Eq The equality comparison class for keys.
+ *
+ * @remarks It contains an iterator to the element (either newly inserted or pre-existing)
+ * and a boolean flag indicating whether the insertion was new.
+ */
 template <class T, class K, class H = XHashFun<K>, class Eq = XEqual<K> >
-class XHashTablePair
-{
+class XHashTablePair {
 public:
-    XHashTablePair(XHashTableIt<T, K, H, Eq> it, int n) : m_Iterator(it), m_New(n){};
+    /**
+     * @brief Constructor for the pair.
+     * @param it Iterator to the element.
+     * @param n A boolean value; TRUE if the element was newly inserted, FALSE if it already existed.
+     */
+    XHashTablePair(XHashTableIt<T, K, H, Eq> it, int n) : m_Iterator(it), m_New(n) {}
 
+    /// An iterator pointing to the inserted or found element.
     XHashTableIt<T, K, H, Eq> m_Iterator;
+    /// A flag indicating if the element was newly inserted (TRUE) or already present (FALSE).
     XBOOL m_New;
 };
 
-/************************************************
-Summary: Class representation of an Hash Table
-container.
-
-Remarks:
-    T is the type of element to insert
-    K is the type of the key
-    H is the hash function to hash the key
-
-    Several hash functions for basic types are
-already defined in XHashFun.h
-
-    This implementation of the hash table uses
-Linked List in each bucket for element hashed to
-the same index, so there are memory allocation
-for each insertion. For a static implementation
-without dynamic allocation, look at XSHashTable.
-
-    There is a m_LoadFactor member which allow the
-user to decide at which occupation the hash table
-must be extended and rehashed.
-
-
-************************************************/
+/**
+ * @class XHashTable
+ * @brief A container class implementing a hash table.
+ *
+ * @tparam T The type of the element to insert.
+ * @tparam K The type of the key.
+ * @tparam H The hash function object used to hash the key. See XHashFun.h for default implementations.
+ * @tparam Eq The equality comparison object for keys.
+ *
+ * @remarks
+ * This implementation of the hash table uses a linked list in each bucket to resolve
+ * hash collisions. This means memory is allocated for each element upon insertion.
+ * For a static implementation without dynamic allocation per element, see XSHashTable.
+ *
+ * The table automatically resizes and rehashes its elements when the number of elements
+ * exceeds the product of the number of buckets and the load factor `L`.
+ */
 template <class T, class K, class H = XHashFun<K>, class Eq = XEqual<K> /*, float L = 0.75f*/>
-class XHashTable
-{
+class XHashTable {
     // Types
     typedef XHashTable<T, K, H, Eq> tTable;
     typedef XHashTableEntry<T, K> *tEntry;
     typedef XHashTableIt<T, K, H, Eq> tIterator;
     typedef XHashTableConstIt<T, K, H, Eq> tConstIterator;
     typedef XHashTablePair<T, K, H, Eq> tPair;
-    // Friendship
+    
+    /// @brief Friend class declaration for the iterator.
     friend class XHashTableIt<T, K, H, Eq>;
-    // Friendship
+    /// @brief Friend class declaration for the const iterator.
     friend class XHashTableConstIt<T, K, H, Eq>;
 
 public:
+    /// @typedef Entry The type of a single entry in the hash table.
     typedef XHashTableEntry<T, K> Entry;
+    /// @typedef Pair The type returned by TestInsert, containing an iterator and a boolean.
     typedef XHashTablePair<T, K, H, Eq> Pair;
+    /// @typedef Iterator The mutable iterator for this hash table.
     typedef XHashTableIt<T, K, H, Eq> Iterator;
+    /// @typedef ConstIterator The constant iterator for this hash table.
     typedef XHashTableConstIt<T, K, H, Eq> ConstIterator;
 
-    /************************************************
-    Summary: Default Constructor.
-
-    Input Arguments:
-        initialize: The default number of buckets
-        (should be a power of 2, otherwise will be
-        converted.)
-        l: Load Factor (see Class Description).
-        a: hash table to copy.
-
-    ************************************************/
-    XHashTable(int initialize = 16)
-    {
+    /**
+     * @brief Default constructor.
+     * @param initialize The initial number of buckets. Should be a power of 2; otherwise, it will be rounded up to the next power of 2.
+     */
+    explicit XHashTable(int initialize = 16) {
         initialize = Near2Power(initialize);
         if (initialize < 4)
             initialize = 4;
 
         m_Table.Resize(initialize);
         m_Table.Fill(0);
-        m_Pool.Reserve((int)(initialize * L));
+        m_Pool.Reserve((int) (initialize * L));
     }
 
-    /************************************************
-    Summary: Copy Constructor.
-    ************************************************/
-    XHashTable(const XHashTable &a) { XCopy(a);}
+    /**
+     * @brief Copy constructor.
+     * @param a The hash table to copy.
+     */
+    XHashTable(const XHashTable &a) { XCopy(a); }
 
-    /************************************************
-    Summary: Destructor.
+#if VX_HAS_CXX11
+    /**
+     * @brief Move constructor (C++11).
+     * @param a The hash table to move from.
+     */
+    XHashTable(XHashTable &&a) VX_NOEXCEPT { XMove(a); }
+#endif
 
-    Remarks:
-        Release the elements contained in the hash table. If
-    you were storing pointers, you need first to iterate
-    on the table and call delete on each pointer.
-    ************************************************/
+    /**
+     * @brief Destructor.
+     * @remarks Releases the elements contained in the hash table. If you are storing pointers,
+     * you must iterate over the table and manually delete each pointed-to object before destroying the table.
+     */
     ~XHashTable() {}
 
-    /************************************************
-    Summary: Removes all the elements from the table.
-
-    Remarks:
-        The hash table remains with the same number
-    of buckets after a clear.
-    ************************************************/
-    void Clear()
-    {
+    /**
+     * @brief Removes all elements from the table.
+     * @remarks The number of buckets remains unchanged. The memory pool for entries is cleared.
+     */
+    void Clear() {
         // we clear all the allocated entries
         m_Pool.Resize(0);
         // we clear the table
         m_Table.Fill(0);
     }
 
-    /************************************************
-    Summary: Calculates the average occupation for the
-    buckets by filling an array with the population for
-    different bucket size (represented by the index of
-    the array)
-
-    ************************************************/
-    void GetOccupation(XArray<int> &iBucketOccupation) const
-    {
+    /**
+     * @brief Analyzes the distribution of elements across buckets.
+     * @param[out] iBucketOccupation An array that will be filled with the occupation statistics.
+     * The index of the array represents the number of elements in a bucket, and the value is the count of buckets with that many elements.
+     * `iBucketOccupation[0]` will store the count of empty buckets.
+     */
+    void GetOccupation(XArray<int> &iBucketOccupation) const {
         iBucketOccupation.Resize(1);
         iBucketOccupation[0] = 0;
 
-        for (tEntry *it = m_Table.Begin(); it != m_Table.End(); it++)
-        {
-            if (!*it)
-            { // there is someone there
-                iBucketOccupation[0]++;
-            }
-            else
+        for (tEntry *it = m_Table.Begin(); it != m_Table.End(); it++) {
+            if (!*it) // there is someone there
             {
+                iBucketOccupation[0]++;
+            } else {
                 // count the number of occupant
                 int count = 1;
                 tEntry e = *it;
-                while (e->m_Next)
-                {
+                while (e->m_Next) {
                     e = e->m_Next;
                     count++;
                 }
 
                 int oldsize = iBucketOccupation.Size();
-                if (oldsize <= count)
-                { // we need to resize
+                if (oldsize <= count) // we need to resize
+                {
                     iBucketOccupation.Resize(count + 1);
 
                     // and we init to 0
@@ -432,17 +515,14 @@ public:
         }
     }
 
-    /************************************************
-    Summary: Affectation operator.
-
-    Remarks:
-        The content of the table is entirely overwritten
-    by the given table.
-    ************************************************/
-    tTable &operator=(const tTable &a)
-    {
-        if (this != &a)
-        {
+    /**
+     * @brief Assignment operator.
+     * @param a The hash table to copy from.
+     * @return A reference to this hash table.
+     * @remarks The content of this table is entirely overwritten by the given table.
+     */
+    tTable &operator=(const tTable &a) {
+        if (this != &a) {
             // We clear the current table
             Clear();
             // we then copy the content of a
@@ -452,41 +532,45 @@ public:
         return *this;
     }
 
-    /************************************************
-    Summary: Inserts an element in the table.
+#if VX_HAS_CXX11
+    /**
+     * @brief Move assignment operator (C++11).
+     * @param a The hash table to move from.
+     * @return A reference to this hash table.
+     */
+    tTable &operator=(tTable &&a) VX_NOEXCEPT {
+        if (this != &a) {
+            // We clear the current table
+            Clear();
+            // we then move the content of a
+            XMove(a);
+        }
+        return *this;
+    }
+#endif
 
-    Input Arguments:
-        key: key of the element to insert.
-        o: element to insert.
-        override: if the key is already present, should
-    the old element be overridden ?
-
-    Remarks:
-        Insert will automatically override the old value
-    and InsertUnique will not replace the old value.
-    TestInsert returns a XHashPair, which allow you to know
-    if the element was already present.
-    ************************************************/
-    XBOOL Insert(const K &key, const T &o, XBOOL override)
-    {
+    /**
+     * @brief Inserts an element, with an option to override existing elements.
+     * @param key The key of the element.
+     * @param o The element to insert.
+     * @param override If TRUE and the key already exists, the existing element's value is updated. If FALSE, the insertion is skipped.
+     * @return TRUE if the element was inserted or updated, FALSE otherwise.
+     */
+    XBOOL Insert(const K &key, const T &o, XBOOL override) {
         int index = Index(key);
 
         // we look for existing key
         tEntry e = XFind(index, key);
-        if (!e)
-        {
-            if (m_Pool.Size() == m_Pool.Allocated())
-            { // Need Rehash
+        if (!e) {
+            if (m_Pool.Size() == m_Pool.Allocated()) // Need Rehash
+            {
                 Rehash(m_Table.Size() * 2);
                 return Insert(key, o, override);
-            }
-            else
-            { // No
+            } else // No
+            {
                 XInsert(index, key, o);
             }
-        }
-        else
-        {
+        } else {
             if (!override)
                 return FALSE;
             e->m_Data = o;
@@ -495,123 +579,117 @@ public:
         return TRUE;
     }
 
-    Iterator Insert(const K &key, const T &o)
-    {
+    /**
+     * @brief Inserts or updates an element.
+     * @param key The key of the element.
+     * @param o The element to insert.
+     * @return An iterator to the newly inserted or updated element.
+     * @remarks If the key already exists, its value is overwritten.
+     */
+    Iterator Insert(const K &key, const T &o) {
         int index = Index(key);
         Eq equalFunc;
 
         // we look for existing key
-        for (tEntry e = m_Table[index]; e != 0; e = e->m_Next)
-        {
-            if (equalFunc(e->m_Key, key))
-            {
+        for (tEntry e = m_Table[index]; e != 0; e = e->m_Next) {
+            if (equalFunc(e->m_Key, key)) {
                 e->m_Data = o;
                 return Iterator(e, this);
             }
         }
 
-        if (m_Pool.Size() == m_Pool.Allocated())
-        {
+        if (m_Pool.Size() == m_Pool.Allocated()) {
             // Need Rehash
             Rehash(m_Table.Size() * 2);
             return Insert(key, o);
-        }
-        else
-        {
+        } else {
             // No
             return Iterator(XInsert(index, key, o), this);
         }
     }
 
-    Pair TestInsert(const K &key, const T &o)
-    {
+    /**
+     * @brief Inserts an element and reports whether it was new.
+     * @param key The key of the element.
+     * @param o The element to insert.
+     * @return A `Pair` object containing an iterator to the element and a boolean.
+     * The boolean is TRUE if the element was newly inserted, FALSE if the key already existed.
+     */
+    Pair TestInsert(const K &key, const T &o) {
         int index = Index(key);
         Eq equalFunc;
 
         // we look for existing key
-        for (tEntry e = m_Table[index]; e != 0; e = e->m_Next)
-        {
-            if (equalFunc(e->m_Key, key))
-            {
+        for (tEntry e = m_Table[index]; e != 0; e = e->m_Next) {
+            if (equalFunc(e->m_Key, key)) {
                 return Pair(Iterator(e, this), 0);
             }
         }
 
         // Need Rehash
-        if (m_Pool.Size() == m_Pool.Allocated())
-        { // Need Rehash
+        if (m_Pool.Size() == m_Pool.Allocated()) {
+            // Need Rehash
             Rehash(m_Table.Size() * 2);
             return TestInsert(key, o);
-        }
-        else
-        { // No
+        } else {
+            // No
             return Pair(Iterator(XInsert(index, key, o), this), 1);
         }
     }
 
-    Iterator InsertUnique(const K &key, const T &o)
-    {
+    /**
+     * @brief Inserts an element only if the key does not already exist.
+     * @param key The key of the element.
+     * @param o The element to insert.
+     * @return An iterator pointing to the element (either newly inserted or pre-existing).
+     * @remarks This function will not overwrite an existing element.
+     */
+    Iterator InsertUnique(const K &key, const T &o) {
         int index = Index(key);
         Eq equalFunc;
 
         // we look for existing key
-        for (tEntry e = m_Table[index]; e != 0; e = e->m_Next)
-        {
-            if (equalFunc(e->m_Key, key))
-            {
+        for (tEntry e = m_Table[index]; e != 0; e = e->m_Next) {
+            if (equalFunc(e->m_Key, key)) {
                 return Iterator(e, this);
             }
         }
 
-        // Need Rehash
-        if (m_Pool.Size() == m_Pool.Allocated())
-        { // Need Rehash
+        if (m_Pool.Size() == m_Pool.Allocated()) // Need Rehash
+        {
             Rehash(m_Table.Size() * 2);
             return InsertUnique(key, o);
-        }
-        else
-        { // No
+        } else // No
+        {
             return Iterator(XInsert(index, key, o), this);
         }
     }
 
-    /************************************************
-    Summary: Removes an element.
-
-    Input Arguments:
-        key: key of the element to remove.
-        it: iterator on the object to remove.
-
-    Return Value: iterator on the element next to
-    the one just removed.
-    ************************************************/
-    void Remove(const K &key)
-    {
+    /**
+     * @brief Removes an element by its key.
+     * @param key The key of the element to remove.
+     */
+    void Remove(const K &key) {
         int index = Index(key);
         Eq equalFunc;
 
         // we look for existing key
         tEntry old = NULL;
-        for (tEntry e = m_Table[index]; e != 0; e = e->m_Next)
-        {
-            if (equalFunc(e->m_Key, key))
-            {
+        for (tEntry e = m_Table[index]; e != 0; e = e->m_Next) {
+            if (equalFunc(e->m_Key, key)) {
                 // This is the element to remove
 
                 // change the pointers to it
-                if (old)
-                {
+                if (old) {
                     old->m_Next = e->m_Next;
-                }
-                else
-                {
+                } else {
                     m_Table[index] = e->m_Next;
                 }
 
                 // then removed it from the pool
                 m_Pool.FastRemove(e);
-                if (e != m_Pool.End())
-                { // wasn't the last one... we need to remap
+                if (e != m_Pool.End()) // wasn't the last one... we need to remap
+                {
                     RematEntry(m_Pool.End(), e);
                 }
 
@@ -621,34 +699,33 @@ public:
         }
     }
 
-    Iterator Remove(const tIterator &it)
-    {
+    /**
+     * @brief Removes an element using an iterator.
+     * @param it An iterator pointing to the element to remove.
+     * @return An iterator to the element following the one that was removed.
+     */
+    Iterator Remove(const tIterator &it) {
         int index = Index(it.m_Node->m_Key);
         if (index >= m_Table.Size())
             return Iterator(0, this);
 
         // we look for existing key
         tEntry old = NULL;
-        for (tEntry e = m_Table[index]; e != 0; e = e->m_Next)
-        {
-            if (e == it.m_Node)
-            {
+        for (tEntry e = m_Table[index]; e != 0; e = e->m_Next) {
+            if (e == it.m_Node) {
                 // This is the element to remove
-                if (old)
-                {
+                if (old) {
                     old->m_Next = e->m_Next;
                     old = old->m_Next;
-                }
-                else
-                {
+                } else {
                     m_Table[index] = e->m_Next;
                     old = m_Table[index];
                 }
 
                 // then removed it from the pool
                 m_Pool.FastRemove(e);
-                if (e != m_Pool.End())
-                { // wasn't the last one... we need to remap
+                if (e != m_Pool.End()) // wasn't the last one... we need to remap
+                {
                     RematEntry(m_Pool.End(), e);
                     if (old == m_Pool.End())
                         old = e;
@@ -659,8 +736,8 @@ public:
             old = e;
         }
         // There is an element in the same column, we return it
-        if (!old)
-        { // No element in the same bucket, we parse for the next
+        if (!old) // No element in the same bucket, we parse for the next
+        {
             while (!old && ++index < m_Table.Size())
                 old = m_Table[index];
         }
@@ -668,33 +745,25 @@ public:
         return Iterator(old, this);
     }
 
-    /************************************************
-    Summary: Access to an hash table element.
-
-    Input Arguments:
-        key: key of the element to access.
-
-    Return Value: a copy of the element found.
-
-    Remarks:
-        If no element correspond to the key, an element
-    constructed with 0.
-    ************************************************/
-    T &operator[](const K &key)
-    {
+    /**
+     * @brief Accesses an element by key.
+     * @param key The key of the element to access.
+     * @return A reference to the element's value.
+     * @remarks If no element corresponds to the key, a new element is created
+     * with a default-constructed value (`T()`) and inserted into the table.
+     */
+    T &operator[](const K &key) {
         int index = Index(key);
 
         // we look for existing key
         tEntry e = XFind(index, key);
-        if (!e)
-        {
-            if (m_Pool.Size() == m_Pool.Allocated())
-            { // Need Rehash
+        if (!e) {
+            if (m_Pool.Size() == m_Pool.Allocated()) // Need Rehash
+            {
                 Rehash(m_Table.Size() * 2);
                 return operator[](key);
-            }
-            else
-            { // No
+            } else // No
+            {
                 e = XInsert(index, key, T());
             }
         }
@@ -702,48 +771,30 @@ public:
         return e->m_Data;
     }
 
-    /************************************************
-    Summary: Access to an hash table element.
-
-    Input Arguments:
-        key: key of the element to access.
-
-    Return Value: an iterator of the element found. End()
-    if not found.
-
-    ************************************************/
-    Iterator Find(const K &key)
-    {
+    /**
+     * @brief Finds an element by key.
+     * @param key The key of the element to find.
+     * @return An `Iterator` to the found element, or `End()` if the element is not found.
+     */
+    Iterator Find(const K &key) {
         return Iterator(XFindIndex(key), this);
     }
 
-    /************************************************
-    Summary: Access to a constant hash table element.
-
-    Input Arguments:
-        key: key of the element to access.
-
-    Return Value: a constant iterator of the element found. End()
-    if not found.
-
-    ************************************************/
-    ConstIterator Find(const K &key) const
-    {
+    /**
+     * @brief Finds an element by key in a constant hash table.
+     * @param key The key of the element to find.
+     * @return A `ConstIterator` to the found element, or `End()` if the element is not found.
+     */
+    ConstIterator Find(const K &key) const {
         return ConstIterator(XFindIndex(key), this);
     }
 
-    /************************************************
-    Summary: Access to an hash table element.
-
-    Input Arguments:
-        key: key of the element to access.
-
-    Return Value: a pointer on the element found. NULL
-    if not found.
-
-    ************************************************/
-    T *FindPtr(const K &key) const
-    {
+    /**
+     * @brief Finds an element by key and returns a pointer to its value.
+     * @param key The key of the element to find.
+     * @return A pointer to the element's value if found, otherwise `NULL`.
+     */
+    T *FindPtr(const K &key) const {
         tEntry e = XFindIndex(key);
         if (e)
             return &e->m_Data;
@@ -751,159 +802,140 @@ public:
             return 0;
     }
 
-    /************************************************
-    Summary: search for an hash table element.
-
-    Input Arguments:
-        key: key of the element to access.
-        value: value to receive the element found value.
-
-    Return Value: TRUE if the key was found, FALSE
-    otherwise..
-
-    ************************************************/
-    XBOOL LookUp(const K &key, T &value) const
-    {
+    /**
+     * @brief Searches for an element by key and retrieves its value.
+     * @param key The key of the element to find.
+     * @param[out] value A reference to a variable where the found value will be stored.
+     * @return `TRUE` if the key was found, `FALSE` otherwise.
+     */
+    XBOOL LookUp(const K &key, T &value) const {
         tEntry e = XFindIndex(key);
-        if (e)
-        {
+        if (e) {
             value = e->m_Data;
             return TRUE;
-        }
-        else
+        } else
             return FALSE;
     }
 
-    /************************************************
-    Summary: test for the presence of a key.
-
-    Input Arguments:
-        key: key of the element to access.
-
-    Return Value: TRUE if the key was found, FALSE
-    otherwise..
-
-    ************************************************/
-    XBOOL IsHere(const K &key) const
-    {
+    /**
+     * @brief Checks for the presence of a key in the hash table.
+     * @param key The key to check for.
+     * @return `TRUE` if the key was found, `FALSE` otherwise.
+     */
+    XBOOL IsHere(const K &key) const {
         return XFindIndex(key) != NULL;
     }
 
-    /************************************************
-    Summary: Returns an iterator on the first element.
-
-    Example:
-        Typically, an algorithm iterating on an hash table
-    looks like:
-
-        XHashTable<T,K,H>::Iterator it = h.Begin();
-        XHashTable<T,K,H>::Iterator itend = h.End();
-
-        for(; it != itend; ++it) {
-            // do something with *t
-        }
-
-    ************************************************/
-    Iterator Begin()
-    {
-        for (tEntry *it = m_Table.Begin(); it != m_Table.End(); it++)
-        {
+    /**
+     * @brief Returns an iterator to the first element in the hash table.
+     * @return An `Iterator` to the first element. If the table is empty, returns `End()`.
+     *
+     * @example
+     * @code
+     * XHashTable<T,K,H>::Iterator it = h.Begin();
+     * XHashTable<T,K,H>::Iterator itend = h.End();
+     *
+     * for(; it != itend; ++it) {
+     *     // do something with *it
+     * }
+     * @endcode
+     */
+    Iterator Begin() {
+        for (tEntry *it = m_Table.Begin(); it != m_Table.End(); it++) {
             if (*it)
                 return Iterator(*it, this);
         }
         return End();
     }
 
-    ConstIterator Begin() const
-    {
-        for (tEntry *it = m_Table.Begin(); it != m_Table.End(); it++)
-        {
+    /**
+     * @brief Returns a constant iterator to the first element in the hash table.
+     * @return A `ConstIterator` to the first element. If the table is empty, returns `End()`.
+     */
+    ConstIterator Begin() const {
+        for (tEntry *it = m_Table.Begin(); it != m_Table.End(); it++) {
             if (*it)
                 return ConstIterator(*it, this);
         }
         return End();
     }
 
-    /************************************************
-    Summary: Returns an iterator out of the hash table.
-    ************************************************/
-    Iterator End()
-    {
+    /**
+     * @brief Returns an iterator pointing past the last element of the hash table.
+     * @return An `Iterator` representing the end of the container.
+     */
+    Iterator End() {
         return Iterator(0, this);
     }
 
-    ConstIterator End() const
-    {
+    /**
+     * @brief Returns a constant iterator pointing past the last element of the hash table.
+     * @return A `ConstIterator` representing the end of the container.
+     */
+    ConstIterator End() const {
         return ConstIterator(0, this);
     }
 
-    /************************************************
-    Summary: Returns the index of the given key.
-
-    Input Arguments:
-        key: key of the element to find the index.
-    ************************************************/
-    int Index(const K &key) const
-    {
+    /**
+     * @brief Calculates the bucket index for a given key.
+     * @param key The key to hash.
+     * @return The index of the bucket in the hash table.
+     */
+    int Index(const K &key) const {
         H hashfun;
         return XIndex(hashfun(key), m_Table.Size());
     }
 
-    /************************************************
-    Summary: Returns the elements number.
-    ************************************************/
-    int Size() const
-    {
+    /**
+     * @brief Returns the number of elements in the hash table.
+     * @return The total number of elements.
+     */
+    int Size() const {
         return m_Pool.Size();
     }
 
-    /************************************************
-    Summary: Return the occupied size in bytes.
-
-    Parameters:
-        addstatic: TRUE if you want to add the size occupied
-    by the class itself.
-    ************************************************/
-    int GetMemoryOccupation(XBOOL addstatic = FALSE) const
-    {
+    /**
+     * @brief Calculates the memory usage of the hash table.
+     * @param addstatic If TRUE, includes the size of the `XHashTable` object itself in the calculation.
+     * @return The total memory occupied in bytes.
+     */
+    int GetMemoryOccupation(XBOOL addstatic = FALSE) const {
         return m_Table.GetMemoryOccupation(addstatic) +
-               m_Pool.Allocated() * sizeof(tEntry) +
-               (addstatic ? sizeof(*this) : 0);
+            m_Pool.Allocated() * sizeof(tEntry) +
+            (addstatic ? sizeof(*this) : 0);
     }
 
-    /************************************************
-    Summary: Reserve an estimation of future hash occupation.
-
-    Parameters:
-        iCount: count of elements to reserve
-    Remarks:
-        you need to call this function before populating
-    the hash table.
-    ************************************************/
-    void Reserve(const int iCount)
-    {
+    /**
+     * @brief Reserves memory for an expected number of elements to avoid rehashes.
+     * @param iCount The number of elements to reserve space for.
+     * @remarks This function should be called before populating the hash table for best performance.
+     * It adjusts the size of the internal bucket array and reserves space in the element pool.
+     */
+    void Reserve(const int iCount) {
         // Reserve the elements
         m_Pool.Reserve(iCount);
 
-        int tableSize = Near2Power((int)(iCount / L));
+        int tableSize = Near2Power((int) (iCount / L));
         m_Table.Resize(tableSize);
         m_Table.Fill(0);
     }
 
 private:
-    // Types
-
-    ///
-    // Methods
-
+    /**
+     * @brief Gets a pointer to the start of the bucket array.
+     * @return A pointer to the first bucket.
+     */
     tEntry *GetFirstBucket() const { return m_Table.Begin(); }
 
-    void Rehash(int iSize)
-    {
+    /**
+     * @brief Resizes and rehashes the entire table.
+     * @param iSize The new number of buckets for the table.
+     */
+    void Rehash(int iSize) {
         int oldsize = m_Table.Size();
 
         // we create a new pool
-        XClassArray<Entry> pool((int)(iSize * L));
+        XClassArray<Entry> pool((int) (iSize * L));
         pool = m_Pool;
 
         // Temporary table
@@ -911,11 +943,9 @@ private:
         tmp.Resize(iSize);
         tmp.Fill(0);
 
-        for (int index = 0; index < oldsize; ++index)
-        {
+        for (int index = 0; index < oldsize; ++index) {
             tEntry first = m_Table[index];
-            while (first)
-            {
+            while (first) {
                 H hashfun;
                 int newindex = XIndex(hashfun(first->m_Key), iSize);
 
@@ -932,13 +962,21 @@ private:
         m_Pool.Swap(pool);
     }
 
-    int XIndex(int key, int size) const
-    {
+    /**
+     * @brief Computes the final index from a hash key and table size.
+     * @param key The hash value.
+     * @param size The size of the table (must be a power of 2).
+     * @return The bucket index.
+     */
+    int XIndex(int key, int size) const {
         return key & (size - 1);
     }
 
-    void XCopy(const XHashTable &a)
-    {
+    /**
+     * @brief Internal helper to copy data from another hash table.
+     * @param a The source hash table to copy from.
+     */
+    void XCopy(const XHashTable &a) {
         int size = a.m_Table.Size();
         m_Table.Resize(size);
         m_Table.Fill(0);
@@ -947,45 +985,66 @@ private:
         m_Pool = a.m_Pool;
 
         // remap the address in the table
-        for (int i = 0; i < size; ++i)
-        {
+        for (int i = 0; i < size; ++i) {
             if (a.m_Table[i])
                 m_Table[i] = m_Pool.Begin() + (a.m_Table[i] - a.m_Pool.Begin());
         }
 
         // remap the addresses in the entries
-        for (Entry *e = m_Pool.Begin(); e != m_Pool.End(); ++e)
-        {
-            if (e->m_Next)
-            {
+        for (Entry *e = m_Pool.Begin(); e != m_Pool.End(); ++e) {
+            if (e->m_Next) {
                 e->m_Next = m_Pool.Begin() + (e->m_Next - a.m_Pool.Begin());
             }
         }
     }
 
-    tEntry XFindIndex(const K &key) const
-    {
+#if VX_HAS_CXX11
+    /**
+     * @brief Internal helper to move data from another hash table.
+     * @param a The source hash table to move from.
+     */
+    void XMove(XHashTable &&a) {
+        m_Table = std::move(a.m_Table);
+        m_Pool = std::move(a.m_Pool);
+    }
+#endif
+
+    /**
+     * @brief Internal helper to find an entry by key.
+     * @param key The key to find.
+     * @return A pointer to the found entry, or NULL if not found.
+     */
+    tEntry XFindIndex(const K &key) const {
         int index = Index(key);
         return XFind(index, key);
     }
 
-    tEntry XFind(int index, const K &key) const
-    {
+    /**
+     * @brief Internal helper to find an entry in a specific bucket.
+     * @param index The bucket index to search in.
+     * @param key The key to find.
+     * @return A pointer to the found entry, or NULL if not found.
+     */
+    tEntry XFind(int index, const K &key) const {
         Eq equalFunc;
 
         // we look for existing key
-        for (tEntry e = m_Table[index]; e != 0; e = e->m_Next)
-        {
-            if (equalFunc(e->m_Key, key))
-            {
+        for (tEntry e = m_Table[index]; e != 0; e = e->m_Next) {
+            if (equalFunc(e->m_Key, key)) {
                 return e;
             }
         }
         return NULL;
     }
 
-    tEntry XInsert(int index, const K &key, const T &o)
-    {
+    /**
+     * @brief Internal helper to insert a new entry.
+     * @param index The bucket index to insert into.
+     * @param key The key of the new entry.
+     * @param o The value of the new entry.
+     * @return A pointer to the newly created entry.
+     */
+    tEntry XInsert(int index, const K &key, const T &o) {
         tEntry newe = GetFreeEntry();
         newe->m_Key = key;
         newe->m_Data = o;
@@ -994,28 +1053,32 @@ private:
         return newe;
     }
 
-    tEntry GetFreeEntry()
-    {
+    /**
+     * @brief Gets a new, uninitialized entry from the memory pool.
+     * @return A pointer to the new entry.
+     */
+    tEntry GetFreeEntry() {
         // We consider when we arrive here that we have space
         m_Pool.Resize(m_Pool.Size() + 1);
         return (m_Pool.End() - 1);
     }
 
-    void RematEntry(tEntry iOld, tEntry iNew)
-    {
+    /**
+     * @brief Remaps pointers after a FastRemove operation on the pool.
+     * @param iOld The old address of the moved entry.
+     * @param iNew The new address of the moved entry.
+     */
+    void RematEntry(tEntry iOld, tEntry iNew) {
         int index = Index(iNew->m_Key);
         XASSERT(m_Table[index]);
 
-        if (m_Table[index] == iOld)
-        { // It was the first of the bucket
-            m_Table[index] = iNew;
-        }
-        else
+        if (m_Table[index] == iOld) // It was the first of the bucket
         {
-            for (tEntry n = m_Table[index]; n->m_Next != NULL; n = n->m_Next)
-            {
-                if (n->m_Next == iOld)
-                { // found one
+            m_Table[index] = iNew;
+        } else {
+            for (tEntry n = m_Table[index]; n->m_Next != NULL; n = n->m_Next) {
+                if (n->m_Next == iOld) // found one
+                {
                     n->m_Next = iNew;
                     break; // only one can match
                 }
@@ -1023,12 +1086,9 @@ private:
         }
     }
 
-    ///
-    // Members
-
-    // the hash table data {secret}
+    /// @brief The array of buckets, where each bucket is a pointer to the first entry in a linked list.
     XArray<tEntry> m_Table;
-    // the entry pool {secret}
+    /// @brief The memory pool that stores all hash table entries contiguously.
     XClassArray<Entry> m_Pool;
 };
 

@@ -3,44 +3,58 @@
 
 #include "VxMathDefines.h"
 
-/***********************************************************************
-Summary: Utility class for loading Dlls.
-
-Remarks:
-
-Example:
-        // To load a dll in order to retrieve a specific function and call it
-        VxSharedLibrary Shl;
-        INSTANCE_HANDLE DllInst = Shl.Load(DllName);	// INSTANCE_HANDLE = HMODULE of win32
-
-        MyFunc = Shl.GetFunctionPtr("MyFunctionInTheDll");
-        MyFunc(...);
-
-        shl.ReleaseLibrary();
-
-
-
-See also:
-***********************************************************************/
-class VxSharedLibrary
-{
+/**
+ * @brief Utility class for loading and interacting with shared libraries (DLLs).
+ *
+ * @example
+ * @code
+ * // To load a DLL, retrieve a specific function, and call it:
+ * VxSharedLibrary shl;
+ * INSTANCE_HANDLE dllInst = shl.Load("MyLibrary.dll"); // INSTANCE_HANDLE is HMODULE on Win32
+ *
+ * if (dllInst) {
+ *     // Define the function pointer type
+ *     typedef void (*MyFuncType)(int);
+ *
+ *     MyFuncType MyFunc = (MyFuncType)shl.GetFunctionPtr("MyFunctionInTheDll");
+ *     if (MyFunc) {
+ *         MyFunc(123);
+ *     }
+ *
+ *     shl.ReleaseLibrary();
+ * }
+ * @endcode
+ */
+class VxSharedLibrary {
 public:
-    // Creates an unattached VxLibrary
+    /// @brief Creates an unattached VxSharedLibrary object.
     VX_EXPORT VxSharedLibrary();
 
-    // Attaches a existing Library to a VxLibrary
+    /**
+     * @brief Attaches an existing library handle to this object.
+     * @param LibraryHandle A handle to an already loaded library.
+     */
     VX_EXPORT void Attach(INSTANCE_HANDLE LibraryHandle);
 
-    // Loads the shared Library from disk
-    VX_EXPORT INSTANCE_HANDLE Load(XSTRING LibraryName);
+    /**
+     * @brief Loads a shared library from disk.
+     * @param LibraryName The name or path of the library to load.
+     * @return A handle to the loaded library, or NULL on failure.
+     */
+    VX_EXPORT INSTANCE_HANDLE Load(char *LibraryName);
 
-    // Unloads the shared Library
+    /// @brief Unloads the shared library if it was loaded by this object.
     VX_EXPORT void ReleaseLibrary();
 
-    // Retrieves a function pointer from the library
-    VX_EXPORT void *GetFunctionPtr(XSTRING FunctionName);
+    /**
+     * @brief Retrieves a pointer to a function within the loaded library.
+     * @param FunctionName The name of the function to retrieve.
+     * @return A void pointer to the function, or NULL if the function is not found.
+     */
+    VX_EXPORT void *GetFunctionPtr(char *FunctionName);
 
 protected:
+    /// @brief Handle to the loaded shared library.
     INSTANCE_HANDLE m_LibraryHandle;
 };
 

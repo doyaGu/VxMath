@@ -1,8 +1,8 @@
 cmake_minimum_required(VERSION 3.12)
 
-project(VxMath VERSION 0.1.0)
+project(VxMath VERSION 0.1.0 LANGUAGES C CXX)
 
-set(CMAKE_CXX_STANDARD 11)
+set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED NO)
 set(CMAKE_CXX_EXTENSIONS YES)
 
@@ -41,6 +41,26 @@ endif ()
 
 # Generate a CompilationDatabase (compile_commands.json file)
 set(CMAKE_EXPORT_COMPILE_COMMANDS TRUE)
+
+option(VX_BUILD_TESTS "Build the VxMath test suite" ON)
+
+set(VX_INCLUDE_DIR "${PROJECT_SOURCE_DIR}/include" CACHE INTERNAL "")
+set(VX_SOURCE_DIR "${PROJECT_SOURCE_DIR}/src" CACHE INTERNAL "")
+
+# Disable strict const-qualification conformance for pointers initialized by using string literals
+add_compile_options(
+        $<$<COMPILE_LANGUAGE:CXX>:$<$<CXX_COMPILER_ID:MSVC>:/Zc:strictStrings->>
+        $<$<COMPILE_LANGUAGE:CXX>:$<$<CXX_COMPILER_ID:GNU>:-fpermissive>>
+        $<$<COMPILE_LANGUAGE:CXX>:$<$<CXX_COMPILER_ID:GNU>:-Wno-write-strings>>
+)
+
+# Disable msvc unsafe warnings
+add_compile_definitions(
+        $<$<C_COMPILER_ID:MSVC>:_CRT_SECURE_NO_WARNINGS>
+        $<$<C_COMPILER_ID:MSVC>:_CRT_NONSTDC_NO_WARNINGS>
+        $<$<C_COMPILER_ID:MSVC>:_CRT_SECURE_NO_DEPRECATE>
+        $<$<C_COMPILER_ID:MSVC>:_CRT_NONSTDC_NO_DEPRECATE>
+)
 
 add_subdirectory(deps)
 

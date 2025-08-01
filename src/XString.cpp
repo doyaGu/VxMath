@@ -3,14 +3,14 @@
 #include <ctype.h>
 #include <stdio.h>
 #include <stdarg.h>
+#include <string.h>
 
 // Substring Ctor
-XString::XString(const char *iString, const int iLength) : XBaseString()
-{
-    if (!iString || *iString == '\0')
-    {
+XString::XString(const char *iString, int iLength) : XBaseString() {
+    if (!iString || *iString == '\0') {
         m_Buffer = NULL;
         m_Length = 0;
+        m_Allocated = 0;
         return;
     }
 
@@ -18,79 +18,71 @@ XString::XString(const char *iString, const int iLength) : XBaseString()
     m_Allocated = m_Length + 1;
     m_Buffer = new char[m_Allocated];
     strncpy(m_Buffer, iString, m_Length);
+    m_Buffer[m_Length] = '\0';
 }
 
 // Reserving Ctor
-XString::XString(const int iLength) : XBaseString()
-{
-    if (iLength == 0)
-    {
+XString::XString(int iLength) : XBaseString() {
+    if (iLength <= 0) {
         m_Buffer = NULL;
         m_Length = 0;
+        m_Allocated = 0;
         return;
     }
 
-    m_Length = iLength - 1;
+    m_Length = 0;
     m_Allocated = iLength;
     m_Buffer = new char[iLength];
     memset(m_Buffer, 0, m_Allocated);
 }
 
 // Copy Ctor
-XString::XString(const XString &iSrc) : XBaseString()
-{
-    if (iSrc.m_Length == 0)
-    {
+XString::XString(const XString &iSrc) : XBaseString() {
+    if (iSrc.m_Length == 0) {
         m_Buffer = NULL;
         m_Length = 0;
+        m_Allocated = 0;
         return;
     }
 
     m_Length = iSrc.m_Length;
     m_Allocated = iSrc.m_Length + 1;
     m_Buffer = new char[m_Allocated];
-    memcpy(m_Buffer, iSrc.m_Buffer, m_Allocated);
+    memcpy(m_Buffer, iSrc.m_Buffer, m_Length + 1);
 }
 
-// Copy Ctor
-XString::XString(const XBaseString &iSrc) : XBaseString()
-{
-    if (iSrc.m_Length == 0)
-    {
+// Copy Ctor from XBaseString
+XString::XString(const XBaseString &iSrc) : XBaseString() {
+    if (iSrc.m_Length == 0) {
         m_Buffer = NULL;
         m_Length = 0;
+        m_Allocated = 0;
         return;
     }
 
     m_Length = iSrc.m_Length;
     m_Allocated = iSrc.m_Length + 1;
     m_Buffer = new char[m_Allocated];
-    memcpy(m_Buffer, iSrc.m_Buffer, m_Allocated);
+    memcpy(m_Buffer, iSrc.m_Buffer, m_Length + 1);
 }
 
 // Dtor
-XString::~XString()
-{
+XString::~XString() {
     delete[] m_Buffer;
 }
 
 // operator =
-XString &XString::operator=(const XString &iSrc)
-{
+XString &XString::operator=(const XString &iSrc) {
     if (this != &iSrc)
         Assign(iSrc.m_Buffer, iSrc.m_Length);
     return *this;
 }
 
 // operator =
-XString &XString::operator=(const char *iSrc)
-{
-    if (iSrc)
-    {
+XString &XString::operator=(const char *iSrc) {
+    if (iSrc) {
         Assign(iSrc, strlen(iSrc));
-    }
-    else
-    {
+    } else {
         m_Length = 0;
         if (m_Buffer)
             m_Buffer[0] = '\0';
@@ -99,253 +91,246 @@ XString &XString::operator=(const char *iSrc)
 }
 
 // operator =
-XString &XString::operator=(const XBaseString &iSrc)
-{
-    if (this != &iSrc)
-    {
+XString &XString::operator=(const XBaseString &iSrc) {
+    if (this != &iSrc) {
         Assign(iSrc.m_Buffer, iSrc.m_Length);
     }
     return *this;
 }
 
 // Create from a string and a length
-XString &XString::Create(const char *iString, const int iLength)
-{
-    CheckSize(iLength);
-    m_Length = 0;
-    if (iString)
-    {
+XString &XString::Create(const char *iString, int iLength) {
+    if (iString && iLength > 0) {
+        CheckSize(iLength);
         m_Length = iLength;
         strncpy(m_Buffer, iString, iLength);
+        m_Buffer[m_Length] = '\0';
+    } else {
+        m_Length = 0;
+        if (m_Buffer)
+            m_Buffer[0] = '\0';
     }
     return *this;
 }
 
-// Format the string sprintf style, ol skool ! yeahhhhh
-XString &XString::Format(const char *iFormat, ...)
-{
+// Format the string sprintf style
+XString &XString::Format(const char *iFormat, ...) {
     va_list args;
     va_start(args, iFormat);
 
-    char buf[512];
-    int len = vsprintf(buf, iFormat, args);
-    Assign(buf, len);
+    va_list args_copy;
+    va_copy(args_copy, args);
+    int len = vsnprintf(NULL, 0, iFormat, args_copy);
+    va_end(args_copy);
+
+    if (len > 0) {
+        CheckSize(len);
+        vsnprintf(m_Buffer, len + 1, iFormat, args);
+        m_Length = len;
+    } else {
+        m_Length = 0;
+        if (m_Buffer)
+            m_Buffer[0] = '\0';
+    }
 
     va_end(args);
     return *this;
 }
 
 // Capitalize all the characters of the string
-XString &XString::ToUpper()
-{
+XString &XString::ToUpper() {
     for (XWORD i = 0; i < m_Length; ++i)
         m_Buffer[i] = toupper(m_Buffer[i]);
     return *this;
 }
 
 // Uncapitalize all the characters of the string
-XString &XString::ToLower()
-{
+XString &XString::ToLower() {
     for (XWORD i = 0; i < m_Length; ++i)
         m_Buffer[i] = tolower(m_Buffer[i]);
     return *this;
 }
 
 // Compare the strings (ignore the case).
-int XString::ICompare(const XBaseString &iStr) const
-{
+int XString::ICompare(const XBaseString &iStr) const {
     if (!m_Length)
-        return -iStr.m_Length; // Null strings
+        return -iStr.m_Length;
     if (!iStr.m_Length)
         return m_Length;
 
-    char *s1 = m_Buffer;
-    char *s2 = iStr.m_Buffer;
+    const char *s1 = m_Buffer;
+    const char *s2 = iStr.m_Buffer;
     char c1, c2;
-    do
-    {
-        c1 = tolower(*(s1++));
-        c2 = tolower(*(s2++));
-    } while (*s1 != '\0' && (c1 == c2));
 
-    return tolower(*s1) - tolower(*s2);
+    do {
+        c1 = tolower(*s1);
+        c2 = tolower(*s2);
+        if (c1 != c2)
+            return c1 - c2;
+        s1++;
+        s2++;
+    } while (c1 != '\0' && c2 != '\0');
+
+    return c1 - c2;
 }
 
-///
-// Complex operations on strings
+// Remove whitespace from start and end
+XString &XString::Trim() {
+    if (m_Length == 0)
+        return *this;
 
-// removes space ( ' ', '\t' and '\n') from the start and the end of the string
-XString &XString::Trim()
-{
-    if (m_Length != 0)
-    {
-        while (isspace(m_Buffer[m_Length - 1]) && m_Length != 0)
-            --m_Length;
-        m_Buffer[m_Length] = '\0';
+    // Trim end
+    while (m_Length > 0 && isspace(m_Buffer[m_Length - 1])) {
+        --m_Length;
+    }
+    m_Buffer[m_Length] = '\0';
 
-        if (m_Length != 0)
-        {
-            XWORD i = 0;
-            while (isspace(m_Buffer[i]) && i != m_Length)
-                ++i;
-            if (i != 0)
-            {
-                m_Length -= i;
-                strncpy(m_Buffer, &m_Buffer[i], m_Length + 1);
-            }
+    // Trim start
+    if (m_Length > 0) {
+        XWORD start = 0;
+        while (start < m_Length && isspace(m_Buffer[start])) {
+            ++start;
+        }
+        if (start > 0) {
+            m_Length -= start;
+            memmove(m_Buffer, &m_Buffer[start], m_Length + 1);
         }
     }
     return *this;
 }
 
-// replaces space ( ' ', '\t' and '\n') sequences by one space
-XString &XString::Strip()
-{
-    if (m_Length != 0)
-    {
-        XWORD i;
-        XBOOL wasSpace = FALSE;
-        for (i = 0; i < m_Length; i++)
-        {
-            if (isspace(m_Buffer[i]))
-            {
-                if (wasSpace)
-                    break;
-                wasSpace = TRUE;
-            }
-            else
-            {
-                wasSpace = FALSE;
-            }
-        }
+XString &XString::Strip() {
+    if (m_Length == 0)
+        return *this;
 
-        for (XWORD j = i + 1; j < m_Length; j++)
-        {
-            if (isspace(m_Buffer[j]))
-            {
-                if (!wasSpace)
-                {
-                    wasSpace = TRUE;
-                    m_Buffer[i++] = ' ';
-                }
-            }
-            else
-            {
-                wasSpace = FALSE;
-                m_Buffer[i++] = m_Buffer[j];
-            }
-        }
+    XWORD writePos = 0;
+    XBOOL lastWasSpace = FALSE;
 
-        m_Length = i;
-        m_Buffer[i] = '\0';
+    for (XWORD readPos = 0; readPos < m_Length; ++readPos) {
+        if (isspace(m_Buffer[readPos])) {
+            if (!lastWasSpace) {
+                m_Buffer[writePos++] = ' ';
+                lastWasSpace = TRUE;
+            }
+        } else {
+            m_Buffer[writePos++] = m_Buffer[readPos];
+            lastWasSpace = FALSE;
+        }
     }
+
+    m_Length = writePos;
+    m_Buffer[m_Length] = '\0';
     return *this;
 }
 
-// finds a character in the string
-XWORD XString::Find(char iCar, XWORD iStart) const
-{
-    if (m_Length != 0)
-    {
-        char *str = strchr(&m_Buffer[iStart], iCar);
-        if (str)
-            return str - m_Buffer;
-        else
-            return -1;
-    }
-    return -1;
+// Find a character in the string
+XWORD XString::Find(char iCar, XWORD iStart) const {
+    if (m_Length == 0 || iStart >= m_Length)
+        return NOTFOUND;
+
+    char *str = strchr(&m_Buffer[iStart], iCar);
+    if (str)
+        return str - m_Buffer;
+    else
+        return NOTFOUND;
 }
 
-// finds a string in the string
-XWORD XString::Find(const XBaseString &iStr, XWORD iStart) const
-{
-    if (m_Length != 0 && iStr.m_Length != 0)
-    {
-        char *str = strstr(&m_Buffer[iStart], iStr.m_Buffer);
-        if (str)
-            return str - m_Buffer;
-        else
-            return -1;
-    }
-    return -1;
+// Find a string in the string
+XWORD XString::Find(const XBaseString &iStr, XWORD iStart) const {
+    if (m_Length == 0 || iStr.m_Length == 0 || iStart >= m_Length)
+        return NOTFOUND;
+
+    char *str = strstr(&m_Buffer[iStart], iStr.m_Buffer);
+    if (str)
+        return str - m_Buffer;
+    else
+        return NOTFOUND;
 }
 
-// finds a string in the string
-//XWORD XString::IFind(const XBaseString &iStr, XWORD iStart) const
-//{
-//    if (m_Length == 0 || iStr.m_Length == 0)
-//        return -1;
+// XWORD XString::IFind(const XBaseString &iStr, XWORD iStart) const {
+//     if (m_Length == 0 || iStr.m_Length == 0 || iStart >= m_Length)
+//         return NOTFOUND;
 //
-//    char *first = strdup(m_Buffer);
-//    first = strlwr(first);
-//    char *last = iStr.m_Buffer;
-//    if (!iStr.m_Buffer)
-//        last = NULL;
-//    last = strdup(last);
-//    last = strlwr(last);
-//    char *str = strstr(&first[iStart], last);
-//    XWORD ret;
-//    if (str)
-//        ret = str - first;
-//    else
-//        ret = -1;
-//
-//    free(first);
-//    free(last);
-//    return ret;
-//}
+//     // Manual case-insensitive search
+//     for (XWORD i = iStart; i <= m_Length - iStr.m_Length; ++i) {
+//         XBOOL match = TRUE;
+//         for (XWORD j = 0; j < iStr.m_Length; ++j) {
+//             if (tolower(m_Buffer[i + j]) != tolower(iStr.m_Buffer[j])) {
+//                 match = FALSE;
+//                 break;
+//             }
+//         }
+//         if (match)
+//             return i;
+//     }
+//     return NOTFOUND;
+// }
 
-// finds a character in the string
-XWORD XString::RFind(char iCar, XWORD iStart) const
-{
-    if (m_Length != 0)
-    {
-        XWORD i = (iStart != NOTFOUND) ? iStart : m_Length;
+XWORD XString::RFind(char iCar, XWORD iStart) const {
+    if (m_Length == 0)
+        return NOTFOUND;
 
-        char ch = m_Buffer[i];
-        m_Buffer[i] = '\0';
-        char *buf = strrchr(&m_Buffer[iStart], iCar);
-        m_Buffer[i] = ch;
-        if (buf)
-            return buf - m_Buffer;
-        else
-            return -1;
+    XWORD start = (iStart == NOTFOUND) ? m_Length - 1 : iStart;
+    if (start >= m_Length)
+        start = m_Length - 1;
+
+    for (XWORD i = start + 1; i > 0; --i) {
+        if (m_Buffer[i - 1] == iCar)
+            return i - 1;
     }
-    return -1;
+    return NOTFOUND;
 }
 
-// creates a substring
-XString XString::Substring(XWORD iStart, XWORD iLength) const
-{
-    return XString(&m_Buffer[iStart], (iLength != 0) ? iLength : m_Length - iStart);
+// Create a substring
+XString XString::Substring(XWORD iStart, XWORD iLength) const {
+    if (iStart >= m_Length)
+        return XString();
+
+    XWORD actualLength = (iLength == 0) ? m_Length - iStart : iLength;
+    if (iStart + actualLength > m_Length)
+        actualLength = m_Length - iStart;
+
+    return XString(&m_Buffer[iStart], actualLength);
 }
 
-// crops the string
-XString &XString::Crop(XWORD iStart, XWORD iLength)
-{
+// Crop the string
+XString &XString::Crop(XWORD iStart, XWORD iLength) {
+    if (iStart >= m_Length) {
+        m_Length = 0;
+        if (m_Buffer)
+            m_Buffer[0] = '\0';
+        return *this;
+    }
+
+    if (iStart + iLength > m_Length)
+        iLength = m_Length - iStart;
+
     if (iStart > 0)
-        strncpy(m_Buffer, &m_Buffer[iStart], iLength);
+        memmove(m_Buffer, &m_Buffer[iStart], iLength);
+
     m_Length = iLength;
-    m_Buffer[iLength] = '\0';
+    m_Buffer[m_Length] = '\0';
     return *this;
 }
 
-// cuts the string
-XString &XString::Cut(XWORD iStart, XWORD iLength)
-{
-    strncpy(&m_Buffer[iStart], &m_Buffer[iLength + iStart], m_Length - (iLength + iStart) + 1);
+// Cut part of the string
+XString &XString::Cut(XWORD iStart, XWORD iLength) {
+    if (iStart >= m_Length)
+        return *this;
+
+    if (iStart + iLength > m_Length)
+        iLength = m_Length - iStart;
+
+    memmove(&m_Buffer[iStart], &m_Buffer[iStart + iLength], m_Length - (iStart + iLength) + 1);
     m_Length -= iLength;
     return *this;
 }
 
-// replaces all the occurrence of a character by another one
-int XString::Replace(char iSrc, char iDest)
-{
+// Replace all occurrences of a character
+int XString::Replace(char iSrc, char iDest) {
     int count = 0;
-    for (int i = 0; i < m_Length; ++i)
-    {
-        if (m_Buffer[i] == iSrc)
-        {
+    for (XWORD i = 0; i < m_Length; ++i) {
+        if (m_Buffer[i] == iSrc) {
             m_Buffer[i] = iDest;
             ++count;
         }
@@ -353,97 +338,97 @@ int XString::Replace(char iSrc, char iDest)
     return count;
 }
 
-// replaces all the occurrence of a string by another string
-int XString::Replace(const XBaseString &iSrc, const XBaseString &iDest)
-{
+int XString::Replace(const XBaseString &iSrc, const XBaseString &iDest) {
+    if (iSrc.m_Length == 0)
+        return 0;
+
     int count = 0;
-    char *src = NULL;
+    XWORD pos = 0;
 
-    if (iSrc.m_Length == iDest.m_Length)
-    {
-        src = strstr(m_Buffer, iSrc.m_Buffer);
-        if (!src)
-            return 0;
-
-        do
-        {
-            strncpy(src, iDest.m_Buffer, iDest.m_Length);
-            ++count;
-        } while ((src = strstr(&src[iSrc.m_Length], iSrc.m_Buffer)));
-        return count;
+    // Count occurrences first
+    while ((pos = Find(iSrc, pos)) != NOTFOUND) {
+        count++;
+        pos += iSrc.m_Length;
     }
-    else
-    {
-        src = strstr(m_Buffer, iSrc.m_Buffer);
-        if (src)
-        {
-            do
-            {
-                ++count;
-            } while ((src = strstr(&src[iSrc.m_Length], iSrc.m_Buffer)));
+
+    if (count == 0)
+        return 0;
+
+    // Calculate new length
+    XWORD newLength = m_Length + count * (iDest.m_Length - iSrc.m_Length);
+
+    if (iSrc.m_Length == iDest.m_Length) {
+        // Simple case: same length replacement
+        pos = 0;
+        while ((pos = Find(iSrc, pos)) != NOTFOUND) {
+            memcpy(&m_Buffer[pos], iDest.m_Buffer, iDest.m_Length);
+            pos += iSrc.m_Length;
+        }
+    } else {
+        // Complex case: different length replacement
+        char *newBuffer = new char[newLength + 1];
+        XWORD srcPos = 0, destPos = 0;
+
+        pos = 0;
+        while ((pos = Find(iSrc, srcPos)) != NOTFOUND) {
+            // Copy text before match
+            XWORD copyLen = pos - srcPos;
+            if (copyLen > 0) {
+                memcpy(&newBuffer[destPos], &m_Buffer[srcPos], copyLen);
+                destPos += copyLen;
+            }
+
+            // Copy replacement text
+            if (iDest.m_Length > 0) {
+                memcpy(&newBuffer[destPos], iDest.m_Buffer, iDest.m_Length);
+                destPos += iDest.m_Length;
+            }
+
+            srcPos = pos + iSrc.m_Length;
         }
 
-        XWORD len = m_Length + count * (iDest.m_Length - iSrc.m_Length);
-        char *buf = (char *)VxNew(sizeof(char) * (len + 1));
-
-        char *s1 = m_Buffer;
-        char *s2 = buf;
-
-        src = strstr(m_Buffer, iSrc.m_Buffer);
-        if (src)
-        {
-            do
-            {
-                strncpy(s2, s1, src - s1);
-                strncpy(&s2[src - s1], iDest.m_Buffer, iDest.m_Length);
-                s2 = &s2[iDest.m_Length];
-                s1 = &src[iSrc.m_Length];
-            } while ((src = strstr(s1, iSrc.m_Buffer)));
+        // Copy remaining text
+        if (srcPos < m_Length) {
+            memcpy(&newBuffer[destPos], &m_Buffer[srcPos], m_Length - srcPos);
+            destPos += m_Length - srcPos;
         }
-        strncpy(s2, s1, (m_Buffer - s1) + 1);
 
-        VxDelete(m_Buffer);
-        m_Length = len;
-        m_Buffer = buf;
-        m_Allocated = len + 1;
-        return count;
+        newBuffer[newLength] = '\0';
+
+        delete[] m_Buffer;
+        m_Buffer = newBuffer;
+        m_Length = newLength;
+        m_Allocated = newLength + 1;
     }
+
+    return count;
 }
 
-///
-// Stream operators
-
-// Concatenation operator
-XString &XString::operator<<(const char *iString)
-{
-    if (iString)
-    {
-        Assign(iString, strlen(iString));
-    }
-    else
-    {
-        m_Length = 0;
-        if (m_Buffer)
-            m_Buffer[0] = '\0';
+XString &XString::operator<<(const char *iString) {
+    if (iString) {
+        XWORD len = strlen(iString);
+        if (len > 0) {
+            CheckSize(m_Length + len);
+            strcpy(&m_Buffer[m_Length], iString);
+            m_Length += len;
+        }
     }
     return *this;
 }
 
 // Concatenation operator
-XString &XString::operator<<(const XBaseString &iString)
-{
-    CheckSize(m_Length + iString.m_Length);
-    if (iString.m_Length != 0)
-    {
-        strncpy(&m_Buffer[m_Length], iString.m_Buffer, iString.m_Length + 1);
+XString &XString::operator<<(const XBaseString &iString) {
+    if (iString.m_Length > 0) {
+        CheckSize(m_Length + iString.m_Length);
+        memcpy(&m_Buffer[m_Length], iString.m_Buffer, iString.m_Length);
         m_Length += iString.m_Length;
+        m_Buffer[m_Length] = '\0';
     }
     return *this;
 }
 
 // Concatenation operator
-XString &XString::operator<<(const char iValue)
-{
+XString &XString::operator<<(char iValue) {
     CheckSize(m_Length + 1);
     m_Buffer[m_Length++] = iValue;
     m_Buffer[m_Length] = '\0';
@@ -451,99 +436,94 @@ XString &XString::operator<<(const char iValue)
 }
 
 // Concatenation operator
-XString &XString::operator<<(const int iValue)
-{
-    char buf[16];
-    int len = sprintf(buf, "%d", iValue);
-    CheckSize(m_Length + len);
-    strncpy(&m_Buffer[m_Length], buf, len + 1);
-    m_Length += len;
-    return *this;
-}
-
-// Concatenation operator
-XString &XString::operator<<(const unsigned int iValue)
-{
-    char buf[16];
-    int len = sprintf(buf, "%u", iValue);
-    CheckSize(m_Length + len);
-    strncpy(&m_Buffer[m_Length], buf, len + 1);
-    m_Length += len;
-    return *this;
-}
-
-// Concatenation operator
-XString &XString::operator<<(const float iValue)
-{
-    char buf[16];
-    int len = sprintf(buf, "%f", iValue);
-    CheckSize(m_Length + len);
-    strncpy(&m_Buffer[m_Length], buf, len + 1);
-    m_Length += len;
-    return *this;
-}
-
-// Concatenation operator
-XString &XString::operator<<(const void *iValue)
-{
-    if (iValue)
-    {
-        XWORD len = (XWORD)strlen((char *)iValue);
-        if (len != 0)
-        {
-            CheckSize(m_Length + len);
-            strncpy(&m_Buffer[m_Length], (const char *)iValue, len + 1);
-            m_Length += len;
-        }
+XString &XString::operator<<(int iValue) {
+    char buf[32];  // Increased buffer size for safety
+    int len = snprintf(buf, sizeof(buf), "%d", iValue);
+    if (len > 0) {
+        CheckSize(m_Length + len);
+        strcpy(&m_Buffer[m_Length], buf);
+        m_Length += len;
     }
     return *this;
 }
 
-///
-// Capacity functions
+// Concatenation operator
+XString &XString::operator<<(unsigned int iValue) {
+    char buf[32];  // Increased buffer size for safety
+    int len = snprintf(buf, sizeof(buf), "%u", iValue);
+    if (len > 0) {
+        CheckSize(m_Length + len);
+        strcpy(&m_Buffer[m_Length], buf);
+        m_Length += len;
+    }
+    return *this;
+}
 
-// Sets the capacity of the string
-void XString::Reserve(XWORD iLength)
-{
-    if (iLength + 1 > m_Allocated)
-    {
+// Concatenation operator
+XString &XString::operator<<(float iValue) {
+    char buf[32];  // Increased buffer size for safety
+    int len = snprintf(buf, sizeof(buf), "%f", iValue);  // Use %g for cleaner float output
+    if (len > 0) {
+        CheckSize(m_Length + len);
+        strcpy(&m_Buffer[m_Length], buf);
+        m_Length += len;
+    }
+    return *this;
+}
+
+// XString &XString::operator<<(const void *iValue) {
+//     if (iValue) {
+//         char buf[32];
+//         int len = snprintf(buf, sizeof(buf), "%p", iValue);
+//         if (len > 0) {
+//             CheckSize(m_Length + len);
+//             strcpy(&m_Buffer[m_Length], buf);
+//             m_Length += len;
+//         }
+//     }
+//     return *this;
+// }
+
+void XString::Reserve(XDWORD iLength) {
+    if (iLength + 1 > m_Allocated) {
         m_Allocated = iLength + 1;
-        char *buf = new char[iLength + 1];
-        if (m_Length != 0)
-            strncpy(buf, m_Buffer, m_Length);
+        char *buf = new char[m_Allocated];
+        if (m_Length > 0) {
+            memcpy(buf, m_Buffer, m_Length + 1);
+        } else {
+            buf[0] = '\0';
+        }
         delete[] m_Buffer;
         m_Buffer = buf;
     }
 }
 
-// Check a string size to see if it fits in
-void XString::CheckSize(int iLength)
-{
-    if (iLength + 1 > m_Allocated)
-    {
-        m_Allocated = iLength + 1;
-        char *buf = new char[iLength + 1];
-        if (m_Length != 0)
-            strncpy(buf, m_Buffer, m_Length + 1);
-        else
+void XString::CheckSize(int iLength) {
+    if (iLength + 1 > m_Allocated) {
+        // Grow buffer with some extra space to reduce reallocations
+        m_Allocated = (iLength + 1) * 2;
+        char *buf = new char[m_Allocated];
+        if (m_Length > 0) {
+            memcpy(buf, m_Buffer, m_Length + 1);
+        } else {
             buf[0] = '\0';
+        }
         delete[] m_Buffer;
         m_Buffer = buf;
     }
 }
 
 // Assign a string to the current string
-void XString::Assign(const char *iBuffer, int iLength)
-{
-    m_Length = 0;
-    if (iLength != 0)
-    {
+void XString::Assign(const char *iBuffer, int iLength) {
+    if (iLength > 0 && iBuffer) {
         CheckSize(iLength);
+        memcpy(m_Buffer, iBuffer, iLength);
         m_Length = iLength;
-        strncpy(m_Buffer, iBuffer, iLength);
-    }
-    else if (m_Buffer)
-    {
-        m_Buffer[0] = '\0';
+        m_Buffer[m_Length] = '\0';
+    } else {
+        m_Length = 0;
+        if (m_Buffer) {
+            m_Buffer[0] = '\0';
+        }
     }
 }

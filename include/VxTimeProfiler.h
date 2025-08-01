@@ -3,58 +3,66 @@
 
 #include "VxMathDefines.h"
 
-/*************************************************
-{filename:VxTimeProfiler}
-Name: VxTimeProfiler
-Summary: Class for profiling purposes
-
-Remarks:
-    This class provides methods to accurately compute
-    the time elapsed.
-Example:
-      // To profile several items :
-
-      VxTimeProfiler MyProfiler;
-      ...
-      float delta_time=MyProfiler.Current();
-      MyProfiler.Reset();
-      ...
-      float delta_time2=MyProfiler.Current();
-See also:
-*************************************************/
-class VX_EXPORT VxTimeProfiler
-{
+/**
+ * @brief A class for high-precision performance timing.
+ *
+ * @remarks
+ * This class provides simple methods to accurately measure the time elapsed
+ * between operations, which is useful for profiling and performance analysis.
+ *
+ * @example
+ * @code
+ * // To profile a piece of code:
+ * VxTimeProfiler MyProfiler; // Starts the timer
+ *
+ * // ... code to be measured ...
+ *
+ * float elapsed_ms = MyProfiler.Current(); // Get elapsed time in milliseconds
+ *
+ * // To profile multiple items sequentially:
+ * MyProfiler.Reset(); // Restart timer for the next item
+ *
+ * // ... second piece of code ...
+ *
+ * float elapsed_ms2 = MyProfiler.Current();
+ *
+ * // To get time and reset simultaneously:
+ * float elapsed_ms3 = MyProfiler.Split();
+ * @endcode
+ */
+class VX_EXPORT VxTimeProfiler {
 public:
-    /*************************************************
-    Name: VxTimeProfiler
-    Summary: Starts profiling
-    *************************************************/
+    /**
+     * @brief Constructs a VxTimeProfiler and starts the timer by calling Reset().
+     */
     VxTimeProfiler() { Reset(); }
 
-    // operator =
+    /// @brief Assignment operator.
     VxTimeProfiler &operator=(const VxTimeProfiler &t);
 
-    /*************************************************
-    Summary: Restarts the timer
-    *************************************************/
+    /**
+     * @brief Resets the timer, setting the start time to the current time.
+     */
     void Reset();
 
-    /*************************************************
-    Summary: Returns the current time elapsed (in milliseconds)
-    *************************************************/
+    /**
+     * @brief Returns the time elapsed in milliseconds since the last Reset() or construction.
+     * @return The elapsed time in milliseconds as a float.
+     */
     float Current();
 
-    /*************************************************
-    Summary: Returns the current time elapsed (in milliseconds)
-    *************************************************/
-    float Split()
-    {
+    /**
+     * @brief Returns the current elapsed time and immediately resets the timer.
+     * @return The elapsed time in milliseconds before the timer was reset.
+     */
+    float Split() {
         float c = Current();
         Reset();
         return c;
     }
 
 protected:
+    /// @brief Internal storage for timing data, likely OS-specific high-resolution timer values.
     XULONG Times[4];
 };
 

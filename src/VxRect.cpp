@@ -1,7 +1,6 @@
 #include "VxRect.h"
 
-void VxRect::Transform(const VxRect &destScreen, const VxRect &srcScreen)
-{
+void VxRect::Transform(const VxRect &destScreen, const VxRect &srcScreen) {
     float srcScreenInvWidth = 1.0f / (srcScreen.right - srcScreen.left);
     float srcScreenInvHeight = 1.0f / (srcScreen.bottom - srcScreen.top);
 
@@ -20,8 +19,7 @@ void VxRect::Transform(const VxRect &destScreen, const VxRect &srcScreen)
     bottom = rect.bottom * destScreenHeight + destScreen.bottom;
 }
 
-void VxRect::Transform(const Vx2DVector &destScreenSize, const Vx2DVector &srcScreenSize)
-{
+void VxRect::Transform(const Vx2DVector &destScreenSize, const Vx2DVector &srcScreenSize) {
     float srcScreenInvWidth = 1.0f / srcScreenSize.x;
     float srcScreenInvHeight = 1.0f / srcScreenSize.y;
 
@@ -31,8 +29,7 @@ void VxRect::Transform(const Vx2DVector &destScreenSize, const Vx2DVector &srcSc
     bottom *= srcScreenInvHeight * destScreenSize.y;
 }
 
-void VxRect::TransformToHomogeneous(const VxRect &screen)
-{
+void VxRect::TransformToHomogeneous(const VxRect &screen) {
     float screenInvWidth = 1.0f / (screen.right - screen.left);
     float screenInvHeight = 1.0f / (screen.bottom - screen.top);
     float width = right - left;
@@ -44,8 +41,7 @@ void VxRect::TransformToHomogeneous(const VxRect &screen)
     bottom = top + height * screenInvHeight;
 }
 
-void VxRect::TransformFromHomogeneous(const VxRect &screen)
-{
+void VxRect::TransformFromHomogeneous(const VxRect &screen) {
     float screenWidth = screen.right - screen.left;
     float screenHeight = screen.bottom - screen.top;
     float width = right - left;

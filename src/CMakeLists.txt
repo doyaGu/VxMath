@@ -8,18 +8,15 @@ set(VXMATH_PUBLIC_HEADERS
 
         ${VXMATH_INCLUDE_DIR}/XP.h
         ${VXMATH_INCLUDE_DIR}/XSmartPtr.h
-        ${VXMATH_INCLUDE_DIR}/XRandomGenerator.h
         ${VXMATH_INCLUDE_DIR}/XString.h
         ${VXMATH_INCLUDE_DIR}/XArray.h
         ${VXMATH_INCLUDE_DIR}/XBitArray.h
         ${VXMATH_INCLUDE_DIR}/XSArray.h
         ${VXMATH_INCLUDE_DIR}/XClassArray.h
         ${VXMATH_INCLUDE_DIR}/XList.h
-        ${VXMATH_INCLUDE_DIR}/XBinaryTree.h
         ${VXMATH_INCLUDE_DIR}/XHashTable.h
         ${VXMATH_INCLUDE_DIR}/XSHashTable.h
         ${VXMATH_INCLUDE_DIR}/XNHashTable.h
-        ${VXMATH_INCLUDE_DIR}/XPriorityQueue.h
         ${VXMATH_INCLUDE_DIR}/XMatrix.h
 
         ${VXMATH_INCLUDE_DIR}/VxSharedLibrary.h
@@ -55,13 +52,17 @@ set(VXMATH_PRIVATE_HEADERS
 
 set(VXMATH_SOURCES
         VxMath.cpp
-        XString.cpp
+        VxInterpolation.cpp
+        VxStructureUtils.cpp
+        VxGraphicUtils.cpp
+        VxProcessor.cpp
         VxSharedLibraryWin32.cpp
         VxMemoryMappedFileWin32.cpp
         VxMemoryPool.cpp
         CKPathSplitter.cpp
         CKDirectoryParser.cpp
         VxWindowFunctionsWin32.cpp
+        VxColor.cpp
         VxVector.cpp
         VxBbox.cpp
         VxMatrix.cpp
@@ -80,11 +81,18 @@ set(VXMATH_SOURCES
         VxTimeProfilerWin32.cpp
         VxMutex.cpp
         VxThread.cpp
+        VxMemory.cpp
+        XString.cpp
         EscapeURL.cpp
         )
 
 add_library(VxMath SHARED ${VXMATH_SOURCES} ${VXMATH_PUBLIC_HEADERS} ${VXMATH_PRIVATE_HEADERS})
-set_target_properties(VxMath PROPERTIES DEFINE_SYMBOL VX_API)
+set_target_properties(VxMath PROPERTIES
+        DEFINE_SYMBOL VX_API
+        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
+        ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib"
+        LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib"
+)
 
 add_library(VxMathStatic STATIC ${VXMATH_SOURCES} ${VXMATH_PUBLIC_HEADERS} ${VXMATH_PRIVATE_HEADERS})
 
@@ -97,20 +105,5 @@ foreach (LIB IN ITEMS VxMath VxMathStatic)
             ${CMAKE_CURRENT_SOURCE_DIR}
             )
 
-    target_link_libraries(${LIB} PRIVATE cpuinfo)
-
-    # Disable strict const-qualification conformance for pointers initialized by using string literals
-    target_compile_options(${LIB} PUBLIC
-            $<$<COMPILE_LANGUAGE:CXX>:$<$<CXX_COMPILER_ID:MSVC>:/Zc:strictStrings->>
-            $<$<COMPILE_LANGUAGE:CXX>:$<$<CXX_COMPILER_ID:GNU>:-fpermissive>>
-            $<$<COMPILE_LANGUAGE:CXX>:$<$<CXX_COMPILER_ID:GNU>:-Wno-write-strings>>
-            )
-
-    # Disable msvc unsafe warnings
-    target_compile_definitions(${LIB} PRIVATE
-            $<$<C_COMPILER_ID:MSVC>:_CRT_SECURE_NO_WARNINGS>
-            $<$<C_COMPILER_ID:MSVC>:_CRT_NONSTDC_NO_WARNINGS>
-            $<$<C_COMPILER_ID:MSVC>:_CRT_SECURE_NO_DEPRECATE>
-            $<$<C_COMPILER_ID:MSVC>:_CRT_NONSTDC_NO_DEPRECATE>
-            )
+    target_link_libraries(${LIB} PRIVATE stb)
 endforeach ()

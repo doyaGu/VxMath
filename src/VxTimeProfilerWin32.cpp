@@ -7,20 +7,17 @@
 
 extern float g_MSecondsPerCycle;
 
-VxTimeProfiler &VxTimeProfiler::operator=(const VxTimeProfiler &t)
-{
+VxTimeProfiler &VxTimeProfiler::operator=(const VxTimeProfiler &t) {
     if (&t != this)
         memcpy(Times, t.Times, sizeof(Times));
     return *this;
 }
 
-void VxTimeProfiler::Reset()
-{
-    *(DWORD64*)&Times[0] = __rdtsc();
+void VxTimeProfiler::Reset() {
+    *(DWORD64 *) &Times[0] = __rdtsc();
 }
 
-float VxTimeProfiler::Current()
-{
-    *(DWORD64*)&Times[2] = __rdtsc() - *(DWORD64*)&Times[0];
-    return (float)*(DWORD64*)&Times[2] * g_MSecondsPerCycle;
+float VxTimeProfiler::Current() {
+    *(DWORD64 *) &Times[2] = __rdtsc() - *(DWORD64 *) &Times[0];
+    return (float) *(DWORD64 *) &Times[2] * g_MSecondsPerCycle;
 }

@@ -3,187 +3,197 @@
 
 #include "VxMathDefines.h"
 
+/**
+ * @class XNode
+ * @brief Internal node structure for the XList doubly linked list.
+ * @internal
+ * @tparam T The type of data stored in the node.
+ */
 template <class T>
-class XNode
-{
+class XNode {
 public:
-    T m_Data;
-    XNode<T> *m_Next;
-    XNode<T> *m_Prev;
+    T m_Data;         ///< The data element stored in the node.
+    XNode<T> *m_Next; ///< Pointer to the next node in the list.
+    XNode<T> *m_Prev; ///< Pointer to the previous node in the list.
 };
 
-/************************************************
-Summary: Iterator on an XList.
-
-Example:
-Usage for iterating on a list :
-    for (XListIt<T> it = list.Begin(); it != list.End(); ++it) {
-        // Do whatever you want with *it, a reference on a T
-    }
-
-
-************************************************/
+/**
+ * @class XListIt
+ * @brief An iterator for traversing an XList.
+ *
+ * @tparam T The type of the elements in the list.
+ *
+ * @example
+ * Usage for iterating through a list:
+ * @code
+ * XList<MyType> list;
+ * // ... populate list ...
+ * for (XListIt<MyType> it = list.Begin(); it != list.End(); ++it) {
+ *     // Do something with *it, which is a reference to a MyType object.
+ * }
+ * @endcode
+ */
 template <class T>
-class XListIt
-{
-    typedef XNode<T> *tNode;
-
+class XListIt {
 public:
-    // Ctor
-    XListIt() : m_Node(0) {}
+    /// @brief Default constructor. Initializes to a null iterator.
+    XListIt() : m_Node(NULL) {}
+
+    /**
+     * @brief Constructs an iterator from a list node.
+     * @internal
+     * @param n A pointer to an XNode.
+     */
     XListIt(XNode<T> *n) : m_Node(n) {}
+
+    /**
+     * @brief Copy constructor.
+     * @param n The iterator to copy.
+     */
     XListIt(const XListIt<T> &n) : m_Node(n.m_Node) {}
 
-    // Operators
+    /// @brief Equality comparison operator.
     int operator==(const XListIt<T> &it) const { return m_Node == it.m_Node; }
+    /// @brief Inequality comparison operator.
     int operator!=(const XListIt<T> &it) const { return m_Node != it.m_Node; }
 
-    /************************************************
-    Summary: Returns a reference on the current element.
-    ************************************************/
-    T &operator*() const { return (*m_Node).m_Data; }
+    /**
+     * @brief Dereferences the iterator to access the current element.
+     * @return A reference to the element at the current position.
+     */
+    T &operator*() const { return m_Node->m_Data; }
 
-    /************************************************
-    Summary: Go to the next element.
-    ************************************************/
-    XListIt<T> &operator++()
-    { // Prefixe
-        m_Node = tNode(m_Node->m_Next);
+    /**
+     * @brief Pre-increment operator. Advances the iterator to the next element.
+     */
+    XListIt<T> &operator++() {
+        m_Node = m_Node->m_Next;
         return *this;
     }
-    XListIt<T> operator++(int)
-    { // PostFixe
+
+    /**
+     * @brief Post-increment operator. Advances the iterator to the next element.
+     */
+    XListIt<T> operator++(int) {
         XListIt<T> tmp = *this;
         ++*this;
         return tmp;
     }
-    /************************************************
-    Summary: Go to the previous element.
-    ************************************************/
-    XListIt<T> &operator--()
-    {
-        m_Node = tNode(m_Node->m_Prev);
+
+    /**
+     * @brief Pre-decrement operator. Moves the iterator to the previous element.
+     */
+    XListIt<T> &operator--() {
+        m_Node = m_Node->m_Prev;
         return *this;
     }
-    XListIt<T> operator--(int)
-    {
+
+    /**
+     * @brief Post-decrement operator. Moves the iterator to the previous element.
+     */
+    XListIt<T> operator--(int) {
         XListIt<T> tmp = *this;
         --*this;
         return tmp;
     }
 
-    XListIt<T> operator+(int iOffset) const
-    {
+    /**
+     * @brief Advances the iterator by a specified offset.
+     * @param iOffset The number of elements to advance.
+     * @return A new iterator at the advanced position.
+     */
+    XListIt<T> operator+(int iOffset) const {
         XListIt<T> tmp = *this;
-        while (iOffset--)
-        {
-            ++tmp;
-        }
+        while (iOffset--) ++tmp;
         return tmp;
     }
 
-    XListIt<T> operator-(int iOffset) const
-    {
+    /**
+     * @brief Moves the iterator backward by a specified offset.
+     * @param iOffset The number of elements to move backward.
+     * @return A new iterator at the new position.
+     */
+    XListIt<T> operator-(int iOffset) const {
         XListIt<T> tmp = *this;
-        while (iOffset--)
-        {
-            --tmp;
-        }
+        while (iOffset--) --tmp;
         return tmp;
     }
 
+    /// @brief The internal node the iterator is pointing to.
     XNode<T> *m_Node;
 };
 
-/************************************************
-Summary: Doubly linked list.
-
-Remarks:
-    You can only create a list of elements which
-    can be constructed from nothing (default constructor
-    with no argument) and the element should also
-    possess an operator =.
-
-
-************************************************/
+/**
+ * @class XList
+ * @brief A template class for a doubly linked list.
+ *
+ * @tparam T The type of elements to be stored.
+ *
+ * @remarks
+ * This list implementation requires that the element type `T` has a default
+ * constructor and a copy assignment operator.
+ */
 template <class T>
-class XList
-{
-    typedef XNode<T> *tNode;
-
+class XList {
 public:
-    typedef XListIt<T> Iterator;
-    /************************************************
-    Summary: Constructors.
+    typedef XListIt<T> Iterator; ///< A typedef for the list's iterator.
 
-    Input Arguments:
-        list: list to recopy in the new one.
-
-    ************************************************/
-    XList()
-    {
+    /**
+     * @brief Default constructor. Creates an empty list.
+     */
+    XList() {
         m_Node = new XNode<T>;
         m_Node->m_Prev = m_Node;
         m_Node->m_Next = m_Node;
         m_Count = 0;
     }
 
-    XList(const XList<T> &list)
-    {
+    /**
+     * @brief Copy constructor. Creates a deep copy of another list.
+     * @param list The list to copy from.
+     */
+    XList(const XList<T> &list) {
         m_Node = new XNode<T>;
         m_Node->m_Prev = m_Node;
         m_Node->m_Next = m_Node;
         m_Count = 0;
-        for (XListIt<T> it = list.Begin(); it != list.End(); ++it)
-        {
+        for (Iterator it = list.Begin(); it != list.End(); ++it) {
             PushBack(*it);
         }
     }
 
-    /************************************************
-    Summary: Affectation operator.
-
-    Remarks:
-        The content of the list is entirely overwritten
-    by the given one.
-    ************************************************/
-    XList &operator=(const XList<T> &list)
-    {
-        if (&list != this)
-        {
+    /**
+     * @brief Assignment operator. Replaces the list's content with a copy of another list.
+     * @param list The list to assign from.
+     * @return A reference to this list.
+     */
+    XList &operator=(const XList<T> &list) {
+        if (&list != this) {
             Clear();
-            for (XListIt<T> it = list.Begin(); it != list.End(); ++it)
-            {
+            for (Iterator it = list.Begin(); it != list.End(); ++it) {
                 PushBack(*it);
             }
         }
         return *this;
     }
 
-    /************************************************
-    Summary: Destructor.
-
-    Remarks:
-        Release the elements contained in the array. If
-    you were storing pointers, you need first to iterate
-    on the list and call delete on each pointer.
-    ************************************************/
-    ~XList()
-    {
+    /**
+     * @brief Destructor.
+     * @remarks Frees all nodes in the list. If the list stores pointers, it is the
+     * user's responsibility to delete the pointed-to objects before destroying the list.
+     */
+    ~XList() {
         Clear();
         delete m_Node;
     }
 
-    /************************************************
-    Summary: Removes all the elements of a list.
-    ************************************************/
-    void Clear()
-    {
-        tNode tmp = XBegin();
-        tNode del;
-        while (tmp != XEnd())
-        {
-            del = tmp;
+    /**
+     * @brief Removes all elements from the list.
+     */
+    void Clear() {
+        XNode<T> *tmp = XBegin();
+        while (tmp != XEnd()) {
+            XNode<T> *del = tmp;
             tmp = tmp->m_Next;
             delete del;
         }
@@ -192,255 +202,191 @@ public:
         m_Count = 0;
     }
 
-    /************************************************
-    Summary: Returns the elements number.
-    ************************************************/
-    int Size() const
-    {
-        return m_Count;
-    }
+    /**
+     * @brief Returns the number of elements in the list.
+     */
+    int Size() const { return m_Count; }
 
-    /************************************************
-    Summary: Returns a copy of the first element of an array.
+    /**
+     * @brief Returns a copy of the first element.
+     * @remarks Behavior is undefined if the list is empty.
+     */
+    T Front() const { return XBegin()->m_Data; }
 
-    Remarks:
-        No test are provided to see if there is an
-    element.
-    ************************************************/
-    T Front() const
-    {
-        return XBegin()->m_Data;
-    }
+    /**
+     * @brief Returns a reference to the first element.
+     * @remarks Behavior is undefined if the list is empty.
+     */
+    T &Front() { return XBegin()->m_Data; }
 
-    /************************************************
-    Summary: Returns a reference on the first element of an array.
-
-    Remarks:
-        No test are provided to see if there is an
-    element.
-    ************************************************/
-    T &Front()
-    {
-        return XBegin()->m_Data;
-    }
-
-    /************************************************
-    Summary: Returns a copy of the last element of an array.
-
-    Remarks:
-        No test are provided to see if there is an
-    element.
-    ************************************************/
-    T Back() const
-    {
-        XListIt<T> tmp = End();
+    /**
+     * @brief Returns a copy of the last element.
+     * @remarks Behavior is undefined if the list is empty.
+     */
+    T Back() const {
+        Iterator tmp = End();
         return *(--tmp);
     }
 
-    /************************************************
-    Summary: Returns a reference on the last element of an array.
-
-    Remarks:
-        No test are provided to see if there is an
-    element.
-    ************************************************/
-    T &Back()
-    {
-        XListIt<T> tmp = End();
+    /**
+     * @brief Returns a reference to the last element.
+     * @remarks Behavior is undefined if the list is empty.
+     */
+    T &Back() {
+        Iterator tmp = End();
         return *(--tmp);
     }
 
-    /************************************************
-    Summary: Inserts an element at the end of a list.
-
-    Input Arguments:
-        o: object to insert.
-    ************************************************/
-    void PushBack(const T &o)
-    {
+    /**
+     * @brief Adds an element to the end of the list.
+     * @param o The element to add.
+     */
+    void PushBack(const T &o) {
         XInsert(XEnd(), o);
     }
 
-    /************************************************
-    Summary: Inserts an element at the start of a list.
-
-    Input Arguments:
-        o: object to insert.
-    ************************************************/
-    void PushFront(const T &o)
-    {
+    /**
+     * @brief Adds an element to the beginning of the list.
+     * @param o The element to add.
+     */
+    void PushFront(const T &o) {
         XInsert(XBegin(), o);
     }
 
-    /************************************************
-    Summary: Inserts an element before another one.
-
-    Input Arguments:
-        i: iterator on the element to insert before.
-        o: object to insert.
-    ************************************************/
-    void Insert(XListIt<T> &i, const T &o)
-    {
+    /**
+     * @brief Inserts an element before the specified position.
+     * @param i An iterator indicating the position to insert before.
+     * @param o The element to insert.
+     */
+    void Insert(Iterator &i, const T &o) {
         XInsert(i.m_Node, o);
     }
 
-    /************************************************
-    Summary: Removes an element at the end of a list.
-    ************************************************/
-    void PopBack()
-    {
-        XListIt<T> tmp = End();
+    /**
+     * @brief Removes the last element of the list.
+     * @remarks Behavior is undefined if the list is empty.
+     */
+    void PopBack() {
+        Iterator tmp = End();
         XRemove((--tmp).m_Node);
     }
 
-    /************************************************
-    Summary: Removes an element at the beginning of
-    a list.
-    ************************************************/
-    void PopFront()
-    {
+    /**
+     * @brief Removes the first element of the list.
+     * @remarks Behavior is undefined if the list is empty.
+     */
+    void PopFront() {
         XRemove(XBegin());
     }
 
-    /************************************************
-    Summary: Finds an element.
-
-    Input Arguments:
-        o: object to find.
-        start: iterator from which begin the search.
-    Return Value : An iterator on the object found,
-    End() if the object wasn't found.
-    ************************************************/
-    XListIt<T> Find(const T &o) const
-    {
-        m_Node->m_Data = o;
-        XListIt<T> it = Begin();
-        while (*it != o)
-            ++it;
-        return it;
-    }
-    XListIt<T> Find(const XListIt<T> &start, const T &o) const
-    {
-        m_Node->m_Data = o;
-        XListIt<T> it = start;
-        while (*it != o)
-            ++it;
+    /**
+     * @brief Finds the first occurrence of an element.
+     * @param o The element to find.
+     * @return An iterator to the first found element, or `End()` if not found.
+     */
+    Iterator Find(const T &o) const {
+        m_Node->m_Data = o; // Sentinel for search
+        Iterator it = Begin();
+        while (*it != o) ++it;
         return it;
     }
 
-    /************************************************
-    Summary: Test the presence of an element.
-
-    Input Arguments:
-        o: object to test.
-    Return Value: TRUE if the object was found,
-    otherwise FALSE.
-    ************************************************/
-    XBOOL IsHere(const T &o) const
-    {
-        XListIt<T> it = Find(o);
-        if (it != End())
-            return TRUE;
-        return FALSE;
+    /**
+     * @brief Finds the first occurrence of an element starting from a specific position.
+     * @param start The iterator to start the search from.
+     * @param o The element to find.
+     * @return An iterator to the first found element, or `End()` if not found.
+     */
+    Iterator Find(const Iterator &start, const T &o) const {
+        m_Node->m_Data = o; // Sentinel for search
+        Iterator it = start;
+        while (*it != o) ++it;
+        return it;
     }
 
-    /************************************************
-    Summary: Removes an element.
-
-    Input Arguments:
-        o: object to remove.
-    Return Value: TRUE if the object was removed,
-    otherwise FALSE.
-    ************************************************/
-    XBOOL Remove(const T &o)
-    {
-        XListIt<T> it = Find(o);
-        if (it == End())
-            return FALSE;
-        else
-        {
-            Remove(it);
-            return TRUE;
-        }
+    /**
+     * @brief Checks if an element is present in the list.
+     * @param o The element to check for.
+     * @return TRUE if the element is found, FALSE otherwise.
+     */
+    XBOOL IsHere(const T &o) const {
+        return Find(o) != End();
     }
 
-    /************************************************
-    Summary: Removes an element.
+    /**
+     * @brief Removes the first occurrence of a specific element.
+     * @param o The element to remove.
+     * @return TRUE if an element was removed, FALSE otherwise.
+     */
+    XBOOL Remove(const T &o) {
+        Iterator it = Find(o);
+        if (it == End()) return FALSE;
+        Remove(it);
+        return TRUE;
+    }
 
-    Input Arguments:
-        i: iterator on the object to remove.
-    Return Value: an iterator on the element following
-    the removed one.
-    ************************************************/
-    XListIt<T> Remove(XListIt<T> &i)
-    {
+    /**
+     * @brief Removes an element at a specified position.
+     * @param i An iterator pointing to the element to remove.
+     * @return An iterator to the element that followed the removed element.
+     */
+    Iterator Remove(Iterator &i) {
         return XRemove(i.m_Node);
     }
 
-    /************************************************
-    Summary: Returns an iterator on the first element.
-    ************************************************/
-    XListIt<T> Begin() const { return XBegin(); }
+    /**
+     * @brief Returns an iterator to the beginning of the list.
+     */
+    Iterator Begin() const { return XBegin(); }
 
-    /************************************************
-    Summary: Returns an iterator after the last element.
-    ************************************************/
-    XListIt<T> End() const { return XEnd(); }
+    /**
+     * @brief Returns an iterator to the position after the last element.
+     */
+    Iterator End() const { return XEnd(); }
 
-    /************************************************
-    Summary: Swaps two lists.
-
-    Input Arguments:
-        o: second list to swap with.
-    ************************************************/
-    void Swap(XList<T> &a)
-    {
+    /**
+     * @brief Swaps the contents of this list with another.
+     * @param a The other list to swap with.
+     */
+    void Swap(XList<T> &a) {
         XSwap(m_Node, a.m_Node);
         XSwap(m_Count, a.m_Count);
     }
 
 private:
-    ///
-    // Methods
+    /// @name Internal Methods
+    ///@{
 
-    XNode<T> *XBegin() const { return tNode(m_Node->m_Next); }
+    XNode<T> *XBegin() const { return m_Node->m_Next; }
+    XNode<T> *XEnd() const { return m_Node; }
 
-    XNode<T> *XEnd() const { return tNode(m_Node); }
-
-    XNode<T> *XInsert(XNode<T> *i, const T &o)
-    {
+    XNode<T> *XInsert(XNode<T> *i, const T &o) {
         XNode<T> *n = new XNode<T>;
-        // Data
         n->m_Data = o;
-        // Pointers
         n->m_Next = i;
         n->m_Prev = i->m_Prev;
         i->m_Prev->m_Next = n;
         i->m_Prev = n;
         m_Count++;
-
         return n;
     }
 
-    XNode<T> *XRemove(XNode<T> *i)
-    {
+    XNode<T> *XRemove(XNode<T> *i) {
         XNode<T> *next = i->m_Next;
         XNode<T> *prev = i->m_Prev;
         prev->m_Next = next;
         next->m_Prev = prev;
-        // we delete the old node
         delete i;
         m_Count--;
-        // We return the element just after
         return next;
     }
+    ///@}
 
-    ///
-    // Members
-
-    XNode<T> *m_Node;
-
-    int m_Count;
+    /// @name Members
+    ///@{
+    XNode<T> *m_Node; ///< The sentinel node. `m_Node->m_Next` is the head, `m_Node->m_Prev` is the tail.
+    int m_Count;      ///< The number of elements in the list.
+    ///@}
 };
 
 #endif // XLIST_H

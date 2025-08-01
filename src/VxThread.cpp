@@ -5,31 +5,27 @@
 #endif
 #include <Windows.h>
 
-VxThread::VxThread() : m_Name(), m_Thread(NULL), m_Priority(0), m_Func(NULL), m_Args(NULL)
-{
+VxThread::VxThread() : m_Name(), m_Thread(NULL), m_Priority(0), m_Func(NULL), m_Args(NULL) {
     m_State = VXTS_JOINABLE;
 }
 
-VxThread::~VxThread()
-{
+VxThread::~VxThread() {
     GetHashThread().Remove(m_Thread);
 }
 
-XBOOL VxThread::CreateThread(VxThreadFunction *func, void *args)
-{
+XBOOL VxThread::CreateThread(VxThreadFunction *func, void *args) {
     if (IsCreated())
         return TRUE;
 
     m_Func = func;
     m_Args = args;
-    m_Thread = ::CreateThread(NULL, 0, ThreadFunc, this, 0, (LPDWORD)&m_ThreadID);
+    m_Thread = ::CreateThread(NULL, 0, ThreadFunc, this, 0, (LPDWORD) &m_ThreadID);
     if (!m_Thread)
         return FALSE;
 
-    if (m_Name.Length() == 0)
-    {
+    if (m_Name.Length() == 0) {
         m_Name = "THREAD_";
-        m_Name << *(int *)&m_Thread;
+        m_Name << *(int *) &m_Thread;
     }
 
     GetMutex().EnterMutex();
@@ -41,22 +37,19 @@ XBOOL VxThread::CreateThread(VxThreadFunction *func, void *args)
     return TRUE;
 }
 
-void VxThread::SetPriority(unsigned int priority)
-{
+void VxThread::SetPriority(unsigned int priority) {
     if (IsCreated())
         m_Priority = priority;
 }
 
-void VxThread::SetName(const char *name)
-{
+void VxThread::SetName(const char *name) {
     if (IsCreated())
         m_Name = name;
 }
 
-void VxThread::Close()
-{
+void VxThread::Close() {
     if (m_Thread)
-        ::CloseHandle((HANDLE)m_Thread);
+        ::CloseHandle((HANDLE) m_Thread);
     m_ThreadID = 0;
     m_Thread = NULL;
     m_State = 0;
@@ -65,44 +58,36 @@ void VxThread::Close()
     m_Args = NULL;
 }
 
-const XString &VxThread::GetName() const
-{
+const XString &VxThread::GetName() const {
     return m_Name;
 }
 
-unsigned int VxThread::GetPriority() const
-{
+unsigned int VxThread::GetPriority() const {
     return m_Priority;
 }
 
-XBOOL VxThread::IsCreated() const
-{
+XBOOL VxThread::IsCreated() const {
     return (m_State & VXTS_CREATED) != 0;
 }
 
-XBOOL VxThread::IsJoinable() const
-{
+XBOOL VxThread::IsJoinable() const {
     return (m_State & VXTS_JOINABLE) != 0;
 }
 
-XBOOL VxThread::IsMainThread() const
-{
+XBOOL VxThread::IsMainThread() const {
     return (m_State & VXTS_MAIN) != 0;
 }
 
-XBOOL VxThread::IsStarted() const
-{
+XBOOL VxThread::IsStarted() const {
     return (m_State & VXTS_STARTED) != 0;
 }
 
-VxThread *VxThread::GetCurrentVxThread()
-{
+VxThread *VxThread::GetCurrentVxThread() {
     HANDLE currentThread = ::GetCurrentThread();
     GetMutex().EnterMutex();
 
     XHashTable<VxThread *, GENERIC_HANDLE>::Iterator it = GetHashThread().Find(currentThread);
-    if (it == GetHashThread().End())
-    {
+    if (it == GetHashThread().End()) {
         GetMutex().LeaveMutex();
         return NULL;
     }
@@ -111,11 +96,9 @@ VxThread *VxThread::GetCurrentVxThread()
     return *it;
 }
 
-int VxThread::Wait(unsigned int *status, unsigned int timeout)
-{
+int VxThread::Wait(unsigned int *status, unsigned int timeout) {
     DWORD dwMilliseconds = (timeout != 0) ? timeout : -1;
-    switch (::WaitForSingleObject(m_Thread, dwMilliseconds))
-    {
+    switch (::WaitForSingleObject(m_Thread, dwMilliseconds)) {
     case WAIT_ABANDONED:
         return VXTERROR_WAIT;
     case WAIT_TIMEOUT:
@@ -131,19 +114,16 @@ int VxThread::Wait(unsigned int *status, unsigned int timeout)
     return VXTERROR_EXITCODE;
 }
 
-const GENERIC_HANDLE VxThread::GetHandle() const
-{
+const GENERIC_HANDLE VxThread::GetHandle() const {
     return m_Thread;
 }
 
-XULONG VxThread::GetID() const
-{
+XULONG VxThread::GetID() const {
     return m_ThreadID;
 }
 
-XBOOL VxThread::GetExitCode(unsigned int &status)
-{
-    if (!::GetExitCodeThread(m_Thread, (LPDWORD)&status))
+XBOOL VxThread::GetExitCode(unsigned int &status) {
+    if (!::GetExitCodeThread(m_Thread, (LPDWORD) &status))
         return FALSE;
 
     if (status == STILL_ACTIVE)
@@ -151,23 +131,19 @@ XBOOL VxThread::GetExitCode(unsigned int &status)
     return TRUE;
 }
 
-XBOOL VxThread::Terminate(unsigned int *status)
-{
+XBOOL VxThread::Terminate(unsigned int *status) {
     if (status)
-        return ::TerminateThread((HANDLE)m_Thread, *status);
+        return ::TerminateThread((HANDLE) m_Thread, *status);
     else
-        return ::TerminateThread((HANDLE)m_Thread, 0);
+        return ::TerminateThread((HANDLE) m_Thread, 0);
 }
 
-XULONG VxThread::GetCurrentVxThreadId()
-{
+XULONG VxThread::GetCurrentVxThreadId() {
     return ::GetCurrentThreadId();
 }
 
-void VxThread::SetPriority()
-{
-    switch (m_Priority)
-    {
+void VxThread::SetPriority() {
+    switch (m_Priority) {
     case VXTP_NORMAL:
         ::SetThreadPriority(m_Thread, THREAD_PRIORITY_NORMAL);
         break;
@@ -193,24 +169,21 @@ void VxThread::SetPriority()
     }
 }
 
-VxMutex &VxThread::GetMutex()
-{
+VxMutex &VxThread::GetMutex() {
     static VxMutex threadMutex;
     return threadMutex;
 }
 
-XHashTable<VxThread *, GENERIC_HANDLE> &VxThread::GetHashThread()
-{
+XHashTable<VxThread *, GENERIC_HANDLE> &VxThread::GetHashThread() {
     static XHashTable<VxThread *, GENERIC_HANDLE> hashThread;
     return hashThread;
 }
 
-XULONG VxThread::ThreadFunc(void *args)
-{
+XULONG VxThread::ThreadFunc(void *args) {
     if (!args)
         return VXTERROR_NULLTHREAD;
 
-    VxThread *thread = (VxThread *)args;
+    VxThread *thread = (VxThread *) args;
     thread->m_State |= VXTS_STARTED;
 
     XULONG ret;
