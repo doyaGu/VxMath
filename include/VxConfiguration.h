@@ -39,7 +39,7 @@ public:
      * @brief Constructs a VxConfiguration object.
      * @param indent The number of spaces to use for indentation when saving to a file. Defaults to 2.
      */
-    VX_EXPORT VxConfiguration(unsigned short indent = 2);
+    VX_EXPORT explicit VxConfiguration(unsigned short indent = 2);
 
     /**
      * @brief Destructor.
