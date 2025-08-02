@@ -468,8 +468,8 @@ XBOOL VxConfiguration::BuildFromMemory(const char *buffer, int &cline, XString &
         // Skip comments and empty lines
         char *trimmed = Shrink(line);
         if (trimmed && *trimmed && *trimmed != '#' && *trimmed != ';') {
-            if (*trimmed == '[') {
-                // This is a section
+            if (*trimmed == '<') {
+                // This is a section start or end tag
                 if (!ManageSection(trimmed, &currentSection, error)) {
                     delete[] bufferCopy;
                     return FALSE;
@@ -507,7 +507,7 @@ XBOOL VxConfiguration::SaveToFile(const char *name) {
             if (!section || !section->GetParent()) {
                 return XString(section ? section->GetName() : "");
             }
-            
+
             XString parentPath = GetFullPath(section->GetParent());
             if (parentPath.Length() == 0 || strcmp(parentPath.CStr(), "root") == 0) {
                 return XString(section->GetName());
@@ -530,18 +530,17 @@ XBOOL VxConfiguration::SaveToFile(const char *name) {
         static bool DoWrite(FILE *f, VxConfigurationSection *section, int level, unsigned short indentSize) {
             if (!section) return true;
 
-            // Write section header (using full path for hierarchical sections)
+            // Write section header using XML-like tags
             if (level > 0) {
                 // Don't write header for root
-                XString fullPath = SectionHelper::GetFullPath(section);
-                fprintf(f, "[%s]\n", fullPath.CStr());
+                fprintf(f, "<%s>\n", section->GetName());
             }
 
-            // Write entries
+            // Write entries with proper indentation
             ConstEntryIt entIt = section->BeginChildEntry();
             VxConfigurationEntry *entry;
             while ((entry = section->GetNextChildEntry(entIt)) != NULL) {
-                Indent::Write(f, level, indentSize);
+                if (level > 0) Indent::Write(f, 1, indentSize);
                 fprintf(f, "%s = %s\n", entry->GetName(), entry->GetValue());
             }
 
@@ -549,9 +548,15 @@ XBOOL VxConfiguration::SaveToFile(const char *name) {
             ConstSectionIt secIt = section->BeginChildSection();
             VxConfigurationSection *subSection;
             while ((subSection = section->GetNextChildSection(secIt)) != NULL) {
-                fprintf(f, "\n"); // Add extra line between sections
+                if (level == 0 && (section->GetNumberOfEntries() > 0 || section->GetNumberOfSubSections() > 1))
+                    fprintf(f, "\n");
                 if (!DoWrite(f, subSection, level + 1, indentSize))
                     return false;
+            }
+
+            // Write closing tag for non-root sections
+            if (level > 0) {
+                fprintf(f, "</%s>\n", section->GetName());
             }
 
             return true;
@@ -597,7 +602,6 @@ VxConfigurationSection *VxConfiguration::GetSubSection(VxConfigurationSection *r
     // Handle dot notation for hierarchical sections
     XString sectionPath(sname);
     int dotPos = sectionPath.Find('.');
-
     if (dotPos == XString::NOTFOUND) return root->GetSubSection(sname);
 
     // Extract the first section name
@@ -618,9 +622,20 @@ XBOOL VxConfiguration::ManageSection(char *line, VxConfigurationSection **curren
     // Remove leading and trailing spaces
     line = Shrink(line);
 
-    // Check for section format [SectionName]
+    // Check for closing tag format </SectionName>
     size_t len = strlen(line);
-    if (len < 3 || line[0] != '[' || line[len - 1] != ']') {
+    if (len > 3 && line[0] == '<' && line[1] == '/' && line[len - 1] == '>') {
+        // This is a closing tag, return to parent section
+        if (*current && (*current)->GetParent()) {
+            *current = (*current)->GetParent();
+        } else {
+            *current = m_Root;
+        }
+        return TRUE;
+    }
+
+    // Check for opening tag format <SectionName>
+    if (len < 3 || line[0] != '<' || line[len - 1] != '>') {
         error = "Invalid section format: ";
         error += line;
         return FALSE;
@@ -632,14 +647,13 @@ XBOOL VxConfiguration::ManageSection(char *line, VxConfigurationSection **curren
     // Handle dot notation in sections
     XString section(sectionName);
     int dotPos = section.Find('.');
-
     if (dotPos == XString::NOTFOUND) {
         // Simple section name
-        VxConfigurationSection *existingSection = m_Root->GetSubSection(sectionName);
+        VxConfigurationSection *existingSection = (*current)->GetSubSection(sectionName);
         if (existingSection) {
             *current = existingSection;
         } else {
-            *current = m_Root->CreateSubSection(sectionName);
+            *current = (*current)->CreateSubSection(sectionName);
             if (!*current) {
                 error = "Failed to create section: ";
                 error += sectionName;
