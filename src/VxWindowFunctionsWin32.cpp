@@ -176,6 +176,7 @@ XBOOL VxDeleteDirectory(char *path) {
         memset(&fileOp, 0, sizeof(SHFILEOPSTRUCTA));
         fileOp.pFrom = path;
         fileOp.wFunc = FO_DELETE;
+        fileOp.fFlags = FOF_NO_UI;
         ret = mySHFileOperation(&fileOp) == 0;
     }
     lib.ReleaseLibrary();
