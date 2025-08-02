@@ -153,17 +153,17 @@ public:
     /// @brief Default constructor. Initializes color to (0,0,0,0).
     VxColor();
     /// @brief Constructs a color from four float components (r, g, b, a).
-    VxColor(const float _r, const float _g, const float _b, const float _a);
+    VxColor(float _r, float _g, float _b, float _a);
     /// @brief Constructs a color from three float components (r, g, b), setting alpha to 1.0.
-    VxColor(const float _r, const float _g, const float _b);
+    VxColor(float _r, float _g, float _b);
     /// @brief Constructs a grayscale color, setting r, g, b to the given value and alpha to 1.0.
-    VxColor(const float _r);
+    VxColor(float _r);
     /// @brief Constructs a color from a 32-bit ARGB unsigned long value.
-    VxColor(const unsigned long col);
+    VxColor(unsigned long col);
     /// @brief Constructs a color from four integer components (0-255).
-    VxColor(const int _r, const int _g, const int _b, const int _a);
+    VxColor(int _r, int _g, int _b, int _a);
     /// @brief Constructs a color from three integer components (0-255), setting alpha to 255.
-    VxColor(const int _r, const int _g, const int _b);
+    VxColor(int _r, int _g, int _b);
 
     /// @brief Resets all color components to 0.0f.
     void Clear();
@@ -179,17 +179,17 @@ public:
     }
 
     /// @brief Sets the color from four float components.
-    void Set(const float _r, const float _g, const float _b, const float _a);
+    void Set(float _r, float _g, float _b, float _a);
     /// @brief Sets the color from three float components, setting alpha to 1.0.
-    void Set(const float _r, const float _g, const float _b);
+    void Set(float _r, float _g, float _b);
     /// @brief Sets a grayscale color, setting r, g, b to the given value and alpha to 1.0.
-    void Set(const float _r);
+    void Set(float _r);
     /// @brief Sets the color from a 32-bit ARGB unsigned long value.
-    void Set(const unsigned long col);
+    void Set(unsigned long col);
     /// @brief Sets the color from four integer components (0-255).
-    void Set(const int _r, const int _g, const int _b, const int _a);
+    void Set(int _r, int _g, int _b, int _a);
     /// @brief Sets the color from three integer components (0-255), setting alpha to 255.
-    void Set(const int _r, const int _g, const int _b);
+    void Set(int _r, int _g, int _b);
 
     /// @brief Converts the color to a 32-bit DWORD in ARGB format.
     unsigned long GetRGBA() const;
@@ -261,7 +261,7 @@ public:
     }
 };
 
-inline VxColor::VxColor(const float _r, const float _g, const float _b, const float _a) {
+inline VxColor::VxColor(float _r, float _g, float _b, float _a) {
     r = _r; g = _g; b = _b; a = _a;
 }
 
@@ -269,23 +269,23 @@ inline VxColor::VxColor() {
     r = g = b = a = 0.0f;
 }
 
-inline VxColor::VxColor(const int _r, const int _g, const int _b, const int _a) {
+inline VxColor::VxColor(int _r, int _g, int _b, int _a) {
     r = (float) _r / 255.0f; g = (float) _g / 255.0f; b = (float) _b / 255.0f; a = (float) _a / 255.0f;
 }
 
-inline VxColor::VxColor(const int _r, const int _g, const int _b) {
+inline VxColor::VxColor(int _r, int _g, int _b) {
     r = (float) _r / 255.0f; g = (float) _g / 255.0f; b = (float) _b / 255.0f; a = 1.0f;
 }
 
-inline VxColor::VxColor(const float _r, const float _g, const float _b) {
+inline VxColor::VxColor(float _r, float _g, float _b) {
     r = _r; g = _g; b = _b; a = 1.0f;
 }
 
-inline VxColor::VxColor(const float _r) {
+inline VxColor::VxColor(float _r) {
     r = _r; g = _r; b = _r; a = 1.0f;
 }
 
-inline VxColor::VxColor(const unsigned long colz) {
+inline VxColor::VxColor(unsigned long colz) {
     r = (float) (ColorGetRed(colz)) * 0.003921568627f; // 1/255
     g = (float) (ColorGetGreen(colz)) * 0.003921568627f;
     b = (float) (ColorGetBlue(colz)) * 0.003921568627f;
@@ -301,27 +301,27 @@ inline void VxColor::Clear() {
     r = g = b = a = 0.0f;
 }
 
-inline void VxColor::Set(const float _r, const float _g, const float _b, const float _a) {
+inline void VxColor::Set(float _r, float _g, float _b, float _a) {
     r = _r; g = _g; b = _b; a = _a;
 }
 
-inline void VxColor::Set(const int _r, const int _g, const int _b, const int _a) {
+inline void VxColor::Set(int _r, int _g, int _b, int _a) {
     r = (float) _r / 255.0f; g = (float) _g / 255.0f; b = (float) _b / 255.0f; a = (float) _a / 255.0f;
 }
 
-inline void VxColor::Set(const int _r, const int _g, const int _b) {
+inline void VxColor::Set(int _r, int _g, int _b) {
     r = (float) _r / 255.0f; g = (float) _g / 255.0f; b = (float) _b / 255.0f; a = 1.0f;
 }
 
-inline void VxColor::Set(const float _r, const float _g, const float _b) {
+inline void VxColor::Set(float _r, float _g, float _b) {
     r = _r; g = _g; b = _b; a = 1.0f;
 }
 
-inline void VxColor::Set(const float _r) {
+inline void VxColor::Set(float _r) {
     r = _r; g = _r; b = _r; a = 1.0f;
 }
 
-inline void VxColor::Set(const unsigned long colz) {
+inline void VxColor::Set(unsigned long colz) {
     r = (float) (ColorGetRed(colz)) / 255.0f; g = (float) (ColorGetGreen(colz)) / 255.0f; b = (float) (ColorGetBlue(colz)) / 255.0f; a = (float) (ColorGetAlpha(colz)) / 255.0f;
 }
 
