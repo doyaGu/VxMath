@@ -7,12 +7,6 @@
 #endif
 #include <Windows.h>
 
-#if defined(__GNUC__)
-#include <cpuid.h>
-#elif defined(_MSC_VER)
-#include <intrin.h>
-#endif
-
 #include "VxEigenMatrix.h"
 
 HINSTANCE g_hinstDLL;
