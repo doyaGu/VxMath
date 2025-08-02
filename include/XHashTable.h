@@ -209,7 +209,6 @@ public:
         return tmp;
     }
 
-private:
     /**
      * @brief Internal constructor used by XHashTable.
      * @param n Pointer to the hash table entry.
@@ -346,7 +345,6 @@ public:
         return tmp;
     }
 
-private:
     /**
      * @brief Internal constructor used by XHashTable.
      * @param n Pointer to the hash table entry.

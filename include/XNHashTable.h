@@ -173,14 +173,12 @@ public:
         return tmp;
     }
 
-private:
     /**
      * @brief Internal constructor used by XNHashTable.
      * @param n Pointer to the hash table entry.
      * @param t Pointer to the hash table container.
      */
-    XNHashTableIt(tEntry n, tTable t) : m_Node(n), m_Table(t) {
-    }
+    XNHashTableIt(tEntry n, tTable t) : m_Node(n), m_Table(t) {}
 
     /// Pointer to the current hash table entry.
     tEntry m_Node;
@@ -300,7 +298,6 @@ public:
         return tmp;
     }
 
-private:
     /**
      * @brief Internal constructor used by XNHashTable.
      * @param n Pointer to the hash table entry.
