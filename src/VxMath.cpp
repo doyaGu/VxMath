@@ -32,9 +32,7 @@ XBOOL VxPtInRect(CKRECT *rect, CKPOINT *pt) {
 }
 
 // Compute best fit oriented bounding box for a set of points
-XBOOL VxComputeBestFitBBox(const XBYTE *Points, const XULONG Stride, const int Count,
-                           VxMatrix &BBoxMatrix, const float AdditionalBorder) {
-    // Check for valid input
+XBOOL VxComputeBestFitBBox(const XBYTE *Points, XULONG Stride, int Count, VxMatrix &BBoxMatrix, float AdditionalBorder) {
     if (Count <= 0 || !Points) {
         BBoxMatrix.SetIdentity();
         return FALSE;
@@ -53,52 +51,53 @@ XBOOL VxComputeBestFitBBox(const XBYTE *Points, const XULONG Stride, const int C
     }
 
     // Normalize the first two axes
-    ((VxVector *) &BBoxMatrix[0])->Normalize();
-    ((VxVector *) &BBoxMatrix[1])->Normalize();
+    BBoxMatrix[0].Normalize();
+    BBoxMatrix[1].Normalize();
 
     // Compute the third axis using cross product for orthogonality
-    float x = BBoxMatrix[1][1] * BBoxMatrix[0][0] - BBoxMatrix[0][1] * BBoxMatrix[1][0];
-    float y = BBoxMatrix[1][0] * BBoxMatrix[0][2] - BBoxMatrix[1][2] * BBoxMatrix[0][0];
-    float z = BBoxMatrix[0][1] * BBoxMatrix[1][2] - BBoxMatrix[1][1] * BBoxMatrix[0][2];
+    float mx = BBoxMatrix[0][1] * BBoxMatrix[1][2] - BBoxMatrix[0][2] * BBoxMatrix[1][1];  // A.y*B.z - A.z*B.y
+    float my = BBoxMatrix[0][2] * BBoxMatrix[1][0] - BBoxMatrix[0][0] * BBoxMatrix[1][2];  // A.z*B.x - A.x*B.z
+    float mz = BBoxMatrix[0][0] * BBoxMatrix[1][1] - BBoxMatrix[0][1] * BBoxMatrix[1][0];  // A.x*B.y - A.y*B.x
 
-    BBoxMatrix[2][0] = x;
-    BBoxMatrix[2][1] = y;
-    BBoxMatrix[2][2] = z;
+    BBoxMatrix[2][0] = mx;
+    BBoxMatrix[2][1] = my;
+    BBoxMatrix[2][2] = mz;
 
     // Project all points onto the principal axes to find min/max extents
     const float *firstPoint = (const float *) Points;
 
     // Initialize min/max with the first point
     float projX = firstPoint[0] * BBoxMatrix[0][0] +
-        firstPoint[1] * BBoxMatrix[0][1] +
-        firstPoint[2] * BBoxMatrix[0][2];
+                  firstPoint[1] * BBoxMatrix[0][1] +
+                  firstPoint[2] * BBoxMatrix[0][2];
     float minX = projX, maxX = projX;
 
     float projY = firstPoint[0] * BBoxMatrix[1][0] +
-        firstPoint[1] * BBoxMatrix[1][1] +
-        firstPoint[2] * BBoxMatrix[1][2];
+                  firstPoint[1] * BBoxMatrix[1][1] +
+                  firstPoint[2] * BBoxMatrix[1][2];
     float minY = projY, maxY = projY;
 
     float projZ = firstPoint[0] * BBoxMatrix[2][0] +
-        firstPoint[1] * BBoxMatrix[2][1] +
-        firstPoint[2] * BBoxMatrix[2][2];
+                  firstPoint[1] * BBoxMatrix[2][1] +
+                  firstPoint[2] * BBoxMatrix[2][2];
     float minZ = projZ, maxZ = projZ;
 
     // Find min/max extents for all points
-    for (int i = 1; i < Count; i++) {
+    // Fixed: Process all points including the first one for consistency with decompiled code
+    for (int i = 0; i < Count; i++) {
         const float *point = (const float *) (Points + i * Stride);
 
         float x = point[0] * BBoxMatrix[0][0] +
-            point[1] * BBoxMatrix[0][1] +
-            point[2] * BBoxMatrix[0][2];
+                  point[1] * BBoxMatrix[0][1] +
+                  point[2] * BBoxMatrix[0][2];
 
         float y = point[0] * BBoxMatrix[1][0] +
-            point[1] * BBoxMatrix[1][1] +
-            point[2] * BBoxMatrix[1][2];
+                  point[1] * BBoxMatrix[1][1] +
+                  point[2] * BBoxMatrix[1][2];
 
         float z = point[0] * BBoxMatrix[2][0] +
-            point[1] * BBoxMatrix[2][1] +
-            point[2] * BBoxMatrix[2][2];
+                  point[1] * BBoxMatrix[2][1] +
+                  point[2] * BBoxMatrix[2][2];
 
         // Update min/max values
         if (x < minX) minX = x;
@@ -114,40 +113,14 @@ XBOOL VxComputeBestFitBBox(const XBYTE *Points, const XULONG Stride, const int C
     float centerY = (minY + maxY) * 0.5f;
     float centerZ = (minZ + maxZ) * 0.5f;
 
-    // Store center temporarily
-    BBoxMatrix[3][0] = centerX;
-    BBoxMatrix[3][1] = centerY;
-    BBoxMatrix[3][2] = centerZ;
-
-    // Transform center from principal axis space to world space
-    float cx = centerX * BBoxMatrix[0][0];
-    float cy = centerX * BBoxMatrix[0][1];
-    float cz = centerX * BBoxMatrix[0][2];
-
-    float tx = centerY * BBoxMatrix[1][0];
-    float ty = centerY * BBoxMatrix[1][1];
-    float tz = centerY * BBoxMatrix[1][2];
-
-    float rx = centerZ * BBoxMatrix[2][0];
-    float ry = centerZ * BBoxMatrix[2][1];
-    float rz = centerZ * BBoxMatrix[2][2];
-
-    // Set transformed center position
-    BBoxMatrix[3][0] = cx + tx + rx;
-    BBoxMatrix[3][1] = cy + ty + ry;
-    BBoxMatrix[3][2] = cz + tz + rz;
-
     // Calculate half-extents with additional border
     float halfExtentX = (maxX - minX) * 0.5f + AdditionalBorder;
     float halfExtentY = (maxY - minY) * 0.5f + AdditionalBorder;
     float halfExtentZ = (maxZ - minZ) * 0.5f + AdditionalBorder;
 
-    // Create the extent vector for each axis
-    VxVector extentVector;
-
     // Scale the axes by their respective half-extents
     for (int i = 0; i < 3; i++) {
-        float extent = (i == 0) ? halfExtentX : (i == 1) ? halfExtentY : halfExtentZ;
+        const float extent = (i == 0) ? halfExtentX : (i == 1) ? halfExtentY : halfExtentZ;
 
         BBoxMatrix[i][0] *= extent;
         BBoxMatrix[i][1] *= extent;
@@ -155,13 +128,21 @@ XBOOL VxComputeBestFitBBox(const XBYTE *Points, const XULONG Stride, const int C
         BBoxMatrix[i][3] = 0.0f; // Set homogeneous component to 0
     }
 
-    // Set homogeneous component of translation to 1
+    // Transform center from principal axis space to world space
+    float worldX = centerX * BBoxMatrix[0][0] + centerY * BBoxMatrix[1][0] + centerZ * BBoxMatrix[2][0];
+    float worldY = centerX * BBoxMatrix[0][1] + centerY * BBoxMatrix[1][1] + centerZ * BBoxMatrix[2][1];
+    float worldZ = centerX * BBoxMatrix[0][2] + centerY * BBoxMatrix[1][2] + centerZ * BBoxMatrix[2][2];
+
+    // Set transformed center position
+    BBoxMatrix[3][0] = worldX;
+    BBoxMatrix[3][1] = worldY;
+    BBoxMatrix[3][2] = worldZ;
     BBoxMatrix[3][3] = 1.0f;
 
     // Validate matrix for reasonable values
     for (int i = 0; i < 4; i++) {
         for (int j = 0; j < 3; j++) {
-            if (fabs(BBoxMatrix[i][j]) >= 1000000.0f)
+            if (fabs(BBoxMatrix[i][j]) > 1000000.0f)
                 return FALSE;
         }
     }

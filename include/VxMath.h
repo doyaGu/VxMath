@@ -313,6 +313,6 @@ VX_EXPORT XBOOL VxPtInRect(CKRECT *rect, CKPOINT *pt);
  * @param AdditionalBorder A value to expand the computed box by.
  * @return TRUE on success, FALSE otherwise.
  */
-VX_EXPORT XBOOL VxComputeBestFitBBox(const XBYTE *Points, const XULONG Stride, const int Count, VxMatrix &BBoxMatrix, const float AdditionalBorder);
+VX_EXPORT XBOOL VxComputeBestFitBBox(const XBYTE *Points, XULONG Stride, int Count, VxMatrix &BBoxMatrix, float AdditionalBorder);
 
 #endif // VXMATH_H
