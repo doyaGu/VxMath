@@ -144,6 +144,7 @@ XBOOL VxComputeBestFitBBox(const XBYTE *Points, XULONG Stride, int Count, VxMatr
     return TRUE;
 }
 
+#ifndef VX_LIB
 BOOL APIENTRY DllMain(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID lpReserved) {
     switch (fdwReason) {
         case DLL_PROCESS_ATTACH:
@@ -158,3 +159,4 @@ BOOL APIENTRY DllMain(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID lpReserved) {
     }
     return TRUE;
 }
+#endif
