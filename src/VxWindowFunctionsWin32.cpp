@@ -6,6 +6,7 @@
 #include <shellapi.h>
 
 #include "XString.h"
+#include "VxColor.h"
 #include "VxImageDescEx.h"
 #include "VxSharedLibrary.h"
 
@@ -294,126 +295,119 @@ BITMAP_HANDLE VxCreateBitmap(const VxImageDescEx &desc) {
     // Create a DIB section
     void *bits = NULL;
     HBITMAP bitmap = CreateDIBSection(NULL, &bmi, DIB_RGB_COLORS, &bits, NULL, 0);
+    if (!bitmap || !bits) return NULL;
 
-    if (!bitmap || !bits) {
-        return NULL;
+    // Get bitmap information structures
+    BITMAP bm;
+    DIBSECTION dibSection;
+    GetObjectA(bitmap, sizeof(BITMAP), &bm);
+    GetObjectA(bitmap, sizeof(DIBSECTION), &dibSection);
+
+    // Calculate proper bytes per line
+    int bytePerLine = dibSection.dsBm.bmWidthBytes;
+    if ((bytePerLine & 3) != 0 && bytePerLine != dibSection.dsBm.bmWidth * (dibSection.dsBm.bmBitsPixel / 8)) {
+        bytePerLine = dibSection.dsBm.bmWidth * (dibSection.dsBm.bmBitsPixel / 8);
     }
 
-    // Get bitmap information
-    BITMAP bm;
-    GetObject(bitmap, sizeof(BITMAP), &bm);
-
-    // Create a temporary image description for the bitmap
+    // Create temp desc for the bitmap
     VxImageDescEx tempDesc;
     tempDesc.Size = sizeof(VxImageDescEx);
-    tempDesc.Width = bm.bmWidth;
-    tempDesc.Height = bm.bmHeight;
-    tempDesc.BytesPerLine = bm.bmWidthBytes;
+    tempDesc.Width = desc.Width;
+    tempDesc.Height = desc.Height;
+    tempDesc.BytesPerLine = bytePerLine;
     tempDesc.BitsPerPixel = bm.bmBitsPixel;
-    tempDesc.Image = static_cast<XBYTE *>(bits);
-    tempDesc.RedMask = 0xFF0000;
-    tempDesc.GreenMask = 0xFF00;
-    tempDesc.BlueMask = 0xFF;
+    tempDesc.RedMask = R_MASK;
+    tempDesc.GreenMask = G_MASK;
+    tempDesc.BlueMask = B_MASK;
     tempDesc.AlphaMask = 0;
+    tempDesc.Image = static_cast<XBYTE *>(bits);
 
     // Copy the source image to the bitmap if it exists
-    if (desc.Image) {
+    if (desc.Image)
         VxDoBlitUpsideDown(desc, tempDesc);
-    }
 
     return bitmap;
 }
 
 void VxDeleteBitmap(BITMAP_HANDLE Bitmap) {
-    if (Bitmap) {
-        DeleteObject(Bitmap);
-    }
+    if (Bitmap) DeleteObject(Bitmap);
 }
 
 XBYTE *VxConvertBitmap(BITMAP_HANDLE Bitmap, VxImageDescEx &desc) {
-    // Convert to 24-bit bitmap first
     BITMAP_HANDLE bitmap24 = VxConvertBitmapTo24(Bitmap);
-    if (!bitmap24) {
-        return NULL;
-    }
+    if (!bitmap24) return NULL;
 
-    // Get bitmap information
-    BITMAP bm;
-    GetObject(bitmap24, sizeof(BITMAP), &bm);
-
-    if (!bm.bmBits) {
-        if (bitmap24 != Bitmap) {
+    // Get extended bitmap info (DIBSECTION contains bmBits pointer)
+    DIBSECTION dibSection;
+    if (!GetObjectA(bitmap24, sizeof(DIBSECTION), &dibSection)) {
+        if (bitmap24 != Bitmap)
             DeleteObject(bitmap24);
-        }
         return NULL;
     }
 
-    // Create a source description for the bitmap
+    if (!dibSection.dsBm.bmBits) {
+        if (bitmap24 != Bitmap)
+            DeleteObject(bitmap24);
+        return NULL;
+    }
+
+    // Create source desc
     VxImageDescEx srcDesc;
     srcDesc.Size = sizeof(VxImageDescEx);
-    srcDesc.Width = bm.bmWidth;
-    srcDesc.Height = bm.bmHeight;
-    srcDesc.BytesPerLine = bm.bmWidthBytes;
-    srcDesc.BitsPerPixel = bm.bmBitsPixel;
-    srcDesc.RedMask = 0xFF0000;
-    srcDesc.GreenMask = 0xFF00;
-    srcDesc.BlueMask = 0xFF;
+    srcDesc.Width = dibSection.dsBm.bmWidth;
+    srcDesc.Height = dibSection.dsBm.bmHeight;
+    srcDesc.BytesPerLine = dibSection.dsBm.bmWidthBytes;
+    srcDesc.BitsPerPixel = dibSection.dsBm.bmBitsPixel;
+    srcDesc.RedMask = R_MASK;
+    srcDesc.GreenMask = G_MASK;
+    srcDesc.BlueMask = B_MASK;
     srcDesc.AlphaMask = 0;
-    srcDesc.Image = static_cast<XBYTE *>(bm.bmBits);
+    srcDesc.Image = static_cast<XBYTE *>(dibSection.dsBm.bmBits);
 
-    // Create a destination description
+    // Create destination desc (32-bit)
     VxImageDescEx dstDesc = srcDesc;
+    dstDesc.BytesPerLine = 4 * srcDesc.Width;
     dstDesc.BitsPerPixel = 32;
-    dstDesc.BytesPerLine = 4 * dstDesc.Width;
-    dstDesc.AlphaMask = 0xFF000000;
+    dstDesc.AlphaMask = A_MASK;
 
-    // Allocate memory for the new image
-    XBYTE *newImage = new XBYTE[dstDesc.BytesPerLine * dstDesc.Height];
+    XBYTE *newImage = new XBYTE[4 * srcDesc.Width * dstDesc.Height];
     if (!newImage) {
-        if (bitmap24 != Bitmap) {
+        if (bitmap24 != Bitmap)
             DeleteObject(bitmap24);
-        }
         return NULL;
     }
 
     dstDesc.Image = newImage;
-
-    // Copy the bitmap data to the new image
     VxDoBlitUpsideDown(srcDesc, dstDesc);
 
-    // Clean up
-    if (bitmap24 != Bitmap) {
+    if (bitmap24 != Bitmap)
         DeleteObject(bitmap24);
-    }
 
-    // Copy the destination description to the output
+    // Copy result to output parameter
     desc = dstDesc;
+    desc.Image = newImage;
 
     return newImage;
 }
 
 BITMAP_HANDLE VxConvertBitmapTo24(BITMAP_HANDLE Bitmap) {
-    // Get bitmap information
+    if (!Bitmap) return NULL;
+
     BITMAP bm;
-    GetObject(Bitmap, sizeof(BITMAP), &bm);
+    GetObjectA(Bitmap, sizeof(BITMAP), &bm);
 
-    // If already 24-bit, just return the original
-    if (bm.bmBitsPixel == 24) {
+    if (bm.bmBitsPixel == 24)
         return Bitmap;
-    }
 
-    // Create device contexts
     HDC srcDC = CreateCompatibleDC(NULL);
-    if (!srcDC) {
+    if (!srcDC)
         return NULL;
-    }
 
     HGDIOBJ oldSrcObj = SelectObject(srcDC, Bitmap);
 
-    // Create a 24-bit bitmap
+    // Create 24-bit DIB section
     BITMAPINFO bmi;
-    memset(&bmi, 0, sizeof(BITMAPINFO));
-
+    memset(&bmi, 0, sizeof(bmi));
     bmi.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
     bmi.bmiHeader.biWidth = bm.bmWidth;
     bmi.bmiHeader.biHeight = bm.bmHeight;
@@ -423,14 +417,12 @@ BITMAP_HANDLE VxConvertBitmapTo24(BITMAP_HANDLE Bitmap) {
 
     void *bits = NULL;
     HBITMAP bitmap24 = CreateDIBSection(NULL, &bmi, DIB_RGB_COLORS, &bits, NULL, 0);
-
     if (!bitmap24) {
         SelectObject(srcDC, oldSrcObj);
         DeleteDC(srcDC);
         return NULL;
     }
 
-    // Create a destination DC
     HDC dstDC = CreateCompatibleDC(srcDC);
     if (!dstDC) {
         SelectObject(srcDC, oldSrcObj);
@@ -441,62 +433,56 @@ BITMAP_HANDLE VxConvertBitmapTo24(BITMAP_HANDLE Bitmap) {
 
     HGDIOBJ oldDstObj = SelectObject(dstDC, bitmap24);
 
-    // Copy the bitmap
+    // Copy bitmap
     BitBlt(dstDC, 0, 0, bm.bmWidth, bm.bmHeight, srcDC, 0, 0, SRCCOPY);
 
-    // Clean up
-    SelectObject(dstDC, oldDstObj);
+    // Cleanup
     SelectObject(srcDC, oldSrcObj);
-    DeleteDC(dstDC);
+    SelectObject(dstDC, oldDstObj);
     DeleteDC(srcDC);
+    DeleteDC(dstDC);
 
     return bitmap24;
 }
 
 XBOOL VxCopyBitmap(BITMAP_HANDLE Bitmap, const VxImageDescEx &desc) {
-    // Convert to 24-bit bitmap first
     BITMAP_HANDLE bitmap24 = VxConvertBitmapTo24(Bitmap);
-    if (!bitmap24) {
+    if (!bitmap24) return FALSE;
+
+    // Get extended bitmap info
+    DIBSECTION dibSection;
+    if (!GetObjectA(bitmap24, sizeof(DIBSECTION), &dibSection)) {
+        if (bitmap24 != Bitmap) DeleteObject(bitmap24);
         return FALSE;
     }
 
-    // Get bitmap information
-    BITMAP bm;
-    GetObject(bitmap24, sizeof(BITMAP), &bm);
-
-    if (!bm.bmBits) {
-        if (bitmap24 != Bitmap) {
-            DeleteObject(bitmap24);
-        }
+    if (!dibSection.dsBm.bmBits) {
+        if (bitmap24 != Bitmap) DeleteObject(bitmap24);
         return FALSE;
     }
 
-    // Make sure the bytes per line is aligned properly
-    int bytesPerLine = bm.bmWidthBytes;
-    if ((bytesPerLine & 3) != 0 && bytesPerLine != bm.bmWidth * (bm.bmBitsPixel / 8)) {
-        bytesPerLine = bm.bmWidth * (bm.bmBitsPixel / 8);
+    // Calculate proper bytes per line
+    int bytePerLine = dibSection.dsBm.bmWidthBytes;
+    if ((bytePerLine & 3) != 0 && bytePerLine != dibSection.dsBm.bmWidth * (dibSection.dsBm.bmBitsPixel / 8)) {
+        bytePerLine = dibSection.dsBm.bmWidth * (dibSection.dsBm.bmBitsPixel / 8);
     }
 
-    // Create a source description for the bitmap
+    // Create source desc
     VxImageDescEx srcDesc;
     srcDesc.Size = sizeof(VxImageDescEx);
-    srcDesc.Width = bm.bmWidth;
-    srcDesc.Height = bm.bmHeight;
-    srcDesc.BytesPerLine = bytesPerLine;
-    srcDesc.BitsPerPixel = bm.bmBitsPixel;
-    srcDesc.RedMask = 0xFF0000;
-    srcDesc.GreenMask = 0xFF00;
-    srcDesc.BlueMask = 0xFF;
+    srcDesc.Width = dibSection.dsBm.bmWidth;
+    srcDesc.Height = dibSection.dsBm.bmHeight;
+    srcDesc.BytesPerLine = bytePerLine;
+    srcDesc.BitsPerPixel = dibSection.dsBm.bmBitsPixel;
+    srcDesc.RedMask = R_MASK;
+    srcDesc.GreenMask = G_MASK;
+    srcDesc.BlueMask = B_MASK;
     srcDesc.AlphaMask = 0;
-    srcDesc.Image = static_cast<XBYTE *>(bm.bmBits);
+    srcDesc.Image = static_cast<XBYTE *>(dibSection.dsBm.bmBits);
 
-    // Copy the bitmap data to the destination
     VxDoBlitUpsideDown(srcDesc, desc);
 
-    // Clean up
-    if (bitmap24 != Bitmap) {
-        DeleteObject(bitmap24);
-    }
+    if (bitmap24 != Bitmap) DeleteObject(bitmap24);
 
     return TRUE;
 }
