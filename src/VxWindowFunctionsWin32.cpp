@@ -513,53 +513,48 @@ VX_OSINFO VxGetOs() {
 }
 
 FONT_HANDLE VxCreateFont(char *FontName, int FontSize, int Weight, XBOOL italic, XBOOL underline) {
+    // Validate parameters
+    if (!FontName || FontSize <= 0) return NULL;
+
     // Create a compatible DC to get device capabilities
     HDC hDC = CreateCompatibleDC(NULL);
-    if (!hDC) {
-        return NULL;
-    }
+    if (!hDC) return NULL;
 
     // Convert point size to logical units
     int logicalHeight = -MulDiv(FontSize, GetDeviceCaps(hDC, LOGPIXELSY), 72);
 
     // Create the font
     HFONT hFont = CreateFontA(
-        logicalHeight,      // Height
-        0,                  // Width (0 means "match height")
-        0,                  // Escapement
-        0,                  // Orientation
-        Weight,             // Weight
-        italic,             // Italic
-        underline,          // Underline
-        0,                  // StrikeOut
-        ANSI_CHARSET,       // CharSet
-        OUT_DEFAULT_PRECIS, // OutputPrecision
-        CLIP_DEFAULT_PRECIS,// ClipPrecision
-        ANTIALIASED_QUALITY,// Quality
+        logicalHeight,               // Height
+        0,                           // Width (0 means "match height")
+        0,                           // Escapement
+        0,                           // Orientation
+        Weight,                      // Weight
+        italic,                      // Italic
+        underline,                   // Underline
+        0,                           // StrikeOut
+        ANSI_CHARSET,                // CharSet
+        OUT_DEFAULT_PRECIS,          // OutputPrecision
+        CLIP_DEFAULT_PRECIS,         // ClipPrecision
+        ANTIALIASED_QUALITY,         // Quality
         DEFAULT_PITCH | FF_DONTCARE, // Pitch and Family
-        FontName            // FaceName
+        FontName                     // FaceName
     );
 
-    // Clean up
     DeleteDC(hDC);
 
-    return (FONT_HANDLE)hFont;
+    return hFont;
 }
 
 XBOOL VxGetFontInfo(FONT_HANDLE Font, VXFONTINFO &desc) {
-    if (!Font) {
-        return FALSE;
-    }
+    if (!Font) return FALSE;
 
-    // Buffer to hold LOGFONT structure
     LOGFONTA logFont;
-    if (!GetObjectA((HFONT)Font, sizeof(LOGFONTA), &logFont)) {
-        return FALSE;
-    }
+    if (!GetObjectA(Font, sizeof(LOGFONTA), &logFont)) return FALSE;
 
     // Copy data to the VXFONTINFO structure
     desc.FaceName = logFont.lfFaceName;
-    desc.Height = abs(logFont.lfHeight);  // Store as positive value
+    desc.Height = abs(logFont.lfHeight); // Store as positive value
     desc.Weight = logFont.lfWeight;
     desc.Italic = logFont.lfItalic ? TRUE : FALSE;
     desc.Underline = logFont.lfUnderline ? TRUE : FALSE;
@@ -567,34 +562,33 @@ XBOOL VxGetFontInfo(FONT_HANDLE Font, VXFONTINFO &desc) {
     return TRUE;
 }
 
-XBOOL VxDrawBitmapText(BITMAP_HANDLE Bitmap, FONT_HANDLE Font, char *string, CKRECT *rect,
-                       XULONG Align, XULONG BkColor, XULONG FontColor) {
-    // Validate parameters
-    if (!Bitmap || !Font || !string || !rect) {
-        return FALSE;
-    }
+XBOOL VxDrawBitmapText(BITMAP_HANDLE Bitmap, FONT_HANDLE Font, char *string, CKRECT *rect, XULONG Align, XULONG BkColor, XULONG FontColor) {
+    if (!Bitmap || !Font || !string || !rect) return FALSE;
 
-    // Create a device context compatible with the display
     HDC hDC = CreateCompatibleDC(NULL);
-    if (!hDC) {
-        return FALSE;
-    }
+    if (!hDC) return FALSE;
 
     // Select the bitmap and font into the DC
-    HGDIOBJ oldBitmap = SelectObject(hDC, (HBITMAP)Bitmap);
-    HGDIOBJ oldFont = SelectObject(hDC, (HFONT)Font);
+    HGDIOBJ oldBitmap = SelectObject(hDC, Bitmap);
+    HGDIOBJ oldFont = SelectObject(hDC, Font);
+    if (!oldBitmap || !oldFont) {
+        if (oldBitmap) SelectObject(hDC, oldBitmap);
+        if (oldFont) SelectObject(hDC, oldFont);
+        DeleteDC(hDC);
+        return FALSE;
+    }
 
     // Convert RGB values (the original code swaps R and B components)
     COLORREF textColor = RGB(
-        (FontColor & 0xFF),       // B
-        ((FontColor >> 8) & 0xFF),// G
-        ((FontColor >> 16) & 0xFF)// R
+        (FontColor & 0xFF),        // B
+        ((FontColor >> 8) & 0xFF), // G
+        ((FontColor >> 16) & 0xFF) // R
     );
 
     COLORREF bkColor = RGB(
-        (BkColor & 0xFF),         // B
-        ((BkColor >> 8) & 0xFF),  // G
-        ((BkColor >> 16) & 0xFF)  // R
+        (BkColor & 0xFF),        // B
+        ((BkColor >> 8) & 0xFF), // G
+        ((BkColor >> 16) & 0xFF) // R
     );
 
     // Set text and background colors
@@ -609,7 +603,7 @@ XBOOL VxDrawBitmapText(BITMAP_HANDLE Bitmap, FONT_HANDLE Font, char *string, CKR
         drawFlags |= DT_CENTER;
     } else if (Align & VXTEXT_RIGHT) {
         drawFlags |= DT_RIGHT;
-    } else if (Align & VXTEXT_LEFT) {
+    } else {
         drawFlags |= DT_LEFT;
     }
 
@@ -618,23 +612,21 @@ XBOOL VxDrawBitmapText(BITMAP_HANDLE Bitmap, FONT_HANDLE Font, char *string, CKR
         drawFlags |= DT_BOTTOM | DT_SINGLELINE;
     } else if (Align & VXTEXT_VCENTER) {
         drawFlags |= DT_VCENTER | DT_SINGLELINE;
-    } else if (Align & VXTEXT_TOP) {
+    } else {
         drawFlags |= DT_TOP | DT_SINGLELINE;
     }
 
     // Draw the text
-    DrawTextA(hDC, string, -1, (LPRECT)rect, drawFlags);
+    int result = DrawTextA(hDC, string, -1, (LPRECT) rect, drawFlags);
 
     // Restore original objects and clean up
     SelectObject(hDC, oldFont);
     SelectObject(hDC, oldBitmap);
     DeleteDC(hDC);
 
-    return TRUE;
+    return result != 0;
 }
 
 void VxDeleteFont(FONT_HANDLE Font) {
-    if (Font) {
-        DeleteObject(Font);
-    }
+    if (Font) DeleteObject(Font);
 }
