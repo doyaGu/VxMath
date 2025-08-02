@@ -294,7 +294,7 @@ VX_EXPORT ProcessorsType GetProcessorType();
  * @brief Gets a bitmask of instruction set extensions supported by the processor.
  * @return A bitmask of instruction set extensions.
  */
-// VX_EXPORT XULONG GetInstructionSetExtensions();
+VX_EXPORT XULONG GetInstructionSetExtensions();
 
 /**
  * @brief Checks if a point is inside a rectangle.
