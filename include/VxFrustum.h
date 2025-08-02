@@ -223,7 +223,7 @@ protected:
      * @param plane The plane to classify against.
      * @return A negative value if intersecting, a positive value if completely outside, and 0 if on the plane.
      */
-    float XClassify(const VxVector axis[4], const VxPlane &plane) const { return plane.XClassify(axis); }
+    static float XClassify(const VxVector axis[4], const VxPlane &plane) { return plane.XClassify(axis); }
 
     VxVector m_Origin;  ///< The origin point of the frustum.
     VxVector m_Right;   ///< The right vector of the frustum's orientation.
