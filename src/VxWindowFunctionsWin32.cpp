@@ -150,9 +150,9 @@ XBOOL VxMoveWindow(WIN_HANDLE Win, int x, int y, int Width, int Height, XBOOL Re
 }
 
 XString VxGetTempPath() {
-    XString path(512);
-    GetTempPathA(512, path.Str());
-    return path;
+    char buffer[512];
+    GetTempPathA(512, buffer);
+    return XString(buffer);
 }
 
 XBOOL VxMakeDirectory(char *path) {
