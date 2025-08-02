@@ -2,7 +2,6 @@
 #define VXDISTANCE_H
 
 #include "VxMathDefines.h"
-#include "XUtil.h"
 
 class VxRay;
 struct VxVector;
