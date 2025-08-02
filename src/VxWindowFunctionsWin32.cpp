@@ -89,9 +89,31 @@ XBOOL VxSetCursor(VXCURSOR_POINTER cursorID) {
     return TRUE;
 }
 
-XWORD VxGetFPUControlWord() { return 0; }
+XWORD VxGetFPUControlWord() {
+    XWORD cw = 0;
+#if defined(_MSC_VER)  // MSVC
+    __asm {
+        fstcw cw
+    }
+#elif defined(__GNUC__) || defined(__clang__)  // GCC / Clang
+    __asm__ __volatile__ ("fstcw %0" : "=m" (cw));
+#else
+#error "Unsupported compiler"
+#endif
+    return cw;
+}
 
-void VxSetFPUControlWord(XWORD Fpu) {}
+void VxSetFPUControlWord(XWORD Fpu) {
+#if defined(_MSC_VER)  // MSVC
+    __asm {
+        fldcw Fpu
+    }
+#elif defined(__GNUC__) || defined(__clang__)  // GCC / Clang
+    __asm__ __volatile__ ("fldcw %0" : : "m" (Fpu));
+#else
+#error "Unsupported compiler"
+#endif
+}
 
 void VxSetBaseFPUControlWord() {}
 
