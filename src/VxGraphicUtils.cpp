@@ -1734,7 +1734,7 @@ void VxGenerateMipMap(const VxImageDescEx &src_desc, XBYTE *Buffer) {
  * @param ColorMask Mask for the component to use as height map
  * @return TRUE if successful, FALSE otherwise
  */
-XBOOL VxConvertToNormalMap(const VxImageDescEx &image, XDWORD ColorMask) {
+XBOOL VxConvertToNormalMap(const VxImageDescEx &image, XULONG ColorMask) {
     // Validate 32 bpp requirement
     if (image.BitsPerPixel != 32 || !image.Image) {
         return FALSE;
