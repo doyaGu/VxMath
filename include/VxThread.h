@@ -156,9 +156,6 @@ protected:
     XString m_Name; ///< The name of the thread.
 
 private:
-    friend void InitVxMath();
-    friend void ShutDownVxMath();
-
     /// @brief Private copy constructor to prevent copying.
     VxThread(const VxThread &);
     /// @brief Private assignment operator to prevent assignment.
