@@ -108,13 +108,11 @@ if (VX_INSTALL)
     # Export targets for build tree
     export(TARGETS ${VX_EXPORTED_TARGETS}
             FILE "${CMAKE_CURRENT_BINARY_DIR}/VxMathTargets.cmake"
-            NAMESPACE VxMath::
     )
 
     # Install targets and export for install tree
     install(EXPORT VxMathTargets
             FILE VxMathTargets.cmake
-            NAMESPACE VxMath::
             DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/VxMath
     )
 

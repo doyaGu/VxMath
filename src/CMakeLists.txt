@@ -1,8 +1,10 @@
 set(VXMATH_PUBLIC_HEADERS
         ${VX_INCLUDE_DIR}/VxMathCompiler.h
+        ${VX_INCLUDE_DIR}/VxMemory.h
         ${VX_INCLUDE_DIR}/VxMathDefines.h
         ${VX_INCLUDE_DIR}/VxMath.h
         ${VX_INCLUDE_DIR}/VxDefines.h
+        ${VX_INCLUDE_DIR}/XUtil.h
         ${VX_INCLUDE_DIR}/XP.h
         ${VX_INCLUDE_DIR}/XSmartPtr.h
         ${VX_INCLUDE_DIR}/XString.h
@@ -11,6 +13,7 @@ set(VXMATH_PUBLIC_HEADERS
         ${VX_INCLUDE_DIR}/XSArray.h
         ${VX_INCLUDE_DIR}/XClassArray.h
         ${VX_INCLUDE_DIR}/XList.h
+        ${VX_INCLUDE_DIR}/XHashFun.h
         ${VX_INCLUDE_DIR}/XHashTable.h
         ${VX_INCLUDE_DIR}/XSHashTable.h
         ${VX_INCLUDE_DIR}/XNHashTable.h
@@ -120,15 +123,8 @@ if(VX_BUILD_SHARED)
             LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib"
     )
 
-    target_include_directories(VxMath PUBLIC
-            $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}>
-            $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
-    )
-
     target_compile_definitions(VxMath PRIVATE VX_API)
 
-    # Create alias
-    add_library(VxMath::VxMath ALIAS VxMath)
     list(APPEND VX_TARGETS VxMath)
 endif()
 
@@ -144,8 +140,6 @@ if(VX_BUILD_STATIC)
 
     target_compile_definitions(VxMathStatic PUBLIC VX_LIB)
 
-    # Create alias
-    add_library(VxMath::Static ALIAS VxMathStatic)
     list(APPEND VX_TARGETS VxMathStatic)
 endif()
 
@@ -159,11 +153,8 @@ if(VX_INSTALL)
             RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
             LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
             ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
-            INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
     )
 
     # Install headers
-    install(FILES ${VXMATH_PUBLIC_HEADERS}
-            DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
-    )
+    install(FILES ${VXMATH_PUBLIC_HEADERS} DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
 endif()
