@@ -423,7 +423,7 @@ private:
      * @internal
      */
     XDWORD *Allocate(int size) {
-#ifdef NO_VX_MALLOC
+#ifndef VX_MALLOC
         return new XDWORD[size];
 #else
         return (XDWORD *) VxMalloc(sizeof(XDWORD) * size);
@@ -436,7 +436,7 @@ private:
      */
     void Free() {
         if (m_Data) {
-#ifdef NO_VX_MALLOC
+#ifndef VX_MALLOC
             delete[] m_Data;
 #else
             VxFree(m_Data);

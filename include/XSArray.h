@@ -386,7 +386,7 @@ protected:
 
     T *Allocate(int size) {
         if (size > 0)
-#ifdef NO_VX_MALLOC
+#ifndef VX_MALLOC
             return new T[size];
 #else
             return (T *) VxMalloc(sizeof(T) * size);
@@ -397,7 +397,7 @@ protected:
 
     void Free() {
         if (m_Begin)
-#ifdef NO_VX_MALLOC
+#ifndef VX_MALLOC
             delete[] m_Begin;
 #else
             VxFree(m_Begin);
