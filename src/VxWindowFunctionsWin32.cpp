@@ -199,16 +199,15 @@ XBOOL VxMakePath(char *fullpath, char *path, char *file) {
     strcpy(fullpath, path);
     int pathLen = strlen(path);
 
-    if (pathLen >= MAX_PATH - strlen(file) - 1)  // Check total length
-        return FALSE;
+    if (pathLen >= MAX_PATH - strlen(file) - 1) return FALSE;
 
     // Check if we need to add a path separator
     if (pathLen > 0 && fullpath[pathLen - 1] != '\\' && fullpath[pathLen - 1] != '/') {
         fullpath[pathLen] = '\\';
-        pathLen++;  // Increment position since we added a separator
+        ++pathLen; // Increment position since we added a separator
     }
 
-    strcpy(&fullpath[pathLen], file);  // Use current pathLen, not pathLen + 1
+    strcpy(&fullpath[pathLen], file); // Use current pathLen, not pathLen + 1
     return TRUE;
 }
 
