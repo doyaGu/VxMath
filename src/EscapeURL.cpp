@@ -1,13 +1,11 @@
 #include "VxWindowFunctions.h"
 
-// Helper function to check if a character is a valid hex digit
 static bool IsHexDigit(char c) {
     return (c >= '0' && c <= '9') ||
         (c >= 'A' && c <= 'F') ||
         (c >= 'a' && c <= 'f');
 }
 
-// Helper function to convert hex character to value
 static int HexCharToValue(char c) {
     if (c >= '0' && c <= '9') return c - '0';
     if (c >= 'A' && c <= 'F') return c - 'A' + 10;
@@ -15,10 +13,7 @@ static int HexCharToValue(char c) {
     return 0;
 }
 
-// Helper function to check if string starts with a protocol
 static bool HasProtocol(const char *url) {
-    if (!url) return false;
-
     // Look for "://" but ensure it's at the beginning of a protocol
     // A protocol should start with a letter and contain only alphanumeric chars and +.-
     const char *colonSlashSlash = strstr(url, "://");
@@ -76,7 +71,7 @@ XULONG VxEscapeURL(char *InURL, XString &OutURL) {
     }
 
     while (*str) {
-        if (strchr(" #$%&\\+,;=@[]^{}", *str)) {
+        if (strchr(" #$%&\\+,/:;=?@[]^{}", *str)) {
             specialCharCount++;
         }
         str++;
@@ -125,7 +120,7 @@ XULONG VxEscapeURL(char *InURL, XString &OutURL) {
 
     // Process the rest of the URL
     while (*pi) {
-        if (strchr(" #$%&\\+,;=@[]^{}", *pi)) {
+        if (strchr(" #$%&\\+,/:;=?@[]^{}", *pi)) {
             // Escape special character
             sprintf(pb, "%%%02X", (unsigned char) *pi);
             pb += 3;
@@ -143,12 +138,10 @@ XULONG VxEscapeURL(char *InURL, XString &OutURL) {
 }
 
 void VxUnEscapeUrl(XString &str) {
-    if (str.Length() == 0) {
-        return; // Nothing to unescape
-    }
+    if (str.Length() == 0) return;
 
     XString result;
-    result.Reserve(str.Length()); // Pre-allocate to avoid reallocations
+    result.Reserve(str.Length());
 
     for (int i = 0; i < str.Length(); ++i) {
         if (str[i] == '%' && i + 2 < str.Length()) {
