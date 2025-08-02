@@ -1,3 +1,5 @@
-# stb
-add_library(stb INTERFACE)
-target_include_directories(stb INTERFACE ${CMAKE_CURRENT_LIST_DIR}/stb)
+# STB
+set(STB_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/stb" CACHE INTERNAL "STB include directory")
+if(NOT EXISTS "${STB_INCLUDE_DIR}")
+    message(WARNING "STB headers not found at ${STB_INCLUDE_DIR}. Please ensure STB is properly downloaded.")
+endif()

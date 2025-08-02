@@ -1,54 +1,49 @@
-set(VXMATH_INCLUDE_DIR ${PROJECT_SOURCE_DIR}/include)
-
 set(VXMATH_PUBLIC_HEADERS
-        ${VXMATH_INCLUDE_DIR}/VxMathCompiler.h
-        ${VXMATH_INCLUDE_DIR}/VxMathDefines.h
-        ${VXMATH_INCLUDE_DIR}/VxMath.h
-        ${VXMATH_INCLUDE_DIR}/VxDefines.h
-
-        ${VXMATH_INCLUDE_DIR}/XP.h
-        ${VXMATH_INCLUDE_DIR}/XSmartPtr.h
-        ${VXMATH_INCLUDE_DIR}/XString.h
-        ${VXMATH_INCLUDE_DIR}/XArray.h
-        ${VXMATH_INCLUDE_DIR}/XBitArray.h
-        ${VXMATH_INCLUDE_DIR}/XSArray.h
-        ${VXMATH_INCLUDE_DIR}/XClassArray.h
-        ${VXMATH_INCLUDE_DIR}/XList.h
-        ${VXMATH_INCLUDE_DIR}/XHashTable.h
-        ${VXMATH_INCLUDE_DIR}/XSHashTable.h
-        ${VXMATH_INCLUDE_DIR}/XNHashTable.h
-        ${VXMATH_INCLUDE_DIR}/XMatrix.h
-
-        ${VXMATH_INCLUDE_DIR}/VxSharedLibrary.h
-        ${VXMATH_INCLUDE_DIR}/VxMemoryMappedFile.h
-        ${VXMATH_INCLUDE_DIR}/VxMemoryPool.h
-        ${VXMATH_INCLUDE_DIR}/CKPathSplitter.h
-        ${VXMATH_INCLUDE_DIR}/CKDirectoryParser.h
-        ${VXMATH_INCLUDE_DIR}/VxWindowFunctions.h
-        ${VXMATH_INCLUDE_DIR}/VxVector.h
-        ${VXMATH_INCLUDE_DIR}/Vx2dVector.h
-        ${VXMATH_INCLUDE_DIR}/VxMatrix.h
-        ${VXMATH_INCLUDE_DIR}/VxConfiguration.h
-        ${VXMATH_INCLUDE_DIR}/VxQuaternion.h
-        ${VXMATH_INCLUDE_DIR}/VxRect.h
-        ${VXMATH_INCLUDE_DIR}/VxOBB.h
-        ${VXMATH_INCLUDE_DIR}/VxRay.h
-        ${VXMATH_INCLUDE_DIR}/VxSphere.h
-        ${VXMATH_INCLUDE_DIR}/VxPlane.h
-        ${VXMATH_INCLUDE_DIR}/VxIntersect.h
-        ${VXMATH_INCLUDE_DIR}/VxDistance.h
-        ${VXMATH_INCLUDE_DIR}/VxFrustum.h
-        ${VXMATH_INCLUDE_DIR}/VxColor.h
-        ${VXMATH_INCLUDE_DIR}/VxMemoryPool.h
-        ${VXMATH_INCLUDE_DIR}/VxTimeProfiler.h
-        ${VXMATH_INCLUDE_DIR}/VxImageDescEx.h
-
-        ${VXMATH_INCLUDE_DIR}/VxMutex.h
-        ${VXMATH_INCLUDE_DIR}/VxThread.h
-        )
+        ${VX_INCLUDE_DIR}/VxMathCompiler.h
+        ${VX_INCLUDE_DIR}/VxMathDefines.h
+        ${VX_INCLUDE_DIR}/VxMath.h
+        ${VX_INCLUDE_DIR}/VxDefines.h
+        ${VX_INCLUDE_DIR}/XP.h
+        ${VX_INCLUDE_DIR}/XSmartPtr.h
+        ${VX_INCLUDE_DIR}/XString.h
+        ${VX_INCLUDE_DIR}/XArray.h
+        ${VX_INCLUDE_DIR}/XBitArray.h
+        ${VX_INCLUDE_DIR}/XSArray.h
+        ${VX_INCLUDE_DIR}/XClassArray.h
+        ${VX_INCLUDE_DIR}/XList.h
+        ${VX_INCLUDE_DIR}/XHashTable.h
+        ${VX_INCLUDE_DIR}/XSHashTable.h
+        ${VX_INCLUDE_DIR}/XNHashTable.h
+        ${VX_INCLUDE_DIR}/XMatrix.h
+        ${VX_INCLUDE_DIR}/VxSharedLibrary.h
+        ${VX_INCLUDE_DIR}/VxMemoryMappedFile.h
+        ${VX_INCLUDE_DIR}/VxMemoryPool.h
+        ${VX_INCLUDE_DIR}/CKPathSplitter.h
+        ${VX_INCLUDE_DIR}/CKDirectoryParser.h
+        ${VX_INCLUDE_DIR}/VxWindowFunctions.h
+        ${VX_INCLUDE_DIR}/VxVector.h
+        ${VX_INCLUDE_DIR}/Vx2dVector.h
+        ${VX_INCLUDE_DIR}/VxMatrix.h
+        ${VX_INCLUDE_DIR}/VxConfiguration.h
+        ${VX_INCLUDE_DIR}/VxQuaternion.h
+        ${VX_INCLUDE_DIR}/VxRect.h
+        ${VX_INCLUDE_DIR}/VxOBB.h
+        ${VX_INCLUDE_DIR}/VxRay.h
+        ${VX_INCLUDE_DIR}/VxSphere.h
+        ${VX_INCLUDE_DIR}/VxPlane.h
+        ${VX_INCLUDE_DIR}/VxIntersect.h
+        ${VX_INCLUDE_DIR}/VxDistance.h
+        ${VX_INCLUDE_DIR}/VxFrustum.h
+        ${VX_INCLUDE_DIR}/VxColor.h
+        ${VX_INCLUDE_DIR}/VxTimeProfiler.h
+        ${VX_INCLUDE_DIR}/VxImageDescEx.h
+        ${VX_INCLUDE_DIR}/VxMutex.h
+        ${VX_INCLUDE_DIR}/VxThread.h
+)
 
 set(VXMATH_PRIVATE_HEADERS
-        )
+        VxEigenMatrix.h
+)
 
 set(VXMATH_SOURCES
         VxMath.cpp
@@ -84,26 +79,91 @@ set(VXMATH_SOURCES
         VxMemory.cpp
         XString.cpp
         EscapeURL.cpp
-        )
-
-add_library(VxMath SHARED ${VXMATH_SOURCES} ${VXMATH_PUBLIC_HEADERS} ${VXMATH_PRIVATE_HEADERS})
-set_target_properties(VxMath PROPERTIES
-        DEFINE_SYMBOL VX_API
-        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
-        ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib"
-        LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib"
 )
 
-add_library(VxMathStatic STATIC ${VXMATH_SOURCES} ${VXMATH_PUBLIC_HEADERS} ${VXMATH_PRIVATE_HEADERS})
+function(vx_configure_target TARGET_NAME)
+    target_sources(${TARGET_NAME} PRIVATE
+            ${VXMATH_SOURCES}
+            ${VXMATH_PUBLIC_HEADERS}
+            ${VXMATH_PRIVATE_HEADERS}
+    )
 
-foreach (LIB IN ITEMS VxMath VxMathStatic)
-    target_include_directories(${LIB}
+    target_include_directories(${TARGET_NAME}
             PUBLIC
-            $<BUILD_INTERFACE:${VXMATH_INCLUDE_DIR}>
+            $<BUILD_INTERFACE:${VX_INCLUDE_DIR}>
             $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
             PRIVATE
             ${CMAKE_CURRENT_SOURCE_DIR}
-            )
+    )
 
-    target_link_libraries(${LIB} PRIVATE stb)
-endforeach ()
+    if(DEFINED STB_INCLUDE_DIR AND EXISTS "${STB_INCLUDE_DIR}")
+        target_include_directories(${TARGET_NAME} PRIVATE ${STB_INCLUDE_DIR})
+    endif()
+
+    set_target_properties(${TARGET_NAME} PROPERTIES
+            VERSION ${PROJECT_VERSION}
+            SOVERSION ${PROJECT_VERSION_MAJOR}
+    )
+endfunction()
+
+# Track created targets for export
+set(VX_TARGETS)
+
+if(VX_BUILD_SHARED)
+    add_library(VxMath SHARED)
+    vx_configure_target(VxMath)
+
+    # Shared library specific settings
+    set_target_properties(VxMath PROPERTIES
+            RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
+            ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib"
+            LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib"
+    )
+
+    target_include_directories(VxMath PUBLIC
+            $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}>
+            $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
+    )
+
+    target_compile_definitions(VxMath PRIVATE VX_API)
+
+    # Create alias
+    add_library(VxMath::VxMath ALIAS VxMath)
+    list(APPEND VX_TARGETS VxMath)
+endif()
+
+if(VX_BUILD_STATIC)
+    add_library(VxMathStatic STATIC)
+    vx_configure_target(VxMathStatic)
+
+    # Static library specific settings
+    set_target_properties(VxMathStatic PROPERTIES
+            ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib"
+            POSITION_INDEPENDENT_CODE ON
+    )
+
+    target_compile_definitions(VxMathStatic PUBLIC VX_LIB)
+
+    # Create alias
+    add_library(VxMath::Static ALIAS VxMathStatic)
+    list(APPEND VX_TARGETS VxMathStatic)
+endif()
+
+# Export targets to parent scope
+set(VX_EXPORTED_TARGETS ${VX_TARGETS} PARENT_SCOPE)
+
+if(VX_INSTALL)
+    # Install libraries
+    install(TARGETS ${VX_TARGETS}
+            EXPORT VxMathTargets
+            RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+            LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+            ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+            INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+    )
+
+    # Install headers
+    install(FILES ${VXMATH_PUBLIC_HEADERS}
+            DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+    )
+endif()

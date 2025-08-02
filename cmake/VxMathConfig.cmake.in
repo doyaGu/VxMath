@@ -1,0 +1,54 @@
+@PACKAGE_INIT@
+
+# VxMath Package Configuration File
+
+# Include targets
+if(NOT TARGET VxMath::VxMath AND NOT TARGET VxMath::Static)
+    include("${CMAKE_CURRENT_LIST_DIR}/VxMathTargets.cmake")
+endif()
+
+# Check available components
+set(_VX_SUPPORTED_COMPONENTS Shared Static)
+
+# Determine what's available
+set(VxMath_Shared_FOUND FALSE)
+set(VxMath_Static_FOUND FALSE)
+
+if(TARGET VxMath::VxMath)
+    set(VxMath_Shared_FOUND TRUE)
+endif()
+
+if(TARGET VxMath::Static)
+    set(VxMath_Static_FOUND TRUE)
+endif()
+
+# Check requested components
+foreach(_COMPONENT ${VxMath_FIND_COMPONENTS})
+    if(NOT _COMPONENT IN_LIST _VX_SUPPORTED_COMPONENTS)
+        set(VxMath_FOUND FALSE)
+        set(VxMath_NOT_FOUND_MESSAGE "Unsupported component: ${_COMPONENT}")
+        return()
+    endif()
+
+    if(_COMPONENT STREQUAL "Shared" AND NOT VxMath_Shared_FOUND)
+        set(VxMath_FOUND FALSE)
+        set(VxMath_NOT_FOUND_MESSAGE "Shared library component not available")
+        return()
+    endif()
+
+    if(_COMPONENT STREQUAL "Static" AND NOT VxMath_Static_FOUND)
+        set(VxMath_FOUND FALSE)
+        set(VxMath_NOT_FOUND_MESSAGE "Static library component not available")
+        return()
+    endif()
+endforeach()
+
+# Set legacy variables for compatibility
+if(TARGET VxMath::VxMath)
+    get_target_property(VxMath_INCLUDE_DIRS VxMath::VxMath INTERFACE_INCLUDE_DIRECTORIES)
+elseif(TARGET VxMath::Static)
+    get_target_property(VxMath_INCLUDE_DIRS VxMath::Static INTERFACE_INCLUDE_DIRECTORIES)
+endif()
+
+set(VxMath_FOUND TRUE)
+check_required_components(VxMath)
