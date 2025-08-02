@@ -48,7 +48,6 @@ typedef struct VxImageDescEx {
     XBYTE *ColorMap; ///< Pointer to the colormap data (palette). Can be NULL.
     XBYTE *Image;    ///< Pointer to the raw image pixel data.
 
-public:
     /**
      * @brief Default constructor. Initializes the structure to zero and sets the Size field.
      */

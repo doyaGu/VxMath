@@ -530,7 +530,6 @@ typedef struct VxBbox {
     };
 #endif
 
-public:
     /**
      * @brief Default constructor. Creates an invalid box ready for merging.
      * @remarks The box is initialized with inverted bounds (Min > Max) so that the

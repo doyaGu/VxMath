@@ -22,14 +22,12 @@ public:
     float u; ///< The U-coordinate (horizontal).
     float v; ///< The V-coordinate (vertical).
 
-public:
     /**
      * @brief Default constructor.
      * @param _u Initial U value.
      * @param _v Initial V value.
      */
-    VxUV(float _u = 0, float _v = 0) : u(_u), v(_v) {
-    }
+    VxUV(float _u = 0, float _v = 0) : u(_u), v(_v) {}
 
     /**
      * @brief Addition assignment operator.
@@ -278,9 +276,9 @@ typedef struct VxDisplayMode {
  */
 inline bool operator==(const VxDisplayMode &lhs, const VxDisplayMode &rhs) {
     return lhs.Width == rhs.Width &&
-        lhs.Height == rhs.Height &&
-        lhs.Bpp == rhs.Bpp &&
-        lhs.RefreshRate == rhs.RefreshRate;
+           lhs.Height == rhs.Height &&
+           lhs.Bpp == rhs.Bpp &&
+           lhs.RefreshRate == rhs.RefreshRate;
 }
 
 /**
