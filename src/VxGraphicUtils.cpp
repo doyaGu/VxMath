@@ -5,10 +5,6 @@
 
 #include "VxMath.h"
 
-/**
- * Configure STB library implementations.
- * Only include this defines in one source file.
- */
 #define STB_IMAGE_RESIZE_IMPLEMENTATION
 #include "stb_image_resize2.h"
 #define STB_DXT_IMPLEMENTATION
@@ -623,8 +619,8 @@ void DecompressColor565(unsigned short color, unsigned char *rgb) {
     unsigned int b5 = color & 0x1F;         // 5 bits
 
     // Convert to 8-bit with proper scaling
-    // For 5-bit: multiply by 255/31 ≈ 8.226, so use (val * 255 + 15) / 31
-    // For 6-bit: multiply by 255/63 ≈ 4.048, so use (val * 255 + 31) / 63
+    // For 5-bit: multiply by 255/31 ~ 8.226, so use (val * 255 + 15) / 31
+    // For 6-bit: multiply by 255/63 ~ 4.048, so use (val * 255 + 31) / 63
     rgb[0] = (unsigned char) ((r5 * 255 + 15) / 31); // Red
     rgb[1] = (unsigned char) ((g6 * 255 + 31) / 63); // Green
     rgb[2] = (unsigned char) ((b5 * 255 + 15) / 31); // Blue
