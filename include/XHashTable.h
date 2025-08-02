@@ -10,7 +10,7 @@
 #endif
 
 /// @brief The default load factor that determines when the hash table should be resized.
-const float L = 0.75f;
+#define LOAD_FACTOR 0.75f
 
 template <class T, class K, class H, class Eq>
 class XHashTable;
@@ -441,7 +441,7 @@ public:
 
         m_Table.Resize(initialize);
         m_Table.Fill(0);
-        m_Pool.Reserve((int) (initialize * L));
+        m_Pool.Reserve((int) (initialize * LOAD_FACTOR));
     }
 
     /**
@@ -915,7 +915,7 @@ public:
         // Reserve the elements
         m_Pool.Reserve(iCount);
 
-        int tableSize = Near2Power((int) (iCount / L));
+        int tableSize = Near2Power((int) (iCount / LOAD_FACTOR));
         m_Table.Resize(tableSize);
         m_Table.Fill(0);
     }
@@ -935,7 +935,7 @@ private:
         int oldsize = m_Table.Size();
 
         // we create a new pool
-        XClassArray<Entry> pool((int) (iSize * L));
+        XClassArray<Entry> pool((int) (iSize * LOAD_FACTOR));
         pool = m_Pool;
 
         // Temporary table
