@@ -310,15 +310,14 @@ BITMAP_HANDLE VxCreateBitmap(const VxImageDescEx &desc) {
     bmi.bmiHeader.biWidth = desc.Width;
     bmi.bmiHeader.biHeight = desc.Height;
     bmi.bmiHeader.biPlanes = 1;
-    bmi.bmiHeader.biBitCount = 24; // Always create 24-bit bitmap
+    bmi.bmiHeader.biBitCount = 24;
     bmi.bmiHeader.biCompression = BI_RGB;
 
     // Create a DIB section
-    void *bits = NULL;
-    HBITMAP bitmap = CreateDIBSection(NULL, &bmi, DIB_RGB_COLORS, &bits, NULL, 0);
-    if (!bitmap || !bits) return NULL;
+    HBITMAP bitmap = CreateDIBSection(NULL, &bmi, DIB_RGB_COLORS, NULL, NULL, 0);
+    if (!bitmap) return NULL;
 
-    // Get bitmap information structures
+    // Get bitmap information
     BITMAP bm;
     DIBSECTION dibSection;
     GetObjectA(bitmap, sizeof(BITMAP), &bm);
@@ -326,26 +325,25 @@ BITMAP_HANDLE VxCreateBitmap(const VxImageDescEx &desc) {
 
     // Calculate proper bytes per line
     int bytePerLine = dibSection.dsBm.bmWidthBytes;
-    if ((bytePerLine & 3) != 0 && bytePerLine != dibSection.dsBm.bmWidth * (dibSection.dsBm.bmBitsPixel / 8)) {
-        bytePerLine = dibSection.dsBm.bmWidth * (dibSection.dsBm.bmBitsPixel / 8);
+    if ((bytePerLine & 3) != 0 && bytePerLine != dibSection.dsBmih.biSizeImage / dibSection.dsBm.bmHeight) {
+        bytePerLine = (int) dibSection.dsBmih.biSizeImage / dibSection.dsBm.bmHeight;
     }
 
-    // Create temp desc for the bitmap
-    VxImageDescEx tempDesc;
-    tempDesc.Size = sizeof(VxImageDescEx);
-    tempDesc.Width = desc.Width;
-    tempDesc.Height = desc.Height;
-    tempDesc.BytesPerLine = bytePerLine;
-    tempDesc.BitsPerPixel = bm.bmBitsPixel;
-    tempDesc.RedMask = R_MASK;
-    tempDesc.GreenMask = G_MASK;
-    tempDesc.BlueMask = B_MASK;
-    tempDesc.AlphaMask = 0;
-    tempDesc.Image = static_cast<XBYTE *>(bits);
+    if (!bm.bmBits) return NULL;
 
-    // Copy the source image to the bitmap if it exists
+    VxImageDescEx dstDesc;
+    dstDesc.Width = desc.Width;
+    dstDesc.Height = desc.Height;
+    dstDesc.BytesPerLine = bytePerLine;
+    dstDesc.BitsPerPixel = bm.bmBitsPixel;
+    dstDesc.RedMask = R_MASK;
+    dstDesc.GreenMask = G_MASK;
+    dstDesc.BlueMask = B_MASK;
+    dstDesc.AlphaMask = 0;
+    dstDesc.Image = static_cast<XBYTE *>(bm.bmBits);
+
     if (desc.Image)
-        VxDoBlitUpsideDown(desc, tempDesc);
+        VxDoBlitUpsideDown(desc, dstDesc);
 
     return bitmap;
 }
@@ -358,7 +356,7 @@ XBYTE *VxConvertBitmap(BITMAP_HANDLE Bitmap, VxImageDescEx &desc) {
     BITMAP_HANDLE bitmap24 = VxConvertBitmapTo24(Bitmap);
     if (!bitmap24) return NULL;
 
-    // Get extended bitmap info (DIBSECTION contains bmBits pointer)
+    // Get bitmap info
     DIBSECTION dibSection;
     if (!GetObjectA(bitmap24, sizeof(DIBSECTION), &dibSection)) {
         if (bitmap24 != Bitmap)
@@ -374,7 +372,6 @@ XBYTE *VxConvertBitmap(BITMAP_HANDLE Bitmap, VxImageDescEx &desc) {
 
     // Create source desc
     VxImageDescEx srcDesc;
-    srcDesc.Size = sizeof(VxImageDescEx);
     srcDesc.Width = dibSection.dsBm.bmWidth;
     srcDesc.Height = dibSection.dsBm.bmHeight;
     srcDesc.BytesPerLine = dibSection.dsBm.bmWidthBytes;
@@ -389,7 +386,6 @@ XBYTE *VxConvertBitmap(BITMAP_HANDLE Bitmap, VxImageDescEx &desc) {
     VxImageDescEx dstDesc = srcDesc;
     dstDesc.BytesPerLine = 4 * srcDesc.Width;
     dstDesc.BitsPerPixel = 32;
-    dstDesc.AlphaMask = A_MASK;
 
     XBYTE *newImage = new XBYTE[4 * srcDesc.Width * dstDesc.Height];
     if (!newImage) {
@@ -397,14 +393,13 @@ XBYTE *VxConvertBitmap(BITMAP_HANDLE Bitmap, VxImageDescEx &desc) {
             DeleteObject(bitmap24);
         return NULL;
     }
-
     dstDesc.Image = newImage;
+
     VxDoBlitUpsideDown(srcDesc, dstDesc);
 
     if (bitmap24 != Bitmap)
         DeleteObject(bitmap24);
 
-    // Copy result to output parameter
     desc = dstDesc;
     desc.Image = newImage;
 
@@ -417,12 +412,11 @@ BITMAP_HANDLE VxConvertBitmapTo24(BITMAP_HANDLE Bitmap) {
     BITMAP bm;
     GetObjectA(Bitmap, sizeof(BITMAP), &bm);
 
-    if (bm.bmBitsPixel == 24)
+    if (bm.bmBits && bm.bmBitsPixel == 24)
         return Bitmap;
 
     HDC srcDC = CreateCompatibleDC(NULL);
-    if (!srcDC)
-        return NULL;
+    if (!srcDC) return NULL;
 
     HGDIOBJ oldSrcObj = SelectObject(srcDC, Bitmap);
 
@@ -436,8 +430,7 @@ BITMAP_HANDLE VxConvertBitmapTo24(BITMAP_HANDLE Bitmap) {
     bmi.bmiHeader.biBitCount = 24;
     bmi.bmiHeader.biCompression = BI_RGB;
 
-    void *bits = NULL;
-    HBITMAP bitmap24 = CreateDIBSection(NULL, &bmi, DIB_RGB_COLORS, &bits, NULL, 0);
+    HBITMAP bitmap24 = CreateDIBSection(NULL, &bmi, DIB_RGB_COLORS, NULL, NULL, 0);
     if (!bitmap24) {
         SelectObject(srcDC, oldSrcObj);
         DeleteDC(srcDC);
@@ -484,13 +477,12 @@ XBOOL VxCopyBitmap(BITMAP_HANDLE Bitmap, const VxImageDescEx &desc) {
 
     // Calculate proper bytes per line
     int bytePerLine = dibSection.dsBm.bmWidthBytes;
-    if ((bytePerLine & 3) != 0 && bytePerLine != dibSection.dsBm.bmWidth * (dibSection.dsBm.bmBitsPixel / 8)) {
-        bytePerLine = dibSection.dsBm.bmWidth * (dibSection.dsBm.bmBitsPixel / 8);
+    if ((bytePerLine & 3) != 0 && bytePerLine != dibSection.dsBmih.biSizeImage / dibSection.dsBm.bmHeight) {
+        bytePerLine = (int) dibSection.dsBmih.biSizeImage / dibSection.dsBm.bmHeight;
     }
 
     // Create source desc
     VxImageDescEx srcDesc;
-    srcDesc.Size = sizeof(VxImageDescEx);
     srcDesc.Width = dibSection.dsBm.bmWidth;
     srcDesc.Height = dibSection.dsBm.bmHeight;
     srcDesc.BytesPerLine = bytePerLine;
@@ -534,17 +526,14 @@ VX_OSINFO VxGetOs() {
 }
 
 FONT_HANDLE VxCreateFont(char *FontName, int FontSize, int Weight, XBOOL italic, XBOOL underline) {
-    // Validate parameters
     if (!FontName || FontSize <= 0) return NULL;
 
-    // Create a compatible DC to get device capabilities
     HDC hDC = CreateCompatibleDC(NULL);
     if (!hDC) return NULL;
 
     // Convert point size to logical units
     int logicalHeight = -MulDiv(FontSize, GetDeviceCaps(hDC, LOGPIXELSY), 72);
 
-    // Create the font
     HFONT hFont = CreateFontA(
         logicalHeight,               // Height
         0,                           // Width (0 means "match height")
@@ -575,7 +564,7 @@ XBOOL VxGetFontInfo(FONT_HANDLE Font, VXFONTINFO &desc) {
 
     // Copy data to the VXFONTINFO structure
     desc.FaceName = logFont.lfFaceName;
-    desc.Height = abs(logFont.lfHeight); // Store as positive value
+    desc.Height = logFont.lfHeight;
     desc.Weight = logFont.lfWeight;
     desc.Italic = logFont.lfItalic ? TRUE : FALSE;
     desc.Underline = logFont.lfUnderline ? TRUE : FALSE;
