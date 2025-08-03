@@ -14,16 +14,14 @@
 // Global variables and constants
 //------------------------------------------------------------------------------
 
-/** Global quantization factor for palette generation */
 static int g_QuantizationSamplingFactor = 15;
 
-// DXT texture format block sizes
-#define DXT1_BLOCK_SIZE 8     // 8 bytes per 4x4 pixel block
-#define DXT3_BLOCK_SIZE 16    // 16 bytes per 4x4 pixel block
-#define DXT5_BLOCK_SIZE 16    // 16 bytes per 4x4 pixel block
+#define DXT1_BLOCK_SIZE 8
+#define DXT3_BLOCK_SIZE 16
+#define DXT5_BLOCK_SIZE 16
 
-/** Lookup table for fast bit counting */
-static const unsigned char BIT_COUNT_TABLE[256] = {
+// Bit counting lookup table
+static const XBYTE BIT_COUNT_TABLE[256] = {
     0, 1, 1, 2, 1, 2, 2, 3, 1, 2, 2, 3, 2, 3, 3, 4,
     1, 2, 2, 3, 2, 3, 3, 4, 2, 3, 3, 4, 3, 4, 4, 5,
     1, 2, 2, 3, 2, 3, 3, 4, 2, 3, 3, 4, 3, 4, 4, 5,
@@ -46,30 +44,24 @@ static const unsigned char BIT_COUNT_TABLE[256] = {
 // Bit manipulation functions
 //------------------------------------------------------------------------------
 
-/**
- * @brief Count the number of bits set in a mask
- * @param dwMask The bit mask to analyze
- * @return The number of bits set in the mask
- */
 XULONG GetBitCount(XULONG dwMask) {
     if (dwMask == 0) return 0;
 
-    // Use lookup table for faster bit counting
+#if defined(_MSC_VER) && (defined(_M_IX86) || defined(_M_X64))
+    return __popcnt(dwMask);
+#elif defined(__GNUC__) || defined(__clang__)
+    return __builtin_popcount(dwMask);
+#else
     return BIT_COUNT_TABLE[dwMask & 0xff] +
-        BIT_COUNT_TABLE[(dwMask >> 8) & 0xff] +
-        BIT_COUNT_TABLE[(dwMask >> 16) & 0xff] +
-        BIT_COUNT_TABLE[(dwMask >> 24) & 0xff];
+           BIT_COUNT_TABLE[(dwMask >> 8) & 0xff] +
+           BIT_COUNT_TABLE[(dwMask >> 16) & 0xff] +
+           BIT_COUNT_TABLE[(dwMask >> 24) & 0xff];
+#endif
 }
 
-/**
- * @brief Find the position of the least significant bit in a mask
- * @param dwMask The bit mask to analyze
- * @return The position of the least significant bit, or 0 if mask is 0
- */
 XULONG GetBitShift(XULONG dwMask) {
     if (!dwMask) return 0;
 
-    // Use compiler intrinsics if available for better performance
 #if defined(_MSC_VER) && (defined(_M_IX86) || defined(_M_X64))
     unsigned long index;
     _BitScanForward(&index, dwMask);
@@ -87,14 +79,6 @@ XULONG GetBitShift(XULONG dwMask) {
 #endif
 }
 
-/**
- * @brief Get the number of bits for each color component
- * @param desc The image descriptor
- * @param Rbits [out] Number of bits for red component
- * @param Gbits [out] Number of bits for green component
- * @param Bbits [out] Number of bits for blue component
- * @param Abits [out] Number of bits for alpha component
- */
 void VxGetBitCounts(const VxImageDescEx &desc, XULONG &Rbits, XULONG &Gbits, XULONG &Bbits, XULONG &Abits) {
     Rbits = GetBitCount(desc.RedMask);
     Gbits = GetBitCount(desc.GreenMask);
@@ -102,14 +86,6 @@ void VxGetBitCounts(const VxImageDescEx &desc, XULONG &Rbits, XULONG &Gbits, XUL
     Abits = GetBitCount(desc.AlphaMask);
 }
 
-/**
- * @brief Get the bit shifts for each color component
- * @param desc The image descriptor
- * @param Rshift [out] Bit shift for red component
- * @param Gshift [out] Bit shift for green component
- * @param Bshift [out] Bit shift for blue component
- * @param Ashift [out] Bit shift for alpha component
- */
 void VxGetBitShifts(const VxImageDescEx &desc, XULONG &Rshift, XULONG &Gshift, XULONG &Bshift, XULONG &Ashift) {
     Rshift = GetBitShift(desc.RedMask);
     Gshift = GetBitShift(desc.GreenMask);
@@ -121,23 +97,16 @@ void VxGetBitShifts(const VxImageDescEx &desc, XULONG &Rshift, XULONG &Gshift, X
 // Pixel format utilities
 //------------------------------------------------------------------------------
 
-/**
- * @brief Information about a pixel format
- */
 struct PixelFormatInfo {
-    XWORD BitsPerPixel;           ///< Bits per pixel
-    XULONG RedMask;               ///< Bit mask for red component
-    XULONG GreenMask;             ///< Bit mask for green component
-    XULONG BlueMask;              ///< Bit mask for blue component
-    XULONG AlphaMask;             ///< Bit mask for alpha component
-    const char *Description;      ///< Human-readable description
-    stbir_pixel_layout StbLayout; ///< Corresponding STB layout
+    XWORD BitsPerPixel;
+    XULONG RedMask;
+    XULONG GreenMask;
+    XULONG BlueMask;
+    XULONG AlphaMask;
+    const char *Description;
+    stbir_pixel_layout StbLayout;
 };
 
-/**
- * @brief Table of standard pixel formats
- * Maps from VX_PIXELFORMAT enum to actual format specifications
- */
 static const PixelFormatInfo PixelFormatTable[] = {
     {0, 0, 0, 0, 0, "Unknown", STBIR_1CHANNEL},                                               // UNKNOWN_PF
     {32, 0x00FF0000, 0x0000FF00, 0x000000FF, 0xFF000000, "32 bits ARGB 8888", STBIR_RGBA},    // _32_ARGB8888
@@ -171,118 +140,72 @@ static const PixelFormatInfo PixelFormatTable[] = {
     {32, 0x000000FF, 0x0000FF00, 0x00FF0000, 0x00000000, "L8V8U8 BumpMap", STBIR_4CHANNEL} // _32_X8L8V8U8
 };
 
-/**
- * @brief Determine the pixel format from an image descriptor
- * @param desc The image descriptor to analyze
- * @return The corresponding pixel format, or UNKNOWN_PF if not recognized
- */
 VX_PIXELFORMAT VxImageDesc2PixelFormat(const VxImageDescEx &desc) {
-    // Check for compressed formats first (fast path)
-    if (desc.Flags >= _DXT1 && desc.Flags <= _DXT5) {
-        return static_cast<VX_PIXELFORMAT>(desc.Flags);
-    }
+    // Fast path for compressed/bump formats
+    if (desc.Flags >= _DXT1 && desc.Flags <= _DXT5) return static_cast<VX_PIXELFORMAT>(desc.Flags);
+    if (desc.Flags >= _16_V8U8 && desc.Flags <= _32_X8L8V8U8) return static_cast<VX_PIXELFORMAT>(desc.Flags);
 
-    // Check for bump map formats (they use Flags field too)
-    // Bump map formats: _16_V8U8=24, _32_V16U16=25, _16_L6V5U5=26, _32_X8L8V8U8=27
-    if (desc.Flags >= 24 && desc.Flags <= 27) {
-        return static_cast<VX_PIXELFORMAT>(desc.Flags);
-    }
+    // Cache values for better performance
+    const XULONG bpp = desc.BitsPerPixel;
+    const XULONG rmask = desc.RedMask;
+    const XULONG gmask = desc.GreenMask;
+    const XULONG bmask = desc.BlueMask;
+    const XULONG amask = desc.AlphaMask;
 
-    // Linear search for standard formats (exclude compressed and bump map formats)
-    for (int i = 1; i < 24; ++i) {
-        // Only check formats 1-23 (standard color formats)
+    // Linear search with early termination
+    for (int i = 1; i < _16_V8U8; ++i) {
         const PixelFormatInfo &info = PixelFormatTable[i];
-
-        if (desc.BitsPerPixel == info.BitsPerPixel &&
-            desc.RedMask == info.RedMask &&
-            desc.GreenMask == info.GreenMask &&
-            desc.BlueMask == info.BlueMask &&
-            desc.AlphaMask == info.AlphaMask) {
+        if (info.BitsPerPixel == bpp &&
+            info.RedMask == rmask &&
+            info.GreenMask == gmask &&
+            info.BlueMask == bmask &&
+            info.AlphaMask == amask) {
             return static_cast<VX_PIXELFORMAT>(i);
         }
     }
-
     return UNKNOWN_PF;
 }
 
-/**
- * @brief Initialize an image descriptor from a pixel format
- * @param Pf The pixel format to convert
- * @param desc [out] The image descriptor to initialize
- */
 void VxPixelFormat2ImageDesc(VX_PIXELFORMAT Pf, VxImageDescEx &desc) {
-    if (Pf >= 0 && Pf < MAX_PIXEL_FORMATS) {
-        if (Pf >= _DXT1 && Pf <= _DXT5) {
-            // Handle compressed formats - these are special cases
-            desc.Flags = Pf;
+    if (Pf < 0 || Pf >= MAX_PIXEL_FORMATS) return;
 
-            // Calculate bits per pixel based on format
-            // DXT1 = 4 bits per pixel (RGB or RGBA with 1-bit alpha)
-            // DXT2-5 = 8 bits per pixel (RGBA with variable alpha)
-            desc.BitsPerPixel = (Pf == _DXT1) ? 4 : 8;
+    if (Pf >= _DXT1 && Pf <= _DXT5) {
+        // Compressed formats
+        desc.Flags = Pf;
+        desc.BitsPerPixel = (Pf == _DXT1) ? 4 : 8;
 
-            // For compressed textures, BytesPerLine is actually the size of one row of blocks
-            // A block is 4x4 pixels, so width/4 blocks per row (rounded up)
-            int blocksPerRow = (desc.Width + 3) / 4;
-            int bytesPerBlock = (Pf == _DXT1) ? DXT1_BLOCK_SIZE : DXT5_BLOCK_SIZE;
-            desc.BytesPerLine = blocksPerRow * bytesPerBlock;
-
-            // For compressed textures, TotalImageSize is used instead of BytesPerLine*Height
-            int blocksPerColumn = (desc.Height + 3) / 4;
-            desc.TotalImageSize = blocksPerRow * blocksPerColumn * bytesPerBlock;
-
-            // Color masks are not used for compressed formats
-            desc.RedMask = 0;
-            desc.GreenMask = 0;
-            desc.BlueMask = 0;
-            desc.AlphaMask = 0;
-        } else if (Pf >= 24 && Pf <= 27) {
-            // Bump map formats: _16_V8U8, _32_V16U16, _16_L6V5U5, _32_X8L8V8U8
-            // Handle bump map formats - these need special flags to distinguish from regular formats
-            desc.Flags = Pf;
-
-            // Set up the format properties
-            desc.BitsPerPixel = PixelFormatTable[Pf].BitsPerPixel;
-            desc.RedMask = PixelFormatTable[Pf].RedMask;     // Also sets BumpDuMask via union
-            desc.GreenMask = PixelFormatTable[Pf].GreenMask; // Also sets BumpDvMask via union
-            desc.BlueMask = PixelFormatTable[Pf].BlueMask;   // Also sets BumpLumMask via union
-            desc.AlphaMask = PixelFormatTable[Pf].AlphaMask;
-
-            // Calculate bytes per line (with proper padding to 4-byte alignment)
-            int bytesPerPixel = (desc.BitsPerPixel + 7) / 8;
-            desc.BytesPerLine = ((desc.Width * bytesPerPixel) + 3) & ~3;
-        } else {
-            // Standard formats
-            desc.BitsPerPixel = PixelFormatTable[Pf].BitsPerPixel;
-            desc.RedMask = PixelFormatTable[Pf].RedMask;
-            desc.GreenMask = PixelFormatTable[Pf].GreenMask;
-            desc.BlueMask = PixelFormatTable[Pf].BlueMask;
-            desc.AlphaMask = PixelFormatTable[Pf].AlphaMask;
-            desc.Flags = 0; // Standard formats don't use flags
-
-            // Calculate bytes per line (with proper padding to 4-byte alignment)
-            int bytesPerPixel = (desc.BitsPerPixel + 7) / 8;
-            desc.BytesPerLine = ((desc.Width * bytesPerPixel) + 3) & ~3;
-        }
+        const int blocksPerRow = (desc.Width + 3) / 4;
+        const int bytesPerBlock = (Pf == _DXT1) ? DXT1_BLOCK_SIZE : DXT5_BLOCK_SIZE;
+        desc.BytesPerLine = blocksPerRow * bytesPerBlock;
+        desc.TotalImageSize = blocksPerRow * ((desc.Height + 3) / 4) * bytesPerBlock;
+        desc.RedMask = desc.GreenMask = desc.BlueMask = desc.AlphaMask = 0;
+    } else if (Pf >= _16_V8U8 && Pf <= _32_X8L8V8U8) {
+        // Bump map formats
+        desc.Flags = Pf;
+        const PixelFormatInfo &info = PixelFormatTable[Pf];
+        desc.BitsPerPixel = info.BitsPerPixel;
+        desc.RedMask = info.RedMask;
+        desc.GreenMask = info.GreenMask;
+        desc.BlueMask = info.BlueMask;
+        desc.AlphaMask = info.AlphaMask;
+        desc.BytesPerLine = ((desc.Width * ((desc.BitsPerPixel + 7) / 8)) + 3) & ~3;
+    } else {
+        // Standard formats
+        const PixelFormatInfo &info = PixelFormatTable[Pf];
+        desc.BitsPerPixel = info.BitsPerPixel;
+        desc.RedMask = info.RedMask;
+        desc.GreenMask = info.GreenMask;
+        desc.BlueMask = info.BlueMask;
+        desc.AlphaMask = info.AlphaMask;
+        desc.Flags = 0;
+        desc.BytesPerLine = ((desc.Width * ((desc.BitsPerPixel + 7) / 8)) + 3) & ~3;
     }
 }
 
-/**
- * @brief Get a human-readable string describing a pixel format
- * @param Pf The pixel format
- * @return A string describing the format
- */
 const char *VxPixelFormat2String(VX_PIXELFORMAT Pf) {
-    if (Pf >= 0 && Pf < MAX_PIXEL_FORMATS) {
-        return PixelFormatTable[Pf].Description;
-    }
-    return "";
+    return (Pf >= 0 && Pf < MAX_PIXEL_FORMATS) ? PixelFormatTable[Pf].Description : "";
 }
 
-/**
- * @brief Set standard masks for a given bit depth
- * @param desc [in,out] The image descriptor to update
- */
 void VxBppToMask(VxImageDescEx &desc) {
     switch (desc.BitsPerPixel) {
     case 8:
@@ -291,7 +214,6 @@ void VxBppToMask(VxImageDescEx &desc) {
         desc.BlueMask = 0x03;  // 000 00011
         desc.AlphaMask = 0x00;
         break;
-
     case 15:
     case 16:
         desc.RedMask = 0x7C00;   // 0111 1100 0000 0000
@@ -299,7 +221,6 @@ void VxBppToMask(VxImageDescEx &desc) {
         desc.BlueMask = 0x001F;  // 0000 0000 0001 1111
         desc.AlphaMask = 0x0000;
         break;
-
     case 24:
     case 32:
         desc.RedMask = 0x00FF0000;
@@ -307,27 +228,17 @@ void VxBppToMask(VxImageDescEx &desc) {
         desc.BlueMask = 0x000000FF;
         desc.AlphaMask = (desc.BitsPerPixel == 32) ? 0xFF000000 : 0x00000000;
         break;
-
     default:
         // Unsupported bit depth, don't change anything
         break;
     }
 }
 
-/**
- * @brief Get appropriate STB pixel layout from a VxImageDescEx
- * @param desc The image descriptor
- * @return The corresponding STB pixel layout
- */
 stbir_pixel_layout GetStbPixelLayout(const VxImageDescEx &desc) {
     VX_PIXELFORMAT format = VxImageDesc2PixelFormat(desc);
-    if (format != UNKNOWN_PF) {
-        return PixelFormatTable[format].StbLayout;
-    }
+    if (format != UNKNOWN_PF) return PixelFormatTable[format].StbLayout;
 
-    // Figure out appropriate layout based on channels and masks
-    int channelCount = desc.BitsPerPixel / 8;
-
+    const int channelCount = desc.BitsPerPixel / 8;
     switch (channelCount) {
     case 1:
         return STBIR_1CHANNEL;
@@ -368,146 +279,53 @@ stbir_pixel_layout GetStbPixelLayout(const VxImageDescEx &desc) {
 // Pixel conversion utilities
 //------------------------------------------------------------------------------
 
-/**
- * @brief Read a pixel value from an image buffer
- * @param ptr Pointer to the pixel data
- * @param bpp Bytes per pixel
- * @return The pixel value
- */
 inline XULONG ReadPixel(const XBYTE *ptr, int bpp) {
     switch (bpp) {
-    case 1:
-        return *ptr;
-    case 2:
-        return *(const unsigned short *) ptr;
-    case 3:
-        return ptr[0] | (ptr[1] << 8) | (ptr[2] << 16);
-    case 4:
-        return *(const XULONG *) ptr;
-    default:
-        return 0;
+    case 1: return *ptr;
+    case 2: return *(const XWORD *) ptr;
+    case 3: return ptr[0] | (ptr[1] << 8) | (ptr[2] << 16);
+    case 4: return *(const XULONG *) ptr;
+    default: return 0;
     }
 }
 
-/**
- * @brief Write a pixel value to an image buffer
- * @param ptr Pointer to the pixel data
- * @param bpp Bytes per pixel
- * @param pixel The pixel value to write
- */
 inline void WritePixel(XBYTE *ptr, int bpp, XULONG pixel) {
     switch (bpp) {
-    case 1:
-        *ptr = (XBYTE) pixel;
+    case 1: *ptr = (XBYTE) pixel;
         break;
-    case 2:
-        *(unsigned short *) ptr = (unsigned short) pixel;
+    case 2: *(XWORD *) ptr = (XWORD) pixel;
         break;
     case 3:
-        ptr[0] = (XBYTE) (pixel);
+        ptr[0] = (XBYTE) pixel;
         ptr[1] = (XBYTE) (pixel >> 8);
         ptr[2] = (XBYTE) (pixel >> 16);
         break;
-    case 4:
-        *(XULONG *) ptr = pixel;
+    case 4: *(XULONG *) ptr = pixel;
         break;
     }
 }
 
-/**
- * @brief Safely calculate pixel offset with bounds checking
- * @param desc Image descriptor
- * @param x X coordinate
- * @param y Y coordinate
- * @param bytesPerPixel Bytes per pixel
- * @return Pixel offset or -1 if out of bounds
- */
-static int SafePixelOffset(const VxImageDescEx &desc, int x, int y, int bytesPerPixel) {
-    if (x < 0 || x >= desc.Width || y < 0 || y >= desc.Height) return -1;
-    if (bytesPerPixel <= 0 || bytesPerPixel > 4) return -1;
-    if (!desc.Image) return -1; // Critical: Check Image pointer
+inline int SafePixelOffset(const VxImageDescEx &desc, int x, int y, int bytesPerPixel) {
+    if (x >= desc.Width || y >= desc.Height || bytesPerPixel <= 0 || bytesPerPixel > 4 || !desc.Image)
+        return -1;
 
-    if (y > 0 && desc.BytesPerLine > 0) {
-        if (y > INT_MAX / desc.BytesPerLine) return -1;
-    }
-    if (x > 0 && bytesPerPixel > 0) {
-        if (x > INT_MAX / bytesPerPixel) return -1;
-    }
-
-    long long lineOffset = (long long) y * desc.BytesPerLine;
-    long long pixelOffset = (long long) x * bytesPerPixel;
-
-    long long totalOffset = lineOffset + pixelOffset;
-    if (totalOffset > INT_MAX || totalOffset < 0) return -1;
-
-    return (int) totalOffset;
+    const XULONG totalOffset = (XULONG) y * desc.BytesPerLine + (XULONG) x * bytesPerPixel;
+    return (totalOffset <= INT_MAX) ? (int) totalOffset : -1;
 }
 
-/**
- * @brief Read a pixel value from an image buffer with bounds checking
- */
 inline XULONG ReadPixelSafe(const VxImageDescEx &desc, int x, int y, int bpp) {
-    int offset = SafePixelOffset(desc, x, y, bpp);
-    if (offset < 0) return 0;
-
-    const XBYTE *ptr = desc.Image + offset;
-
-    switch (bpp) {
-    case 1:
-        return *ptr;
-    case 2:
-        return *(const unsigned short *) ptr;
-    case 3:
-        return ptr[0] | (ptr[1] << 8) | (ptr[2] << 16);
-    case 4:
-        return *(const XULONG *) ptr;
-    default:
-        return 0;
-    }
+    const int offset = SafePixelOffset(desc, x, y, bpp);
+    return (offset >= 0) ? ReadPixel(desc.Image + offset, bpp) : 0;
 }
 
-/**
- * @brief Write a pixel value to an image buffer with bounds checking
- */
 inline XBOOL WritePixelSafe(const VxImageDescEx &desc, int x, int y, int bpp, XULONG pixel) {
-    int offset = SafePixelOffset(desc, x, y, bpp);
+    const int offset = SafePixelOffset(desc, x, y, bpp);
     if (offset < 0) return FALSE;
-
-    XBYTE *ptr = desc.Image + offset;
-
-    switch (bpp) {
-    case 1:
-        *ptr = (XBYTE) pixel;
-        break;
-    case 2:
-        *(unsigned short *) ptr = (unsigned short) pixel;
-        break;
-    case 3:
-        ptr[0] = (XBYTE) (pixel);
-        ptr[1] = (XBYTE) (pixel >> 8);
-        ptr[2] = (XBYTE) (pixel >> 16);
-        break;
-    case 4:
-        *(XULONG *) ptr = pixel;
-        break;
-    default:
-        return FALSE;
-    }
+    WritePixel(desc.Image + offset, bpp, pixel);
     return TRUE;
 }
 
-/**
- * @brief Extract RGBA components from a pixel in any format
- *
- * @param pixel The source pixel
- * @param desc The source image descriptor
- * @param r [out] The extracted red component (0-255)
- * @param g [out] The extracted green component (0-255)
- * @param b [out] The extracted blue component (0-255)
- * @param a [out] The extracted alpha component (0-255)
- */
-inline void ExtractRGBA(XULONG pixel, const VxImageDescEx &desc,
-                        unsigned char &r, unsigned char &g, unsigned char &b, unsigned char &a) {
+inline void ExtractRGBA(XULONG pixel, const VxImageDescEx &desc, XBYTE &r, XBYTE &g, XBYTE &b, XBYTE &a) {
     XULONG rShift = GetBitShift(desc.RedMask);
     XULONG gShift = GetBitShift(desc.GreenMask);
     XULONG bShift = GetBitShift(desc.BlueMask);
@@ -538,134 +356,7 @@ inline void ExtractRGBA(XULONG pixel, const VxImageDescEx &desc,
         a = (a * 255) / ((1 << aBits) - 1);
 }
 
-/**
- * @brief Create a pixel value from RGBA components
- *
- * @param r Red component (0-255)
- * @param g Green component (0-255)
- * @param b Blue component (0-255)
- * @param a Alpha component (0-255)
- * @param desc The destination image descriptor
- * @return The created pixel value
- */
-inline XULONG CreatePixel(unsigned char r, unsigned char g, unsigned char b, unsigned char a,
-                          const VxImageDescEx &desc) {
-    XULONG rShift = GetBitShift(desc.RedMask);
-    XULONG gShift = GetBitShift(desc.GreenMask);
-    XULONG bShift = GetBitShift(desc.BlueMask);
-    XULONG aShift = GetBitShift(desc.AlphaMask);
-
-    XULONG rBits = GetBitCount(desc.RedMask);
-    XULONG gBits = GetBitCount(desc.GreenMask);
-    XULONG bBits = GetBitCount(desc.BlueMask);
-    XULONG aBits = GetBitCount(desc.AlphaMask);
-
-    // Scale components to destination bit depth
-    if (rBits < 8)
-        r = (r * ((1 << rBits) - 1)) / 255;
-
-    if (gBits < 8)
-        g = (g * ((1 << gBits) - 1)) / 255;
-
-    if (bBits < 8)
-        b = (b * ((1 << bBits) - 1)) / 255;
-
-    if (aBits < 8)
-        a = (a * ((1 << aBits) - 1)) / 255;
-
-    // Assemble pixel
-    XULONG pixel = 0;
-    if (desc.RedMask) pixel |= (r << rShift) & desc.RedMask;
-    if (desc.GreenMask) pixel |= (g << gShift) & desc.GreenMask;
-    if (desc.BlueMask) pixel |= (b << bShift) & desc.BlueMask;
-    if (desc.AlphaMask) pixel |= (a << aShift) & desc.AlphaMask;
-
-    return pixel;
-}
-
-/**
- * @brief Convert a pixel from one format to another
- *
- * @param srcPixel Source pixel value
- * @param srcDesc Source image descriptor
- * @param dstDesc Destination image descriptor
- * @return Converted pixel value
- */
-inline XULONG ConvertPixel(XULONG srcPixel, const VxImageDescEx &srcDesc, const VxImageDescEx &dstDesc) {
-    // Special case for identical formats
-    if (srcDesc.RedMask == dstDesc.RedMask &&
-        srcDesc.GreenMask == dstDesc.GreenMask &&
-        srcDesc.BlueMask == dstDesc.BlueMask &&
-        srcDesc.AlphaMask == dstDesc.AlphaMask) {
-        return srcPixel;
-    }
-
-    unsigned char r, g, b, a;
-    ExtractRGBA(srcPixel, srcDesc, r, g, b, a);
-    return CreatePixel(r, g, b, a, dstDesc);
-}
-
-//------------------------------------------------------------------------------
-// DXT Compression Utilities
-//------------------------------------------------------------------------------
-
-/**
- * @brief 565 color decompression
- */
-void DecompressColor565(unsigned short color, unsigned char *rgb) {
-    // Extract 5-6-5 components
-    unsigned int r5 = (color >> 11) & 0x1F; // 5 bits
-    unsigned int g6 = (color >> 5) & 0x3F;  // 6 bits
-    unsigned int b5 = color & 0x1F;         // 5 bits
-
-    // Convert to 8-bit with proper scaling
-    // For 5-bit: multiply by 255/31 ~ 8.226, so use (val * 255 + 15) / 31
-    // For 6-bit: multiply by 255/63 ~ 4.048, so use (val * 255 + 31) / 63
-    rgb[0] = (unsigned char) ((r5 * 255 + 15) / 31); // Red
-    rgb[1] = (unsigned char) ((g6 * 255 + 31) / 63); // Green
-    rgb[2] = (unsigned char) ((b5 * 255 + 15) / 31); // Blue
-}
-
-int CalculateDXTSize(int width, int height, VX_PIXELFORMAT format) {
-    // Validate input parameters
-    if (width <= 0 || height <= 0) return 0;
-    if (format < _DXT1 || format > _DXT5) return 0;
-
-    // Compute number of 4x4 blocks (rounding up)
-    int blocksWide = (width + 3) / 4;
-    int blocksHigh = (height + 3) / 4;
-
-    // Check for overflow
-    if (blocksWide > INT_MAX / blocksHigh) return 0;
-    int numBlocks = blocksWide * blocksHigh;
-
-    // Determine bytes per block based on format
-    int bytesPerBlock;
-    switch (format) {
-    case _DXT1:
-        bytesPerBlock = DXT1_BLOCK_SIZE; // 8 bytes
-        break;
-    case _DXT2:
-    case _DXT3:
-    case _DXT4:
-    case _DXT5:
-        bytesPerBlock = DXT5_BLOCK_SIZE; // 16 bytes
-        break;
-    default:
-        return 0; // Unsupported format
-    }
-
-    // Check for overflow in final calculation
-    if (numBlocks > INT_MAX / bytesPerBlock) return 0;
-
-    return numBlocks * bytesPerBlock;
-}
-
-/**
- * @brief Safely extract RGBA from source pixel using masks
- */
-static void ExtractRGBAFromPixel(XULONG pixel, const VxImageDescEx &desc,
-                                 unsigned char &r, unsigned char &g, unsigned char &b, unsigned char &a) {
+static void ExtractRGBAFromPixel(XULONG pixel, const VxImageDescEx &desc, XBYTE &r, XBYTE &g, XBYTE &b, XBYTE &a) {
     // Extract using masks and shifts
     XULONG rShift = GetBitShift(desc.RedMask);
     XULONG gShift = GetBitShift(desc.GreenMask);
@@ -684,399 +375,275 @@ static void ExtractRGBAFromPixel(XULONG pixel, const VxImageDescEx &desc,
     XULONG aVal = desc.AlphaMask ? ((pixel & desc.AlphaMask) >> aShift) : ((1 << 8) - 1);
 
     // Scale to 8-bit range
-    r = (rBits > 0 && rBits < 8) ? (unsigned char) ((rVal * 255) / ((1 << rBits) - 1)) : (unsigned char) rVal;
-    g = (gBits > 0 && gBits < 8) ? (unsigned char) ((gVal * 255) / ((1 << gBits) - 1)) : (unsigned char) gVal;
-    b = (bBits > 0 && bBits < 8) ? (unsigned char) ((bVal * 255) / ((1 << bBits) - 1)) : (unsigned char) bVal;
-    a = (aBits > 0 && aBits < 8) ? (unsigned char) ((aVal * 255) / ((1 << aBits) - 1)) : (unsigned char) aVal;
+    r = (rBits > 0 && rBits < 8) ? (XBYTE) ((rVal * 255) / ((1 << rBits) - 1)) : (XBYTE) rVal;
+    g = (gBits > 0 && gBits < 8) ? (XBYTE) ((gVal * 255) / ((1 << gBits) - 1)) : (XBYTE) gVal;
+    b = (bBits > 0 && bBits < 8) ? (XBYTE) ((bVal * 255) / ((1 << bBits) - 1)) : (XBYTE) bVal;
+    a = (aBits > 0 && aBits < 8) ? (XBYTE) ((aVal * 255) / ((1 << aBits) - 1)) : (XBYTE) aVal;
 }
 
-/**
- * @brief Validate image descriptor and dimensions
- * @param desc Image descriptor to validate
- * @return TRUE if valid, FALSE otherwise
- */
-static XBOOL ValidateImageDesc(const VxImageDescEx &desc) {
-    if (!desc.Image) return FALSE;
-    if (desc.Width <= 0 || desc.Height <= 0) return FALSE;
-    if (desc.BitsPerPixel <= 0 || desc.BitsPerPixel > 32) return FALSE;
-    if (desc.BytesPerLine <= 0) return FALSE;
+inline XULONG CreatePixel(XBYTE r, XBYTE g, XBYTE b, XBYTE a, const VxImageDescEx &desc) {
+    const XULONG rShift = GetBitShift(desc.RedMask);
+    const XULONG gShift = GetBitShift(desc.GreenMask);
+    const XULONG bShift = GetBitShift(desc.BlueMask);
+    const XULONG aShift = GetBitShift(desc.AlphaMask);
 
-    if (desc.Height > 0 && desc.BytesPerLine > 0) {
-        if (desc.Height > INT_MAX / desc.BytesPerLine) return FALSE;
+    const XULONG rBits = GetBitCount(desc.RedMask);
+    const XULONG gBits = GetBitCount(desc.GreenMask);
+    const XULONG bBits = GetBitCount(desc.BlueMask);
+    const XULONG aBits = GetBitCount(desc.AlphaMask);
 
-        // For compressed formats, check TotalImageSize instead
-        VX_PIXELFORMAT format = VxImageDesc2PixelFormat(desc);
-        if (format >= _DXT1 && format <= _DXT5) {
-            if (desc.TotalImageSize <= 0) return FALSE;
-        }
-    }
+    const XULONG rVal = (rBits < 8) ? (r * ((1 << rBits) - 1)) / 255 : r;
+    const XULONG gVal = (gBits < 8) ? (g * ((1 << gBits) - 1)) / 255 : g;
+    const XULONG bVal = (bBits < 8) ? (b * ((1 << bBits) - 1)) / 255 : b;
+    const XULONG aVal = (aBits < 8) ? (a * ((1 << aBits) - 1)) / 255 : a;
 
-    return TRUE;
-}
-
-/**
- * @brief Convert an RGBA image to DXT format
- * @param src_desc Source image descriptor (must be 32-bit RGBA)
- * @param dst_desc Destination image descriptor (must be DXT format)
- * @param highQuality Use high quality compression (slower)
- * @return TRUE if successful, FALSE otherwise
- */
-XBOOL VxConvertToDXT(const VxImageDescEx &src_desc, const VxImageDescEx &dst_desc, XBOOL highQuality) {
-    if (!ValidateImageDesc(src_desc) || !ValidateImageDesc(dst_desc)) {
-        return FALSE;
-    }
-    if (!src_desc.Image || !dst_desc.Image) return FALSE;
-
-    // Check source format - must be uncompressed
-    VX_PIXELFORMAT srcFormat = VxImageDesc2PixelFormat(src_desc);
-    if (srcFormat >= _DXT1 && srcFormat <= _DXT5) {
-        return FALSE; // Cannot compress already compressed format
-    }
-
-    // Check destination is a DXT format
-    VX_PIXELFORMAT dstFormat = VxImageDesc2PixelFormat(dst_desc);
-    if (dstFormat < _DXT1 || dstFormat > _DXT5) {
-        return FALSE;
-    }
-
-    // Validate that source has color channels
-    if (src_desc.BitsPerPixel < 8 || (!src_desc.RedMask && !src_desc.GreenMask && !src_desc.BlueMask)) {
-        return FALSE;
-    }
-
-    // Calculate expected destination size
-    int expectedSize = CalculateDXTSize(src_desc.Width, src_desc.Height, dstFormat);
-    if (expectedSize <= 0 || dst_desc.TotalImageSize < expectedSize) {
-        return FALSE;
-    }
-
-    // Set up compression parameters
-    int blockSize = (dstFormat == _DXT1) ? DXT1_BLOCK_SIZE : DXT5_BLOCK_SIZE;
-
-    // Overflow protection for block calculations
-    if (src_desc.Width < 0 || src_desc.Height < 0) return FALSE;
-    if (src_desc.Width > INT_MAX / 4 || src_desc.Height > INT_MAX / 4) return FALSE;
-
-    int blocksWide = (src_desc.Width + 3) / 4;
-    int blocksHigh = (src_desc.Height + 3) / 4;
-
-    // Validate block counts
-    if (blocksWide <= 0 || blocksHigh <= 0) return FALSE;
-    if (blocksWide > INT_MAX / blocksHigh) return FALSE;
-
-    bool hasAlpha = (dstFormat != _DXT1) || (src_desc.AlphaMask != 0);
-    int mode = highQuality ? STB_DXT_HIGHQUAL : STB_DXT_NORMAL;
-
-    // Source pixel info
-    int srcBpp = src_desc.BitsPerPixel / 8;
-    if (srcBpp <= 0 || srcBpp > 4) return FALSE;
-
-    // Allocate block buffer for conversion (4x4 pixels, 4 bytes per pixel RGBA)
-    unsigned char block[64]; // 16 pixels * 4 bytes = 64 bytes
-
-    // Process each 4x4 block
-    for (int by = 0; by < blocksHigh; by++) {
-        for (int bx = 0; bx < blocksWide; bx++) {
-            if (bx < 0 || by < 0) continue;
-
-            // Extract 4x4 block of source pixels
-            for (int y = 0; y < 4; y++) {
-                for (int x = 0; x < 4; x++) {
-                    int srcX = bx * 4 + x;
-                    int srcY = by * 4 + y;
-
-                    // Handle edge cases (pixels outside image bounds)
-                    if (srcX >= src_desc.Width) srcX = src_desc.Width - 1;
-                    if (srcY >= src_desc.Height) srcY = src_desc.Height - 1;
-
-                    if (srcX < 0) srcX = 0;
-                    if (srcY < 0) srcY = 0;
-
-                    // Bounds check
-                    int srcOffset = SafePixelOffset(src_desc, srcX, srcY, srcBpp);
-                    if (srcOffset < 0) {
-                        // Fill with black if out of bounds
-                        unsigned char *blockPixel = &block[(y * 4 + x) * 4];
-                        blockPixel[0] = 0; // R
-                        blockPixel[1] = 0; // G
-                        blockPixel[2] = 0; // B
-                        blockPixel[3] = 0; // A
-                        continue;
-                    }
-
-                    int maxSrcOffset = src_desc.Height * src_desc.BytesPerLine;
-                    if (srcOffset + srcBpp > maxSrcOffset) {
-                        unsigned char *blockPixel = &block[(y * 4 + x) * 4];
-                        blockPixel[0] = 0;
-                        blockPixel[1] = 0;
-                        blockPixel[2] = 0;
-                        blockPixel[3] = 0;
-                        continue;
-                    }
-
-                    // Read source pixel
-                    XULONG pixel = ReadPixel(src_desc.Image + srcOffset, srcBpp);
-
-                    // Extract RGBA components using masks
-                    unsigned char r, g, b, a;
-                    ExtractRGBAFromPixel(pixel, src_desc, r, g, b, a);
-
-                    // Store in block buffer (RGBA format expected by STB)
-                    int blockIdx = (y * 4 + x) * 4;
-                    if (blockIdx >= 0 && blockIdx + 3 < 64) {
-                        unsigned char *blockPixel = &block[blockIdx];
-                        blockPixel[0] = r;
-                        blockPixel[1] = g;
-                        blockPixel[2] = b;
-                        blockPixel[3] = a;
-                    }
-                }
-            }
-
-            // Calculate destination block offset
-            int blockIndex = by * blocksWide + bx;
-
-            if (blockIndex < 0 || blockIndex >= blocksWide * blocksHigh) {
-                continue;
-            }
-
-            long long dstOffset = (long long) blockIndex * blockSize;
-            if (dstOffset < 0 || dstOffset + blockSize > dst_desc.TotalImageSize) {
-                return FALSE; // Prevent buffer overflow
-            }
-
-            unsigned char *dstBlock = dst_desc.Image + dstOffset;
-
-            // Compress the block using STB
-            stb_compress_dxt_block(dstBlock, block, hasAlpha ? 1 : 0, mode);
-        }
-    }
-
-    return TRUE;
-}
-
-/**
- * @brief DXT3 alpha decompression
- */
-static void DecompressDXT3Alpha(const unsigned char *blockPtr, unsigned char *alphaValues) {
-    if (!blockPtr || !alphaValues) {
-        if (alphaValues) {
-            for (int i = 0; i < 16; i++) {
-                alphaValues[i] = 255;
-            }
-        }
-        return;
-    }
-
-    // DXT3 alpha data starts at offset 0, color data at offset 8
-    for (int i = 0; i < 8; i++) {
-        unsigned char alphaByte = blockPtr[i];
-        int idx1 = i * 2;
-        int idx2 = i * 2 + 1;
-        if (idx1 < 16) {
-            alphaValues[idx1] = ((alphaByte & 0x0F) * 255) / 15; // Lower 4 bits
-        }
-        if (idx2 < 16) {
-            alphaValues[idx2] = ((alphaByte >> 4) * 255) / 15; // Upper 4 bits
-        }
-    }
-}
-
-/**
- * @brief DXT5 alpha decompression
- */
-static void DecompressDXT5Alpha(const unsigned char *blockPtr, unsigned char *alphaValues) {
-    if (!blockPtr || !alphaValues) {
-        if (alphaValues) {
-            for (int i = 0; i < 16; i++) {
-                alphaValues[i] = 255;
-            }
-        }
-        return;
-    }
-
-    unsigned char alpha0 = blockPtr[0];
-    unsigned char alpha1 = blockPtr[1];
-
-    // Build the alpha lookup table
-    unsigned char alphaLUT[8];
-    alphaLUT[0] = alpha0;
-    alphaLUT[1] = alpha1;
-
-    if (alpha0 > alpha1) {
-        // 8-alpha mode (6 interpolated values)
-        for (int i = 2; i < 8; i++) {
-            alphaLUT[i] = (unsigned char) (((8 - i) * alpha0 + (i - 1) * alpha1) / 7);
-        }
-    } else {
-        // 6-alpha mode (4 interpolated + transparent + opaque)
-        for (int i = 2; i < 6; i++) {
-            alphaLUT[i] = (unsigned char) (((6 - i) * alpha0 + (i - 1) * alpha1) / 5);
-        }
-        alphaLUT[6] = 0;   // Transparent
-        alphaLUT[7] = 255; // Fully opaque
-    }
-
-    // Extract 3-bit alpha indices from 6 bytes starting at offset 2
-    unsigned long long alphaIndices = 0;
-    for (int i = 0; i < 6; i++) {
-        alphaIndices |= ((unsigned long long) blockPtr[i + 2] << (8 * i));
-    }
-
-    // Critical: Bounds-checked alpha value assignment
-    for (int i = 0; i < 16; i++) {
-        unsigned int alphaIndex = (unsigned int) ((alphaIndices >> (3 * i)) & 0x07);
-        // Critical: Ensure index is within bounds
-        if (alphaIndex < 8) {
-            alphaValues[i] = alphaLUT[alphaIndex];
-        } else {
-            alphaValues[i] = 255; // Safe fallback for invalid indices
-        }
-    }
-}
-
-/**
- * @brief Create destination pixel from RGBA components using masks
- */
-static XULONG CreateDestPixel(unsigned char r, unsigned char g, unsigned char b, unsigned char a, const VxImageDescEx &desc) {
-    XULONG rShift = GetBitShift(desc.RedMask);
-    XULONG gShift = GetBitShift(desc.GreenMask);
-    XULONG bShift = GetBitShift(desc.BlueMask);
-    XULONG aShift = GetBitShift(desc.AlphaMask);
-
-    XULONG rBits = GetBitCount(desc.RedMask);
-    XULONG gBits = GetBitCount(desc.GreenMask);
-    XULONG bBits = GetBitCount(desc.BlueMask);
-    XULONG aBits = GetBitCount(desc.AlphaMask);
-
-    // Scale components to destination bit depth
-    XULONG rVal = r;
-    XULONG gVal = g;
-    XULONG bVal = b;
-    XULONG aVal = a;
-
-    if (rBits > 0 && rBits < 8) rVal = (r * ((1 << rBits) - 1)) / 255;
-    if (gBits > 0 && gBits < 8) gVal = (g * ((1 << gBits) - 1)) / 255;
-    if (bBits > 0 && bBits < 8) bVal = (b * ((1 << bBits) - 1)) / 255;
-    if (aBits > 0 && aBits < 8) aVal = (a * ((1 << aBits) - 1)) / 255;
-
-    // Assemble pixel
     XULONG pixel = 0;
-    if (desc.RedMask) pixel |= (rVal << rShift) & desc.RedMask;
-    if (desc.GreenMask) pixel |= (gVal << gShift) & desc.GreenMask;
-    if (desc.BlueMask) pixel |= (bVal << bShift) & desc.BlueMask;
-    if (desc.AlphaMask) pixel |= (aVal << aShift) & desc.AlphaMask;
+    pixel |= desc.RedMask ? ((rVal << rShift) & desc.RedMask) : 0;
+    pixel |= desc.GreenMask ? ((gVal << gShift) & desc.GreenMask) : 0;
+    pixel |= desc.BlueMask ? ((bVal << bShift) & desc.BlueMask) : 0;
+    pixel |= desc.AlphaMask ? ((aVal << aShift) & desc.AlphaMask) : 0;
 
     return pixel;
 }
 
-/**
- * @brief DXT decompression with proper format handling
- */
-XBOOL VxDecompressDXT(const VxImageDescEx &src_desc, const VxImageDescEx &dst_desc) {
-    if (!ValidateImageDesc(src_desc) || !ValidateImageDesc(dst_desc)) {
-        return FALSE;
+inline XULONG ConvertPixel(XULONG srcPixel, const VxImageDescEx &srcDesc, const VxImageDescEx &dstDesc) {
+    // Fast path for identical formats
+    if (srcDesc.RedMask == dstDesc.RedMask && srcDesc.GreenMask == dstDesc.GreenMask &&
+        srcDesc.BlueMask == dstDesc.BlueMask && srcDesc.AlphaMask == dstDesc.AlphaMask) {
+        return srcPixel;
     }
 
-    // Check source format
-    VX_PIXELFORMAT srcFormat = VxImageDesc2PixelFormat(src_desc);
-    if (srcFormat < _DXT1 || srcFormat > _DXT5) {
-        return FALSE;
-    }
+    XBYTE r, g, b, a;
+    ExtractRGBA(srcPixel, srcDesc, r, g, b, a);
+    return CreatePixel(r, g, b, a, dstDesc);
+}
 
-    // Check destination format - must be uncompressed
-    VX_PIXELFORMAT dstFormat = VxImageDesc2PixelFormat(dst_desc);
-    if (dstFormat >= _DXT1 && dstFormat <= _DXT5) {
-        return FALSE; // Cannot decompress to compressed format
-    }
+//------------------------------------------------------------------------------
+// DXT Compression Utilities
+//------------------------------------------------------------------------------
 
-    // Validate destination has sufficient bit depth
-    if (dst_desc.BitsPerPixel < 8) {
-        return FALSE;
-    }
+// 565 conversion lookup tables
+static const XBYTE R5_TO_R8[32] = {
+    0, 8, 16, 25, 33, 41, 49, 58, 66, 74, 82, 90, 99, 107, 115, 123,
+    132, 140, 148, 156, 165, 173, 181, 189, 197, 206, 214, 222, 230, 239, 247, 255
+};
+static const XBYTE G6_TO_G8[64] = {
+    0, 4, 8, 12, 16, 20, 24, 28, 32, 36, 40, 45, 49, 53, 57, 61,
+    65, 69, 73, 77, 81, 85, 89, 93, 97, 101, 105, 109, 113, 117, 121, 125,
+    130, 134, 138, 142, 146, 150, 154, 158, 162, 166, 170, 174, 178, 182, 186, 190,
+    194, 198, 202, 206, 210, 215, 219, 223, 227, 231, 235, 239, 243, 247, 251, 255
+};
+static const XBYTE B5_TO_B8[32] = {
+    0, 8, 16, 25, 33, 41, 49, 58, 66, 74, 82, 90, 99, 107, 115, 123,
+    132, 140, 148, 156, 165, 173, 181, 189, 197, 206, 214, 222, 230, 239, 247, 255
+};
 
-    // Check dimensions match
-    if (src_desc.Width != dst_desc.Width || src_desc.Height != dst_desc.Height) {
-        return FALSE;
-    }
+inline void DecompressColor565(XWORD color, XBYTE *rgb) {
+    rgb[0] = R5_TO_R8[(color >> 11) & 0x1F];
+    rgb[1] = G6_TO_G8[(color >> 5) & 0x3F];
+    rgb[2] = B5_TO_B8[color & 0x1F];
+}
 
-    // Setup parameters based on format
-    int blockSize = (srcFormat == _DXT1) ? DXT1_BLOCK_SIZE : DXT5_BLOCK_SIZE;
-    int blocksWide = (src_desc.Width + 3) / 4;
-    int blocksHigh = (src_desc.Height + 3) / 4;
+inline int CalculateDXTSize(int width, int height, VX_PIXELFORMAT format) {
+    if (width <= 0 || height <= 0 || format < _DXT1 || format > _DXT5) return 0;
 
-    // Validate source data size
-    int expectedSize = blocksWide * blocksHigh * blockSize;
-    if (src_desc.TotalImageSize < expectedSize) {
-        return FALSE;
-    }
+    const int blocksWide = (width + 3) / 4;
+    const int blocksHigh = (height + 3) / 4;
 
-    int dstBpp = dst_desc.BitsPerPixel / 8;
-    if (dstBpp <= 0 || dstBpp > 4) return FALSE;
+    if (blocksWide > INT_MAX / blocksHigh) return 0;
+    const int numBlocks = blocksWide * blocksHigh;
+    const int bytesPerBlock = (format == _DXT1) ? DXT1_BLOCK_SIZE : DXT5_BLOCK_SIZE;
 
-    // Process each 4x4 block
+    return (numBlocks > INT_MAX / bytesPerBlock) ? 0 : numBlocks * bytesPerBlock;
+}
+
+inline XBOOL ValidateImageDesc(const VxImageDescEx &desc) {
+    return desc.Image && desc.Width > 0 && desc.Height > 0 &&
+        desc.BitsPerPixel > 0 && desc.BitsPerPixel <= 32 &&
+        desc.BytesPerLine > 0 && (desc.Height <= INT_MAX / desc.BytesPerLine);
+}
+
+XBOOL VxConvertToDXT(const VxImageDescEx &src_desc, const VxImageDescEx &dst_desc, XBOOL highQuality) {
+    if (!ValidateImageDesc(src_desc) || !ValidateImageDesc(dst_desc)) return FALSE;
+
+    const VX_PIXELFORMAT srcFormat = VxImageDesc2PixelFormat(src_desc);
+    const VX_PIXELFORMAT dstFormat = VxImageDesc2PixelFormat(dst_desc);
+
+    if (srcFormat >= _DXT1 && srcFormat <= _DXT5) return FALSE;
+    if (dstFormat < _DXT1 || dstFormat > _DXT5) return FALSE;
+    if (src_desc.BitsPerPixel < 8 || (!src_desc.RedMask && !src_desc.GreenMask && !src_desc.BlueMask)) return FALSE;
+
+    const int expectedSize = CalculateDXTSize(src_desc.Width, src_desc.Height, dstFormat);
+    if (expectedSize <= 0 || dst_desc.TotalImageSize < expectedSize) return FALSE;
+
+    const int blockSize = (dstFormat == _DXT1) ? DXT1_BLOCK_SIZE : DXT5_BLOCK_SIZE;
+    const int blocksWide = (src_desc.Width + 3) / 4;
+    const int blocksHigh = (src_desc.Height + 3) / 4;
+
+    if (blocksWide <= 0 || blocksHigh <= 0 || blocksWide > INT_MAX / blocksHigh) return FALSE;
+
+    const bool hasAlpha = (dstFormat != _DXT1) || (src_desc.AlphaMask != 0);
+    const int mode = highQuality ? STB_DXT_HIGHQUAL : STB_DXT_NORMAL;
+    const int srcBpp = src_desc.BitsPerPixel / 8;
+
+    if (srcBpp <= 0 || srcBpp > 4) return FALSE;
+
+    unsigned char block[64]; // 16 pixels * 4 bytes = 64 bytes
+
     for (int by = 0; by < blocksHigh; by++) {
         for (int bx = 0; bx < blocksWide; bx++) {
-            // Calculate block offset with bounds checking
-            int blockIndex = by * blocksWide + bx;
-            if (blockIndex * blockSize + blockSize > src_desc.TotalImageSize) {
-                return FALSE;
+            // Extract 4x4 block
+            for (int y = 0; y < 4; y++) {
+                for (int x = 0; x < 4; x++) {
+                    const int srcX = (bx * 4 + x < src_desc.Width) ? bx * 4 + x : src_desc.Width - 1;
+                    const int srcY = (by * 4 + y < src_desc.Height) ? by * 4 + y : src_desc.Height - 1;
+
+                    const int srcOffset = SafePixelOffset(src_desc, srcX, srcY, srcBpp);
+                    const int blockIdx = (y * 4 + x) * 4;
+
+                    if (srcOffset < 0) {
+                        block[blockIdx] = block[blockIdx + 1] = block[blockIdx + 2] = block[blockIdx + 3] = 0;
+                        continue;
+                    }
+
+                    XULONG pixel = ReadPixel(src_desc.Image + srcOffset, srcBpp);
+
+                    unsigned char r, g, b, a;
+                    ExtractRGBAFromPixel(pixel, src_desc, r, g, b, a);
+
+                    block[blockIdx] = r;
+                    block[blockIdx + 1] = g;
+                    block[blockIdx + 2] = b;
+                    block[blockIdx + 3] = a;
+                }
             }
 
-            const unsigned char *blockPtr = src_desc.Image + blockIndex * blockSize;
+            const int blockIndex = by * blocksWide + bx;
+            const XULONG dstOffset = (XULONG) blockIndex * blockSize;
 
-            // Extract color data (same for all DXT formats)
-            // Color data is always at the end of the block
-            const unsigned char *colorPtr = (srcFormat == _DXT1) ? blockPtr : (blockPtr + 8);
+            if (dstOffset < 0 || dstOffset + blockSize > dst_desc.TotalImageSize) return FALSE;
 
-            unsigned short color0 = colorPtr[0] | (colorPtr[1] << 8);
-            unsigned short color1 = colorPtr[2] | (colorPtr[3] << 8);
-            unsigned int colorIndices = colorPtr[4] | (colorPtr[5] << 8) | (colorPtr[6] << 16) | (colorPtr[7] << 24);
+            stb_compress_dxt_block(dst_desc.Image + dstOffset, block, hasAlpha ? 1 : 0, mode);
+        }
+    }
 
-            // Decompress the two reference colors from 565 format
-            unsigned char refColors[4][4]; // [color_index][rgba]
+    return TRUE;
+}
 
-            // Reference color 0
+// DXT decompression alpha functions
+static void DecompressDXT3Alpha(const XBYTE *blockPtr, XBYTE *alphaValues) {
+    if (!blockPtr || !alphaValues) {
+        if (alphaValues) {
+            for (int i = 0; i < 16; i++) alphaValues[i] = 255;
+        }
+        return;
+    }
+
+    for (int i = 0; i < 8; i++) {
+        const XBYTE alphaByte = blockPtr[i];
+        const int idx1 = i * 2;
+        const int idx2 = i * 2 + 1;
+        if (idx1 < 16) alphaValues[idx1] = ((alphaByte & 0x0F) * 255) / 15; // Lower 4 bits
+        if (idx2 < 16) alphaValues[idx2] = ((alphaByte >> 4) * 255) / 15; // Upper 4 bits
+    }
+}
+
+static void DecompressDXT5Alpha(const XBYTE *blockPtr, XBYTE *alphaValues) {
+    if (!blockPtr || !alphaValues) {
+        if (alphaValues) {
+            for (int i = 0; i < 16; i++) alphaValues[i] = 255;
+        }
+        return;
+    }
+
+    const XBYTE alpha0 = blockPtr[0];
+    const XBYTE alpha1 = blockPtr[1];
+
+    XBYTE alphaLUT[8];
+    alphaLUT[0] = alpha0;
+    alphaLUT[1] = alpha1;
+
+    if (alpha0 > alpha1) {
+        for (int i = 2; i < 8; i++) {
+            alphaLUT[i] = (XBYTE) (((8 - i) * alpha0 + (i - 1) * alpha1) / 7);
+        }
+    } else {
+        for (int i = 2; i < 6; i++) {
+            alphaLUT[i] = (XBYTE) (((6 - i) * alpha0 + (i - 1) * alpha1) / 5);
+        }
+        alphaLUT[6] = 0;
+        alphaLUT[7] = 255;
+    }
+
+    XULONG alphaIndices = 0;
+    for (int i = 0; i < 6; i++) {
+        alphaIndices |= ((XULONG) blockPtr[i + 2] << (8 * i));
+    }
+
+    for (int i = 0; i < 16; i++) {
+        const XDWORD alphaIndex = (XDWORD) ((alphaIndices >> (3 * i)) & 0x07);
+        alphaValues[i] = (alphaIndex < 8) ? alphaLUT[alphaIndex] : 255;
+    }
+}
+
+XBOOL VxDecompressDXT(const VxImageDescEx &src_desc, const VxImageDescEx &dst_desc) {
+    if (!ValidateImageDesc(src_desc) || !ValidateImageDesc(dst_desc)) return FALSE;
+
+    const VX_PIXELFORMAT srcFormat = VxImageDesc2PixelFormat(src_desc);
+    const VX_PIXELFORMAT dstFormat = VxImageDesc2PixelFormat(dst_desc);
+
+    if (srcFormat < _DXT1 || srcFormat > _DXT5) return FALSE;
+    if (dstFormat >= _DXT1 && dstFormat <= _DXT5) return FALSE;
+    if (dst_desc.BitsPerPixel < 8) return FALSE;
+    if (src_desc.Width != dst_desc.Width || src_desc.Height != dst_desc.Height) return FALSE;
+
+    const int blockSize = (srcFormat == _DXT1) ? DXT1_BLOCK_SIZE : DXT5_BLOCK_SIZE;
+    const int blocksWide = (src_desc.Width + 3) / 4;
+    const int blocksHigh = (src_desc.Height + 3) / 4;
+    const int expectedSize = blocksWide * blocksHigh * blockSize;
+
+    if (src_desc.TotalImageSize < expectedSize) return FALSE;
+
+    const int dstBpp = dst_desc.BitsPerPixel / 8;
+    if (dstBpp <= 0 || dstBpp > 4) return FALSE;
+
+    for (int by = 0; by < blocksHigh; by++) {
+        for (int bx = 0; bx < blocksWide; bx++) {
+            const int blockIndex = by * blocksWide + bx;
+            if (blockIndex * blockSize + blockSize > src_desc.TotalImageSize) return FALSE;
+
+            const XBYTE *blockPtr = src_desc.Image + blockIndex * blockSize;
+            const XBYTE *colorPtr = (srcFormat == _DXT1) ? blockPtr : (blockPtr + 8);
+
+            const XWORD color0 = colorPtr[0] | (colorPtr[1] << 8);
+            const XWORD color1 = colorPtr[2] | (colorPtr[3] << 8);
+            const XDWORD colorIndices = colorPtr[4] | (colorPtr[5] << 8) | (colorPtr[6] << 16) | (colorPtr[7] << 24);
+
+            XBYTE refColors[4][4];
+
             DecompressColor565(color0, refColors[0]);
-            refColors[0][3] = 255; // Fully opaque
-
-            // Reference color 1
+            refColors[0][3] = 255;
             DecompressColor565(color1, refColors[1]);
-            refColors[1][3] = 255; // Fully opaque
+            refColors[1][3] = 255;
 
-            // Calculate interpolated colors
             if (srcFormat == _DXT1 && color0 <= color1) {
-                // DXT1 with 1-bit alpha (3-color mode)
+                // 3-color mode
                 for (int i = 0; i < 3; i++) {
-                    refColors[2][i] = (unsigned char) ((refColors[0][i] + refColors[1][i]) / 2);
-                }
-                refColors[2][3] = 255; // Still opaque
-
-                // Color 3: Transparent black
-                refColors[3][0] = 0;
-                refColors[3][1] = 0;
-                refColors[3][2] = 0;
-                refColors[3][3] = 0; // Transparent
-            } else {
-                // DXT1 without alpha, or DXT3/DXT5 (4-color mode)
-                for (int i = 0; i < 3; i++) {
-                    refColors[2][i] = (unsigned char) ((2 * refColors[0][i] + refColors[1][i]) / 3);
+                    refColors[2][i] = (XBYTE) ((refColors[0][i] + refColors[1][i]) / 2);
                 }
                 refColors[2][3] = 255;
-
+                refColors[3][0] = refColors[3][1] = refColors[3][2] = refColors[3][3] = 0;
+            } else {
+                // 4-color mode
                 for (int i = 0; i < 3; i++) {
-                    refColors[3][i] = (unsigned char) ((refColors[0][i] + 2 * refColors[1][i]) / 3);
+                    refColors[2][i] = (XBYTE) ((2 * refColors[0][i] + refColors[1][i]) / 3);
+                    refColors[3][i] = (XBYTE) ((refColors[0][i] + 2 * refColors[1][i]) / 3);
                 }
-                refColors[3][3] = 255;
+                refColors[2][3] = refColors[3][3] = 255;
             }
 
-            // Handle alpha channel for DXT3 and DXT5
-            unsigned char alphaValues[16];
-
-            // Initialize to fully opaque
-            for (int i = 0; i < 16; i++) {
-                alphaValues[i] = 255;
-            }
+            XBYTE alphaValues[16];
+            for (int i = 0; i < 16; i++) alphaValues[i] = 255;
 
             if (srcFormat == _DXT3) {
                 DecompressDXT3Alpha(blockPtr, alphaValues);
@@ -1084,47 +651,33 @@ XBOOL VxDecompressDXT(const VxImageDescEx &src_desc, const VxImageDescEx &dst_de
                 DecompressDXT5Alpha(blockPtr, alphaValues);
             }
 
-            // Write pixels to output
+            // Write pixels
             for (int y = 0; y < 4; y++) {
                 for (int x = 0; x < 4; x++) {
-                    // Calculate pixel position in destination
-                    int pixelX = bx * 4 + x;
-                    int pixelY = by * 4 + y;
+                    const int pixelX = bx * 4 + x;
+                    const int pixelY = by * 4 + y;
 
-                    // Skip pixels outside image bounds
-                    if (pixelX >= dst_desc.Width || pixelY >= dst_desc.Height) {
-                        continue;
-                    }
+                    if (pixelX >= dst_desc.Width || pixelY >= dst_desc.Height) continue;
 
-                    // Get color index for this pixel (2 bits per pixel)
-                    int pixelIdx = y * 4 + x;
+                    const int pixelIdx = y * 4 + x;
                     int colorIdx = (colorIndices >> (2 * pixelIdx)) & 0x3;
-
-                    // Bounds check for color index
                     if (colorIdx > 3) colorIdx = 0;
 
-                    // Get color from reference colors
-                    unsigned char r = refColors[colorIdx][0];
-                    unsigned char g = refColors[colorIdx][1];
-                    unsigned char b = refColors[colorIdx][2];
-                    unsigned char a = refColors[colorIdx][3];
+                    XBYTE r = refColors[colorIdx][0];
+                    XBYTE g = refColors[colorIdx][1];
+                    XBYTE b = refColors[colorIdx][2];
+                    XBYTE a = refColors[colorIdx][3];
 
-                    // Apply alpha from alpha channel for DXT3/DXT5
                     if (srcFormat == _DXT3 || srcFormat == _DXT5) {
                         a = alphaValues[pixelIdx];
                     } else if (srcFormat == _DXT1 && colorIdx == 3 && color0 <= color1) {
-                        // DXT1 1-bit alpha mode
-                        a = 0; // Transparent
+                        a = 0;
                     }
 
-                    // Calculate destination pixel offset with bounds checking
-                    int dstOffset = SafePixelOffset(dst_desc, pixelX, pixelY, dstBpp);
+                    const int dstOffset = SafePixelOffset(dst_desc, pixelX, pixelY, dstBpp);
                     if (dstOffset < 0) continue;
 
-                    // Create the output pixel based on destination format
-                    XULONG destPixel = CreateDestPixel(r, g, b, a, dst_desc);
-
-                    // Write destination pixel
+                    const XULONG destPixel = CreatePixel(r, g, b, a, dst_desc);
                     WritePixel(dst_desc.Image + dstOffset, dstBpp, destPixel);
                 }
             }
@@ -1134,93 +687,64 @@ XBOOL VxDecompressDXT(const VxImageDescEx &src_desc, const VxImageDescEx &dst_de
     return TRUE;
 }
 
-
 //------------------------------------------------------------------------------
 // Image blitting and conversion functions
 //------------------------------------------------------------------------------
 
-/**
- * @brief Copy image data with identical formats
- *
- * @param src_desc Source image descriptor
- * @param dst_desc Destination image descriptor
- */
 static void DirectMemoryBlit(const VxImageDescEx &src_desc, const VxImageDescEx &dst_desc) {
-    // Check if this is a compressed format
     VX_PIXELFORMAT format = VxImageDesc2PixelFormat(src_desc);
+
     if (format >= _DXT1 && format <= _DXT5) {
-        // For compressed formats, we copy the entire compressed data
         memcpy(dst_desc.Image, src_desc.Image, src_desc.TotalImageSize);
         return;
     }
 
-    // If source and destination have same dimensions and format, use direct memcpy
-    if (src_desc.Width == dst_desc.Width &&
-        src_desc.BytesPerLine == dst_desc.BytesPerLine) {
+    if (src_desc.Width == dst_desc.Width && src_desc.BytesPerLine == dst_desc.BytesPerLine) {
         memcpy(dst_desc.Image, src_desc.Image, src_desc.BytesPerLine * src_desc.Height);
         return;
     }
 
-    // Otherwise, copy line by line
     const int bytesPerRow = src_desc.Width * (src_desc.BitsPerPixel / 8);
+    const XBYTE *srcPtr = src_desc.Image;
+    XBYTE *dstPtr = dst_desc.Image;
+
     for (int y = 0; y < src_desc.Height; y++) {
-        XBYTE *srcLine = src_desc.Image + y * src_desc.BytesPerLine;
-        XBYTE *dstLine = dst_desc.Image + y * dst_desc.BytesPerLine;
-        memcpy(dstLine, srcLine, bytesPerRow);
+        memcpy(dstPtr, srcPtr, bytesPerRow);
+        srcPtr += src_desc.BytesPerLine;
+        dstPtr += dst_desc.BytesPerLine;
     }
 }
 
-/**
- * @brief Copy and convert image data between different formats (no resizing)
- *
- * @param src_desc Source image descriptor
- * @param dst_desc Destination image descriptor
- */
 static void ConvertFormats(const VxImageDescEx &src_desc, const VxImageDescEx &dst_desc) {
-    if (!ValidateImageDesc(src_desc) || !ValidateImageDesc(dst_desc)) {
-        return;
-    }
+    if (!ValidateImageDesc(src_desc) || !ValidateImageDesc(dst_desc)) return;
+    if (src_desc.Width != dst_desc.Width || src_desc.Height != dst_desc.Height) return;
 
-    // Check dimensions match
-    if (src_desc.Width != dst_desc.Width || src_desc.Height != dst_desc.Height) {
-        return;
-    }
+    const VX_PIXELFORMAT srcFormat = VxImageDesc2PixelFormat(src_desc);
+    const VX_PIXELFORMAT dstFormat = VxImageDesc2PixelFormat(dst_desc);
 
-    // Check for compressed formats
-    VX_PIXELFORMAT srcFormat = VxImageDesc2PixelFormat(src_desc);
-    VX_PIXELFORMAT dstFormat = VxImageDesc2PixelFormat(dst_desc);
-
-    // Handle compression/decompression cases
+    // Handle DXT cases
     if (srcFormat >= _DXT1 && srcFormat <= _DXT5) {
-        if (dstFormat >= _DXT1 && dstFormat <= _DXT5) {
-            return; // Cannot convert between different DXT formats directly
-        } else {
-            VxDecompressDXT(src_desc, dst_desc);
-            return;
-        }
+        if (dstFormat >= _DXT1 && dstFormat <= _DXT5) return;
+        VxDecompressDXT(src_desc, dst_desc);
+        return;
     } else if (dstFormat >= _DXT1 && dstFormat <= _DXT5) {
         VxConvertToDXT(src_desc, dst_desc, TRUE);
         return;
     }
 
-    // Standard format conversion
-    int srcBpp = src_desc.BitsPerPixel / 8;
-    int dstBpp = dst_desc.BitsPerPixel / 8;
+    const int srcBpp = src_desc.BitsPerPixel / 8;
+    const int dstBpp = dst_desc.BitsPerPixel / 8;
+    if (srcBpp <= 0 || srcBpp > 4 || dstBpp <= 0 || dstBpp > 4) return;
 
-    if (srcBpp <= 0 || srcBpp > 4 || dstBpp <= 0 || dstBpp > 4) {
-        return;
-    }
-
-    // Special case for 32-bit to 32-bit (optimized)
+    // 32-bit to 32-bit conversion
     if (srcBpp == 4 && dstBpp == 4) {
         for (int y = 0; y < src_desc.Height; y++) {
-            // Check bounds before accessing
             if (y * src_desc.BytesPerLine + src_desc.Width * 4 > src_desc.BytesPerLine * src_desc.Height ||
                 y * dst_desc.BytesPerLine + dst_desc.Width * 4 > dst_desc.BytesPerLine * dst_desc.Height) {
                 continue;
             }
 
-            XULONG *srcLine = (XULONG *) (src_desc.Image + y * src_desc.BytesPerLine);
+            const XULONG *srcLine = (const XULONG *) (src_desc.Image + y * src_desc.BytesPerLine);
             XULONG *dstLine = (XULONG *) (dst_desc.Image + y * dst_desc.BytesPerLine);
 
             for (int x = 0; x < src_desc.Width; x++) {
@@ -1230,128 +754,87 @@ static void ConvertFormats(const VxImageDescEx &src_desc, const VxImageDescEx &d
         return;
     }
 
-    // General case - convert each pixel with bounds checking
+    // General case
     for (int y = 0; y < src_desc.Height; y++) {
         for (int x = 0; x < src_desc.Width; x++) {
-            XULONG pixel = ReadPixelSafe(src_desc, x, y, srcBpp);
-            XULONG dstPixel = ConvertPixel(pixel, src_desc, dst_desc);
+            const XULONG pixel = ReadPixelSafe(src_desc, x, y, srcBpp);
+            const XULONG dstPixel = ConvertPixel(pixel, src_desc, dst_desc);
             WritePixelSafe(dst_desc, x, y, dstBpp, dstPixel);
         }
     }
 }
 
-/**
- * @brief Copy, convert, and resize an image
- *
- * Main image blitting function for general-purpose image processing.
- *
- * @param src_desc Source image descriptor
- * @param dst_desc Destination image descriptor
- */
 void VxDoBlit(const VxImageDescEx &src_desc, const VxImageDescEx &dst_desc) {
-    if (!ValidateImageDesc(src_desc) || !ValidateImageDesc(dst_desc)) {
+    if (!ValidateImageDesc(src_desc) || !ValidateImageDesc(dst_desc)) return;
+
+    const VX_PIXELFORMAT srcFormat = VxImageDesc2PixelFormat(src_desc);
+    const VX_PIXELFORMAT dstFormat = VxImageDesc2PixelFormat(dst_desc);
+
+    // Fast path for identical format and dimensions
+    if (srcFormat == dstFormat && srcFormat != UNKNOWN_PF &&
+        src_desc.Width == dst_desc.Width && src_desc.Height == dst_desc.Height) {
+        DirectMemoryBlit(src_desc, dst_desc);
         return;
     }
 
-    // Determine pixel formats
-    VX_PIXELFORMAT srcFormat = VxImageDesc2PixelFormat(src_desc);
-    VX_PIXELFORMAT dstFormat = VxImageDesc2PixelFormat(dst_desc);
-
-    // Fast path for identical format and dimensions
-    if (srcFormat == dstFormat && srcFormat != UNKNOWN_PF) {
-        if (src_desc.Width == dst_desc.Width && src_desc.Height == dst_desc.Height) {
-            DirectMemoryBlit(src_desc, dst_desc);
-            return;
-        }
-    }
-
     // Handle DXT format cases
-    if (srcFormat >= _DXT1 && srcFormat <= _DXT5 ||
-        dstFormat >= _DXT1 && dstFormat <= _DXT5) {
-        // Case 1: Convert from standard to DXT
+    if (srcFormat >= _DXT1 && srcFormat <= _DXT5 || dstFormat >= _DXT1 && dstFormat <= _DXT5) {
         if (srcFormat < _DXT1 && dstFormat >= _DXT1 && dstFormat <= _DXT5) {
+            // Convert to DXT
             if (src_desc.Width == dst_desc.Width && src_desc.Height == dst_desc.Height) {
                 VxConvertToDXT(src_desc, dst_desc, TRUE);
             } else {
-                // Need to resize first, then compress
+                // Resize then compress
                 VxImageDescEx tempDesc;
                 tempDesc.Width = dst_desc.Width;
                 tempDesc.Height = dst_desc.Height;
                 tempDesc.BitsPerPixel = 32;
                 tempDesc.BytesPerLine = dst_desc.Width * 4;
-                tempDesc.RedMask = 0x00FF0000;
-                tempDesc.GreenMask = 0x0000FF00;
-                tempDesc.BlueMask = 0x000000FF;
-                tempDesc.AlphaMask = 0xFF000000;
+                tempDesc.RedMask = R_MASK;
+                tempDesc.GreenMask = G_MASK;
+                tempDesc.BlueMask = B_MASK;
+                tempDesc.AlphaMask = A_MASK;
 
-                // Check for overflow in buffer size calculation
-                if (tempDesc.Height > 0 && tempDesc.BytesPerLine > INT_MAX / tempDesc.Height) {
-                    return;
-                }
+                if (tempDesc.Height > 0 && tempDesc.BytesPerLine > INT_MAX / tempDesc.Height) return;
 
                 XBYTE *tempBuffer = new XBYTE[tempDesc.BytesPerLine * tempDesc.Height];
                 if (!tempBuffer) return;
 
                 tempDesc.Image = tempBuffer;
 
-                // Use try-catch equivalent error handling pattern
-                bool success = true;
+                stbir_resize_uint8_linear(
+                    src_desc.Image, src_desc.Width, src_desc.Height, src_desc.BytesPerLine,
+                    tempDesc.Image, tempDesc.Width, tempDesc.Height, tempDesc.BytesPerLine,
+                    GetStbPixelLayout(src_desc)
+                );
 
-                // Resize to the temporary buffer
-                if (success) {
-                    stbir_resize_uint8_linear(
-                        src_desc.Image, src_desc.Width, src_desc.Height, src_desc.BytesPerLine,
-                        tempDesc.Image, tempDesc.Width, tempDesc.Height, tempDesc.BytesPerLine,
-                        GetStbPixelLayout(src_desc)
-                    );
-                }
-
-                // Compress from temp buffer to destination
-                if (success) {
-                    success = VxConvertToDXT(tempDesc, dst_desc, TRUE);
-                }
-
-                // Always clean up
+                VxConvertToDXT(tempDesc, dst_desc, TRUE);
                 delete[] tempBuffer;
             }
             return;
-        }
-
-        // Case 2: Convert from DXT to standard
-        if (srcFormat >= _DXT1 && srcFormat <= _DXT5 && dstFormat < _DXT1) {
+        } else if (srcFormat >= _DXT1 && srcFormat <= _DXT5 && dstFormat < _DXT1) {
+            // Decompress DXT
             VxImageDescEx tempDesc;
             tempDesc.Width = src_desc.Width;
             tempDesc.Height = src_desc.Height;
             tempDesc.BitsPerPixel = 32;
             tempDesc.BytesPerLine = src_desc.Width * 4;
-            tempDesc.RedMask = 0x00FF0000;
-            tempDesc.GreenMask = 0x0000FF00;
-            tempDesc.BlueMask = 0x000000FF;
-            tempDesc.AlphaMask = 0xFF000000;
+            tempDesc.RedMask = R_MASK;
+            tempDesc.GreenMask = G_MASK;
+            tempDesc.BlueMask = B_MASK;
+            tempDesc.AlphaMask = A_MASK;
 
-            // Check for overflow
-            if (tempDesc.Height > 0 && tempDesc.BytesPerLine > INT_MAX / tempDesc.Height) {
-                return;
-            }
+            if (tempDesc.Height > 0 && tempDesc.BytesPerLine > INT_MAX / tempDesc.Height) return;
 
             XBYTE *tempBuffer = new XBYTE[tempDesc.BytesPerLine * tempDesc.Height];
             if (!tempBuffer) return;
 
             tempDesc.Image = tempBuffer;
 
-            bool success = true;
-
-            // Decompress to the temporary buffer
-            if (success) {
-                success = VxDecompressDXT(src_desc, tempDesc);
-            }
-
-            // If destination size matches, convert directly
-            if (success) {
+            if (VxDecompressDXT(src_desc, tempDesc)) {
                 if (src_desc.Width == dst_desc.Width && src_desc.Height == dst_desc.Height) {
                     ConvertFormats(tempDesc, dst_desc);
                 } else {
-                    // Need to resize
                     stbir_resize_uint8_linear(
                         tempDesc.Image, tempDesc.Width, tempDesc.Height, tempDesc.BytesPerLine,
                         dst_desc.Image, dst_desc.Width, dst_desc.Height, dst_desc.BytesPerLine,
@@ -1360,145 +843,90 @@ void VxDoBlit(const VxImageDescEx &src_desc, const VxImageDescEx &dst_desc) {
                 }
             }
 
-            // Always clean up
             delete[] tempBuffer;
             return;
         }
 
-        // Case 3: Convert between DXT formats (not supported)
-        if (srcFormat >= _DXT1 && srcFormat <= _DXT5 &&
-            dstFormat >= _DXT1 && dstFormat <= _DXT5) {
-            return;
-        }
+        return; // Can't convert between DXT formats
     }
 
-    // Special case for identical dimensions but different formats
+    // Same dimensions, different format
     if (src_desc.Width == dst_desc.Width && src_desc.Height == dst_desc.Height) {
         ConvertFormats(src_desc, dst_desc);
         return;
     }
 
-    // General case: resize and convert format using STB
-    stbir_pixel_layout srcLayout = GetStbPixelLayout(src_desc);
-    stbir_datatype dataType;
+    // General resize with format conversion
+    const stbir_pixel_layout srcLayout = GetStbPixelLayout(src_desc);
+    const stbir_datatype dataType = (src_desc.BitsPerPixel <= 8) ? STBIR_TYPE_UINT8
+                                        : (src_desc.BitsPerPixel == 16) ? STBIR_TYPE_UINT16 : STBIR_TYPE_UINT8;
 
-    // Determine data type
-    if (src_desc.BitsPerPixel <= 8) {
-        dataType = STBIR_TYPE_UINT8;
-    } else if (src_desc.BitsPerPixel == 16) {
-        dataType = STBIR_TYPE_UINT16;
-    } else {
-        dataType = STBIR_TYPE_UINT8;
-    }
-
-    // Use the medium complexity API for resizing with format conversion
     stbir_resize(
         src_desc.Image, src_desc.Width, src_desc.Height, src_desc.BytesPerLine,
         dst_desc.Image, dst_desc.Width, dst_desc.Height, dst_desc.BytesPerLine,
-        srcLayout, dataType,
-        STBIR_EDGE_CLAMP, STBIR_FILTER_MITCHELL
+        srcLayout, dataType, STBIR_EDGE_CLAMP, STBIR_FILTER_MITCHELL
     );
 }
 
-/**
- * @brief Copy an image upside-down, optionally converting formats
- *
- * @param src_desc Source image descriptor
- * @param dst_desc Destination image descriptor
- */
 void VxDoBlitUpsideDown(const VxImageDescEx &src_desc, const VxImageDescEx &dst_desc) {
-    // Verify valid image data
-    if (!src_desc.Image || !dst_desc.Image) {
-        return;
-    }
+    if (!src_desc.Image || !dst_desc.Image) return;
+    if (src_desc.Width != dst_desc.Width || src_desc.Height != dst_desc.Height) return;
 
-    // Dimensions must match
-    if (src_desc.Width != dst_desc.Width || src_desc.Height != dst_desc.Height) {
-        return;
-    }
+    const VX_PIXELFORMAT srcFormat = VxImageDesc2PixelFormat(src_desc);
+    const VX_PIXELFORMAT dstFormat = VxImageDesc2PixelFormat(dst_desc);
 
-    // Check for compressed formats
-    VX_PIXELFORMAT srcFormat = VxImageDesc2PixelFormat(src_desc);
-    VX_PIXELFORMAT dstFormat = VxImageDesc2PixelFormat(dst_desc);
-
-    // DXT formats require special handling
-    if (srcFormat >= _DXT1 && srcFormat <= _DXT5 ||
-        dstFormat >= _DXT1 && dstFormat <= _DXT5) {
-        // For DXT formats, we would need to decompress, flip, and possibly recompress
-        // This is a complex operation and not implemented here
-        return;
-    }
+    // DXT not supported for flipping
+    if (srcFormat >= _DXT1 && srcFormat <= _DXT5 || dstFormat >= _DXT1 && dstFormat <= _DXT5) return;
 
     // Fast path for identical format
     if (srcFormat == dstFormat && srcFormat != UNKNOWN_PF) {
-        // Copy scan lines in reverse order
-        int bytesPerLine = src_desc.BytesPerLine;
-
+        const int bytesPerLine = src_desc.BytesPerLine;
         for (int y = 0; y < src_desc.Height; y++) {
-            XBYTE *srcLine = src_desc.Image + y * bytesPerLine;
+            const XBYTE *srcLine = src_desc.Image + y * bytesPerLine;
             XBYTE *dstLine = dst_desc.Image + (src_desc.Height - 1 - y) * bytesPerLine;
             memcpy(dstLine, srcLine, bytesPerLine);
         }
         return;
     }
 
-    // Different format - convert each pixel
-    int srcBpp = src_desc.BitsPerPixel / 8;
-    int dstBpp = dst_desc.BitsPerPixel / 8;
+    // Different format conversion
+    const int srcBpp = src_desc.BitsPerPixel / 8;
+    const int dstBpp = dst_desc.BitsPerPixel / 8;
 
     for (int y = 0; y < src_desc.Height; y++) {
         for (int x = 0; x < src_desc.Width; x++) {
-            // Read source pixel
-            XBYTE *srcPtr = src_desc.Image + y * src_desc.BytesPerLine + x * srcBpp;
-            XBYTE *dstPtr = dst_desc.Image +
-                (src_desc.Height - 1 - y) * dst_desc.BytesPerLine + x * dstBpp;
+            const XBYTE *srcPtr = src_desc.Image + y * src_desc.BytesPerLine + x * srcBpp;
+            XBYTE *dstPtr = dst_desc.Image + (src_desc.Height - 1 - y) * dst_desc.BytesPerLine + x * dstBpp;
 
-            XULONG pixel = ReadPixel(srcPtr, srcBpp);
-            XULONG dstPixel = ConvertPixel(pixel, src_desc, dst_desc);
-
-            // Write destination pixel
+            const XULONG pixel = ReadPixel(srcPtr, srcBpp);
+            const XULONG dstPixel = ConvertPixel(pixel, src_desc, dst_desc);
             WritePixel(dstPtr, dstBpp, dstPixel);
         }
     }
 }
 
-/**
- * @brief Set the alpha channel for all pixels to a specific value
- *
- * @param dst_desc Destination image descriptor
- * @param AlphaValue Alpha value to set (0-255)
- */
 void VxDoAlphaBlit(const VxImageDescEx &dst_desc, XBYTE AlphaValue) {
-    if (!dst_desc.AlphaMask || !dst_desc.Image) {
-        return;
-    }
+    if (!dst_desc.AlphaMask || !dst_desc.Image) return;
 
-    // Check for compressed formats
-    VX_PIXELFORMAT format = VxImageDesc2PixelFormat(dst_desc);
-    if (format >= _DXT1 && format <= _DXT5) {
-        // For DXT formats, alpha manipulation would require decompressing,
-        // modifying pixels, and recompressing - not implemented here
-        return;
-    }
+    const VX_PIXELFORMAT format = VxImageDesc2PixelFormat(dst_desc);
+    if (format >= _DXT1 && format <= _DXT5) return; // DXT not supported
 
-    // Get alpha channel info
-    XULONG alphaShift = GetBitShift(dst_desc.AlphaMask);
-    XULONG alphaBits = GetBitCount(dst_desc.AlphaMask);
-    int bytesPerPixel = dst_desc.BitsPerPixel / 8;
+    const XULONG alphaShift = GetBitShift(dst_desc.AlphaMask);
+    const XULONG alphaBits = GetBitCount(dst_desc.AlphaMask);
+    const int bytesPerPixel = dst_desc.BitsPerPixel / 8;
 
-    // Scale alpha value to the alpha channel bit depth
+    // Scale alpha to bit depth
     if (alphaBits < 8) {
         AlphaValue = (AlphaValue * ((1 << alphaBits) - 1)) / 255;
     }
 
-    // Fast path for 32-bit ARGB (most common case)
-    if (dst_desc.BitsPerPixel == 32 && dst_desc.AlphaMask == 0xFF000000) {
-        XULONG alphaComponent = (XULONG) AlphaValue << 24;
-        XULONG alphaMask = 0x00FFFFFF; // Mask to keep RGB components
+    // Fast path for 32-bit ARGB
+    if (dst_desc.BitsPerPixel == 32 && dst_desc.AlphaMask == A_MASK) {
+        const XULONG alphaComponent = (XULONG) AlphaValue << 24;
+        const XULONG alphaMask = 0x00FFFFFF;
 
         for (int y = 0; y < dst_desc.Height; y++) {
             XULONG *row = (XULONG *) (dst_desc.Image + y * dst_desc.BytesPerLine);
-
             for (int x = 0; x < dst_desc.Width; x++) {
                 row[x] = (row[x] & alphaMask) | alphaComponent;
             }
@@ -1506,37 +934,30 @@ void VxDoAlphaBlit(const VxImageDescEx &dst_desc, XBYTE AlphaValue) {
         return;
     }
 
-    // General case for all formats
+    // General case
     for (int y = 0; y < dst_desc.Height; y++) {
         XBYTE *row = dst_desc.Image + y * dst_desc.BytesPerLine;
-
         for (int x = 0; x < dst_desc.Width; x++) {
             XBYTE *pixel = row + x * bytesPerPixel;
 
             switch (dst_desc.BitsPerPixel) {
             case 16: {
-                unsigned short *p = (unsigned short *) pixel;
-                *p = (*p & ~dst_desc.AlphaMask) |
-                    ((AlphaValue << alphaShift) & dst_desc.AlphaMask);
+                XWORD *p = (XWORD *) pixel;
+                *p = (*p & ~dst_desc.AlphaMask) | ((AlphaValue << alphaShift) & dst_desc.AlphaMask);
                 break;
             }
             case 24: {
-                // Determine which byte contains the alpha component
                 int byteOffset = alphaShift / 8;
                 int bitOffset = alphaShift % 8;
 
-                // Create mask for the relevant byte
                 XBYTE byteMask = (dst_desc.AlphaMask >> (byteOffset * 8)) & 0xFF;
-
                 // Update just that byte
-                pixel[byteOffset] = (pixel[byteOffset] & ~byteMask) |
-                    ((AlphaValue << bitOffset) & byteMask);
+                pixel[byteOffset] = (pixel[byteOffset] & ~byteMask) | ((AlphaValue << bitOffset) & byteMask);
                 break;
             }
             case 32: {
                 XULONG *p = (XULONG *) pixel;
-                *p = (*p & ~dst_desc.AlphaMask) |
-                    ((AlphaValue << alphaShift) & dst_desc.AlphaMask);
+                *p = (*p & ~dst_desc.AlphaMask) | ((AlphaValue << alphaShift) & dst_desc.AlphaMask);
                 break;
             }
             }
@@ -1544,84 +965,61 @@ void VxDoAlphaBlit(const VxImageDescEx &dst_desc, XBYTE AlphaValue) {
     }
 }
 
-/**
- * @brief Set the alpha channel using an array of alpha values
- *
- * @param dst_desc Destination image descriptor
- * @param AlphaValues Array of alpha values (one per pixel)
- */
 void VxDoAlphaBlit(const VxImageDescEx &dst_desc, XBYTE *AlphaValues) {
-    if (!dst_desc.AlphaMask || !dst_desc.Image || !AlphaValues) {
-        return;
-    }
+    if (!dst_desc.AlphaMask || !dst_desc.Image || !AlphaValues) return;
 
-    // Check for compressed formats
-    VX_PIXELFORMAT format = VxImageDesc2PixelFormat(dst_desc);
-    if (format >= _DXT1 && format <= _DXT5) {
-        // For DXT formats, alpha manipulation would require decompressing,
-        // modifying pixels, and recompressing - not implemented here
-        return;
-    }
+    const VX_PIXELFORMAT format = VxImageDesc2PixelFormat(dst_desc);
+    if (format >= _DXT1 && format <= _DXT5) return;
 
-    // Get alpha channel info
-    XULONG alphaShift = GetBitShift(dst_desc.AlphaMask);
-    XULONG alphaBits = GetBitCount(dst_desc.AlphaMask);
-    int bytesPerPixel = dst_desc.BitsPerPixel / 8;
+    const XULONG alphaShift = GetBitShift(dst_desc.AlphaMask);
+    const XULONG alphaBits = GetBitCount(dst_desc.AlphaMask);
+    const int bytesPerPixel = dst_desc.BitsPerPixel / 8;
 
     // Fast path for 32-bit ARGB
-    if (dst_desc.BitsPerPixel == 32 && dst_desc.AlphaMask == 0xFF000000) {
-        XULONG alphaMask = 0x00FFFFFF; // Mask to keep RGB components
+    if (dst_desc.BitsPerPixel == 32 && dst_desc.AlphaMask == A_MASK) {
+        const XULONG alphaMask = 0x00FFFFFF;
 
         for (int y = 0; y < dst_desc.Height; y++) {
             XULONG *row = (XULONG *) (dst_desc.Image + y * dst_desc.BytesPerLine);
-
             for (int x = 0; x < dst_desc.Width; x++) {
-                int index = y * dst_desc.Width + x;
-                XULONG alphaComponent = (XULONG) AlphaValues[index] << 24;
+                const int index = y * dst_desc.Width + x;
+                const XULONG alphaComponent = (XULONG) AlphaValues[index] << 24;
                 row[x] = (row[x] & alphaMask) | alphaComponent;
             }
         }
         return;
     }
 
-    // General case for all formats
+    // General case
     for (int y = 0; y < dst_desc.Height; y++) {
         XBYTE *row = dst_desc.Image + y * dst_desc.BytesPerLine;
-
         for (int x = 0; x < dst_desc.Width; x++) {
             XBYTE *pixel = row + x * bytesPerPixel;
-            int index = y * dst_desc.Width + x;
+            const int index = y * dst_desc.Width + x;
             XBYTE alpha = AlphaValues[index];
 
-            // Scale alpha value to the alpha channel bit depth
             if (alphaBits < 8) {
                 alpha = (alpha * ((1 << alphaBits) - 1)) / 255;
             }
 
             switch (dst_desc.BitsPerPixel) {
             case 16: {
-                unsigned short *p = (unsigned short *) pixel;
-                *p = (*p & ~dst_desc.AlphaMask) |
-                    ((alpha << alphaShift) & dst_desc.AlphaMask);
+                XWORD *p = (XWORD *) pixel;
+                *p = (*p & ~dst_desc.AlphaMask) | ((alpha << alphaShift) & dst_desc.AlphaMask);
                 break;
             }
             case 24: {
-                // Determine which byte contains the alpha component
                 int byteOffset = alphaShift / 8;
                 int bitOffset = alphaShift % 8;
 
-                // Create mask for the relevant byte
                 XBYTE byteMask = (dst_desc.AlphaMask >> (byteOffset * 8)) & 0xFF;
 
-                // Update just that byte
-                pixel[byteOffset] = (pixel[byteOffset] & ~byteMask) |
-                    ((alpha << bitOffset) & byteMask);
+                pixel[byteOffset] = (pixel[byteOffset] & ~byteMask) | ((alpha << bitOffset) & byteMask);
                 break;
             }
             case 32: {
                 XULONG *p = (XULONG *) pixel;
-                *p = (*p & ~dst_desc.AlphaMask) |
-                    ((alpha << alphaShift) & dst_desc.AlphaMask);
+                *p = (*p & ~dst_desc.AlphaMask) | ((alpha << alphaShift) & dst_desc.AlphaMask);
                 break;
             }
             }
@@ -1629,35 +1027,16 @@ void VxDoAlphaBlit(const VxImageDescEx &dst_desc, XBYTE *AlphaValues) {
     }
 }
 
-/**
- * @brief Resize a 32-bit image, optimized for speed
- *
- * @param src_desc Source image (must be 32-bit format)
- * @param dst_desc Destination image (must be 32-bit format)
- */
 void VxResizeImage32(const VxImageDescEx &src_desc, const VxImageDescEx &dst_desc) {
-    // Check for 32-bit format
-    if (src_desc.BitsPerPixel != 32 || dst_desc.BitsPerPixel != 32) {
-        return;
-    }
+    if (src_desc.BitsPerPixel != 32 || dst_desc.BitsPerPixel != 32) return;
+    if (!src_desc.Image || !dst_desc.Image) return;
 
-    // Check for valid pointers
-    if (!src_desc.Image || !dst_desc.Image) {
-        return;
-    }
+    const VX_PIXELFORMAT srcFormat = VxImageDesc2PixelFormat(src_desc);
+    const VX_PIXELFORMAT dstFormat = VxImageDesc2PixelFormat(dst_desc);
 
-    // Check for compressed formats
-    VX_PIXELFORMAT srcFormat = VxImageDesc2PixelFormat(src_desc);
-    VX_PIXELFORMAT dstFormat = VxImageDesc2PixelFormat(dst_desc);
+    if (srcFormat >= _DXT1 && srcFormat <= _DXT5 || dstFormat >= _DXT1 && dstFormat <= _DXT5) return;
 
-    if (srcFormat >= _DXT1 && srcFormat <= _DXT5 ||
-        dstFormat >= _DXT1 && dstFormat <= _DXT5) {
-        // Cannot resize compressed formats directly
-        return;
-    }
-
-    // Use the appropriate STB resize function - we want linear processing for 32-bit
-    stbir_pixel_layout layout = GetStbPixelLayout(src_desc);
+    const stbir_pixel_layout layout = GetStbPixelLayout(src_desc);
 
     stbir_resize_uint8_linear(
         src_desc.Image, src_desc.Width, src_desc.Height, src_desc.BytesPerLine,
@@ -1666,37 +1045,18 @@ void VxResizeImage32(const VxImageDescEx &src_desc, const VxImageDescEx &dst_des
     );
 }
 
-/**
- * @brief Generate a mipmap level (half-size) from an image
- * Only works on 32 bpp images with power-of-2 dimensions
- *
- * @param src_desc Source image (must be 32-bit, power-of-2 dimensions)
- * @param Buffer Destination buffer (must be pre-allocated to (Width/2 * Height/2) DWORDs)
- */
 void VxGenerateMipMap(const VxImageDescEx &src_desc, XBYTE *Buffer) {
-    // Validate 32 bpp requirement
-    if (src_desc.BitsPerPixel != 32 || !src_desc.Image || !Buffer) {
-        return;
-    }
+    if (src_desc.BitsPerPixel != 32 || !src_desc.Image || !Buffer) return;
+    if (src_desc.Width < 2 || src_desc.Height < 2) return;
+    if ((src_desc.Width & (src_desc.Width - 1)) != 0 || (src_desc.Height & (src_desc.Height - 1)) != 0) return;
 
-    // Validate power-of-2 dimensions
-    if (src_desc.Width < 2 || src_desc.Height < 2 ||
-        (src_desc.Width & (src_desc.Width - 1)) != 0 ||
-        (src_desc.Height & (src_desc.Height - 1)) != 0) {
-        return;
-        }
+    const VX_PIXELFORMAT srcFormat = VxImageDesc2PixelFormat(src_desc);
+    if (srcFormat >= _DXT1 && srcFormat <= _DXT5) return;
 
-    // Check for compressed formats (not supported)
-    VX_PIXELFORMAT srcFormat = VxImageDesc2PixelFormat(src_desc);
-    if (srcFormat >= _DXT1 && srcFormat <= _DXT5) {
-        return;
-    }
+    const int dstWidth = src_desc.Width / 2;
+    const int dstHeight = src_desc.Height / 2;
+    const int dstPitch = dstWidth * 4;
 
-    int dstWidth = src_desc.Width / 2;
-    int dstHeight = src_desc.Height / 2;
-    int dstPitch = dstWidth * 4;  // 32 bpp = 4 bytes per pixel
-
-    // Create destination descriptor for STB
     VxImageDescEx dst_desc;
     dst_desc.Width = dstWidth;
     dst_desc.Height = dstHeight;
@@ -1708,13 +1068,11 @@ void VxGenerateMipMap(const VxImageDescEx &src_desc, XBYTE *Buffer) {
     dst_desc.AlphaMask = src_desc.AlphaMask;
     dst_desc.Image = Buffer;
 
-    // Use STB for high-quality downsampling
-    stbir_pixel_layout layout = GetStbPixelLayout(src_desc);
+    const stbir_pixel_layout layout = GetStbPixelLayout(src_desc);
 
     stbir_resize_uint8_linear(
         src_desc.Image, src_desc.Width, src_desc.Height, src_desc.BytesPerLine,
-        Buffer, dstWidth, dstHeight, dstPitch,
-        layout
+        Buffer, dstWidth, dstHeight, dstPitch, layout
     );
 }
 
@@ -1722,139 +1080,100 @@ void VxGenerateMipMap(const VxImageDescEx &src_desc, XBYTE *Buffer) {
 // Normal and bump map generation
 //------------------------------------------------------------------------------
 
-/**
- * @brief Convert an image to a normal map
- * Only works for 32 bit per pixel bitmaps
- *
- * @param image Image to convert (modified in-place, must be 32 bpp)
- * @param ColorMask Mask for the component to use as height map
- * @return TRUE if successful, FALSE otherwise
- */
 XBOOL VxConvertToNormalMap(const VxImageDescEx &image, XULONG ColorMask) {
-    // Validate 32 bpp requirement
-    if (image.BitsPerPixel != 32 || !image.Image) {
-        return FALSE;
-    }
+    if (image.BitsPerPixel != 32 || !image.Image) return FALSE;
+    if (image.Width <= 0 || image.Height <= 0) return FALSE;
 
-    if (image.Width <= 0 || image.Height <= 0) {
-        return FALSE;
-    }
+    const VX_PIXELFORMAT format = VxImageDesc2PixelFormat(image);
+    if (format >= _DXT1 && format <= _DXT5) return FALSE;
 
-    // Check for compressed formats
-    VX_PIXELFORMAT format = VxImageDesc2PixelFormat(image);
-    if (format >= _DXT1 && format <= _DXT5) {
-        return FALSE;
-    }
-
-    // Handle special ColorMask values
-    XULONG actualMask;
-    if (ColorMask == 0xFFFFFFFF) {
-        // Overall intensity - use all color channels
-        actualMask = image.RedMask | image.GreenMask | image.BlueMask;
-    } else {
-        actualMask = ColorMask;
-    }
-
-    if (actualMask == 0) {
-        return FALSE;
-    }
+    const XULONG actualMask = (ColorMask == 0xFFFFFFFF)
+                                  ? (image.RedMask | image.GreenMask | image.BlueMask)
+                                  : ColorMask;
+    if (actualMask == 0) return FALSE;
 
     const int pixelCount = image.Width * image.Height;
-
-    // Allocate temporary height map
     float *heightMap = new(std::nothrow) float[pixelCount];
     if (!heightMap) return FALSE;
 
     // Extract height values
     for (int y = 0; y < image.Height; y++) {
         for (int x = 0; x < image.Width; x++) {
-            int index = y * image.Width + x;
+            const int index = y * image.Width + x;
+            const int offset = SafePixelOffset(image, x, y, 4);
 
-            int offset = SafePixelOffset(image, x, y, 4);
             if (offset < 0) {
                 heightMap[index] = 0.5f;
                 continue;
             }
 
-            const XULONG *pixel = (const XULONG *)(image.Image + offset);
+            const XULONG *pixel = (const XULONG *) (image.Image + offset);
 
-            float height;
             if (ColorMask == 0xFFFFFFFF) {
-                // Overall intensity - calculate luminance
-                unsigned char r, g, b, a;
+                XBYTE r, g, b, a;
                 ExtractRGBA(*pixel, image, r, g, b, a);
-                height = (0.299f * r + 0.587f * g + 0.114f * b) / 255.0f;
+                heightMap[index] = (0.299f * r + 0.587f * g + 0.114f * b) / 255.0f;
             } else {
-                // Extract specific component
-                XULONG shift = GetBitShift(actualMask);
-                XULONG bits = GetBitCount(actualMask);
+                const XULONG shift = GetBitShift(actualMask);
+                const XULONG bits = GetBitCount(actualMask);
                 XULONG val = (*pixel & actualMask) >> shift;
 
                 if (bits > 0 && bits < 8) {
                     val = (val * 255) / ((1 << bits) - 1);
                 }
-                height = (float)val / 255.0f;
+                heightMap[index] = (float) val / 255.0f;
             }
-
-            heightMap[index] = height;
         }
     }
 
     // Calculate normals using Sobel operator
-    const float scale = 2.0f;  // Normal map strength
+    const float scale = 2.0f;
 
     for (int y = 0; y < image.Height; y++) {
         for (int x = 0; x < image.Width; x++) {
-            int index = y * image.Width + x;
+            const int index = y * image.Width + x;
 
-            // Sample neighboring pixels with edge clamping
             auto getHeight = [&](int px, int py) -> float {
                 px = (px < 0) ? 0 : (px >= image.Width) ? image.Width - 1 : px;
                 py = (py < 0) ? 0 : (py >= image.Height) ? image.Height - 1 : py;
                 return heightMap[py * image.Width + px];
             };
 
-            // Sobel filter kernel
-            float h00 = getHeight(x-1, y-1), h01 = getHeight(x, y-1), h02 = getHeight(x+1, y-1);
-            float h10 = getHeight(x-1, y),                            h12 = getHeight(x+1, y);
-            float h20 = getHeight(x-1, y+1), h21 = getHeight(x, y+1), h22 = getHeight(x+1, y+1);
+            // Sobel filter
+            const float h00 = getHeight(x - 1, y - 1), h01 = getHeight(x, y - 1), h02 = getHeight(x + 1, y - 1);
+            const float h10 = getHeight(x - 1, y),                                h12 = getHeight(x + 1, y);
+            const float h20 = getHeight(x - 1, y + 1), h21 = getHeight(x, y + 1), h22 = getHeight(x + 1, y + 1);
 
-            // Calculate gradients
-            float gx = (h00 + 2.0f*h10 + h20) - (h02 + 2.0f*h12 + h22);
-            float gy = (h00 + 2.0f*h01 + h02) - (h20 + 2.0f*h21 + h22);
+            const float gx = (h00 + 2.0f * h10 + h20) - (h02 + 2.0f * h12 + h22);
+            const float gy = (h00 + 2.0f * h01 + h02) - (h20 + 2.0f * h21 + h22);
 
-            // Calculate normal vector
             float nx = -gx * scale;
             float ny = -gy * scale;
             float nz = 1.0f;
 
-            // Normalize
-            float length = sqrtf(nx*nx + ny*ny + nz*nz);
+            const float length = sqrtf(nx * nx + ny * ny + nz * nz);
             if (length > 0.0001f) {
                 nx /= length;
                 ny /= length;
                 nz /= length;
             } else {
-                nx = 0.0f; ny = 0.0f; nz = 1.0f;
+                nx = ny = 0.0f;
+                nz = 1.0f;
             }
 
-            // Convert to [0,255] range and write back
-            int offset = SafePixelOffset(image, x, y, 4);
+            const int offset = SafePixelOffset(image, x, y, 4);
             if (offset >= 0) {
-                XULONG *pixel = (XULONG *)(image.Image + offset);
+                XULONG *pixel = (XULONG *) (image.Image + offset);
 
-                int r = (int)((nx + 1.0f) * 127.5f);
-                int g = (int)((ny + 1.0f) * 127.5f);
-                int b = (int)((nz + 1.0f) * 127.5f);
+                int r = (int) ((nx + 1.0f) * 127.5f);
+                int g = (int) ((ny + 1.0f) * 127.5f);
+                int b = (int) ((nz + 1.0f) * 127.5f);
 
-                // Clamp values
                 r = (r < 0) ? 0 : (r > 255) ? 255 : r;
                 g = (g < 0) ? 0 : (g > 255) ? 255 : g;
                 b = (b < 0) ? 0 : (b > 255) ? 255 : b;
 
-                // Preserve alpha, update RGB
-                *pixel = (*pixel & image.AlphaMask) |
-                         CreatePixel(r, g, b, 255, image);
+                *pixel = (*pixel & image.AlphaMask) | CreatePixel(r, g, b, 255, image);
             }
         }
     }
@@ -1863,84 +1182,55 @@ XBOOL VxConvertToNormalMap(const VxImageDescEx &image, XULONG ColorMask) {
     return TRUE;
 }
 
-/**
- * @brief Convert an RGB displacement image to a bump map (du,dv,Luminance)
- * Only works for 32 bit per pixel bitmaps
- *
- * @param image Image to convert (modified in-place, must be 32 bpp)
- * @return TRUE if successful, FALSE otherwise
- */
 XBOOL VxConvertToBumpMap(const VxImageDescEx &image) {
-    // Validate 32 bpp requirement
-    if (image.BitsPerPixel != 32 || !image.Image) {
-        return FALSE;
-    }
+    if (image.BitsPerPixel != 32 || !image.Image) return FALSE;
+    if (image.Width <= 0 || image.Height <= 0) return FALSE;
 
-    if (image.Width <= 0 || image.Height <= 0) {
-        return FALSE;
-    }
-
-    // Check for compressed formats
-    VX_PIXELFORMAT format = VxImageDesc2PixelFormat(image);
-    if (format >= _DXT1 && format <= _DXT5) {
-        return FALSE;
-    }
-
-    // Convert RGB displacement to du,dv,luminance
-    // du = horizontal displacement (stored in R)
-    // dv = vertical displacement (stored in G)
-    // luminance = brightness (stored in B)
+    const VX_PIXELFORMAT format = VxImageDesc2PixelFormat(image);
+    if (format >= _DXT1 && format <= _DXT5) return FALSE;
 
     for (int y = 0; y < image.Height; y++) {
         for (int x = 0; x < image.Width; x++) {
-            int offset = SafePixelOffset(image, x, y, 4);
+            const int offset = SafePixelOffset(image, x, y, 4);
             if (offset < 0) continue;
 
-            XULONG *pixel = (XULONG *)(image.Image + offset);
+            XULONG *pixel = (XULONG *) (image.Image + offset);
 
-            // Extract original RGB components
-            unsigned char r, g, b, a;
+            XBYTE r, g, b, a;
             ExtractRGBA(*pixel, image, r, g, b, a);
 
-            // Calculate luminance (perceived brightness)
-            float luminance = 0.299f * r + 0.587f * g + 0.114f * b;
+            const float luminance = 0.299f * r + 0.587f * g + 0.114f * b;
 
-            // Calculate displacement gradients by sampling neighbors
             auto getSafePixel = [&](int px, int py) -> float {
                 if (px < 0 || px >= image.Width || py < 0 || py >= image.Height) {
-                    return luminance; // Use current pixel luminance for edges
+                    return luminance;
                 }
 
-                int poffset = SafePixelOffset(image, px, py, 4);
+                const int poffset = SafePixelOffset(image, px, py, 4);
                 if (poffset < 0) return luminance;
 
-                const XULONG *ppixel = (const XULONG *)(image.Image + poffset);
-                unsigned char pr, pg, pb, pa;
+                const XULONG *ppixel = (const XULONG *) (image.Image + poffset);
+                XBYTE pr, pg, pb, pa;
                 ExtractRGBA(*ppixel, image, pr, pg, pb, pa);
                 return 0.299f * pr + 0.587f * pg + 0.114f * pb;
             };
 
-            // Calculate du (horizontal displacement) using central difference
-            float leftLum = getSafePixel(x - 1, y);
-            float rightLum = getSafePixel(x + 1, y);
-            float du = (rightLum - leftLum) * 0.5f;
+            const float leftLum = getSafePixel(x - 1, y);
+            const float rightLum = getSafePixel(x + 1, y);
+            const float du = (rightLum - leftLum) * 0.5f;
 
-            // Calculate dv (vertical displacement) using central difference
-            float topLum = getSafePixel(x, y - 1);
-            float bottomLum = getSafePixel(x, y + 1);
-            float dv = (bottomLum - topLum) * 0.5f;
+            const float topLum = getSafePixel(x, y - 1);
+            const float bottomLum = getSafePixel(x, y + 1);
+            const float dv = (bottomLum - topLum) * 0.5f;
 
-            // Convert to [0,255] range with 128 as neutral (no displacement)
-            int duVal = (int)(du + 128.0f);
-            int dvVal = (int)(dv + 128.0f);
-            int lumVal = (int)luminance;
+            int duVal = (int) (du + 128.0f);
+            int dvVal = (int) (dv + 128.0f);
+            int lumVal = (int) luminance;
 
-            // Clamp values
             duVal = (duVal < 0) ? 0 : (duVal > 255) ? 255 : duVal;
             dvVal = (dvVal < 0) ? 0 : (dvVal > 255) ? 255 : dvVal;
             lumVal = (lumVal < 0) ? 0 : (lumVal > 255) ? 255 : lumVal;
 
-            // Store du,dv,luminance in R,G,B respectively, preserve alpha
             *pixel = CreatePixel(duVal, dvVal, lumVal, a, image);
         }
     }
@@ -1952,24 +1242,10 @@ XBOOL VxConvertToBumpMap(const VxImageDescEx &image) {
 // Quantization utilities
 //------------------------------------------------------------------------------
 
-/**
- * @brief Get the current sampling factor for image quantization
- *
- * @return The current sampling factor
- */
 int GetQuantizationSamplingFactor() {
     return g_QuantizationSamplingFactor;
 }
 
-/**
- * @brief Set the sampling factor for image quantization
- *
- * @param factor The sampling factor (1-30, higher = better quality but slower)
- */
 void SetQuantizationSamplingFactor(int factor) {
-    // Clamp to reasonable range
-    if (factor < 1) factor = 1;
-    if (factor > 30) factor = 30;
-
-    g_QuantizationSamplingFactor = factor;
+    g_QuantizationSamplingFactor = (factor < 1) ? 1 : (factor > 30) ? 30 : factor;
 }
