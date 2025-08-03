@@ -854,14 +854,8 @@ inline int operator==(const VxVector4 &v1, const VxVector4 &v2) { return ((v1.x 
 inline int operator!=(const VxVector4 &v1, const VxVector4 &v2) { return !(v1 == v2); }
 inline void VxVector4::Set(float _x, float _y, float _z, float _w) { x = _x; y = _y; z = _z; w = _w; }
 inline void VxVector4::Set(float _x, float _y, float _z) { x = _x; y = _y; z = _z; }
-inline const float &VxVector4::operator[](int i) const {
-    // This implementation is unusual. A direct array access would be better.
-    switch (i) { case 0: return x; case 1: return y; case 2: return z; case 3: return w; default: return x; }
-}
-inline float &VxVector4::operator[](int i) {
-    // This implementation is unusual. A direct array access would be better.
-    switch (i) { case 0: return x; case 1: return y; case 2: return z; case 3: return w; default: return x; }
-}
+inline const float &VxVector4::operator[](int i) const { return *((&x) + i); }
+inline float &VxVector4::operator[](int i) { return *((&x) + i); }
 
 // =================================================================
 // VxCompressedVector Inline Implementations
@@ -906,7 +900,7 @@ inline void VxCompressedVector::Slerp(float step, VxCompressedVector &v1, VxComp
     v2y = (v2y - v1y);
     if (v2y > 8192) v2y = 16384 - v2y;
     else if (v2y < -8192) v2y = 16384 + v2y;
-    xa = (short int) ((int) v1.xa + (((int) (v2.xa - v1.xa) * coef) >> 16));
+    xa = (short int) ((int) v1.xa + (((v2.xa - v1.xa) * coef) >> 16));
     ya = (short int) (v1y + ((v2y * coef) >> 16));
 }
 
