@@ -7,8 +7,8 @@
 //---------- Faces
 
 // Is a point inside the boundary of a face
-XBOOL VxIntersect::PointInFace(const VxVector &point, const VxVector &pt0, const VxVector &pt1,
-                               const VxVector &pt2, const VxVector &norm, int &i1, int &i2) {
+XBOOL VxIntersect::PointInFace(const VxVector &point, const VxVector &pt0, const VxVector &pt1, const VxVector &pt2,
+                               const VxVector &norm, int &i1, int &i2) {
     // Find dominant axis of normal to determine projection plane
     float nx = XAbs(norm.x);
     float ny = XAbs(norm.y);
@@ -61,8 +61,8 @@ XBOOL VxIntersect::PointInFace(const VxVector &point, const VxVector &pt0, const
 }
 
 // Intersection Ray - Face
-XBOOL VxIntersect::RayFace(const VxRay &ray, const VxVector &pt0, const VxVector &pt1,
-                           const VxVector &pt2, const VxVector &norm, VxVector &res, float &dist) {
+XBOOL VxIntersect::RayFace(const VxRay &ray, const VxVector &pt0, const VxVector &pt1, const VxVector &pt2,
+                           const VxVector &norm, VxVector &res, float &dist) {
     // Create plane from normal and point
     VxPlane plane;
     plane.Create(norm, pt0);
@@ -78,9 +78,8 @@ XBOOL VxIntersect::RayFace(const VxRay &ray, const VxVector &pt0, const VxVector
 }
 
 // Overloaded RayFace with dominant axes
-XBOOL VxIntersect::RayFace(const VxRay &ray, const VxVector &pt0, const VxVector &pt1,
-                           const VxVector &pt2, const VxVector &norm, VxVector &res,
-                           float &dist, int &i1, int &i2) {
+XBOOL VxIntersect::RayFace(const VxRay &ray, const VxVector &pt0, const VxVector &pt1, const VxVector &pt2,
+                           const VxVector &norm, VxVector &res, float &dist, int &i1, int &i2) {
     // Create plane from normal and point
     VxPlane plane;
     plane.Create(norm, pt0);
@@ -95,9 +94,8 @@ XBOOL VxIntersect::RayFace(const VxRay &ray, const VxVector &pt0, const VxVector
 }
 
 // Intersection Ray - Face with culling (only from front)
-XBOOL VxIntersect::RayFaceCulled(const VxRay &ray, const VxVector &pt0, const VxVector &pt1,
-                                 const VxVector &pt2, const VxVector &norm, VxVector &res,
-                                 float &dist, int &i1, int &i2) {
+XBOOL VxIntersect::RayFaceCulled(const VxRay &ray, const VxVector &pt0, const VxVector &pt1, const VxVector &pt2,
+                                 const VxVector &norm, VxVector &res, float &dist, int &i1, int &i2) {
     // Create plane from normal and point
     VxPlane plane;
     plane.Create(norm, pt0);
@@ -112,8 +110,8 @@ XBOOL VxIntersect::RayFaceCulled(const VxRay &ray, const VxVector &pt0, const Vx
 }
 
 // Intersection Segment - Face
-XBOOL VxIntersect::SegmentFace(const VxRay &ray, const VxVector &pt0, const VxVector &pt1,
-                               const VxVector &pt2, const VxVector &norm, VxVector &res, float &dist) {
+XBOOL VxIntersect::SegmentFace(const VxRay &ray, const VxVector &pt0, const VxVector &pt1, const VxVector &pt2,
+                               const VxVector &norm, VxVector &res, float &dist) {
     // Create plane from normal and point
     VxPlane plane;
     plane.Create(norm, pt0);
@@ -129,9 +127,8 @@ XBOOL VxIntersect::SegmentFace(const VxRay &ray, const VxVector &pt0, const VxVe
 }
 
 // Overloaded SegmentFace with dominant axes
-XBOOL VxIntersect::SegmentFace(const VxRay &ray, const VxVector &pt0, const VxVector &pt1,
-                               const VxVector &pt2, const VxVector &norm, VxVector &res,
-                               float &dist, int &i1, int &i2) {
+XBOOL VxIntersect::SegmentFace(const VxRay &ray, const VxVector &pt0, const VxVector &pt1, const VxVector &pt2,
+                               const VxVector &norm, VxVector &res, float &dist, int &i1, int &i2) {
     // Create plane from normal and point
     VxPlane plane;
     plane.Create(norm, pt0);
@@ -146,9 +143,8 @@ XBOOL VxIntersect::SegmentFace(const VxRay &ray, const VxVector &pt0, const VxVe
 }
 
 // Intersection Segment - Face with culling
-XBOOL VxIntersect::SegmentFaceCulled(const VxRay &ray, const VxVector &pt0, const VxVector &pt1,
-                                     const VxVector &pt2, const VxVector &norm, VxVector &res,
-                                     float &dist, int &i1, int &i2) {
+XBOOL VxIntersect::SegmentFaceCulled(const VxRay &ray, const VxVector &pt0, const VxVector &pt1, const VxVector &pt2,
+                                     const VxVector &norm, VxVector &res, float &dist, int &i1, int &i2) {
     // Create plane from normal and point
     VxPlane plane;
     plane.Create(norm, pt0);
@@ -163,8 +159,8 @@ XBOOL VxIntersect::SegmentFaceCulled(const VxRay &ray, const VxVector &pt0, cons
 }
 
 // Intersection Line - Face
-XBOOL VxIntersect::LineFace(const VxRay &ray, const VxVector &pt0, const VxVector &pt1,
-                            const VxVector &pt2, const VxVector &norm, VxVector &res, float &dist) {
+XBOOL VxIntersect::LineFace(const VxRay &ray, const VxVector &pt0, const VxVector &pt1, const VxVector &pt2,
+                            const VxVector &norm, VxVector &res, float &dist) {
     // Create plane from normal and point
     VxPlane plane;
     plane.Create(norm, pt0);
@@ -180,9 +176,8 @@ XBOOL VxIntersect::LineFace(const VxRay &ray, const VxVector &pt0, const VxVecto
 }
 
 // Overloaded LineFace with dominant axes
-XBOOL VxIntersect::LineFace(const VxRay &ray, const VxVector &pt0, const VxVector &pt1,
-                            const VxVector &pt2, const VxVector &norm, VxVector &res,
-                            float &dist, int &i1, int &i2) {
+XBOOL VxIntersect::LineFace(const VxRay &ray, const VxVector &pt0, const VxVector &pt1, const VxVector &pt2,
+                            const VxVector &norm, VxVector &res, float &dist, int &i1, int &i2) {
     // Create plane from normal and point
     VxPlane plane;
     plane.Create(norm, pt0);
@@ -197,9 +192,8 @@ XBOOL VxIntersect::LineFace(const VxRay &ray, const VxVector &pt0, const VxVecto
 }
 
 // Calculate barycentric coordinates for point in face
-void VxIntersect::GetPointCoefficients(const VxVector &pt, const VxVector &pt0, const VxVector &pt1,
-                                       const VxVector &pt2, const int &i1, const int &i2,
-                                       float &V0Coef, float &V1Coef, float &V2Coef) {
+void VxIntersect::GetPointCoefficients(const VxVector &pt, const VxVector &pt0, const VxVector &pt1, const VxVector &pt2,
+                                       const int &i1, const int &i2, float &V0Coef, float &V1Coef, float &V2Coef) {
     // Get 2D coordinates for the calculation
     float p0_i1 = pt0[i1], p0_i2 = pt0[i2];
     float p1_i1 = pt1[i1], p1_i2 = pt1[i2];

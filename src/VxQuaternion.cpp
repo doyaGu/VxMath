@@ -235,12 +235,7 @@ VxQuaternion Exp(const VxQuaternion &Quat) {
         scale = sinf(magnitude) / magnitude;
     }
 
-    return VxQuaternion(
-        scale * Quat.x,
-        scale * Quat.y,
-        scale * Quat.z,
-        cosf(magnitude)
-    );
+    return VxQuaternion(scale * Quat.x, scale * Quat.y, scale * Quat.z, cosf(magnitude));
 }
 
 void VxQuaternion::FromMatrix(const VxMatrix &Mat, XBOOL MatIsUnit, XBOOL RestoreMat) {

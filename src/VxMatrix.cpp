@@ -618,8 +618,7 @@ void Vx3DDecomposeMatrix(const VxMatrix &A, VxQuaternion &Quat, VxVector &Pos, V
     Scale.z = Mat[2][0] * A[2][0] + Mat[2][1] * A[2][1] + Mat[2][2] * A[2][2];
 }
 
-float Vx3DDecomposeMatrixTotal(const VxMatrix &A, VxQuaternion &Quat, VxVector &Pos, VxVector &Scale,
-                               VxQuaternion &URot) {
+float Vx3DDecomposeMatrixTotal(const VxMatrix &A, VxQuaternion &Quat, VxVector &Pos, VxVector &Scale, VxQuaternion &URot) {
     // Extract position
     Pos = VxVector(A[3][0], A[3][1], A[3][2]);
 
@@ -654,8 +653,7 @@ float Vx3DDecomposeMatrixTotal(const VxMatrix &A, VxQuaternion &Quat, VxVector &
     return det;
 }
 
-float Vx3DDecomposeMatrixTotalPtr(const VxMatrix &A, VxQuaternion *Quat, VxVector *Pos, VxVector *Scale,
-                                  VxQuaternion *URot) {
+float Vx3DDecomposeMatrixTotalPtr(const VxMatrix &A, VxQuaternion *Quat, VxVector *Pos, VxVector *Scale, VxQuaternion *URot) {
     // Extract position if requested
     if (Pos) {
         *Pos = VxVector(A[3][0], A[3][1], A[3][2]);

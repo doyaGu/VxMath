@@ -258,8 +258,7 @@ XBOOL VxIntersect::LineBox(const VxRay &line, const VxBbox &box) {
 }
 
 // Intersection Line - Box (detailed version)
-int VxIntersect::LineBox(const VxRay &line, const VxBbox &box, VxVector &inpoint,
-                         VxVector *outpoint, VxVector *innormal, VxVector *outnormal) {
+int VxIntersect::LineBox(const VxRay &line, const VxBbox &box, VxVector &inpoint, VxVector *outpoint, VxVector *innormal, VxVector *outnormal) {
     float tNear = -FLT_MAX;
     float tFar = FLT_MAX;
     int nearAxis = -1;
@@ -506,8 +505,7 @@ XBOOL VxIntersect::OBBOBB(const VxOBB &box1, const VxOBB &box2) {
 }
 
 // AABB - Face (triangle) intersection
-XBOOL VxIntersect::AABBFace(const VxBbox &box, const VxVector &A0, const VxVector &A1, const VxVector &A2,
-                            const VxVector &N) {
+XBOOL VxIntersect::AABBFace(const VxBbox &box, const VxVector &A0, const VxVector &A1, const VxVector &A2, const VxVector &N) {
     // 1. Check if any vertex of the triangle is inside the box
     if (box.VectorIn(A0) || box.VectorIn(A1) || box.VectorIn(A2))
         return TRUE;
