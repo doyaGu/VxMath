@@ -36,8 +36,8 @@ void Vx3DMultiplyMatrixVectorMany(VxVector *ResultVectors, const VxMatrix &Mat, 
         temp.z = Vectors->x * Mat[0][2] + Vectors->y * Mat[1][2] + Vectors->z * Mat[2][2] + Mat[3][2];
         *ResultVectors = temp;
 
-        ResultVectors = (VxVector *) ((char *) ResultVectors + stride);
-        Vectors = (const VxVector *) ((char *) Vectors + stride);
+        ResultVectors = reinterpret_cast<VxVector *>(reinterpret_cast<char *>(ResultVectors) + stride);
+        Vectors = reinterpret_cast<const VxVector *>(reinterpret_cast<const char *>(Vectors) + stride);
         --count;
     } while (count);
 }
@@ -76,8 +76,8 @@ void Vx3DRotateVectorMany(VxVector *ResultVector, const VxMatrix &Mat, const VxV
         temp.z = Vector->x * Mat[0][2] + Vector->y * Mat[1][2] + Vector->z * Mat[2][2];
         *ResultVector = temp;
 
-        Vector = (const VxVector *) ((char *) Vector + stride);
-        ResultVector = (VxVector *) ((char *) ResultVector + stride);
+        Vector = reinterpret_cast<const VxVector *>(reinterpret_cast<const char *>(Vector) + stride);
+        ResultVector = reinterpret_cast<VxVector *>(reinterpret_cast<char *>(ResultVector) + stride);
         --count;
     } while (count);
 }
@@ -86,7 +86,6 @@ void Vx3DMultiplyMatrix(VxMatrix &ResultMat, const VxMatrix &MatA, const VxMatri
     // Use a temporary matrix in case ResultMat is the same as MatA or MatB
     VxMatrix tmp;
 
-    // Perform full 4x4 matrix multiplication but preserve the standard 3D transformation structure
     for (int i = 0; i < 4; i++) {
         for (int j = 0; j < 4; j++) {
             tmp[i][j] = MatA[0][j] * MatB[i][0] +
@@ -109,7 +108,6 @@ void Vx3DMultiplyMatrix4(VxMatrix &ResultMat, const VxMatrix &MatA, const VxMatr
     // Use a temporary matrix in case ResultMat is the same as MatA or MatB
     VxMatrix tmp;
 
-    // Full 4x4 matrix multiply
     for (int i = 0; i < 4; i++) {
         for (int j = 0; j < 4; j++) {
             tmp[i][j] = MatA[0][j] * MatB[i][0] +
@@ -143,28 +141,22 @@ void Vx3DInverseMatrix(VxMatrix &InverseMat, const VxMatrix &Mat) {
     const double inv_det = 1.0 / det;
 
     // Calculate inverse of the 3x3 submatrix using cofactor method
-    // Each element is the cofactor divided by the determinant
-
-    // First row of inverse
     InverseMat[0][0] = static_cast<float>((a11 * a22 - a12 * a21) * inv_det);
     InverseMat[0][1] = static_cast<float>((a02 * a21 - a01 * a22) * inv_det);
     InverseMat[0][2] = static_cast<float>((a01 * a12 - a02 * a11) * inv_det);
     InverseMat[0][3] = 0.0f;
 
-    // Second row of inverse
     InverseMat[1][0] = static_cast<float>((a12 * a20 - a10 * a22) * inv_det);
     InverseMat[1][1] = static_cast<float>((a00 * a22 - a02 * a20) * inv_det);
     InverseMat[1][2] = static_cast<float>((a02 * a10 - a00 * a12) * inv_det);
     InverseMat[1][3] = 0.0f;
 
-    // Third row of inverse
     InverseMat[2][0] = static_cast<float>((a10 * a21 - a11 * a20) * inv_det);
     InverseMat[2][1] = static_cast<float>((a01 * a20 - a00 * a21) * inv_det);
     InverseMat[2][2] = static_cast<float>((a00 * a11 - a01 * a10) * inv_det);
     InverseMat[2][3] = 0.0f;
 
-    // Calculate inverse translation: -R^(-1) * T
-    // Transform the original translation vector by the inverse rotation matrix
+    // Calculate the translation part: -R^T * t
     const float tx = Mat[3][0];
     const float ty = Mat[3][1];
     const float tz = Mat[3][2];
@@ -176,9 +168,14 @@ void Vx3DInverseMatrix(VxMatrix &InverseMat, const VxMatrix &Mat) {
 }
 
 float Vx3DMatrixDeterminant(const VxMatrix &Mat) {
-    return (Mat[1][1] * Mat[2][2] - Mat[2][1] * Mat[1][2]) * Mat[0][0]
-         - (Mat[1][0] * Mat[2][2] - Mat[2][0] * Mat[1][2]) * Mat[0][1]
-         + (Mat[2][1] * Mat[1][0] - Mat[2][0] * Mat[1][1]) * Mat[0][2];
+    // For 3D transformation matrices, only compute 3x3 determinant
+    const float a00 = Mat[0][0], a01 = Mat[0][1], a02 = Mat[0][2];
+    const float a10 = Mat[1][0], a11 = Mat[1][1], a12 = Mat[1][2];
+    const float a20 = Mat[2][0], a21 = Mat[2][1], a22 = Mat[2][2];
+
+    return a00 * (a11 * a22 - a12 * a21) +
+           a01 * (a12 * a20 - a10 * a22) +
+           a02 * (a10 * a21 - a11 * a20);
 }
 
 void Vx3DMatrixFromRotation(VxMatrix &ResultMat, const VxVector &Vector, float Angle) {
@@ -383,34 +380,31 @@ void Vx3DInterpolateMatrixNoScale(float step, VxMatrix &Res, const VxMatrix &A, 
 }
 
 void Vx3DMultiplyMatrixVectorStrided(VxStridedData *Dest, VxStridedData *Src, const VxMatrix &Mat, int count) {
-    if (!Dest || !Src || !Dest->Ptr || !Src->Ptr) return;
+    if (!Dest || !Src || !Dest->Ptr || !Src->Ptr || count <= 0) return;
 
     for (int i = 0; i < count; i++) {
-        const VxVector *srcVec = reinterpret_cast<const VxVector *>(reinterpret_cast<const char *>(Src->Ptr) + i * Src->
-            Stride);
-        VxVector *destVec = reinterpret_cast<VxVector *>(reinterpret_cast<char *>(Dest->Ptr) + i * Dest->Stride);
+        const VxVector *srcVec = reinterpret_cast<const VxVector *>(static_cast<const char *>(Src->Ptr) + i * Src->Stride);
+        VxVector *destVec = reinterpret_cast<VxVector *>(static_cast<char *>(Dest->Ptr) + i * Dest->Stride);
         Vx3DMultiplyMatrixVector(destVec, Mat, srcVec);
     }
 }
 
 void Vx3DMultiplyMatrixVector4Strided(VxStridedData *Dest, VxStridedData *Src, const VxMatrix &Mat, int count) {
-    if (!Dest || !Src || !Dest->Ptr || !Src->Ptr) return;
+    if (!Dest || !Src || !Dest->Ptr || !Src->Ptr || count <= 0) return;
 
     for (int i = 0; i < count; i++) {
-        const VxVector4 *srcVec = reinterpret_cast<const VxVector4 *>(reinterpret_cast<const char *>(Src->Ptr) + i * Src
-            ->Stride);
-        VxVector4 *destVec = reinterpret_cast<VxVector4 *>(reinterpret_cast<char *>(Dest->Ptr) + i * Dest->Stride);
+        const VxVector4 *srcVec = reinterpret_cast<const VxVector4 *>(static_cast<const char *>(Src->Ptr) + i * Src->Stride);
+        VxVector4 *destVec = reinterpret_cast<VxVector4 *>(static_cast<char *>(Dest->Ptr) + i * Dest->Stride);
         Vx3DMultiplyMatrixVector4(destVec, Mat, srcVec);
     }
 }
 
 void Vx3DRotateVectorStrided(VxStridedData *Dest, VxStridedData *Src, const VxMatrix &Mat, int count) {
-    if (!Dest || !Src || !Dest->Ptr || !Src->Ptr) return;
+    if (!Dest || !Src || !Dest->Ptr || !Src->Ptr || count <= 0) return;
 
     for (int i = 0; i < count; i++) {
-        const VxVector *srcVec = reinterpret_cast<const VxVector *>(reinterpret_cast<const char *>(Src->Ptr) + i * Src->
-            Stride);
-        VxVector *destVec = reinterpret_cast<VxVector *>(reinterpret_cast<char *>(Dest->Ptr) + i * Dest->Stride);
+        const VxVector *srcVec = reinterpret_cast<const VxVector *>(static_cast<const char *>(Src->Ptr) + i * Src->Stride);
+        VxVector *destVec = reinterpret_cast<VxVector *>(static_cast<char *>(Dest->Ptr) + i * Dest->Stride);
         Vx3DRotateVector(destVec, Mat, srcVec);
     }
 }
@@ -579,7 +573,6 @@ VxVector Vx3DMatrixSpectralDecomposition(const VxMatrix &S_in, VxMatrix &U_out) 
 }
 
 void Vx3DTransposeMatrix(VxMatrix &Result, const VxMatrix &A) {
-    // Use a temporary matrix in case Result is the same as A
     VxMatrix temp;
 
     temp[0][0] = A[0][0];
