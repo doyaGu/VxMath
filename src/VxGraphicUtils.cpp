@@ -346,24 +346,14 @@ inline void WritePixel(XBYTE *ptr, int bpp, XULONG pixel) {
     }
 }
 
-inline int SafePixelOffset(const VxImageDescEx &desc, int x, int y, int bytesPerPixel) {
-    if (x >= desc.Width || y >= desc.Height || bytesPerPixel <= 0 || bytesPerPixel > 4 || !desc.Image)
-        return -1;
-
-    const XULONG totalOffset = (XULONG)y * desc.BytesPerLine + (XULONG)x * bytesPerPixel;
-    return (totalOffset <= INT_MAX) ? (int)totalOffset : -1;
+inline XULONG ReadPixelAt(const XBYTE *basePtr, int stride, int x, int y, int bpp) {
+    const XBYTE *ptr = basePtr + y * stride + x * bpp;
+    return ReadPixel(ptr, bpp);
 }
 
-inline XULONG ReadPixelSafe(const VxImageDescEx &desc, int x, int y, int bpp) {
-    const int offset = SafePixelOffset(desc, x, y, bpp);
-    return (offset >= 0) ? ReadPixel(desc.Image + offset, bpp) : 0;
-}
-
-inline XBOOL WritePixelSafe(const VxImageDescEx &desc, int x, int y, int bpp, XULONG pixel) {
-    const int offset = SafePixelOffset(desc, x, y, bpp);
-    if (offset < 0) return FALSE;
-    WritePixel(desc.Image + offset, bpp, pixel);
-    return TRUE;
+inline void WritePixelAt(XBYTE *basePtr, int stride, int x, int y, int bpp, XULONG pixel) {
+    XBYTE *ptr = basePtr + y * stride + x * bpp;
+    WritePixel(ptr, bpp, pixel);
 }
 
 struct ExtractContext {
@@ -408,41 +398,117 @@ static void ExtractRGBAFromPixel(XULONG pixel, const VxImageDescEx &desc, XBYTE 
     ExtractRGBA(pixel, desc, r, g, b, a);
 }
 
+struct PixelCreateContext {
+    XULONG rShift, gShift, bShift, aShift;
+    XULONG rMask, gMask, bMask, aMask;
+    XULONG rScale, gScale, bScale, aScale;
+    bool hasAlpha;
+
+    explicit PixelCreateContext(const VxImageDescEx &desc) {
+        rMask = desc.RedMask; gMask = desc.GreenMask; bMask = desc.BlueMask; aMask = desc.AlphaMask;
+        rShift = GetBitShift(rMask); gShift = GetBitShift(gMask); bShift = GetBitShift(bMask); aShift = GetBitShift(aMask);
+
+        const XULONG rBits = GetBitCount(rMask);
+        const XULONG gBits = GetBitCount(gMask);
+        const XULONG bBits = GetBitCount(bMask);
+        const XULONG aBits = GetBitCount(aMask);
+
+        // Pre-compute scale factors for bit depth conversion
+        rScale = (rBits > 0 && rBits < 8) ? ((1 << rBits) - 1) : 255;
+        gScale = (gBits > 0 && gBits < 8) ? ((1 << gBits) - 1) : 255;
+        bScale = (bBits > 0 && bBits < 8) ? ((1 << bBits) - 1) : 255;
+        aScale = (aBits > 0 && aBits < 8) ? ((1 << aBits) - 1) : 255;
+        hasAlpha = (aMask != 0);
+    }
+
+    XULONG CreatePixel(XBYTE r, XBYTE g, XBYTE b, XBYTE a = 255) const {
+        // Fast scaling using pre-computed factors
+        const XULONG rVal = (rScale != 255) ? (r * rScale) / 255 : r;
+        const XULONG gVal = (gScale != 255) ? (g * gScale) / 255 : g;
+        const XULONG bVal = (bScale != 255) ? (b * bScale) / 255 : b;
+        const XULONG aVal = hasAlpha ? ((aScale != 255) ? (a * aScale) / 255 : a) : 0;
+
+        return (rMask ? ((rVal << rShift) & rMask) : 0) |
+               (gMask ? ((gVal << gShift) & gMask) : 0) |
+               (bMask ? ((bVal << bShift) & bMask) : 0) |
+               (aMask ? ((aVal << aShift) & aMask) : 0);
+    }
+};
+
+struct PixelConvertContext {
+    ExtractContext extract;
+    PixelCreateContext create;
+    bool identicalFormat;
+
+    PixelConvertContext(const VxImageDescEx &srcDesc, const VxImageDescEx &dstDesc) : extract(srcDesc), create(dstDesc) {
+        identicalFormat = (srcDesc.RedMask == dstDesc.RedMask &&
+                          srcDesc.GreenMask == dstDesc.GreenMask &&
+                          srcDesc.BlueMask == dstDesc.BlueMask &&
+                          srcDesc.AlphaMask == dstDesc.AlphaMask);
+    }
+
+    XULONG ConvertPixel(XULONG srcPixel) const {
+        if (identicalFormat) return srcPixel;
+
+        XBYTE r, g, b, a;
+        ExtractRGBA(srcPixel, extract, r, g, b, a);
+        return create.CreatePixel(r, g, b, a);
+    }
+};
+
+template<XULONG RedMask, XULONG GreenMask, XULONG BlueMask, XULONG AlphaMask>
+XULONG CreatePixel32(XBYTE r, XBYTE g, XBYTE b, XBYTE a = 255) {
+    if constexpr (RedMask == 0x00FF0000 && GreenMask == 0x0000FF00 && BlueMask == 0x000000FF && AlphaMask == 0xFF000000) {
+        // ARGB8888 - most common case
+        return (a << 24) | (r << 16) | (g << 8) | b;
+    } else if constexpr (RedMask == 0xFF000000 && GreenMask == 0x00FF0000 && BlueMask == 0x0000FF00 && AlphaMask == 0x000000FF) {
+        // RGBA8888
+        return (r << 24) | (g << 16) | (b << 8) | a;
+    } else {
+        // Generic case with compile-time constants
+        constexpr XULONG rShift = (RedMask == 0x00FF0000) ? 16 : (RedMask == 0xFF000000) ? 24 : (RedMask == 0x0000FF00) ? 8 : 0;
+        constexpr XULONG gShift = (GreenMask == 0x0000FF00) ? 8 : (GreenMask == 0x00FF0000) ? 16 : (GreenMask == 0xFF000000) ? 24 : 0;
+        constexpr XULONG bShift = (BlueMask == 0x000000FF) ? 0 : (BlueMask == 0x0000FF00) ? 8 : (BlueMask == 0x00FF0000) ? 16 : 24;
+        constexpr XULONG aShift = (AlphaMask == 0xFF000000) ? 24 : (AlphaMask == 0x000000FF) ? 0 : (AlphaMask == 0x0000FF00) ? 8 : 16;
+
+        return (RedMask ? ((r << rShift) & RedMask) : 0) |
+               (GreenMask ? ((g << gShift) & GreenMask) : 0) |
+               (BlueMask ? ((b << bShift) & BlueMask) : 0) |
+               (AlphaMask ? ((a << aShift) & AlphaMask) : 0);
+    }
+}
+
+inline void ConvertPixelBatch(const XULONG *srcPixels, XULONG *dstPixels, int count, const PixelConvertContext &ctx) {
+    if (ctx.identicalFormat) {
+        memcpy(dstPixels, srcPixels, count * sizeof(XULONG));
+        return;
+    }
+
+    // Process 4 pixels at a time for better ILP
+    int i = 0;
+    const int count4 = (count / 4) * 4;
+
+    for (; i < count4; i += 4) {
+        dstPixels[i] = ctx.ConvertPixel(srcPixels[i]);
+        dstPixels[i + 1] = ctx.ConvertPixel(srcPixels[i + 1]);
+        dstPixels[i + 2] = ctx.ConvertPixel(srcPixels[i + 2]);
+        dstPixels[i + 3] = ctx.ConvertPixel(srcPixels[i + 3]);
+    }
+
+    // Handle remaining pixels
+    for (; i < count; i++) {
+        dstPixels[i] = ctx.ConvertPixel(srcPixels[i]);
+    }
+}
+
 inline XULONG CreatePixel(XBYTE r, XBYTE g, XBYTE b, XBYTE a, const VxImageDescEx &desc) {
-    const XULONG rShift = GetBitShift(desc.RedMask);
-    const XULONG gShift = GetBitShift(desc.GreenMask);
-    const XULONG bShift = GetBitShift(desc.BlueMask);
-    const XULONG aShift = GetBitShift(desc.AlphaMask);
-
-    const XULONG rBits = GetBitCount(desc.RedMask);
-    const XULONG gBits = GetBitCount(desc.GreenMask);
-    const XULONG bBits = GetBitCount(desc.BlueMask);
-    const XULONG aBits = GetBitCount(desc.AlphaMask);
-
-    const XULONG rVal = (rBits < 8) ? (r * ((1 << rBits) - 1)) / 255 : r;
-    const XULONG gVal = (gBits < 8) ? (g * ((1 << gBits) - 1)) / 255 : g;
-    const XULONG bVal = (bBits < 8) ? (b * ((1 << bBits) - 1)) / 255 : b;
-    const XULONG aVal = (aBits < 8) ? (a * ((1 << aBits) - 1)) / 255 : a;
-
-    XULONG pixel = 0;
-    pixel |= desc.RedMask ? ((rVal << rShift) & desc.RedMask) : 0;
-    pixel |= desc.GreenMask ? ((gVal << gShift) & desc.GreenMask) : 0;
-    pixel |= desc.BlueMask ? ((bVal << bShift) & desc.BlueMask) : 0;
-    pixel |= desc.AlphaMask ? ((aVal << aShift) & desc.AlphaMask) : 0;
-
-    return pixel;
+    PixelCreateContext ctx(desc);
+    return ctx.CreatePixel(r, g, b, a);
 }
 
 inline XULONG ConvertPixel(XULONG srcPixel, const VxImageDescEx &srcDesc, const VxImageDescEx &dstDesc) {
-    // Fast path for identical formats
-    if (srcDesc.RedMask == dstDesc.RedMask && srcDesc.GreenMask == dstDesc.GreenMask &&
-        srcDesc.BlueMask == dstDesc.BlueMask && srcDesc.AlphaMask == dstDesc.AlphaMask) {
-        return srcPixel;
-    }
-
-    XBYTE r, g, b, a;
-    ExtractRGBA(srcPixel, srcDesc, r, g, b, a);
-    return CreatePixel(r, g, b, a, dstDesc);
+    PixelConvertContext ctx(srcDesc, dstDesc);
+    return ctx.ConvertPixel(srcPixel);
 }
 
 //------------------------------------------------------------------------------
@@ -518,6 +584,10 @@ XBOOL VxConvertToDXT(const VxImageDescEx &src_desc, const VxImageDescEx &dst_des
     // Pre-compute extraction context
     ExtractContext extractCtx(src_desc);
 
+    // Pre-compute base pointers
+    const XBYTE *srcBase = src_desc.Image;
+    const int srcStride = src_desc.BytesPerLine;
+
     // Process blocks in cache-friendly order
     alignas(16) unsigned char block[64]; // 16 pixels * 4 bytes = 64 bytes, aligned for SIMD
 
@@ -528,16 +598,9 @@ XBOOL VxConvertToDXT(const VxImageDescEx &src_desc, const VxImageDescEx &dst_des
                 for (int x = 0; x < 4; x++) {
                     const int srcX = XMin(bx * 4 + x, src_desc.Width - 1);
                     const int srcY = XMin(by * 4 + y, src_desc.Height - 1);
-
-                    const int srcOffset = SafePixelOffset(src_desc, srcX, srcY, srcBpp);
                     const int blockIdx = (y * 4 + x) * 4;
 
-                    if (srcOffset < 0) {
-                        block[blockIdx] = block[blockIdx + 1] = block[blockIdx + 2] = block[blockIdx + 3] = 0;
-                        continue;
-                    }
-
-                    XULONG pixel = ReadPixel(src_desc.Image + srcOffset, srcBpp);
+                    XULONG pixel = ReadPixelAt(srcBase, srcStride, srcX, srcY, srcBpp);
 
                     unsigned char r, g, b, a;
                     ExtractRGBA(pixel, extractCtx, r, g, b, a);
@@ -649,31 +712,7 @@ XBOOL VxDecompressDXT(const VxImageDescEx &src_desc, const VxImageDescEx &dst_de
     if (dstBpp <= 0 || dstBpp > 4) return FALSE;
 
     // Pre-compute pixel creation context
-    struct CreateContext {
-        XULONG rShift, gShift, bShift, aShift;
-        XULONG rBits, gBits, bBits, aBits;
-        XULONG rMask, gMask, bMask, aMask;
-
-        explicit CreateContext(const VxImageDescEx &desc) {
-            rMask = desc.RedMask; gMask = desc.GreenMask; bMask = desc.BlueMask; aMask = desc.AlphaMask;
-            rShift = GetBitShift(rMask); gShift = GetBitShift(gMask); bShift = GetBitShift(bMask); aShift = GetBitShift(aMask);
-            rBits = GetBitCount(rMask); gBits = GetBitCount(gMask); bBits = GetBitCount(bMask); aBits = GetBitCount(aMask);
-        }
-
-        XULONG CreatePixel(XBYTE r, XBYTE g, XBYTE b, XBYTE a) const {
-            const XULONG rVal = (rBits < 8) ? (r * ((1 << rBits) - 1)) / 255 : r;
-            const XULONG gVal = (gBits < 8) ? (g * ((1 << gBits) - 1)) / 255 : g;
-            const XULONG bVal = (bBits < 8) ? (b * ((1 << bBits) - 1)) / 255 : b;
-            const XULONG aVal = (aBits < 8) ? (a * ((1 << aBits) - 1)) / 255 : a;
-
-            XULONG pixel = 0;
-            pixel |= rMask ? ((rVal << rShift) & rMask) : 0;
-            pixel |= gMask ? ((gVal << gShift) & gMask) : 0;
-            pixel |= bMask ? ((bVal << bShift) & bMask) : 0;
-            pixel |= aMask ? ((aVal << aShift) & aMask) : 0;
-            return pixel;
-        }
-    } createCtx(dst_desc);
+    const PixelCreateContext createCtx(dst_desc);
 
     // Process blocks in cache-friendly order
     for (int by = 0; by < blocksHigh; by++) {
@@ -727,9 +766,6 @@ XBOOL VxDecompressDXT(const VxImageDescEx &src_desc, const VxImageDescEx &dst_de
                 const int pixelY = by * 4 + y;
                 if (pixelY >= dst_desc.Height) break;
 
-                // Pre-compute row destination
-                XBYTE *dstRow = dst_desc.Image + pixelY * dst_desc.BytesPerLine;
-
                 for (int x = 0; x < 4; x++) {
                     const int pixelX = bx * 4 + x;
                     if (pixelX >= dst_desc.Width) break;
@@ -750,7 +786,7 @@ XBOOL VxDecompressDXT(const VxImageDescEx &src_desc, const VxImageDescEx &dst_de
                     }
 
                     const XULONG destPixel = createCtx.CreatePixel(r, g, b, a);
-                    WritePixel(dstRow + pixelX * dstBpp, dstBpp, destPixel);
+                    WritePixelAt(dst_desc.Image, dst_desc.BytesPerLine, pixelX, pixelY, dstBpp, destPixel);
                 }
             }
         }
@@ -806,41 +842,23 @@ static void ConvertFormats(const VxImageDescEx &src_desc, const VxImageDescEx &d
         return;
     }
 
-    // 32-bit to 32-bit conversion with vectorization hints
+    // Pre-compute conversion context once
+    PixelConvertContext convertCtx(src_desc, dst_desc);
+
+    // 32-bit to 32-bit conversion with batch processing
     if (srcBpp == 4 && dstBpp == 4) {
         for (int y = 0; y < src_desc.Height; y++) {
-            // Bounds checking
-            if (y * src_desc.BytesPerLine + src_desc.Width * 4 > src_desc.BytesPerLine * src_desc.Height ||
-                y * dst_desc.BytesPerLine + dst_desc.Width * 4 > dst_desc.BytesPerLine * dst_desc.Height) {
-                continue;
-            }
-
             const XULONG *srcLine = (const XULONG *)(src_desc.Image + y * src_desc.BytesPerLine);
             XULONG *dstLine = (XULONG *)(dst_desc.Image + y * dst_desc.BytesPerLine);
 
-            // Process pixels in groups for better ILP (Instruction Level Parallelism)
-            int x = 0;
-            const int width4 = (src_desc.Width / 4) * 4; // Process 4 pixels at a time when possible
-
-            for (; x < width4; x += 4) {
-                // Prefetch ahead
-                if (x + 8 < src_desc.Width) {
-                    #ifdef _MSC_VER
-                    _mm_prefetch((const char*)(srcLine + x + 8), _MM_HINT_T0);
-                    #endif
-                }
-
-                // Process 4 pixels in parallel
-                dstLine[x] = ConvertPixel(srcLine[x], src_desc, dst_desc);
-                dstLine[x + 1] = ConvertPixel(srcLine[x + 1], src_desc, dst_desc);
-                dstLine[x + 2] = ConvertPixel(srcLine[x + 2], src_desc, dst_desc);
-                dstLine[x + 3] = ConvertPixel(srcLine[x + 3], src_desc, dst_desc);
+            // Prefetch next row
+            if (y + 1 < src_desc.Height) {
+                #ifdef _MSC_VER
+                _mm_prefetch((const char*)(srcLine + src_desc.BytesPerLine/4), _MM_HINT_T0);
+                #endif
             }
 
-            // Handle remaining pixels
-            for (; x < src_desc.Width; x++) {
-                dstLine[x] = ConvertPixel(srcLine[x], src_desc, dst_desc);
-            }
+            ConvertPixelBatch(srcLine, dstLine, src_desc.Width, convertCtx);
         }
         return;
     }
@@ -853,7 +871,7 @@ static void ConvertFormats(const VxImageDescEx &src_desc, const VxImageDescEx &d
 
         for (int x = 0; x < src_desc.Width; x++) {
             const XULONG pixel = ReadPixel(srcRow + x * srcBpp, srcBpp);
-            const XULONG dstPixel = ConvertPixel(pixel, src_desc, dst_desc);
+            const XULONG dstPixel = convertCtx.ConvertPixel(pixel);
             WritePixel(dstRow + x * dstBpp, dstBpp, dstPixel);
         }
     }
@@ -1266,23 +1284,17 @@ XBOOL VxConvertToNormalMap(const VxImageDescEx &image, XULONG ColorMask) {
     for (int y = 0; y < image.Height; y++) {
         for (int x = 0; x < image.Width; x++) {
             const int index = y * image.Width + x;
-            const int offset = SafePixelOffset(image, x, y, 4);
 
-            if (offset < 0) {
-                heightMap[index] = 0.5f;
-                continue;
-            }
-
-            const XULONG *pixel = (const XULONG *)(image.Image + offset);
+            const XULONG pixel = ReadPixelAt(image.Image, image.BytesPerLine, x, y, 4);
 
             if (ColorMask == 0xFFFFFFFF) {
                 XBYTE r, g, b, a;
-                ExtractRGBA(*pixel, extractCtx, r, g, b, a);
+                ExtractRGBA(pixel, extractCtx, r, g, b, a);
                 heightMap[index] = (0.299f * r + 0.587f * g + 0.114f * b) / 255.0f;
             } else {
                 const XULONG shift = GetBitShift(actualMask);
                 const XULONG bits = GetBitCount(actualMask);
-                XULONG val = (*pixel & actualMask) >> shift;
+                XULONG val = (pixel & actualMask) >> shift;
 
                 if (bits > 0 && bits < 8) {
                     val = (val * 255) / ((1 << bits) - 1);
@@ -1296,21 +1308,7 @@ XBOOL VxConvertToNormalMap(const VxImageDescEx &image, XULONG ColorMask) {
     const float scale = 2.0f;
 
     // Pre-compute pixel creation context
-    struct CreateContext {
-        XULONG rShift, gShift, bShift;
-        XULONG rMask, gMask, bMask, aMask;
-
-        CreateContext(const VxImageDescEx &desc) {
-            rMask = desc.RedMask; gMask = desc.GreenMask; bMask = desc.BlueMask; aMask = desc.AlphaMask;
-            rShift = GetBitShift(rMask); gShift = GetBitShift(gMask); bShift = GetBitShift(bMask);
-        }
-
-        inline XULONG CreatePixel(int r, int g, int b) const {
-            return (rMask ? ((r << rShift) & rMask) : 0) |
-                   (gMask ? ((g << gShift) & gMask) : 0) |
-                   (bMask ? ((b << bShift) & bMask) : 0);
-        }
-    } createCtx(image);
+    const PixelCreateContext createCtx(image);
 
     for (int y = 0; y < image.Height; y++) {
         // Pre-compute row pointers
@@ -1355,7 +1353,12 @@ XBOOL VxConvertToNormalMap(const VxImageDescEx &image, XULONG ColorMask) {
             g = std::clamp(g, 0, 255);
             b = std::clamp(b, 0, 255);
 
-            pixelRow[x] = (pixelRow[x] & image.AlphaMask) | createCtx.CreatePixel(r, g, b);
+            // Get original alpha from the pixel
+            const XULONG originalPixel = ReadPixelAt(image.Image, image.BytesPerLine, x, y, 4);
+            XBYTE originalR, originalG, originalB, originalA;
+            ExtractRGBA(originalPixel, extractCtx, originalR, originalG, originalB, originalA);
+
+            pixelRow[x] = createCtx.CreatePixel(r, g, b, originalA);
         }
     }
 
@@ -1374,22 +1377,7 @@ XBOOL VxConvertToBumpMap(const VxImageDescEx &image) {
     ExtractContext extractCtx(image);
 
     // Pre-compute pixel creation context
-    struct CreateContext {
-        XULONG rShift, gShift, bShift, aShift;
-        XULONG rMask, gMask, bMask, aMask;
-
-        CreateContext(const VxImageDescEx &desc) {
-            rMask = desc.RedMask; gMask = desc.GreenMask; bMask = desc.BlueMask; aMask = desc.AlphaMask;
-            rShift = GetBitShift(rMask); gShift = GetBitShift(gMask); bShift = GetBitShift(bMask); aShift = GetBitShift(aMask);
-        }
-
-        inline XULONG CreatePixel(int du, int dv, int lum, XBYTE a) const {
-            return (rMask ? ((du << rShift) & rMask) : 0) |
-                   (gMask ? ((dv << gShift) & gMask) : 0) |
-                   (bMask ? ((lum << bShift) & bMask) : 0) |
-                   (aMask ? ((a << aShift) & aMask) : 0);
-        }
-    } createCtx(image);
+    const PixelCreateContext createCtx(image);
 
     for (int y = 0; y < image.Height; y++) {
         XULONG *pixelRow = (XULONG *)(image.Image + y * image.BytesPerLine);
@@ -1405,12 +1393,9 @@ XBOOL VxConvertToBumpMap(const VxImageDescEx &image) {
                     return luminance;
                 }
 
-                const int poffset = SafePixelOffset(image, px, py, 4);
-                if (poffset < 0) return luminance;
-
-                const XULONG *ppixel = (const XULONG *)(image.Image + poffset);
+                const XULONG pixel = ReadPixelAt(image.Image, image.BytesPerLine, px, py, 4);
                 XBYTE pr, pg, pb, pa;
-                ExtractRGBA(*ppixel, extractCtx, pr, pg, pb, pa);
+                ExtractRGBA(pixel, extractCtx, pr, pg, pb, pa);
                 return 0.299f * pr + 0.587f * pg + 0.114f * pb;
             };
 
