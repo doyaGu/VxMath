@@ -113,9 +113,9 @@ void Vx3DMultiplyMatrix4(VxMatrix &ResultMat, const VxMatrix &MatA, const VxMatr
     for (int i = 0; i < 4; i++) {
         for (int j = 0; j < 4; j++) {
             tmp[i][j] = MatA[0][j] * MatB[i][0] +
-                MatA[1][j] * MatB[i][1] +
-                MatA[2][j] * MatB[i][2] +
-                MatA[3][j] * MatB[i][3];
+                        MatA[1][j] * MatB[i][1] +
+                        MatA[2][j] * MatB[i][2] +
+                        MatA[3][j] * MatB[i][3];
         }
     }
 

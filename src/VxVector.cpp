@@ -94,16 +94,16 @@ const VxVector Rotate(const VxVector &v1, const VxVector &v2, float angle) {
     // Implementation using the expanded form for better numerical stability
     VxVector v;
     v.x = v1.x * ((1.0f - n.x * n.x) * cosAngle + n.x * n.x) +
-        v1.y * (sinAngle * n.z + oneMinusCos * n.x * n.y) +
-        v1.z * (oneMinusCos * n.x * n.z - sinAngle * n.y);
+          v1.y * (sinAngle * n.z + oneMinusCos * n.x * n.y) +
+          v1.z * (oneMinusCos * n.x * n.z - sinAngle * n.y);
 
     v.y = v1.y * ((1.0f - n.y * n.y) * cosAngle + n.y * n.y) +
-        v1.z * (sinAngle * n.x + oneMinusCos * n.y * n.z) +
-        v1.x * (oneMinusCos * n.x * n.y - sinAngle * n.z);
+          v1.z * (sinAngle * n.x + oneMinusCos * n.y * n.z) +
+          v1.x * (oneMinusCos * n.x * n.y - sinAngle * n.z);
 
     v.z = v1.z * ((1.0f - n.z * n.z) * cosAngle + n.z * n.z) +
-        v1.x * (sinAngle * n.y + oneMinusCos * n.z * n.x) +
-        v1.y * (oneMinusCos * n.y * n.z - sinAngle * n.x);
+          v1.x * (sinAngle * n.y + oneMinusCos * n.z * n.x) +
+          v1.y * (oneMinusCos * n.y * n.z - sinAngle * n.x);
 
     return v;
 }
