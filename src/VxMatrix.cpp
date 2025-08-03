@@ -21,139 +21,222 @@ const VxMatrix &VxMatrix::Identity() {
 }
 
 void Vx3DMultiplyMatrixVector(VxVector *ResultVector, const VxMatrix &Mat, const VxVector *Vector) {
-    VxVector temp;
-    temp.x = Vector->x * Mat[0][0] + Vector->y * Mat[1][0] + Vector->z * Mat[2][0] + Mat[3][0];
-    temp.y = Vector->x * Mat[0][1] + Vector->y * Mat[1][1] + Vector->z * Mat[2][1] + Mat[3][1];
-    temp.z = Vector->x * Mat[0][2] + Vector->y * Mat[1][2] + Vector->z * Mat[2][2] + Mat[3][2];
-    *ResultVector = temp;
+    const float vx = Vector->x;
+    const float vy = Vector->y;
+    const float vz = Vector->z;
+
+    const float *m0 = Mat[0];
+    const float *m1 = Mat[1];
+    const float *m2 = Mat[2];
+    const float *m3 = Mat[3];
+
+    ResultVector->x = vx * m0[0] + vy * m1[0] + vz * m2[0] + m3[0];
+    ResultVector->y = vx * m0[1] + vy * m1[1] + vz * m2[1] + m3[1];
+    ResultVector->z = vx * m0[2] + vy * m1[2] + vz * m2[2] + m3[2];
 }
 
-void Vx3DMultiplyMatrixVectorMany(VxVector *ResultVectors, const VxMatrix &Mat, const VxVector *Vectors, int count, int stride) {
-    do {
-        VxVector temp;
-        temp.x = Vectors->x * Mat[0][0] + Vectors->y * Mat[1][0] + Vectors->z * Mat[2][0] + Mat[3][0];
-        temp.y = Vectors->x * Mat[0][1] + Vectors->y * Mat[1][1] + Vectors->z * Mat[2][1] + Mat[3][1];
-        temp.z = Vectors->x * Mat[0][2] + Vectors->y * Mat[1][2] + Vectors->z * Mat[2][2] + Mat[3][2];
-        *ResultVectors = temp;
+void Vx3DMultiplyMatrixVectorMany(VxVector *ResultVectors, const VxMatrix &Mat, const VxVector *Vectors, int count,
+                                  int stride) {
+    if (count <= 0) return;
 
-        ResultVectors = reinterpret_cast<VxVector *>(reinterpret_cast<char *>(ResultVectors) + stride);
-        Vectors = reinterpret_cast<const VxVector *>(reinterpret_cast<const char *>(Vectors) + stride);
-        --count;
-    } while (count);
+    const float m00 = Mat[0][0], m01 = Mat[0][1], m02 = Mat[0][2];
+    const float m10 = Mat[1][0], m11 = Mat[1][1], m12 = Mat[1][2];
+    const float m20 = Mat[2][0], m21 = Mat[2][1], m22 = Mat[2][2];
+    const float m30 = Mat[3][0], m31 = Mat[3][1], m32 = Mat[3][2];
+
+    const char *srcPtr = reinterpret_cast<const char *>(Vectors);
+    char *dstPtr = reinterpret_cast<char *>(ResultVectors);
+
+    // Process in blocks of 4
+    int blockCount = count / 4;
+    int remainder = count % 4;
+
+    for (int block = 0; block < blockCount; ++block) {
+        for (int i = 0; i < 4; ++i) {
+            const VxVector *vec = reinterpret_cast<const VxVector *>(srcPtr + (block * 4 + i) * stride);
+            VxVector *result = reinterpret_cast<VxVector *>(dstPtr + (block * 4 + i) * stride);
+
+            const float vx = vec->x;
+            const float vy = vec->y;
+            const float vz = vec->z;
+
+            result->x = vx * m00 + vy * m10 + vz * m20 + m30;
+            result->y = vx * m01 + vy * m11 + vz * m21 + m31;
+            result->z = vx * m02 + vy * m12 + vz * m22 + m32;
+        }
+    }
+
+    // Handle remaining vectors
+    for (int i = 0; i < remainder; ++i) {
+        const VxVector *vec = reinterpret_cast<const VxVector *>(srcPtr + (blockCount * 4 + i) * stride);
+        VxVector *result = reinterpret_cast<VxVector *>(dstPtr + (blockCount * 4 + i) * stride);
+
+        const float vx = vec->x;
+        const float vy = vec->y;
+        const float vz = vec->z;
+
+        result->x = vx * m00 + vy * m10 + vz * m20 + m30;
+        result->y = vx * m01 + vy * m11 + vz * m21 + m31;
+        result->z = vx * m02 + vy * m12 + vz * m22 + m32;
+    }
 }
 
 void Vx3DMultiplyMatrixVector4(VxVector4 *ResultVector, const VxMatrix &Mat, const VxVector4 *Vector) {
-    VxVector4 temp;
-    temp.x = Vector->x * Mat[0][0] + Vector->y * Mat[1][0] + Vector->z * Mat[2][0] + Vector->w * Mat[3][0];
-    temp.y = Vector->x * Mat[0][1] + Vector->y * Mat[1][1] + Vector->z * Mat[2][1] + Vector->w * Mat[3][1];
-    temp.z = Vector->x * Mat[0][2] + Vector->y * Mat[1][2] + Vector->z * Mat[2][2] + Vector->w * Mat[3][2];
-    temp.w = Vector->x * Mat[0][3] + Vector->y * Mat[1][3] + Vector->z * Mat[2][3] + Vector->w * Mat[3][3];
-    *ResultVector = temp;
+    const float vx = Vector->x;
+    const float vy = Vector->y;
+    const float vz = Vector->z;
+    const float vw = Vector->w;
+
+    const float *m0 = Mat[0];
+    const float *m1 = Mat[1];
+    const float *m2 = Mat[2];
+    const float *m3 = Mat[3];
+
+    ResultVector->x = vx * m0[0] + vy * m1[0] + vz * m2[0] + vw * m3[0];
+    ResultVector->y = vx * m0[1] + vy * m1[1] + vz * m2[1] + vw * m3[1];
+    ResultVector->z = vx * m0[2] + vy * m1[2] + vz * m2[2] + vw * m3[2];
+    ResultVector->w = vx * m0[3] + vy * m1[3] + vz * m2[3] + vw * m3[3];
 }
 
 void Vx3DMultiplyMatrixVector4(VxVector4 *ResultVector, const VxMatrix &Mat, const VxVector *Vector) {
-    VxVector4 temp;
-    temp.x = Vector->x * Mat[0][0] + Vector->y * Mat[1][0] + Vector->z * Mat[2][0] + Mat[3][0];
-    temp.y = Vector->x * Mat[0][1] + Vector->y * Mat[1][1] + Vector->z * Mat[2][1] + Mat[3][1];
-    temp.z = Vector->x * Mat[0][2] + Vector->y * Mat[1][2] + Vector->z * Mat[2][2] + Mat[3][2];
-    temp.w = Vector->x * Mat[0][3] + Vector->y * Mat[1][3] + Vector->z * Mat[2][3] + Mat[3][3];
-    *ResultVector = temp;
+    const float vx = Vector->x;
+    const float vy = Vector->y;
+    const float vz = Vector->z;
+
+    const float *m0 = Mat[0];
+    const float *m1 = Mat[1];
+    const float *m2 = Mat[2];
+    const float *m3 = Mat[3];
+
+    ResultVector->x = vx * m0[0] + vy * m1[0] + vz * m2[0] + m3[0];
+    ResultVector->y = vx * m0[1] + vy * m1[1] + vz * m2[1] + m3[1];
+    ResultVector->z = vx * m0[2] + vy * m1[2] + vz * m2[2] + m3[2];
+    ResultVector->w = vx * m0[3] + vy * m1[3] + vz * m2[3] + m3[3];
 }
 
 void Vx3DRotateVector(VxVector *ResultVector, const VxMatrix &Mat, const VxVector *Vector) {
-    VxVector temp;
-    temp.x = Vector->x * Mat[0][0] + Vector->y * Mat[1][0] + Vector->z * Mat[2][0];
-    temp.y = Vector->x * Mat[0][1] + Vector->y * Mat[1][1] + Vector->z * Mat[2][1];
-    temp.z = Vector->x * Mat[0][2] + Vector->y * Mat[1][2] + Vector->z * Mat[2][2];
-    *ResultVector = temp;
+    const float vx = Vector->x;
+    const float vy = Vector->y;
+    const float vz = Vector->z;
+
+    // Only access rotation part of matrix (3x3 upper-left)
+    const float *m0 = Mat[0];
+    const float *m1 = Mat[1];
+    const float *m2 = Mat[2];
+
+    ResultVector->x = vx * m0[0] + vy * m1[0] + vz * m2[0];
+    ResultVector->y = vx * m0[1] + vy * m1[1] + vz * m2[1];
+    ResultVector->z = vx * m0[2] + vy * m1[2] + vz * m2[2];
 }
 
 void Vx3DRotateVectorMany(VxVector *ResultVector, const VxMatrix &Mat, const VxVector *Vector, int count, int stride) {
-    do {
-        VxVector temp;
-        temp.x = Vector->x * Mat[0][0] + Vector->y * Mat[1][0] + Vector->z * Mat[2][0];
-        temp.y = Vector->x * Mat[0][1] + Vector->y * Mat[1][1] + Vector->z * Mat[2][1];
-        temp.z = Vector->x * Mat[0][2] + Vector->y * Mat[1][2] + Vector->z * Mat[2][2];
-        *ResultVector = temp;
+    if (count <= 0) return;
 
-        Vector = reinterpret_cast<const VxVector *>(reinterpret_cast<const char *>(Vector) + stride);
-        ResultVector = reinterpret_cast<VxVector *>(reinterpret_cast<char *>(ResultVector) + stride);
-        --count;
-    } while (count);
+    const float m00 = Mat[0][0], m01 = Mat[0][1], m02 = Mat[0][2];
+    const float m10 = Mat[1][0], m11 = Mat[1][1], m12 = Mat[1][2];
+    const float m20 = Mat[2][0], m21 = Mat[2][1], m22 = Mat[2][2];
+
+    const char *srcPtr = reinterpret_cast<const char *>(Vector);
+    char *dstPtr = reinterpret_cast<char *>(ResultVector);
+
+    for (int i = 0; i < count; i += 4) {
+        int remaining = (count - i < 4) ? count - i : 4;
+
+        for (int j = 0; j < remaining; ++j) {
+            const VxVector *vec = reinterpret_cast<const VxVector *>(srcPtr + (i + j) * stride);
+            VxVector *result = reinterpret_cast<VxVector *>(dstPtr + (i + j) * stride);
+
+            const float vx = vec->x;
+            const float vy = vec->y;
+            const float vz = vec->z;
+
+            result->x = vx * m00 + vy * m10 + vz * m20;
+            result->y = vx * m01 + vy * m11 + vz * m21;
+            result->z = vx * m02 + vy * m12 + vz * m22;
+        }
+    }
 }
 
 void Vx3DMultiplyMatrix(VxMatrix &ResultMat, const VxMatrix &MatA, const VxMatrix &MatB) {
-    // Use a temporary matrix in case ResultMat is the same as MatA or MatB
-    VxMatrix tmp;
+    VxMatrix temp;
 
     for (int i = 0; i < 4; i++) {
+        const float bi0 = MatB[i][0];
+        const float bi1 = MatB[i][1];
+        const float bi2 = MatB[i][2];
+        const float bi3 = MatB[i][3];
+
         for (int j = 0; j < 4; j++) {
-            tmp[i][j] = MatA[0][j] * MatB[i][0] +
-                        MatA[1][j] * MatB[i][1] +
-                        MatA[2][j] * MatB[i][2] +
-                        MatA[3][j] * MatB[i][3];
+            temp[i][j] = MatA[0][j] * bi0 +
+                         MatA[1][j] * bi1 +
+                         MatA[2][j] * bi2 +
+                         MatA[3][j] * bi3;
         }
     }
 
     // For standard 3D transformations, ensure the bottom row is [0,0,0,1]
-    tmp[0][3] = 0.0f;
-    tmp[1][3] = 0.0f;
-    tmp[2][3] = 0.0f;
-    tmp[3][3] = 1.0f;
+    temp[0][3] = 0.0f;
+    temp[1][3] = 0.0f;
+    temp[2][3] = 0.0f;
+    temp[3][3] = 1.0f;
 
-    ResultMat = tmp;
+    ResultMat = temp;
 }
 
 void Vx3DMultiplyMatrix4(VxMatrix &ResultMat, const VxMatrix &MatA, const VxMatrix &MatB) {
-    // Use a temporary matrix in case ResultMat is the same as MatA or MatB
-    VxMatrix tmp;
+    VxMatrix temp;
 
     for (int i = 0; i < 4; i++) {
+        const float bi0 = MatB[i][0];
+        const float bi1 = MatB[i][1];
+        const float bi2 = MatB[i][2];
+        const float bi3 = MatB[i][3];
+
         for (int j = 0; j < 4; j++) {
-            tmp[i][j] = MatA[0][j] * MatB[i][0] +
-                        MatA[1][j] * MatB[i][1] +
-                        MatA[2][j] * MatB[i][2] +
-                        MatA[3][j] * MatB[i][3];
+            temp[i][j] = MatA[0][j] * bi0 +
+                         MatA[1][j] * bi1 +
+                         MatA[2][j] * bi2 +
+                         MatA[3][j] * bi3;
         }
     }
 
-    ResultMat = tmp;
+    ResultMat = temp;
 }
 
 void Vx3DInverseMatrix(VxMatrix &InverseMat, const VxMatrix &Mat) {
-    // Extract the 3x3 rotation/scale submatrix for cleaner code
+    // Extract the 3x3 rotation/scale submatrix
     const float a00 = Mat[0][0], a01 = Mat[0][1], a02 = Mat[0][2];
     const float a10 = Mat[1][0], a11 = Mat[1][1], a12 = Mat[1][2];
     const float a20 = Mat[2][0], a21 = Mat[2][1], a22 = Mat[2][2];
 
-    // Calculate determinant using the rule of Sarrus expansion
-    const double det = a00 * (a11 * a22 - a12 * a21) +
-                       a01 * (a12 * a20 - a10 * a22) +
-                       a02 * (a10 * a21 - a11 * a20);
+    // Calculate determinant using rule of Sarrus expansion
+    const float minor1 = a11 * a22 - a12 * a21;
+    const float minor2 = a12 * a20 - a10 * a22;
+    const float minor3 = a10 * a21 - a11 * a20;
 
-    // Check if matrix is invertible (determinant is non-zero)
-    if (abs(det) < 1.0e-15) {
-        // Matrix is singular - set to identity as fallback
+    const double det = a00 * minor1 + a01 * minor2 + a02 * minor3;
+
+    if (abs(det) < EPSILON) {
         InverseMat.SetIdentity();
         return;
     }
 
-    const double inv_det = 1.0 / det;
+    const double invDet = 1.0 / det;
 
     // Calculate inverse of the 3x3 submatrix using cofactor method
-    InverseMat[0][0] = static_cast<float>((a11 * a22 - a12 * a21) * inv_det);
-    InverseMat[0][1] = static_cast<float>((a02 * a21 - a01 * a22) * inv_det);
-    InverseMat[0][2] = static_cast<float>((a01 * a12 - a02 * a11) * inv_det);
+    InverseMat[0][0] = static_cast<float>((a11 * a22 - a12 * a21) * invDet);
+    InverseMat[0][1] = static_cast<float>((a02 * a21 - a01 * a22) * invDet);
+    InverseMat[0][2] = static_cast<float>((a01 * a12 - a02 * a11) * invDet);
     InverseMat[0][3] = 0.0f;
 
-    InverseMat[1][0] = static_cast<float>((a12 * a20 - a10 * a22) * inv_det);
-    InverseMat[1][1] = static_cast<float>((a00 * a22 - a02 * a20) * inv_det);
-    InverseMat[1][2] = static_cast<float>((a02 * a10 - a00 * a12) * inv_det);
+    InverseMat[1][0] = static_cast<float>((a12 * a20 - a10 * a22) * invDet);
+    InverseMat[1][1] = static_cast<float>((a00 * a22 - a02 * a20) * invDet);
+    InverseMat[1][2] = static_cast<float>((a02 * a10 - a00 * a12) * invDet);
     InverseMat[1][3] = 0.0f;
 
-    InverseMat[2][0] = static_cast<float>((a10 * a21 - a11 * a20) * inv_det);
-    InverseMat[2][1] = static_cast<float>((a01 * a20 - a00 * a21) * inv_det);
-    InverseMat[2][2] = static_cast<float>((a00 * a11 - a01 * a10) * inv_det);
+    InverseMat[2][0] = static_cast<float>((a10 * a21 - a11 * a20) * invDet);
+    InverseMat[2][1] = static_cast<float>((a01 * a20 - a00 * a21) * invDet);
+    InverseMat[2][2] = static_cast<float>((a00 * a11 - a01 * a10) * invDet);
     InverseMat[2][3] = 0.0f;
 
     // Calculate the translation part: -R^T * t
@@ -168,60 +251,72 @@ void Vx3DInverseMatrix(VxMatrix &InverseMat, const VxMatrix &Mat) {
 }
 
 float Vx3DMatrixDeterminant(const VxMatrix &Mat) {
-    // For 3D transformation matrices, only compute 3x3 determinant
+    // Use only 3x3 upper-left submatrix for 3D transformations
     const float a00 = Mat[0][0], a01 = Mat[0][1], a02 = Mat[0][2];
     const float a10 = Mat[1][0], a11 = Mat[1][1], a12 = Mat[1][2];
     const float a20 = Mat[2][0], a21 = Mat[2][1], a22 = Mat[2][2];
 
-    return a00 * (a11 * a22 - a12 * a21) +
-           a01 * (a12 * a20 - a10 * a22) +
-           a02 * (a10 * a21 - a11 * a20);
+    const float minor1 = a11 * a22 - a12 * a21;
+    const float minor2 = a12 * a20 - a10 * a22;
+    const float minor3 = a10 * a21 - a11 * a20;
+
+    return a00 * minor1 + a01 * minor2 + a02 * minor3;
 }
 
 void Vx3DMatrixFromRotation(VxMatrix &ResultMat, const VxVector &Vector, float Angle) {
-    float c = cosf(Angle);
-    float s = sinf(Angle);
-    float t = 1.0f - c;
+    // Fast path for zero rotation
+    if (abs(Angle) < EPSILON) {
+        ResultMat.SetIdentity();
+        return;
+    }
 
-    // Normalize the vector
-    float len = Vector.Magnitude();
+    // Pre-calculate trigonometric values
+    const float c = cosf(Angle);
+    const float s = sinf(Angle);
+    const float t = 1.0f - c;
+
+    // Normalize axis vector with fast inverse square root approximation fallback
+    const float lenSq = Vector.x * Vector.x + Vector.y * Vector.y + Vector.z * Vector.z;
     float x, y, z;
 
-    if (len > EPSILON) {
-        float invLen = 1.0f / len;
+    if (lenSq > EPSILON) {
+        const float invLen = 1.0f / sqrtf(lenSq);
         x = Vector.x * invLen;
         y = Vector.y * invLen;
         z = Vector.z * invLen;
     } else {
-        // Default to Z axis if vector is too small
+        // Default to Z-axis
         x = 0.0f;
         y = 0.0f;
         z = 1.0f;
     }
 
-    // Compute rotation matrix elements using Rodrigues' rotation formula
-    float xx = x * x;
-    float yy = y * y;
-    float zz = z * z;
-    float xy = x * y;
-    float xz = x * z;
-    float yz = y * z;
-    float xs = x * s;
-    float ys = y * s;
-    float zs = z * s;
+    // Pre-calculate common terms for Rodrigues' formula
+    const float xx = x * x;
+    const float yy = y * y;
+    const float zz = z * z;
+    const float xy = x * y;
+    const float xz = x * z;
+    const float yz = y * z;
+    const float xs = x * s;
+    const float ys = y * s;
+    const float zs = z * s;
+    const float xyt = xy * t;
+    const float xzt = xz * t;
+    const float yzt = yz * t;
 
     ResultMat[0][0] = xx * t + c;
-    ResultMat[0][1] = xy * t + zs;
-    ResultMat[0][2] = xz * t - ys;
+    ResultMat[0][1] = xyt + zs;
+    ResultMat[0][2] = xzt - ys;
     ResultMat[0][3] = 0.0f;
 
-    ResultMat[1][0] = xy * t - zs;
+    ResultMat[1][0] = xyt - zs;
     ResultMat[1][1] = yy * t + c;
-    ResultMat[1][2] = yz * t + xs;
+    ResultMat[1][2] = yzt + xs;
     ResultMat[1][3] = 0.0f;
 
-    ResultMat[2][0] = xz * t + ys;
-    ResultMat[2][1] = yz * t - xs;
+    ResultMat[2][0] = xzt + ys;
+    ResultMat[2][1] = yzt - xs;
     ResultMat[2][2] = zz * t + c;
     ResultMat[2][3] = 0.0f;
 
@@ -232,60 +327,72 @@ void Vx3DMatrixFromRotation(VxMatrix &ResultMat, const VxVector &Vector, float A
 }
 
 void Vx3DMatrixFromRotationAndOrigin(VxMatrix &ResultMat, const VxVector &Vector, const VxVector &Origin, float Angle) {
-    // Create rotation matrix
     Vx3DMatrixFromRotation(ResultMat, Vector, Angle);
 
-    // Apply translation to rotate around origin
-    // The formula is: T(origin) * R * T(-origin)
-    // But we can optimize this by directly computing the final translation
+    // Translation calculation: T = origin + R * (-origin)
+    const float negOx = -Origin.x;
+    const float negOy = -Origin.y;
+    const float negOz = -Origin.z;
 
-    // First, rotate the negative origin vector
-    VxVector rotatedNegOrigin;
-    VxVector negOrigin = -Origin;
-    Vx3DRotateVector(&rotatedNegOrigin, ResultMat, &negOrigin);
+    // Apply rotation to negative origin vector
+    const float *r0 = ResultMat[0];
+    const float *r1 = ResultMat[1];
+    const float *r2 = ResultMat[2];
 
-    // The final translation is: origin + rotated(-origin)
-    ResultMat[3][0] = Origin.x + rotatedNegOrigin.x;
-    ResultMat[3][1] = Origin.y + rotatedNegOrigin.y;
-    ResultMat[3][2] = Origin.z + rotatedNegOrigin.z;
+    const float rotNegOx = negOx * r0[0] + negOy * r1[0] + negOz * r2[0];
+    const float rotNegOy = negOx * r0[1] + negOy * r1[1] + negOz * r2[1];
+    const float rotNegOz = negOx * r0[2] + negOy * r1[2] + negOz * r2[2];
+
+    // Set final translation
+    ResultMat[3][0] = Origin.x + rotNegOx;
+    ResultMat[3][1] = Origin.y + rotNegOy;
+    ResultMat[3][2] = Origin.z + rotNegOz;
 }
 
 void Vx3DMatrixFromEulerAngles(VxMatrix &Mat, float eax, float eay, float eaz) {
-    float cx = cosf(eax);
-    float sx = sinf(eax);
-    float cy = cosf(eay);
-    float sy = sinf(eay);
-    float cz = cosf(eaz);
-    float sz = sinf(eaz);
-
-    // Small angle optimizations
-    const float SMALL_ANGLE_THRESHOLD = 1e-10f;
-    if (fabs(eax) <= SMALL_ANGLE_THRESHOLD) {
+    // Calculate trigonometric values
+    float cx, sx, cy, sy, cz, sz;
+    if (abs(eax) <= EPSILON) {
         cx = 1.0f;
-        sx = 0.0f;
+        sx = eax;
+    } else {
+        cx = cosf(eax);
+        sx = sinf(eax);
     }
-    if (fabs(eay) <= SMALL_ANGLE_THRESHOLD) {
+    if (abs(eay) <= EPSILON) {
         cy = 1.0f;
-        sy = 0.0f;
+        sy = eay;
+    } else {
+        cy = cosf(eay);
+        sy = sinf(eay);
     }
-    if (fabs(eaz) <= SMALL_ANGLE_THRESHOLD) {
+    if (abs(eaz) <= EPSILON) {
         cz = 1.0f;
-        sz = 0.0f;
+        sz = eaz;
+    } else {
+        cz = cosf(eaz);
+        sz = sinf(eaz);
     }
 
-    // Rotation order: Z, Y, X (typical convention)
-    Mat[0][0] = cy * cz;
-    Mat[0][1] = cy * sz;
+    // Pre-calculate common terms for ZYX rotation order
+    const float sxsy = sx * sy;
+    const float cxsy = cx * sy;
+    const float cycz = cy * cz;
+    const float cysz = cy * sz;
+
+    // Build matrix
+    Mat[0][0] = cycz;
+    Mat[0][1] = cysz;
     Mat[0][2] = -sy;
     Mat[0][3] = 0.0f;
 
-    Mat[1][0] = sx * sy * cz - cx * sz;
-    Mat[1][1] = sx * sy * sz + cx * cz;
+    Mat[1][0] = sxsy * cz - cx * sz;
+    Mat[1][1] = sxsy * sz + cx * cz;
     Mat[1][2] = sx * cy;
     Mat[1][3] = 0.0f;
 
-    Mat[2][0] = cx * sy * cz + sx * sz;
-    Mat[2][1] = cx * sy * sz - sx * cz;
+    Mat[2][0] = cxsy * cz + sx * sz;
+    Mat[2][1] = cxsy * sz - sx * cz;
     Mat[2][2] = cx * cy;
     Mat[2][3] = 0.0f;
 
@@ -296,20 +403,27 @@ void Vx3DMatrixFromEulerAngles(VxMatrix &Mat, float eax, float eay, float eaz) {
 }
 
 void Vx3DMatrixToEulerAngles(const VxMatrix &Mat, float *eax, float *eay, float *eaz) {
-    // Compute the magnitude to detect gimbal lock
-    float magnitude = sqrtf(Mat[0][0] * Mat[0][0] + Mat[0][1] * Mat[0][1]);
+    // Calculate magnitude for gimbal lock detection
+    const float m00 = Mat[0][0];
+    const float m01 = Mat[0][1];
+    const float m02 = Mat[0][2];
+    const float m12 = Mat[1][2];
+    const float m22 = Mat[2][2];
+    const float m21 = Mat[2][1];
+    const float m11 = Mat[1][1];
 
-    // Check for gimbal lock
+    const float magnitude = sqrtf(m00 * m00 + m01 * m01);
+
     if (magnitude < EPSILON) {
-        // Gimbal lock detected
-        *eay = atan2f(-Mat[0][2], magnitude);
-        *eax = atan2f(-Mat[2][1], Mat[1][1]);
+        // Gimbal lock case
+        *eay = atan2f(-m02, magnitude);
+        *eax = atan2f(-m21, m11);
         *eaz = 0.0f;
     } else {
-        // No gimbal lock
-        *eay = atan2f(-Mat[0][2], magnitude);
-        *eax = atan2f(Mat[1][2], Mat[2][2]);
-        *eaz = atan2f(Mat[0][1], Mat[0][0]);
+        // Normal case
+        *eay = atan2f(-m02, magnitude);
+        *eax = atan2f(m12, m22);
+        *eaz = atan2f(m01, m00);
     }
 }
 
@@ -331,28 +445,22 @@ void Vx3DInterpolateMatrix(float step, VxMatrix &Res, const VxMatrix &A, const V
     // Reconstruct matrix
     Res.SetIdentity();
 
-    // Apply scale
-    VxMatrix scaleMat;
+    // Create and combine transformation matrices
+    VxMatrix scaleMat, rotMat, uRotMat;
     scaleMat.SetIdentity();
     scaleMat[0][0] = scaleRes.x;
     scaleMat[1][1] = scaleRes.y;
     scaleMat[2][2] = scaleRes.z;
 
-    // Apply rotation
-    VxMatrix rotMat;
     quatRes.ToMatrix(rotMat);
-
-    // Apply stretch rotation
-    VxMatrix uRotMat;
     uRotRes.ToMatrix(uRotMat);
 
-    // Combine transformations: R * U * S
-    VxMatrix temp1, temp2;
-    Vx3DMultiplyMatrix(temp1, uRotMat, scaleMat);
-    Vx3DMultiplyMatrix(temp2, rotMat, temp1);
+    // Combine: R * U * S
+    VxMatrix temp;
+    Vx3DMultiplyMatrix(temp, uRotMat, scaleMat);
+    Vx3DMultiplyMatrix(Res, rotMat, temp);
 
-    // Copy the resulting matrix and set the translation
-    Res = temp2;
+    // Set translation
     Res[3][0] = posRes.x;
     Res[3][1] = posRes.y;
     Res[3][2] = posRes.z;
@@ -366,7 +474,7 @@ void Vx3DInterpolateMatrixNoScale(float step, VxMatrix &Res, const VxMatrix &A, 
     Vx3DDecomposeMatrix(A, quatA, posA, scaleA);
     Vx3DDecomposeMatrix(B, quatB, posB, scaleB);
 
-    // Interpolate components (ignoring scale)
+    // Interpolate without scale
     VxQuaternion quatRes = Slerp(step, quatA, quatB);
     VxVector posRes = Interpolate(step, posA, posB);
 
@@ -382,45 +490,104 @@ void Vx3DInterpolateMatrixNoScale(float step, VxMatrix &Res, const VxMatrix &A, 
 void Vx3DMultiplyMatrixVectorStrided(VxStridedData *Dest, VxStridedData *Src, const VxMatrix &Mat, int count) {
     if (!Dest || !Src || !Dest->Ptr || !Src->Ptr || count <= 0) return;
 
-    for (int i = 0; i < count; i++) {
-        const VxVector *srcVec = reinterpret_cast<const VxVector *>(static_cast<const char *>(Src->Ptr) + i * Src->Stride);
-        VxVector *destVec = reinterpret_cast<VxVector *>(static_cast<char *>(Dest->Ptr) + i * Dest->Stride);
-        Vx3DMultiplyMatrixVector(destVec, Mat, srcVec);
+    const float m00 = Mat[0][0], m01 = Mat[0][1], m02 = Mat[0][2];
+    const float m10 = Mat[1][0], m11 = Mat[1][1], m12 = Mat[1][2];
+    const float m20 = Mat[2][0], m21 = Mat[2][1], m22 = Mat[2][2];
+    const float m30 = Mat[3][0], m31 = Mat[3][1], m32 = Mat[3][2];
+
+    const char *srcPtr = static_cast<const char *>(Src->Ptr);
+    char *destPtr = static_cast<char *>(Dest->Ptr);
+
+    for (int i = 0; i < count; ++i) {
+        const VxVector *srcVec = reinterpret_cast<const VxVector *>(srcPtr);
+        VxVector *destVec = reinterpret_cast<VxVector *>(destPtr);
+
+        const float vx = srcVec->x;
+        const float vy = srcVec->y;
+        const float vz = srcVec->z;
+
+        destVec->x = vx * m00 + vy * m10 + vz * m20 + m30;
+        destVec->y = vx * m01 + vy * m11 + vz * m21 + m31;
+        destVec->z = vx * m02 + vy * m12 + vz * m22 + m32;
+
+        srcPtr += Src->Stride;
+        destPtr += Dest->Stride;
     }
 }
 
 void Vx3DMultiplyMatrixVector4Strided(VxStridedData *Dest, VxStridedData *Src, const VxMatrix &Mat, int count) {
     if (!Dest || !Src || !Dest->Ptr || !Src->Ptr || count <= 0) return;
 
-    for (int i = 0; i < count; i++) {
-        const VxVector4 *srcVec = reinterpret_cast<const VxVector4 *>(static_cast<const char *>(Src->Ptr) + i * Src->Stride);
-        VxVector4 *destVec = reinterpret_cast<VxVector4 *>(static_cast<char *>(Dest->Ptr) + i * Dest->Stride);
-        Vx3DMultiplyMatrixVector4(destVec, Mat, srcVec);
+    const float *m0 = Mat[0];
+    const float *m1 = Mat[1];
+    const float *m2 = Mat[2];
+    const float *m3 = Mat[3];
+
+    const char *srcPtr = static_cast<const char *>(Src->Ptr);
+    char *destPtr = static_cast<char *>(Dest->Ptr);
+
+    for (int i = 0; i < count; ++i) {
+        const VxVector4 *srcVec = reinterpret_cast<const VxVector4 *>(srcPtr);
+        VxVector4 *destVec = reinterpret_cast<VxVector4 *>(destPtr);
+
+        const float vx = srcVec->x;
+        const float vy = srcVec->y;
+        const float vz = srcVec->z;
+        const float vw = srcVec->w;
+
+        destVec->x = vx * m0[0] + vy * m1[0] + vz * m2[0] + vw * m3[0];
+        destVec->y = vx * m0[1] + vy * m1[1] + vz * m2[1] + vw * m3[1];
+        destVec->z = vx * m0[2] + vy * m1[2] + vz * m2[2] + vw * m3[2];
+        destVec->w = vx * m0[3] + vy * m1[3] + vz * m2[3] + vw * m3[3];
+
+        srcPtr += Src->Stride;
+        destPtr += Dest->Stride;
     }
 }
 
 void Vx3DRotateVectorStrided(VxStridedData *Dest, VxStridedData *Src, const VxMatrix &Mat, int count) {
     if (!Dest || !Src || !Dest->Ptr || !Src->Ptr || count <= 0) return;
 
-    for (int i = 0; i < count; i++) {
-        const VxVector *srcVec = reinterpret_cast<const VxVector *>(static_cast<const char *>(Src->Ptr) + i * Src->Stride);
-        VxVector *destVec = reinterpret_cast<VxVector *>(static_cast<char *>(Dest->Ptr) + i * Dest->Stride);
-        Vx3DRotateVector(destVec, Mat, srcVec);
+    const float m00 = Mat[0][0], m01 = Mat[0][1], m02 = Mat[0][2];
+    const float m10 = Mat[1][0], m11 = Mat[1][1], m12 = Mat[1][2];
+    const float m20 = Mat[2][0], m21 = Mat[2][1], m22 = Mat[2][2];
+
+    const char *srcPtr = static_cast<const char *>(Src->Ptr);
+    char *destPtr = static_cast<char *>(Dest->Ptr);
+
+    for (int i = 0; i < count; ++i) {
+        const VxVector *srcVec = reinterpret_cast<const VxVector *>(srcPtr);
+        VxVector *destVec = reinterpret_cast<VxVector *>(destPtr);
+
+        const float vx = srcVec->x;
+        const float vy = srcVec->y;
+        const float vz = srcVec->z;
+
+        destVec->x = vx * m00 + vy * m10 + vz * m20;
+        destVec->y = vx * m01 + vy * m11 + vz * m21;
+        destVec->z = vx * m02 + vy * m12 + vz * m22;
+
+        srcPtr += Src->Stride;
+        destPtr += Dest->Stride;
     }
 }
 
 void Vx3DMatrixAdjoint(const VxMatrix &in, VxMatrix &out) {
-    out[0][0] = in[1][1] * in[2][2] - in[1][2] * in[2][1];
-    out[1][0] = in[1][2] * in[2][0] - in[1][0] * in[2][2];
-    out[2][0] = in[1][0] * in[2][1] - in[1][1] * in[2][0];
+    const float m00 = in[0][0], m01 = in[0][1], m02 = in[0][2];
+    const float m10 = in[1][0], m11 = in[1][1], m12 = in[1][2];
+    const float m20 = in[2][0], m21 = in[2][1], m22 = in[2][2];
 
-    out[0][1] = in[0][2] * in[2][1] - in[0][1] * in[2][2];
-    out[1][1] = in[0][0] * in[2][2] - in[0][2] * in[2][0];
-    out[2][1] = in[0][1] * in[2][0] - in[0][0] * in[2][1];
+    out[0][0] = m11 * m22 - m12 * m21;
+    out[1][0] = m12 * m20 - m10 * m22;
+    out[2][0] = m10 * m21 - m11 * m20;
 
-    out[0][2] = in[0][1] * in[1][2] - in[0][2] * in[1][1];
-    out[1][2] = in[0][2] * in[1][0] - in[0][0] * in[1][2];
-    out[2][2] = in[0][0] * in[1][1] - in[0][1] * in[1][0];
+    out[0][1] = m02 * m21 - m01 * m22;
+    out[1][1] = m00 * m22 - m02 * m20;
+    out[2][1] = m01 * m20 - m00 * m21;
+
+    out[0][2] = m01 * m12 - m02 * m11;
+    out[1][2] = m02 * m10 - m00 * m12;
+    out[2][2] = m00 * m11 - m01 * m10;
 }
 
 float Vx3DMatrixNorm(const VxMatrix &M, bool isOneNorm) {
@@ -464,7 +631,7 @@ float Vx3DMatrixPolarDecomposition(const VxMatrix &M_in, VxMatrix &Q, VxMatrix &
         VxMatrix E_next;
         for (int i = 0; i < 3; ++i)
             for (int j = 0; j < 3; ++j) {
-                E_next[i][j] = c1 * E[i][j] + c2 * E_adj[j][i]; // Adjoint is already transposed form
+                E_next[i][j] = c1 * E[i][j] + c2 * E_adj[j][i];
             }
 
         VxMatrix E_diff;
@@ -596,16 +763,9 @@ void Vx3DTransposeMatrix(VxMatrix &Result, const VxMatrix &A) {
 }
 
 void Vx3DDecomposeMatrix(const VxMatrix &A, VxQuaternion &Quat, VxVector &Pos, VxVector &Scale) {
-    // Extract position from translation part
     Pos = VxVector(A[3][0], A[3][1], A[3][2]);
-
-    // Copy matrix to working copy
     VxMatrix Mat = A;
-
-    // Extract quaternion from the matrix copy
     Quat.FromMatrix(Mat, FALSE, FALSE);
-
-    // Calculate scale as dot products of normalized rows with original rows
     Scale.x = Mat[0][0] * A[0][0] + Mat[0][1] * A[0][1] + Mat[0][2] * A[0][2];
     Scale.y = Mat[1][0] * A[1][0] + Mat[1][1] * A[1][1] + Mat[1][2] * A[1][2];
     Scale.z = Mat[2][0] * A[2][0] + Mat[2][1] * A[2][1] + Mat[2][2] * A[2][2];
@@ -615,7 +775,7 @@ float Vx3DDecomposeMatrixTotal(const VxMatrix &A, VxQuaternion &Quat, VxVector &
     // Extract position
     Pos = VxVector(A[3][0], A[3][1], A[3][2]);
 
-    VxMatrix Q, S; // For polar decomposition
+    VxMatrix Q, S;
     float det = Vx3DMatrixPolarDecomposition(A, Q, S);
     if (det < 0.0f) {
         // Flip Q matrix if determinant is negative
@@ -629,17 +789,12 @@ float Vx3DDecomposeMatrixTotal(const VxMatrix &A, VxQuaternion &Quat, VxVector &
         det = 1.0f;
     }
 
-    // Extract rotation quaternion from Q
     Quat = Vx3DQuaternionFromMatrix(Q);
 
-    // Perform spectral decomposition on S to get scale and U rotation
     VxMatrix U;
     Scale = Vx3DMatrixSpectralDecomposition(S, U);
-
-    // Extract U rotation quaternion
     URot = Vx3DQuaternionFromMatrix(U);
 
-    // Apply snuggle correction
     VxQuaternion snuggleQuat = Vx3DQuaternionSnuggle(&URot, &Scale);
     URot = Vx3DQuaternionMultiply(URot, snuggleQuat);
 
@@ -647,17 +802,16 @@ float Vx3DDecomposeMatrixTotal(const VxMatrix &A, VxQuaternion &Quat, VxVector &
 }
 
 float Vx3DDecomposeMatrixTotalPtr(const VxMatrix &A, VxQuaternion *Quat, VxVector *Pos, VxVector *Scale, VxQuaternion *URot) {
-    // Extract position if requested
+    // Extract position
     if (Pos) {
         *Pos = VxVector(A[3][0], A[3][1], A[3][2]);
     }
 
-    // If nothing else is requested, return early
     if (!Quat && !Scale && !URot) {
         return 1.0f;
     }
 
-    VxMatrix Q, S; // For polar decomposition
+    VxMatrix Q, S;
     float det = Vx3DMatrixPolarDecomposition(A, Q, S);
 
     if (det < 0.0f) {
@@ -672,7 +826,6 @@ float Vx3DDecomposeMatrixTotalPtr(const VxMatrix &A, VxQuaternion *Quat, VxVecto
         det = 1.0f;
     }
 
-    // Extract rotation quaternion from Q if requested
     if (Quat) {
         *Quat = Vx3DQuaternionFromMatrix(Q);
     }
@@ -683,7 +836,6 @@ float Vx3DDecomposeMatrixTotalPtr(const VxMatrix &A, VxQuaternion *Quat, VxVecto
         VxVector tempScale = Vx3DMatrixSpectralDecomposition(S, U);
         VxQuaternion tempURot = Vx3DQuaternionFromMatrix(U);
 
-        // Apply snuggle correction
         VxQuaternion snuggleQuat = Vx3DQuaternionSnuggle(&tempURot, &tempScale);
 
         if (URot) {
