@@ -272,9 +272,6 @@ public:
 
         // Apply QL algorithm to find eigenvalues
         QLAlgorithm(diagonal, offDiagonal);
-
-        // Note: The decompiled version doesn't show sorting,
-        // so we leave the results as-is in the matrix
     }
 };
 
