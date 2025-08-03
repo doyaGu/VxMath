@@ -373,30 +373,22 @@ struct ExtractContext {
         bScale = (bBits > 0 && bBits < 8) ? (255 / ((1 << bBits) - 1)) : 1;
         aScale = (aBits > 0 && aBits < 8) ? (255 / ((1 << aBits) - 1)) : 1;
     }
+
+    inline void ExtractRGBA(XULONG pixel, XBYTE &r, XBYTE &g, XBYTE &b, XBYTE &a) const {
+        // Extract components
+        const XULONG rVal = rMask ? ((pixel & rMask) >> rShift) : 0;
+        const XULONG gVal = gMask ? ((pixel & gMask) >> gShift) : 0;
+        const XULONG bVal = bMask ? ((pixel & bMask) >> bShift) : 0;
+        const XULONG aVal = aMask ? ((pixel & aMask) >> aShift) : 255;
+
+        // Scale to 8-bit range using pre-computed factors
+        r = (rBits > 0 && rBits < 8) ? (XBYTE)(rVal * rScale) : (XBYTE)rVal;
+        g = (gBits > 0 && gBits < 8) ? (XBYTE)(gVal * gScale) : (XBYTE)gVal;
+        b = (bBits > 0 && bBits < 8) ? (XBYTE)(bVal * bScale) : (XBYTE)bVal;
+        a = (aBits > 0 && aBits < 8) ? (XBYTE)(aVal * aScale) : (XBYTE)aVal;
+    }
 };
 
-inline void ExtractRGBA(XULONG pixel, const ExtractContext &ctx, XBYTE &r, XBYTE &g, XBYTE &b, XBYTE &a) {
-    // Extract components
-    XULONG rVal = ctx.rMask ? ((pixel & ctx.rMask) >> ctx.rShift) : 0;
-    XULONG gVal = ctx.gMask ? ((pixel & ctx.gMask) >> ctx.gShift) : 0;
-    XULONG bVal = ctx.bMask ? ((pixel & ctx.bMask) >> ctx.bShift) : 0;
-    XULONG aVal = ctx.aMask ? ((pixel & ctx.aMask) >> ctx.aShift) : 255;
-
-    // Scale to 8-bit range using pre-computed factors
-    r = (ctx.rBits > 0 && ctx.rBits < 8) ? (XBYTE)(rVal * ctx.rScale) : (XBYTE)rVal;
-    g = (ctx.gBits > 0 && ctx.gBits < 8) ? (XBYTE)(gVal * ctx.gScale) : (XBYTE)gVal;
-    b = (ctx.bBits > 0 && ctx.bBits < 8) ? (XBYTE)(bVal * ctx.bScale) : (XBYTE)bVal;
-    a = (ctx.aBits > 0 && ctx.aBits < 8) ? (XBYTE)(aVal * ctx.aScale) : (XBYTE)aVal;
-}
-
-inline void ExtractRGBA(XULONG pixel, const VxImageDescEx &desc, XBYTE &r, XBYTE &g, XBYTE &b, XBYTE &a) {
-    ExtractContext ctx(desc);
-    ExtractRGBA(pixel, ctx, r, g, b, a);
-}
-
-static void ExtractRGBAFromPixel(XULONG pixel, const VxImageDescEx &desc, XBYTE &r, XBYTE &g, XBYTE &b, XBYTE &a) {
-    ExtractRGBA(pixel, desc, r, g, b, a);
-}
 
 struct PixelCreateContext {
     XULONG rShift, gShift, bShift, aShift;
@@ -451,32 +443,10 @@ struct PixelConvertContext {
         if (identicalFormat) return srcPixel;
 
         XBYTE r, g, b, a;
-        ExtractRGBA(srcPixel, extract, r, g, b, a);
+        extract.ExtractRGBA(srcPixel, r, g, b, a);
         return create.CreatePixel(r, g, b, a);
     }
 };
-
-template<XULONG RedMask, XULONG GreenMask, XULONG BlueMask, XULONG AlphaMask>
-XULONG CreatePixel32(XBYTE r, XBYTE g, XBYTE b, XBYTE a = 255) {
-    if constexpr (RedMask == 0x00FF0000 && GreenMask == 0x0000FF00 && BlueMask == 0x000000FF && AlphaMask == 0xFF000000) {
-        // ARGB8888 - most common case
-        return (a << 24) | (r << 16) | (g << 8) | b;
-    } else if constexpr (RedMask == 0xFF000000 && GreenMask == 0x00FF0000 && BlueMask == 0x0000FF00 && AlphaMask == 0x000000FF) {
-        // RGBA8888
-        return (r << 24) | (g << 16) | (b << 8) | a;
-    } else {
-        // Generic case with compile-time constants
-        constexpr XULONG rShift = (RedMask == 0x00FF0000) ? 16 : (RedMask == 0xFF000000) ? 24 : (RedMask == 0x0000FF00) ? 8 : 0;
-        constexpr XULONG gShift = (GreenMask == 0x0000FF00) ? 8 : (GreenMask == 0x00FF0000) ? 16 : (GreenMask == 0xFF000000) ? 24 : 0;
-        constexpr XULONG bShift = (BlueMask == 0x000000FF) ? 0 : (BlueMask == 0x0000FF00) ? 8 : (BlueMask == 0x00FF0000) ? 16 : 24;
-        constexpr XULONG aShift = (AlphaMask == 0xFF000000) ? 24 : (AlphaMask == 0x000000FF) ? 0 : (AlphaMask == 0x0000FF00) ? 8 : 16;
-
-        return (RedMask ? ((r << rShift) & RedMask) : 0) |
-               (GreenMask ? ((g << gShift) & GreenMask) : 0) |
-               (BlueMask ? ((b << bShift) & BlueMask) : 0) |
-               (AlphaMask ? ((a << aShift) & AlphaMask) : 0);
-    }
-}
 
 inline void ConvertPixelBatch(const XULONG *srcPixels, XULONG *dstPixels, int count, const PixelConvertContext &ctx) {
     if (ctx.identicalFormat) {
@@ -501,14 +471,45 @@ inline void ConvertPixelBatch(const XULONG *srcPixels, XULONG *dstPixels, int co
     }
 }
 
-inline XULONG CreatePixel(XBYTE r, XBYTE g, XBYTE b, XBYTE a, const VxImageDescEx &desc) {
-    PixelCreateContext ctx(desc);
-    return ctx.CreatePixel(r, g, b, a);
+inline void ApplyAlphaBatch(XULONG* pixels, int count, XBYTE alphaValue, XULONG alphaMask, XULONG alphaShift) {
+    const XULONG alphaComponent = (XULONG)alphaValue << alphaShift;
+    const XULONG colorMask = ~alphaMask;
+
+    // Process 4 pixels at a time
+    int i = 0;
+    const int count4 = (count / 4) * 4;
+
+    for (; i < count4; i += 4) {
+        pixels[i] = (pixels[i] & colorMask) | alphaComponent;
+        pixels[i + 1] = (pixels[i + 1] & colorMask) | alphaComponent;
+        pixels[i + 2] = (pixels[i + 2] & colorMask) | alphaComponent;
+        pixels[i + 3] = (pixels[i + 3] & colorMask) | alphaComponent;
+    }
+
+    // Handle remaining pixels
+    for (; i < count; i++) {
+        pixels[i] = (pixels[i] & colorMask) | alphaComponent;
+    }
 }
 
-inline XULONG ConvertPixel(XULONG srcPixel, const VxImageDescEx &srcDesc, const VxImageDescEx &dstDesc) {
-    PixelConvertContext ctx(srcDesc, dstDesc);
-    return ctx.ConvertPixel(srcPixel);
+inline void ApplyVariableAlphaBatch(XULONG* pixels, const XBYTE* alphaValues, int count, XULONG alphaMask, XULONG alphaShift) {
+    const XULONG colorMask = ~alphaMask;
+
+    // Process 4 pixels at a time
+    int i = 0;
+    const int count4 = (count / 4) * 4;
+
+    for (; i < count4; i += 4) {
+        pixels[i] = (pixels[i] & colorMask) | ((XULONG)alphaValues[i] << alphaShift);
+        pixels[i + 1] = (pixels[i + 1] & colorMask) | ((XULONG)alphaValues[i + 1] << alphaShift);
+        pixels[i + 2] = (pixels[i + 2] & colorMask) | ((XULONG)alphaValues[i + 2] << alphaShift);
+        pixels[i + 3] = (pixels[i + 3] & colorMask) | ((XULONG)alphaValues[i + 3] << alphaShift);
+    }
+
+    // Handle remaining pixels
+    for (; i < count; i++) {
+        pixels[i] = (pixels[i] & colorMask) | ((XULONG)alphaValues[i] << alphaShift);
+    }
 }
 
 //------------------------------------------------------------------------------
@@ -603,7 +604,7 @@ XBOOL VxConvertToDXT(const VxImageDescEx &src_desc, const VxImageDescEx &dst_des
                     XULONG pixel = ReadPixelAt(srcBase, srcStride, srcX, srcY, srcBpp);
 
                     unsigned char r, g, b, a;
-                    ExtractRGBA(pixel, extractCtx, r, g, b, a);
+                    extractCtx.ExtractRGBA(pixel, r, g, b, a);
 
                     block[blockIdx] = r;
                     block[blockIdx + 1] = g;
@@ -613,7 +614,7 @@ XBOOL VxConvertToDXT(const VxImageDescEx &src_desc, const VxImageDescEx &dst_des
             }
 
             const int blockIndex = by * blocksWide + bx;
-            const XULONG dstOffset = (XULONG)blockIndex * blockSize;
+            const int dstOffset = blockIndex * blockSize;
 
             if (dstOffset < 0 || dstOffset + blockSize > dst_desc.TotalImageSize) return FALSE;
 
@@ -629,7 +630,6 @@ static void DecompressDXT3Alpha(const XBYTE *blockPtr, XBYTE *alphaValues) {
     if (!blockPtr || !alphaValues) {
         if (alphaValues) {
             // Vectorized initialization
-#pragma unroll(4)
             for (int i = 0; i < 16; i += 4) {
                 *((XULONG*)(alphaValues + i)) = 0xFFFFFFFF;
             }
@@ -649,7 +649,6 @@ static void DecompressDXT3Alpha(const XBYTE *blockPtr, XBYTE *alphaValues) {
 static void DecompressDXT5Alpha(const XBYTE *blockPtr, XBYTE *alphaValues) {
     if (!blockPtr || !alphaValues) {
         if (alphaValues) {
-#pragma unroll(4)
             for (int i = 0; i < 16; i += 4) {
                 *((XULONG*)(alphaValues + i)) = 0xFFFFFFFF;
             }
@@ -1038,37 +1037,25 @@ void VxDoBlitUpsideDown(const VxImageDescEx &src_desc, const VxImageDescEx &dst_
 
     if (srcBpp <= 0 || srcBpp > 4 || dstBpp <= 0 || dstBpp > 4) return;
 
+    // Pre-compute conversion context once
+    const PixelConvertContext convertCtx(src_desc, dst_desc);
+
     for (int y = 0; y < src_desc.Height; y++) {
         const XBYTE *srcRow = src_desc.Image + y * src_desc.BytesPerLine;
         XBYTE *dstRow = dst_desc.Image + (src_desc.Height - 1 - y) * dst_desc.BytesPerLine;
 
-        // Process pixels in groups
-        int x = 0;
-        const int width4 = (src_desc.Width / 4) * 4;
-
-        for (; x < width4; x += 4) {
-            // Process 4 pixels in parallel
-            const XULONG pixel0 = ReadPixel(srcRow + x * srcBpp, srcBpp);
-            const XULONG pixel1 = ReadPixel(srcRow + (x + 1) * srcBpp, srcBpp);
-            const XULONG pixel2 = ReadPixel(srcRow + (x + 2) * srcBpp, srcBpp);
-            const XULONG pixel3 = ReadPixel(srcRow + (x + 3) * srcBpp, srcBpp);
-
-            const XULONG dstPixel0 = ConvertPixel(pixel0, src_desc, dst_desc);
-            const XULONG dstPixel1 = ConvertPixel(pixel1, src_desc, dst_desc);
-            const XULONG dstPixel2 = ConvertPixel(pixel2, src_desc, dst_desc);
-            const XULONG dstPixel3 = ConvertPixel(pixel3, src_desc, dst_desc);
-
-            WritePixel(dstRow + x * dstBpp, dstBpp, dstPixel0);
-            WritePixel(dstRow + (x + 1) * dstBpp, dstBpp, dstPixel1);
-            WritePixel(dstRow + (x + 2) * dstBpp, dstBpp, dstPixel2);
-            WritePixel(dstRow + (x + 3) * dstBpp, dstBpp, dstPixel3);
-        }
-
-        // Handle remaining pixels
-        for (; x < src_desc.Width; x++) {
-            const XULONG pixel = ReadPixel(srcRow + x * srcBpp, srcBpp);
-            const XULONG dstPixel = ConvertPixel(pixel, src_desc, dst_desc);
-            WritePixel(dstRow + x * dstBpp, dstBpp, dstPixel);
+        // For 32-bit, use batch processing
+        if (srcBpp == 4 && dstBpp == 4) {
+            const XULONG *srcPixels = (const XULONG *)srcRow;
+            XULONG *dstPixels = (XULONG *)dstRow;
+            ConvertPixelBatch(srcPixels, dstPixels, src_desc.Width, convertCtx);
+        } else {
+            // General case
+            for (int x = 0; x < src_desc.Width; x++) {
+                const XULONG pixel = ReadPixel(srcRow + x * srcBpp, srcBpp);
+                const XULONG dstPixel = convertCtx.ConvertPixel(pixel);
+                WritePixel(dstRow + x * dstBpp, dstBpp, dstPixel);
+            }
         }
     }
 }
@@ -1088,29 +1075,11 @@ void VxDoAlphaBlit(const VxImageDescEx &dst_desc, XBYTE AlphaValue) {
         AlphaValue = (AlphaValue * ((1 << alphaBits) - 1)) / 255;
     }
 
-    // Fast path for 32-bit ARGB with vectorized processing
+    // Fast path for 32-bit ARGB with batch processing
     if (dst_desc.BitsPerPixel == 32 && dst_desc.AlphaMask == A_MASK) {
-        const XULONG alphaComponent = (XULONG)AlphaValue << 24;
-        const XULONG alphaMask = 0x00FFFFFF;
-
         for (int y = 0; y < dst_desc.Height; y++) {
             XULONG *row = (XULONG *)(dst_desc.Image + y * dst_desc.BytesPerLine);
-
-            // Process 4 pixels at a time
-            int x = 0;
-            const int width4 = (dst_desc.Width / 4) * 4;
-
-            for (; x < width4; x += 4) {
-                row[x] = (row[x] & alphaMask) | alphaComponent;
-                row[x + 1] = (row[x + 1] & alphaMask) | alphaComponent;
-                row[x + 2] = (row[x + 2] & alphaMask) | alphaComponent;
-                row[x + 3] = (row[x + 3] & alphaMask) | alphaComponent;
-            }
-
-            // Handle remaining pixels
-            for (; x < dst_desc.Width; x++) {
-                row[x] = (row[x] & alphaMask) | alphaComponent;
-            }
+            ApplyAlphaBatch(row, dst_desc.Width, AlphaValue, dst_desc.AlphaMask, 24);
         }
         return;
     }
@@ -1154,36 +1123,12 @@ void VxDoAlphaBlit(const VxImageDescEx &dst_desc, XBYTE *AlphaValues) {
     const XULONG alphaBits = GetBitCount(dst_desc.AlphaMask);
     const int bytesPerPixel = dst_desc.BitsPerPixel / 8;
 
-    // Fast path for 32-bit ARGB with vectorized processing
+    // Fast path for 32-bit ARGB with batch processing
     if (dst_desc.BitsPerPixel == 32 && dst_desc.AlphaMask == A_MASK) {
-        const XULONG alphaMask = 0x00FFFFFF;
-
         for (int y = 0; y < dst_desc.Height; y++) {
             XULONG *row = (XULONG *)(dst_desc.Image + y * dst_desc.BytesPerLine);
-
-            // Process with better memory access patterns
-            int x = 0;
-            const int width4 = (dst_desc.Width / 4) * 4;
-
-            for (; x < width4; x += 4) {
-                const int index = y * dst_desc.Width + x;
-                const XULONG alphaComponent0 = (XULONG)AlphaValues[index] << 24;
-                const XULONG alphaComponent1 = (XULONG)AlphaValues[index + 1] << 24;
-                const XULONG alphaComponent2 = (XULONG)AlphaValues[index + 2] << 24;
-                const XULONG alphaComponent3 = (XULONG)AlphaValues[index + 3] << 24;
-
-                row[x] = (row[x] & alphaMask) | alphaComponent0;
-                row[x + 1] = (row[x + 1] & alphaMask) | alphaComponent1;
-                row[x + 2] = (row[x + 2] & alphaMask) | alphaComponent2;
-                row[x + 3] = (row[x + 3] & alphaMask) | alphaComponent3;
-            }
-
-            // Handle remaining pixels
-            for (; x < dst_desc.Width; x++) {
-                const int index = y * dst_desc.Width + x;
-                const XULONG alphaComponent = (XULONG)AlphaValues[index] << 24;
-                row[x] = (row[x] & alphaMask) | alphaComponent;
-            }
+            const XBYTE *alphaRow = AlphaValues + y * dst_desc.Width;
+            ApplyVariableAlphaBatch(row, alphaRow, dst_desc.Width, dst_desc.AlphaMask, 24);
         }
         return;
     }
@@ -1289,7 +1234,7 @@ XBOOL VxConvertToNormalMap(const VxImageDescEx &image, XULONG ColorMask) {
 
             if (ColorMask == 0xFFFFFFFF) {
                 XBYTE r, g, b, a;
-                ExtractRGBA(pixel, extractCtx, r, g, b, a);
+                extractCtx.ExtractRGBA(pixel, r, g, b, a);
                 heightMap[index] = (0.299f * r + 0.587f * g + 0.114f * b) / 255.0f;
             } else {
                 const XULONG shift = GetBitShift(actualMask);
@@ -1313,7 +1258,9 @@ XBOOL VxConvertToNormalMap(const VxImageDescEx &image, XULONG ColorMask) {
     for (int y = 0; y < image.Height; y++) {
         // Pre-compute row pointers
         XULONG *pixelRow = (XULONG *)(image.Image + y * image.BytesPerLine);
+        const XULONG *originalRow = pixelRow;
 
+        // Process pixels in batches
         for (int x = 0; x < image.Width; x++) {
             auto getHeight = [&](int px, int py) -> float {
                 px = std::clamp(px, 0, image.Width - 1);
@@ -1354,9 +1301,8 @@ XBOOL VxConvertToNormalMap(const VxImageDescEx &image, XULONG ColorMask) {
             b = std::clamp(b, 0, 255);
 
             // Get original alpha from the pixel
-            const XULONG originalPixel = ReadPixelAt(image.Image, image.BytesPerLine, x, y, 4);
             XBYTE originalR, originalG, originalB, originalA;
-            ExtractRGBA(originalPixel, extractCtx, originalR, originalG, originalB, originalA);
+            extractCtx.ExtractRGBA(originalRow[x], originalR, originalG, originalB, originalA);
 
             pixelRow[x] = createCtx.CreatePixel(r, g, b, originalA);
         }
@@ -1384,7 +1330,7 @@ XBOOL VxConvertToBumpMap(const VxImageDescEx &image) {
 
         for (int x = 0; x < image.Width; x++) {
             XBYTE r, g, b, a;
-            ExtractRGBA(pixelRow[x], extractCtx, r, g, b, a);
+            extractCtx.ExtractRGBA(pixelRow[x], r, g, b, a);
 
             const float luminance = 0.299f * r + 0.587f * g + 0.114f * b;
 
@@ -1395,7 +1341,7 @@ XBOOL VxConvertToBumpMap(const VxImageDescEx &image) {
 
                 const XULONG pixel = ReadPixelAt(image.Image, image.BytesPerLine, px, py, 4);
                 XBYTE pr, pg, pb, pa;
-                ExtractRGBA(pixel, extractCtx, pr, pg, pb, pa);
+                extractCtx.ExtractRGBA(pixel, pr, pg, pb, pa);
                 return 0.299f * pr + 0.587f * pg + 0.114f * pb;
             };
 
