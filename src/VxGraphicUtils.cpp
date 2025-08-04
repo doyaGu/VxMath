@@ -8,7 +8,6 @@
 #define STB_IMAGE_RESIZE_IMPLEMENTATION
 #include "stb_image_resize2.h"
 #define STB_DXT_IMPLEMENTATION
-
 #include "stb_dxt.h"
 
 //------------------------------------------------------------------------------
@@ -1066,8 +1065,8 @@ void VxDoAlphaBlit(const VxImageDescEx &dst_desc, XBYTE AlphaValue) {
     const VX_PIXELFORMAT format = VxImageDesc2PixelFormat(dst_desc);
     if (format >= _DXT1 && format <= _DXT5) return;
 
-    const XULONG alphaShift = GetBitShift(dst_desc.AlphaMask);
-    const XULONG alphaBits = GetBitCount(dst_desc.AlphaMask);
+    const int alphaShift = static_cast<int>(GetBitShift(dst_desc.AlphaMask));
+    const int alphaBits = static_cast<int>(GetBitCount(dst_desc.AlphaMask));
     const int bytesPerPixel = dst_desc.BitsPerPixel / 8;
 
     // Scale alpha to bit depth
@@ -1119,8 +1118,8 @@ void VxDoAlphaBlit(const VxImageDescEx &dst_desc, XBYTE *AlphaValues) {
     const VX_PIXELFORMAT format = VxImageDesc2PixelFormat(dst_desc);
     if (format >= _DXT1 && format <= _DXT5) return;
 
-    const XULONG alphaShift = GetBitShift(dst_desc.AlphaMask);
-    const XULONG alphaBits = GetBitCount(dst_desc.AlphaMask);
+    const int alphaShift = static_cast<int>(GetBitShift(dst_desc.AlphaMask));
+    const int alphaBits = static_cast<int>(GetBitCount(dst_desc.AlphaMask));
     const int bytesPerPixel = dst_desc.BitsPerPixel / 8;
 
     // Fast path for 32-bit ARGB with batch processing
@@ -1199,7 +1198,6 @@ void VxGenerateMipMap(const VxImageDescEx &src_desc, XBYTE *Buffer) {
 
     const stbir_pixel_layout layout = GetStbPixelLayout(src_desc);
 
-    // Use high-quality Mitchell filter for mipmap generation
     stbir_resize_uint8_linear(src_desc.Image, src_desc.Width, src_desc.Height, src_desc.BytesPerLine,
                               Buffer, dstWidth, dstHeight, dstPitch, layout);
 }
