@@ -9,11 +9,14 @@
 
 #include "VxEigenMatrix.h"
 
+extern void InitializeTables();
+
 HINSTANCE g_hinstDLL;
 CRITICAL_SECTION g_CriticalSection;
 
 void InitVxMath() {
     VxDetectProcessor();
+    InitializeTables();
     ::InitializeCriticalSection(&g_CriticalSection);
 }
 
