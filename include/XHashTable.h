@@ -48,6 +48,20 @@ public:
      */
     XHashTableEntry(const XHashTableEntry<T, K> &e) : m_Key(e.m_Key), m_Data(e.m_Data), m_Next(NULL) {}
 
+    /**
+     * @brief Copy assignment operator.
+     * @param e The entry to copy from.
+     * @return Reference to this entry.
+     */
+    XHashTableEntry<T, K> &operator=(const XHashTableEntry<T, K> &e) {
+        if (this != &e) {
+            m_Key = e.m_Key;
+            m_Data = e.m_Data;
+            m_Next = NULL; // Note: m_Next is not copied as it's managed by the hash table
+        }
+        return *this;
+    }
+
 #if VX_HAS_CXX11
     /**
      * @brief Move constructor (C++11).
@@ -55,6 +69,21 @@ public:
      */
     XHashTableEntry(XHashTableEntry<T, K> &&e) VX_NOEXCEPT : m_Key(std::move(e.m_Key)), m_Data(std::move(e.m_Data)), m_Next(e.m_Next) {
         e.m_Next = NULL;
+    }
+
+    /**
+     * @brief Move assignment operator (C++11).
+     * @param e The entry to move from.
+     * @return Reference to this entry.
+     */
+    XHashTableEntry<T, K> &operator=(XHashTableEntry<T, K> &&e) VX_NOEXCEPT {
+        if (this != &e) {
+            m_Key = std::move(e.m_Key);
+            m_Data = std::move(e.m_Data);
+            m_Next = e.m_Next;
+            e.m_Next = NULL;
+        }
+        return *this;
     }
 #endif
     /**
