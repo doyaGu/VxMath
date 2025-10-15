@@ -44,7 +44,7 @@ XBOOL VxIntersect::PointInFace(const VxVector &point, const VxVector &pt0, const
     }
 
     // Test edge pt1->pt2 vs point
-    if ((pt_i1 - p2_i1) * (pt_i2 - p2_i2) - (pt_i1 - p2_i2) * (pt_i1 - p2_i1) >= 0.0f) {
+    if ((pt_i1 - p2_i1) * (p0_i2 - p2_i2) - (pt_i2 - p2_i2) * (p0_i1 - p2_i1) >= 0.0f) {
         flags &= 2;
     } else {
         flags &= 1;
