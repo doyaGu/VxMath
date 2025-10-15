@@ -140,7 +140,20 @@ int VxIntersect::RaySphere(const VxRay &iRay, const VxSphere &iSphere, VxVector 
     float t1 = projection - sqrtDiscriminant;
     float t2 = projection + sqrtDiscriminant;
 
-    // Calculate the intersection points
+    // For a ray, only return intersections in the forward direction (t >= 0)
+    if (t1 < 0.0f && t2 < 0.0f) {
+        return 0; // Both intersections are behind the ray origin
+    }
+
+    if (t1 < 0.0f) {
+        // Only t2 is valid (ray originates inside sphere)
+        if (oInter1) {
+            *oInter1 = iRay.m_Origin + normalizedDir * t2;
+        }
+        return 1;
+    }
+
+    // Both intersections are in front of the ray origin
     if (oInter1) {
         *oInter1 = iRay.m_Origin + normalizedDir * t1;
     }
