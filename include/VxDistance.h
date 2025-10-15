@@ -1,6 +1,8 @@
 #ifndef VXDISTANCE_H
 #define VXDISTANCE_H
 
+#include <math.h>
+
 #include "VxMathDefines.h"
 
 class VxRay;
