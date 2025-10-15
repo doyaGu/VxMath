@@ -234,6 +234,7 @@ void VxPixelFormat2ImageDesc(VX_PIXELFORMAT Pf, VxImageDescEx &desc) {
         desc.AlphaMask = info.AlphaMask;
         desc.Flags = (Pf >= _16_V8U8) ? Pf : 0;
         desc.BytesPerLine = ((desc.Width * ((desc.BitsPerPixel + 7) / 8)) + 3) & ~3;
+        desc.TotalImageSize = desc.BytesPerLine * desc.Height;
     }
 }
 
@@ -769,8 +770,7 @@ XBOOL VxDecompressDXT(const VxImageDescEx &src_desc, const VxImageDescEx &dst_de
                     if (pixelX >= dst_desc.Width) break;
 
                     const int pixelIdx = y * 4 + x;
-                    XDWORD colorIdx = (colorIndices >> (2 * pixelIdx)) & 0x3;
-                    if (colorIdx > 3) colorIdx = 0;
+                    const XDWORD colorIdx = (colorIndices >> (2 * pixelIdx)) & 0x3;
 
                     XBYTE r = refColors[colorIdx][0];
                     XBYTE g = refColors[colorIdx][1];
@@ -887,6 +887,7 @@ void VxDoBlit(const VxImageDescEx &src_desc, const VxImageDescEx &dst_desc) {
 
         if (src_desc.BytesPerLine == dst_desc.BytesPerLine) {
             // Single memcpy for packed data
+            if (src_desc.Height > 0 && src_desc.BytesPerLine > SIZE_MAX / src_desc.Height) return;
             const size_t totalBytes = src_desc.BytesPerLine * src_desc.Height;
             memcpy(dst_desc.Image, src_desc.Image, totalBytes);
         } else {
@@ -912,7 +913,7 @@ void VxDoBlit(const VxImageDescEx &src_desc, const VxImageDescEx &dst_desc) {
     }
 
     // Handle DXT format cases
-    if (srcFormat >= _DXT1 && srcFormat <= _DXT5 || dstFormat >= _DXT1 && dstFormat <= _DXT5) {
+    if ((srcFormat >= _DXT1 && srcFormat <= _DXT5) || (dstFormat >= _DXT1 && dstFormat <= _DXT5)) {
         if (srcFormat < _DXT1 && dstFormat >= _DXT1 && dstFormat <= _DXT5) {
             // Convert to DXT
             if (src_desc.Width == dst_desc.Width && src_desc.Height == dst_desc.Height) {
@@ -1009,7 +1010,7 @@ void VxDoBlitUpsideDown(const VxImageDescEx &src_desc, const VxImageDescEx &dst_
     const VX_PIXELFORMAT dstFormat = VxImageDesc2PixelFormat(dst_desc);
 
     // DXT not supported for flipping
-    if (srcFormat >= _DXT1 && srcFormat <= _DXT5 || dstFormat >= _DXT1 && dstFormat <= _DXT5) return;
+    if ((srcFormat >= _DXT1 && srcFormat <= _DXT5) || (dstFormat >= _DXT1 && dstFormat <= _DXT5)) return;
 
     // Fast path for identical format
     if (srcFormat == dstFormat && srcFormat != UNKNOWN_PF) {
@@ -1174,7 +1175,7 @@ void VxResizeImage32(const VxImageDescEx &src_desc, const VxImageDescEx &dst_des
     const VX_PIXELFORMAT srcFormat = VxImageDesc2PixelFormat(src_desc);
     const VX_PIXELFORMAT dstFormat = VxImageDesc2PixelFormat(dst_desc);
 
-    if (srcFormat >= _DXT1 && srcFormat <= _DXT5 || dstFormat >= _DXT1 && dstFormat <= _DXT5) return;
+    if ((srcFormat >= _DXT1 && srcFormat <= _DXT5) || (dstFormat >= _DXT1 && dstFormat <= _DXT5)) return;
 
     const stbir_pixel_layout layout = GetStbPixelLayout(src_desc);
 
@@ -1216,8 +1217,12 @@ XBOOL VxConvertToNormalMap(const VxImageDescEx &image, XULONG ColorMask) {
     const XULONG actualMask = (ColorMask == 0xFFFFFFFF) ? image.RedMask | image.GreenMask | image.BlueMask : ColorMask;
     if (actualMask == 0) return FALSE;
 
+    // Check for integer overflow before allocation
+    if (image.Width > 0 && image.Height > INT_MAX / image.Width) return FALSE;
     const int pixelCount = image.Width * image.Height;
 
+    // Check for size_t overflow in allocation
+    if (pixelCount > SIZE_MAX / sizeof(float)) return FALSE;
     float *heightMap = (float*)_aligned_malloc(pixelCount * sizeof(float), 32);
     if (!heightMap) return FALSE;
 
