@@ -4,6 +4,7 @@
 
 #include <direct.h>
 #include <shellapi.h>
+#include <string>
 
 #include "XString.h"
 #include "VxColor.h"
@@ -128,10 +129,26 @@ void VxAddLibrarySearchPath(char *path) {
 }
 
 XBOOL VxGetEnvironmentVariable(char *envName, XString &envValue) {
-    char buffer[4096];
-    if (GetEnvironmentVariableA("PATH", buffer, sizeof(buffer)) == 0)
+    if (!envName) {
+        envValue = "";
         return FALSE;
-    envValue = buffer;
+    }
+
+    DWORD required = GetEnvironmentVariableA(envName, nullptr, 0);
+    if (required == 0) {
+        envValue = "";
+        return FALSE;
+    }
+
+    std::string buffer(required, '\0');
+    DWORD written = GetEnvironmentVariableA(envName, buffer.data(), required);
+    if (written == 0 || written >= required) {
+        envValue = "";
+        return FALSE;
+    }
+
+    buffer.resize(written);
+    envValue = buffer.c_str();
     return TRUE;
 }
 
@@ -564,7 +581,7 @@ XBOOL VxGetFontInfo(FONT_HANDLE Font, VXFONTINFO &desc) {
 
     // Copy data to the VXFONTINFO structure
     desc.FaceName = logFont.lfFaceName;
-    desc.Height = logFont.lfHeight;
+    desc.Height = (logFont.lfHeight < 0) ? -logFont.lfHeight : logFont.lfHeight;
     desc.Weight = logFont.lfWeight;
     desc.Italic = logFont.lfItalic ? TRUE : FALSE;
     desc.Underline = logFont.lfUnderline ? TRUE : FALSE;
