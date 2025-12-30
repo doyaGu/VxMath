@@ -15,6 +15,8 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED YES)
 set(CMAKE_CXX_EXTENSIONS NO)
 
+option(VX_BUILD_TESTS "Build the test suite" OFF)
+
 # Add path for custom modules
 list(PREPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 
@@ -102,6 +104,9 @@ endif ()
 # Add subdirectories
 add_subdirectory(deps)
 add_subdirectory(src)
+if (VX_BUILD_TESTS)
+    add_subdirectory(tests)
+endif ()
 
 # Export and packaging
 if (VX_INSTALL)
