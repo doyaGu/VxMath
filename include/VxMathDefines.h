@@ -2,8 +2,11 @@
 #define VXMATHDEFINES_H
 
 #include "VxMathCompiler.h"
-
 #include "VxMemory.h"
+
+#include <stddef.h>
+#include <stdint.h>
+#include <limits.h>
 
 /// @brief Internal helper macro to stringify a token.
 #define _QUOTE(x) #x
@@ -221,23 +224,6 @@ typedef enum VX_OSINFO {
 } VX_OSINFO;
 
 /**
- * @brief Platform enumeration.
- * @see VxGetPlatform
- */
-typedef enum VX_PLATFORMINFO {
-    VXPLATFORM_UNKNOWN = -1, ///< Unknown platform
-    VXPLATFORM_WINDOWS = 0,  ///< Windows platform
-    VXPLATFORM_MAC     = 1,  ///< Macintosh platform
-    VXPLATFORM_XBOX    = 2,  ///< Xbox platform
-    VXPLATFORM_WINCE   = 3,  ///< Windows CE platform
-    VXPLATFORM_LINUX   = 4,  ///< Linux platform
-    VXPLATFORM_PSX2    = 5,  ///< PlayStation 2 platform
-    VXPLATFORM_XBOX2   = 6,  ///< Xbox 360 platform
-    VXPLATFORM_PSP     = 7,  ///< PlayStation Portable platform
-    VXPLATFORM_WII     = 8,  ///< Nintendo Wii platform
-} VX_PLATFORMINFO;
-
-/**
  * @brief Pixel format types.
  * @see VxImageDesc2PixelFormat, VxPixelFormat2ImageDesc
  */
@@ -337,26 +323,49 @@ typedef enum ProcessorsFeatures {
     PROC_TM        = 0x20000000, ///< Thermal Monitoring
 } ProcessorsFeatures;
 
+/**
+ * @brief Enumerations of instruction set extensions.
+ *
+ * @remarks These flags represent various SIMD and special instruction set extensions.
+ * @see GetInstructionSetExtensions
+ */
 typedef enum InstructionSetExtensions {
     ISEX_NONE        = 0x00000000, ///< No Extensions
+    // SSE family
     ISEX_SSE         = 0x00000001, ///< SSE (Streaming SIMD Extensions)
     ISEX_SSE2        = 0x00000002, ///< SSE2 (Streaming SIMD Extensions 2)
     ISEX_SSE3        = 0x00000004, ///< SSE3 (Streaming SIMD Extensions 3)
     ISEX_SSSE3       = 0x00000008, ///< SSSE3 (Supplemental Streaming SIMD Extensions 3)
     ISEX_SSE41       = 0x00000010, ///< SSE4.1 (Streaming SIMD Extensions 4.1)
     ISEX_SSE42       = 0x00000020, ///< SSE4.2 (Streaming SIMD Extensions 4.2)
+    // AVX family
     ISEX_AVX         = 0x00000040, ///< AVX (Advanced Vector Extensions)
     ISEX_AVX2        = 0x00000080, ///< AVX2 (Advanced Vector Extensions 2)
+    // FMA and bit manipulation
     ISEX_FMA3        = 0x00000100, ///< FMA3 (Fused Multiply-Add 3-operand)
     ISEX_BMI1        = 0x00000200, ///< BMI1 (Bit Manipulation Instruction Set 1)
     ISEX_BMI2        = 0x00000400, ///< BMI2 (Bit Manipulation Instruction Set 2)
+    // AVX-512 family
     ISEX_AVX512F     = 0x00000800, ///< AVX-512 Foundation
     ISEX_AVX512DQ    = 0x00001000, ///< AVX-512 Doubleword and Quadword Instructions
     ISEX_AVX512BW    = 0x00002000, ///< AVX-512 Byte and Word Instructions
     ISEX_AVX512VL    = 0x00004000, ///< AVX-512 Vector Length Extensions
     ISEX_AVX512VNNI  = 0x00008000, ///< AVX-512 Vector Neural Network Instructions
-    ISEX_AVXVNNI     = 0x00010000, ///< AVX Vector Neural Network Instructions
-    ISEX_AMX         = 0x00020000, ///< AMX (Advanced Matrix Extensions)
+    ISEX_AVX512CD    = 0x00010000, ///< AVX-512 Conflict Detection
+    // VNNI and matrix extensions
+    ISEX_AVXVNNI     = 0x00020000, ///< AVX Vector Neural Network Instructions
+    ISEX_AMX         = 0x00040000, ///< AMX (Advanced Matrix Extensions)
+    // Cryptography and special instructions
+    ISEX_AES         = 0x00080000, ///< AES-NI (Advanced Encryption Standard)
+    ISEX_SHA         = 0x00100000, ///< SHA extensions
+    ISEX_PCLMULQDQ   = 0x00200000, ///< PCLMULQDQ (Carry-Less Multiplication)
+    // Utility instructions
+    ISEX_POPCNT      = 0x00400000, ///< POPCNT instruction
+    ISEX_LZCNT       = 0x00800000, ///< LZCNT instruction
+    ISEX_F16C        = 0x01000000, ///< F16C (Half-precision FP conversion)
+    ISEX_MOVBE       = 0x02000000, ///< MOVBE instruction
+    ISEX_RDRAND      = 0x04000000, ///< RDRAND instruction
+    ISEX_RDSEED      = 0x08000000, ///< RDSEED instruction
 } InstructionSetExtensions;
 
 #endif // VXMATHDEFINES_H

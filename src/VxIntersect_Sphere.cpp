@@ -15,48 +15,42 @@
  * @return 1 if solutions found, 0 if no real solutions
  */
 XBOOL QuadraticFormula(float a, float b, float c, float *t1, float *t2) {
-    // Handle degenerate case where a = 0 (not a quadratic equation)
-    if (a == 0.0f) {
-        if (b != 0.0f) {
-            // Linear equation: bx + c = 0, solution: x = -c/b
-            float linear_root = -c / b;
-            *t1 = linear_root;
-            *t2 = linear_root;
-            return 1;
-        } else {
-            // Degenerate case: 0x + c = 0
-            // No valid solution for our purposes
+    // Treat a == 0 OR unordered(a, 0) (i.e., NaN) as a linear equation.
+    if (!(a > 0.0f || a < 0.0f)) {
+        if (b == 0.0f) {
             *t1 = 0.0f;
             *t2 = 0.0f;
             return 0;
         }
-    }
 
-    // Calculate discriminant: b^2 - 4ac
-    // Use double precision for intermediate calculations to avoid precision loss
-    double discriminant = (double) b * b - 4.0 * (double) a * c;
-
-    // Check if discriminant is negative (no real solutions)
-    if (discriminant < 0.0) {
-        return 0;
-    }
-
-    // Check if discriminant is zero (one repeated root)
-    if (discriminant == 0.0) {
-        float repeated_root = -b / (2.0f * a);
-        *t1 = repeated_root;
-        *t2 = repeated_root;
+        const float root = -(c / b);
+        *t1 = root;
+        *t2 = root;
         return 1;
     }
 
-    // Two distinct real solutions
-    double sqrt_discriminant = sqrt(discriminant);
-    double denominator = 2.0 * (double) a;
+    const double disc = (double)b * (double)b - 4.0 * (double)a * (double)c;
 
-    *t1 = (float) ((-b + sqrt_discriminant) / denominator);
-    *t2 = (float) ((-b - sqrt_discriminant) / denominator);
+    // Two distinct real solutions only when disc > 0.
+    if (disc > 0.0) {
+        const double sqrt_disc = sqrt(disc);
+        const double inv2a = 1.0 / ((double)a + (double)a);
+        *t1 = (float)((sqrt_disc - (double)b) * inv2a);
+        *t2 = (float)((-(double)b - sqrt_disc) * inv2a);
+        return 1;
+    }
 
-    return 1;
+    // One repeated root only when disc == 0.
+    if (disc == 0.0) {
+        const float root = (float)(-(double)b / ((double)a + (double)a));
+        *t1 = root;
+        *t2 = root;
+        return 1;
+    }
+
+    *t1 = 0.0f;
+    *t2 = 0.0f;
+    return 0;
 }
 
 //--------- Spheres
@@ -110,28 +104,30 @@ XBOOL VxIntersect::SphereSphere(const VxSphere &iS1, const VxVector &iP1, const 
 
 // Intersection Ray - Sphere
 int VxIntersect::RaySphere(const VxRay &iRay, const VxSphere &iSphere, VxVector *oInter1, VxVector *oInter2) {
-    // Normalize the ray direction vector
-    float invMagnitude = 1.0f / sqrtf(SquareMagnitude(iRay.m_Direction));
-    VxVector normalizedDir = iRay.m_Direction * invMagnitude;
+    // Normalize the ray direction vector.
+    const float invMagnitude = 1.0f / sqrtf(SquareMagnitude(iRay.m_Direction));
+    const VxVector normalizedDir = iRay.m_Direction * invMagnitude;
 
     // Vector from ray origin to sphere center
-    VxVector toCenter = iSphere.Center() - iRay.m_Origin;
+    const VxVector &center = iSphere.Center();
+    float toCenterX = center.x - iRay.m_Origin.x;
+    float toCenterY = center.y - iRay.m_Origin.y;
+    float toCenterZ = center.z - iRay.m_Origin.z;
 
     // Project the toCenter vector onto the normalized ray direction
-    float projection = DotProduct(toCenter, normalizedDir);
+    float projection = normalizedDir.z * toCenterZ + normalizedDir.y * toCenterY + toCenterX * normalizedDir.x;
 
     // Calculate the discriminant using geometric approach
-    float radiusSquared = iSphere.Radius() * iSphere.Radius();
-    float discriminant = radiusSquared - (SquareMagnitude(toCenter) - projection * projection);
+    float radius = iSphere.Radius();
+    float radiusSquared = radius * radius;
+    float discriminant = radiusSquared - (toCenterZ * toCenterZ + toCenterY * toCenterY + toCenterX * toCenterX - projection * projection);
 
     if (discriminant < 0.0f)
         return 0; // No intersection
 
     if (discriminant == 0.0f) {
         // Single intersection point (ray is tangent to sphere)
-        if (oInter1) {
-            *oInter1 = iRay.m_Origin + normalizedDir * projection;
-        }
+        *oInter1 = iRay.m_Origin + normalizedDir * projection;
         return 1;
     }
 
@@ -140,69 +136,22 @@ int VxIntersect::RaySphere(const VxRay &iRay, const VxSphere &iSphere, VxVector 
     float t1 = projection - sqrtDiscriminant;
     float t2 = projection + sqrtDiscriminant;
 
-    // For a ray, only return intersections in the forward direction (t >= 0)
-    if (t1 < 0.0f && t2 < 0.0f) {
-        return 0; // Both intersections are behind the ray origin
-    }
+    // Compute first intersection point
+    *oInter1 = iRay.m_Origin + normalizedDir * t1;
 
-    if (t1 < 0.0f) {
-        // Only t2 is valid (ray originates inside sphere)
-        if (oInter1) {
-            *oInter1 = iRay.m_Origin + normalizedDir * t2;
-        }
-        return 1;
-    }
-
-    // Both intersections are in front of the ray origin
-    if (oInter1) {
-        *oInter1 = iRay.m_Origin + normalizedDir * t1;
-    }
-    if (oInter2) {
-        *oInter2 = iRay.m_Origin + normalizedDir * t2;
-    }
+    // Compute second intersection point
+    *oInter2 = iRay.m_Origin + normalizedDir * t2;
 
     return 2;
 }
 
 // Intersection Sphere - AABB
 XBOOL VxIntersect::SphereAABB(const VxSphere &iSphere, const VxBbox &iBox) {
-    // Calculate the center of the bounding box
-    VxVector boxCenter = (iBox.Min + iBox.Max) * 0.5f;
+    const VxVector boxCenter = (iBox.Min + iBox.Max) * 0.5f;
 
-    // Vector from box center to sphere center
-    VxVector centerDiff = boxCenter - iSphere.Center();
-
-    // Create a plane from the center difference and sphere center
     VxPlane plane;
-    plane.Create(centerDiff, iSphere.Center());
+    plane.Create(boxCenter - iSphere.Center(), iSphere.Center());
 
-    // Initialize min and max points for box-plane intersection test
-    VxVector minPt = iBox.Min;
-    VxVector maxPt = iBox.Max;
-
-    // For each axis, select the appropriate extreme point based on plane normal
-    for (int i = 0; i < 3; i++) {
-        if (plane.m_Normal[i] < 0.0f) {
-            minPt[i] = iBox.Max[i];
-            maxPt[i] = iBox.Min[i];
-        }
-    }
-
-    // Calculate signed distances from extreme points to the plane
-    float minDist = plane.Classify(minPt);
-    float maxDist = plane.Classify(maxPt);
-
-    // Determine the final distance value based on the signs
-    float finalDist;
-    if (minDist <= 0.0f) {
-        finalDist = maxDist;
-        if (maxDist < 0.0f) {
-            finalDist = 0.0f;
-        }
-    } else {
-        finalDist = minDist;
-    }
-
-    // Return true if the absolute distance is within the sphere's radius
-    return (XAbs(finalDist) <= iSphere.Radius());
+    const float signedDist = plane.Classify(iBox);
+    return (fabsf(signedDist) <= iSphere.Radius());
 }

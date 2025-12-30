@@ -46,16 +46,18 @@ set(VXMATH_PUBLIC_HEADERS
 
 set(VXMATH_PRIVATE_HEADERS
         VxEigenMatrix.h
+        VxBlitEngine.h
+        VxSIMD.h
+        VxSIMD.inl
 )
 
 set(VXMATH_SOURCES
         VxMath.cpp
-        VxStructureUtils.cpp
         VxGraphicUtils.cpp
+        VxBlitEngine.cpp
         VxProcessor.cpp
         VxSharedLibraryWin32.cpp
         VxMemoryMappedFileWin32.cpp
-        VxMemoryPool.cpp
         CKPathSplitter.cpp
         CKDirectoryParser.cpp
         VxWindowFunctionsWin32.cpp
@@ -76,8 +78,8 @@ set(VXMATH_SOURCES
         VxDistance.cpp
         VxFrustum.cpp
         VxTimeProfilerWin32.cpp
-        VxMutex.cpp
-        VxThread.cpp
+        VxMutexWin32.cpp
+        VxThreadWin32.cpp
         VxMemory.cpp
         XString.cpp
         EscapeURL.cpp
@@ -96,6 +98,7 @@ function(vx_configure_target TARGET_NAME)
             $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
             PRIVATE
             ${CMAKE_CURRENT_SOURCE_DIR}
+            ${SIMDE_INCLUDE_DIR}
     )
 
     if(DEFINED STB_INCLUDE_DIR AND EXISTS "${STB_INCLUDE_DIR}")

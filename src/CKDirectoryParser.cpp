@@ -1,8 +1,8 @@
 #include "CKDirectoryParser.h"
 
-#include <io.h>
 #include <stdio.h>
 #include <string.h>
+#include <io.h>
 
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
@@ -178,9 +178,9 @@ void CKDirectoryParser::Reset(char *dir, char *fileMask, XBOOL recurse) {
 }
 
 void CKDirectoryParser::Clean() {
-    if (m_FindData) {
-        delete (_finddata_t*)m_FindData;
-        m_FindData = NULL;
+    if (m_hFile != -1) {
+        _findclose(m_hFile);
+        m_hFile = -1;
     }
 
     if (m_SubParser) {
@@ -188,8 +188,8 @@ void CKDirectoryParser::Clean() {
         m_SubParser = NULL;
     }
 
-    if (m_hFile != -1) {
-        _findclose(m_hFile);
-        m_hFile = -1;
+    if (m_FindData) {
+        delete (_finddata_t*)m_FindData;
+        m_FindData = NULL;
     }
 }

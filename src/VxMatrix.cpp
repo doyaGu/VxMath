@@ -35,8 +35,7 @@ void Vx3DMultiplyMatrixVector(VxVector *ResultVector, const VxMatrix &Mat, const
     ResultVector->z = vx * m0[2] + vy * m1[2] + vz * m2[2] + m3[2];
 }
 
-void Vx3DMultiplyMatrixVectorMany(VxVector *ResultVectors, const VxMatrix &Mat, const VxVector *Vectors, int count,
-                                  int stride) {
+void Vx3DMultiplyMatrixVectorMany(VxVector *ResultVectors, const VxMatrix &Mat, const VxVector *Vectors, int count, int stride) {
     if (count <= 0) return;
 
     const float m00 = Mat[0][0], m01 = Mat[0][1], m02 = Mat[0][2];

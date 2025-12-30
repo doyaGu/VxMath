@@ -11,15 +11,15 @@ VxFrustum::VxFrustum()
       m_DMax(2.0f),
       m_DRatio(0.0f),
       m_RF(0.0f),
-      m_UF(0.0f) { Update();}
+      m_UF(0.0f) { Update(); }
 
 VxFrustum::VxFrustum(const VxVector &origin, const VxVector &right, const VxVector &up, const VxVector &dir, float nearplane, float farplane, float fov, float aspectratio)
     : m_Origin(origin),
       m_Right(right),
       m_Up(up),
       m_Dir(dir),
-      m_RBound(tanf(fov * 0.5f) * aspectratio),
-      m_UBound(tanf(fov * 0.5f)),
+      m_RBound(tanf(fov * 0.5f) * nearplane),
+      m_UBound(tanf(fov * 0.5f) * nearplane * aspectratio),
       m_DMin(nearplane),
       m_DMax(farplane),
       m_DRatio(0.0f),
@@ -37,46 +37,59 @@ void VxFrustum::Update() {
     VxVector upVec = m_Up * m_UBound;
     VxVector rightVec = m_Right * m_RBound;
 
-    // Calculate key corner points needed for plane definitions
-    VxVector nearBottomLeft = m_Origin + nearDirVec - rightVec - upVec;
-    VxVector nearTopRight = m_Origin + nearDirVec + rightVec + upVec;
-
-    // Decompiled code uses farTopRight for the far plane definition.
-    VxVector farTopRight = m_Origin + (nearDirVec + rightVec + upVec) * m_DRatio;
-
-    // Create near plane (normal points back towards eye)
-    VxVector nearNormal = -m_Dir;
-    m_NearPlane.Create(nearNormal, nearBottomLeft);
-
-    // Create far plane (normal points towards eye)
-    m_FarPlane.Create(m_Dir, farTopRight);
-
-    // Calculate side plane normals using vectors from the frustum's origin (apex)
-    // to the corners of the near plane. This matches the method in the decompiled code.
+    // Calculate relative vectors from origin to near plane corners
+    // nbl_rel = nearDirVec - rightVec - upVec (near-bottom-left relative)
+    // ntl_rel = nearDirVec - rightVec + upVec (near-top-left relative)
+    // nbr_rel = nearDirVec + rightVec - upVec (near-bottom-right relative)
+    // ntr_rel = nearDirVec + rightVec + upVec (near-top-right relative)
     VxVector nbl_rel = nearDirVec - rightVec - upVec;
-    VxVector nbr_rel = nearDirVec + rightVec - upVec;
     VxVector ntl_rel = nearDirVec - rightVec + upVec;
+    VxVector nbr_rel = nearDirVec + rightVec - upVec;
     VxVector ntr_rel = nearDirVec + rightVec + upVec;
 
-    // Create left plane
-    VxVector leftNormal = CrossProduct(ntl_rel, nbl_rel);
+    // Near plane vertex in world space (used as point on plane)
+    VxVector nbl = m_Origin + nbl_rel;
+    VxVector ntr = m_Origin + ntr_rel;
+
+    // Far plane vertex (scale near vertex by DRatio and add origin)
+    VxVector farVertex = m_Origin + ntr_rel * m_DRatio;
+
+    // Near plane: normal = -m_Dir (pointing toward camera = outward from frustum)
+    // Point in front of near plane (closer to camera than near) has Classify > 0
+    VxVector nearNormal = -m_Dir;
+    m_NearPlane.Create(nearNormal, nbl);
+
+    // Far plane: normal = m_Dir (pointing away from camera = outward from frustum)
+    // Point behind far plane (further than far) has Classify > 0
+    m_FarPlane.Create(m_Dir, farVertex);
+
+    // For the side planes, we need normals pointing OUTWARD from the frustum
+    // The side planes pass through the frustum origin and the near plane edges
+    // For perspective, this creates a cone-like shape
+
+    // Left plane: passes through origin and left edge (nbl to ntl)
+    // Normal = normalize(CrossProduct(nbl_rel, ntl_rel)) for outward normal pointing left
+    VxVector leftNormal = CrossProduct(nbl_rel, ntl_rel);
     leftNormal.Normalize();
-    m_LeftPlane.Create(leftNormal, nearBottomLeft);
+    m_LeftPlane.Create(leftNormal, m_Origin);
 
-    // Create right plane
-    VxVector rightNormal = CrossProduct(nbr_rel, ntr_rel);
+    // Right plane: passes through origin and right edge (nbr to ntr)
+    // Normal = normalize(CrossProduct(ntr_rel, nbr_rel)) for outward normal pointing right
+    VxVector rightNormal = CrossProduct(ntr_rel, nbr_rel);
     rightNormal.Normalize();
-    m_RightPlane.Create(rightNormal, nearTopRight);
+    m_RightPlane.Create(rightNormal, m_Origin);
 
-    // Create bottom plane
+    // Bottom plane: passes through origin and bottom edge (nbl to nbr)
+    // Normal = normalize(CrossProduct(nbr_rel, nbl_rel)) for outward normal pointing down
     VxVector bottomNormal = CrossProduct(nbr_rel, nbl_rel);
     bottomNormal.Normalize();
-    m_BottomPlane.Create(bottomNormal, nearBottomLeft);
+    m_BottomPlane.Create(bottomNormal, m_Origin);
 
-    // Create top plane
+    // Top plane: passes through origin and top edge (ntl to ntr)
+    // Normal = normalize(CrossProduct(ntl_rel, ntr_rel)) for outward normal pointing up
     VxVector topNormal = CrossProduct(ntl_rel, ntr_rel);
     topNormal.Normalize();
-    m_UpPlane.Create(topNormal, nearTopRight);
+    m_UpPlane.Create(topNormal, m_Origin);
 }
 
 void VxFrustum::ComputeVertices(VxVector vertices[8]) const {
@@ -85,21 +98,22 @@ void VxFrustum::ComputeVertices(VxVector vertices[8]) const {
     VxVector rightVec = m_Right * m_RBound;
     VxVector upVec = m_Up * m_UBound;
 
-    // Compute near plane vertices relative to origin, as seen in the decompilation
-    vertices[0] = nearDirVec - rightVec - upVec;
-    vertices[1] = nearDirVec + rightVec - upVec;
-    vertices[2] = nearDirVec + rightVec + upVec;
-    vertices[3] = nearDirVec - rightVec + upVec;
+    // Compute near plane vertices relative to origin
+    VxVector leftVec = nearDirVec - rightVec;
+    VxVector rightVec2 = nearDirVec + rightVec;
 
-    // Now compute far vertices and adjust near vertices to world space
+    vertices[0] = leftVec - upVec;   // Near-Bottom-Left
+    vertices[1] = leftVec + upVec;   // Near-Top-Left
+    vertices[2] = rightVec2 + upVec; // Near-Top-Right
+    vertices[3] = rightVec2 - upVec; // Near-Bottom-Right
+
+    // Compute far vertices and adjust near vertices to world space
+    // For each near vertex:
+    //   far vertex = origin + (near_relative * m_DRatio)
+    //   near vertex = origin + near_relative
     for (int i = 0; i < 4; i++) {
-        // Get vector from origin to near vertex (which is just vertices[i] at this point)
-        const VxVector& nearVec = vertices[i];
-        // Scale by depth ratio to get far vector relative to origin
-        VxVector farVec = nearVec * m_DRatio;
-        // Far vertex is origin plus scaled vector
-        vertices[i + 4] = m_Origin + farVec;
-        // Adjust near vertex to be in world space
+        VxVector nearVec = vertices[i];
+        vertices[i + 4] = m_Origin + nearVec * m_DRatio;
         vertices[i] += m_Origin;
     }
 }
@@ -120,26 +134,36 @@ void VxFrustum::Transform(const VxMatrix &invworldmat) {
     Vx3DRotateVectorMany(resultVectors, invworldmat, &m_Right, 3, sizeof(VxVector));
 
     // Extract new magnitudes (bounds) and normalize direction vectors
-    float newRBound = resultVectors[0].Magnitude();
-    float newUBound = resultVectors[1].Magnitude();
-    float newDMin = resultVectors[2].Magnitude();
+    const float newRBound = Magnitude(resultVectors[0]);
+    const float newUBound = Magnitude(resultVectors[1]);
+    const float newDMin = Magnitude(resultVectors[2]);
 
-    // Update bounds and distances
     m_RBound = newRBound;
     m_UBound = newUBound;
+    m_DMax = newDMin * m_DRatio;
     m_DMin = newDMin;
-    m_DMax = newDMin * m_DRatio; // Preserve ratio
 
-    // Normalize direction vectors
-    if (newRBound > EPSILON) {
-        m_Right = resultVectors[0] * (1.0f / newRBound);
+    if (newRBound > 0.0f) {
+        resultVectors[0] /= newRBound;
+    } else {
+        resultVectors[0] = VxVector::axis0();
     }
-    if (newUBound > EPSILON) {
-        m_Up = resultVectors[1] * (1.0f / newUBound);
+
+    if (newUBound > 0.0f) {
+        resultVectors[1] /= newUBound;
+    } else {
+        resultVectors[1] = VxVector::axis0();
     }
-    if (newDMin > EPSILON) {
-        m_Dir = resultVectors[2] * (1.0f / newDMin);
+
+    if (newDMin > 0.0f) {
+        resultVectors[2] /= newDMin;
+    } else {
+        resultVectors[2] = VxVector::axis0();
     }
+
+    m_Right = resultVectors[0];
+    m_Up = resultVectors[1];
+    m_Dir = resultVectors[2];
 
     // Update the planes with the new transformed vectors
     Update();

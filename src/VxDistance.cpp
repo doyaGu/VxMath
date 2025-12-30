@@ -1,510 +1,587 @@
 #include "VxDistance.h"
 
+#include <float.h>
+
 #include "VxRay.h"
 #include "VxVector.h"
+
+struct RayPairTerms {
+    VxVector diff;
+    float a;   // |dir0|^2
+    float b;   // -dot(dir0, dir1)
+    float c;   // |dir1|^2
+    float d;   // dot(diff, dir0)
+    float e;   // -dot(diff, dir1)
+    float f;   // |diff|^2
+    float det; // |a*c - b*b|
+};
+
+static inline RayPairTerms MakeRayPairTerms(const VxRay& r0, const VxRay& r1) {
+    RayPairTerms t;
+    t.diff = r0.m_Origin - r1.m_Origin;
+    t.a = SquareMagnitude(r0.m_Direction);
+    t.b = -DotProduct(r0.m_Direction, r1.m_Direction);
+    t.c = SquareMagnitude(r1.m_Direction);
+    t.d = DotProduct(t.diff, r0.m_Direction);
+    t.e = -DotProduct(t.diff, r1.m_Direction);
+    t.f = SquareMagnitude(t.diff);
+    t.det = XAbs(t.c * t.a - t.b * t.b);
+    return t;
+}
+
+// Matches the exact quadratic expansion used in the original implementation.
+static inline float DistanceQuadraticPart(const RayPairTerms& t, float s0, float s1) {
+    return (s1 * t.c + s0 * t.b + t.e + t.e) * s1 + (s1 * t.b + s0 * t.a + t.d + t.d) * s0;
+}
 
 // Line-Line distance calculations
 
 float VxDistance::LineLineSquareDistance(const VxRay &line0, const VxRay &line1, float *t0, float *t1) {
-    // Direction vectors
-    const VxVector &dir0 = line0.GetDirection();
-    const VxVector &dir1 = line1.GetDirection();
+    const RayPairTerms t = MakeRayPairTerms(line0, line1);
 
-    // Get the segment between the two origins
-    VxVector diff = line0.GetOrigin() - line1.GetOrigin();
+    float s0;
+    float s1;
+    float quad;
 
-    float a = DotProduct(dir0, dir0); // Length squared of line0.dir
-    float b = DotProduct(dir0, dir1); // Dot product of the two directions
-    float c = DotProduct(dir1, dir1); // Length squared of line1.dir
-    float d = DotProduct(dir0, diff); // Projection of diff onto line0.dir
-    float e = DotProduct(dir1, diff); // Projection of diff onto line1.dir
-
-    float det = a * c - b * b; // Determinant of the system
-
-    // Default parameters
-    float s0, s1;
-
-    if (XAbs(det) < EPSILON) {
-        // Lines are parallel - project one point onto the other line
-        s0 = 0.0f;
-        if (XAbs(c) > EPSILON) {
-            s1 = e / c;
-        } else {
-            s1 = 0.0f;
-        }
+    if (t.det < EPSILON) {
+        // Parallel case
+        s1 = 0.0f;
+        s0 = -(t.d / t.a);
+        quad = t.d * s0;
     } else {
-        // Compute the parameters of the closest points
-        s0 = (b * e - c * d) / det;
-        s1 = (a * e - b * d) / det;
+        const float invDet = 1.0f / t.det;
+        s0 = (t.e * t.b - t.d * t.c) * invDet;
+        s1 = (t.d * t.b - t.e * t.a) * invDet;
+        quad = DistanceQuadraticPart(t, s0, s1);
     }
 
-    // Store parameters if requested
     if (t0) *t0 = s0;
     if (t1) *t1 = s1;
 
-    // Compute the closest points on the lines
-    VxVector closest0, closest1;
-    line0.Interpolate(closest0, s0);
-    line1.Interpolate(closest1, s1);
-
-    // Return the squared distance between the closest points
-    return SquareMagnitude(closest1 - closest0);
+    return XAbs(quad + t.f);
 }
 
 float VxDistance::LineRaySquareDistance(const VxRay &line, const VxRay &ray, float *t0, float *t1) {
-    // Direction vectors
-    const VxVector &dir0 = line.GetDirection();
-    const VxVector &dir1 = ray.GetDirection();
+    const RayPairTerms t = MakeRayPairTerms(line, ray);
 
-    // Get the segment between the two origins
-    VxVector diff = line.GetOrigin() - ray.GetOrigin();
+    float s0;
+    float s1;
+    float quad;
 
-    float a = DotProduct(dir0, dir0);
-    float b = DotProduct(dir0, dir1);
-    float c = DotProduct(dir1, dir1);
-    float d = DotProduct(dir0, diff);
-    float e = DotProduct(dir1, diff);
-
-    float det = a * c - b * b;
-
-    // Default parameters
-    float s0, s1;
-
-    if (XAbs(det) < EPSILON) {
-        // Lines are parallel
-        s0 = 0.0f;
-        if (XAbs(c) > EPSILON) {
-            s1 = e / c;
-        } else {
-            s1 = 0.0f;
-        }
-    } else {
-        // Compute the unconstrained parameters
-        s0 = (b * e - c * d) / det;
-        s1 = (a * e - b * d) / det;
-    }
-
-    // For a ray, parameter must be non-negative
-    if (s1 < 0.0f) {
+    const float rayParam = t.d * t.b - t.e * t.a;
+    if (t.det < EPSILON || rayParam < 0.0f) {
+        // Parallel case or ray parameter negative - clamp ray parameter to 0
         s1 = 0.0f;
-        // Recompute s0 with s1 fixed at 0
-        if (XAbs(a) > EPSILON) {
-            s0 = -d / a;
-        } else {
-            s0 = 0.0f;
-        }
+        s0 = -(t.d / t.a);
+        quad = t.d * s0;
+    } else {
+        const float invDet = 1.0f / t.det;
+        s0 = (t.e * t.b - t.d * t.c) * invDet;
+        s1 = invDet * rayParam;
+        quad = DistanceQuadraticPart(t, s0, s1);
     }
 
-    // Store parameters if requested
     if (t0) *t0 = s0;
     if (t1) *t1 = s1;
 
-    // Compute closest points
-    VxVector closest0, closest1;
-    line.Interpolate(closest0, s0);
-    ray.Interpolate(closest1, s1);
-
-    // Return the squared distance between the closest points
-    return SquareMagnitude(closest1 - closest0);
+    return XAbs(quad + t.f);
 }
 
 float VxDistance::LineSegmentSquareDistance(const VxRay &line, const VxRay &segment, float *t0, float *t1) {
-    // Direction vectors
-    const VxVector &dir0 = line.GetDirection();
-    const VxVector &dir1 = segment.GetDirection();
+    const RayPairTerms t = MakeRayPairTerms(line, segment);
 
-    // Get the segment between the two origins
-    VxVector diff = line.GetOrigin() - segment.GetOrigin();
+    float s0;
+    float s1;
+    float quad;
 
-    float a = DotProduct(dir0, dir0);
-    float b = DotProduct(dir0, dir1);
-    float c = DotProduct(dir1, dir1);
-    float d = DotProduct(dir0, diff);
-    float e = DotProduct(dir1, diff);
-
-    float det = a * c - b * b;
-
-    // Default parameters
-    float s0, s1;
-
-    if (XAbs(det) < EPSILON) {
-        // Lines are parallel
-        s0 = 0.0f;
-        if (XAbs(c) > EPSILON) {
-            s1 = e / c;
-        } else {
-            s1 = 0.0f;
-        }
-    } else {
-        // Compute the unconstrained parameters
-        s0 = (b * e - c * d) / det;
-        s1 = (a * e - b * d) / det;
-    }
-
-    // For a segment, parameter must be between 0 and 1
-    if (s1 < 0.0f) {
+    const float segParam = t.d * t.b - t.e * t.a;
+    if (t.det < EPSILON || segParam < 0.0f) {
+        // Parallel case or segment parameter negative - clamp to 0
         s1 = 0.0f;
-        // Recompute s0 with s1 fixed at 0
-        if (XAbs(a) > EPSILON) {
-            s0 = -d / a;
-        } else {
-            s0 = 0.0f;
-        }
-    } else if (s1 > 1.0f) {
+        s0 = -(t.d / t.a);
+        quad = t.d * s0;
+        quad = quad + t.f;
+    } else if (segParam > t.det) {
+        // Segment parameter > 1 - clamp to 1
+        const float dPlusB = t.d + t.b;
         s1 = 1.0f;
-        // Recompute s0 with s1 fixed at 1
-        if (XAbs(a) > EPSILON) {
-            s0 = (b - d) / a;
-        } else {
-            s0 = 0.0f;
-        }
+        s0 = -(dPlusB / t.a);
+        quad = dPlusB * s0 + t.e + t.e + t.f + t.c;
+    } else {
+        const float invDet = 1.0f / t.det;
+        s0 = (t.e * t.b - t.d * t.c) * invDet;
+        s1 = invDet * segParam;
+        quad = DistanceQuadraticPart(t, s0, s1) + t.f;
     }
 
-    // Store parameters if requested
     if (t0) *t0 = s0;
     if (t1) *t1 = s1;
 
-    // Compute closest points
-    VxVector closest0, closest1;
-    line.Interpolate(closest0, s0);
-    segment.Interpolate(closest1, s1);
-
-    // Return the squared distance between the closest points
-    return SquareMagnitude(closest1 - closest0);
+    return XAbs(quad);
 }
 
 float VxDistance::RayRaySquareDistance(const VxRay &ray0, const VxRay &ray1, float *t0, float *t1) {
-    // Direction vectors
-    const VxVector &dir0 = ray0.GetDirection();
-    const VxVector &dir1 = ray1.GetDirection();
+    const RayPairTerms t = MakeRayPairTerms(ray0, ray1);
 
-    // Get the segment between the two origins
-    VxVector diff = ray0.GetOrigin() - ray1.GetOrigin();
+    float s0 = 0.0f;
+    float s1 = 0.0f;
+    float f = t.f;
 
-    float a = DotProduct(dir0, dir0);
-    float b = DotProduct(dir0, dir1);
-    float c = DotProduct(dir1, dir1);
-    float d = DotProduct(dir0, diff);
-    float e = DotProduct(dir1, diff);
-
-    float det = a * c - b * b;
-
-    // Default parameters
-    float s0, s1;
-
-    if (XAbs(det) < EPSILON) {
-        // Rays are parallel
-        s0 = 0.0f;
-        if (XAbs(c) > EPSILON) {
-            s1 = e / c;
-        } else {
-            s1 = 0.0f;
-        }
-    } else {
-        // Compute the unconstrained parameters
-        s0 = (b * e - c * d) / det;
-        s1 = (a * e - b * d) / det;
-    }
-
-    // For rays, both parameters must be non-negative
-    // Handle constraints systematically
-    if (s0 < 0.0f && s1 < 0.0f) {
-        // Both parameters negative - closest points are at origins
-        s0 = 0.0f;
+    if (t.det < EPSILON) {
+        // Parallel case
         s1 = 0.0f;
-    } else if (s0 < 0.0f) {
-        // s0 is negative, clamp to 0 and recompute s1
-        s0 = 0.0f;
-        if (XAbs(c) > EPSILON) {
-            s1 = e / c;
-            if (s1 < 0.0f) s1 = 0.0f;
-        } else {
-            s1 = 0.0f;
-        }
-    } else if (s1 < 0.0f) {
-        // s1 is negative, clamp to 0 and recompute s0
-        s1 = 0.0f;
-        if (XAbs(a) > EPSILON) {
-            s0 = -d / a;
-            if (s0 < 0.0f) s0 = 0.0f;
+        if (t.d < 0.0f) {
+            s0 = -(t.d / t.a);
+            f = f + s0 * t.d;
         } else {
             s0 = 0.0f;
+            s1 = -(t.e / t.c);
+            f = f + s1 * t.e;
+        }
+    } else {
+        const float ray0Param = t.e * t.b - t.d * t.c;
+        const float ray1Param = t.d * t.b - t.e * t.a;
+
+        if (ray0Param < 0.0f) {
+            // Clamp ray0 parameter to 0
+            s0 = 0.0f;
+            if (t.d < 0.0f) {
+                // Closest point involves ray1 at t=0
+                s1 = 0.0f;
+                s0 = -(t.d / t.a);
+                f = f + s0 * t.d;
+            } else {
+                // Optimize ray1 for ray0 at t=0
+                if (t.e >= 0.0f) {
+                    s1 = 0.0f;
+                } else {
+                    s1 = -(t.e / t.c);
+                    f = f + s1 * t.e;
+                }
+            }
+        } else if (ray1Param < 0.0f) {
+            // Clamp ray1 parameter to 0
+            s1 = 0.0f;
+            if (t.d < 0.0f) {
+                s0 = -(t.d / t.a);
+                f = f + s0 * t.d;
+            } else {
+                s0 = 0.0f;
+            }
+        } else {
+            // Both parameters in range
+            const float invDet = 1.0f / t.det;
+            s0 = ray0Param * invDet;
+            s1 = ray1Param * invDet;
+            f = f + DistanceQuadraticPart(t, s0, s1);
         }
     }
 
-    // Store parameters if requested
     if (t0) *t0 = s0;
     if (t1) *t1 = s1;
 
-    // Compute closest points
-    VxVector closest0, closest1;
-    ray0.Interpolate(closest0, s0);
-    ray1.Interpolate(closest1, s1);
-
-    // Return the squared distance between the closest points
-    return SquareMagnitude(closest1 - closest0);
+    return XAbs(f);
 }
 
 float VxDistance::RaySegmentSquareDistance(const VxRay &ray, const VxRay &segment, float *t0, float *t1) {
-    // Direction vectors
-    const VxVector &dir0 = ray.GetDirection();
-    const VxVector &dir1 = segment.GetDirection();
+    const RayPairTerms t = MakeRayPairTerms(ray, segment);
+    const float a = t.a;
+    const float b = t.b;
+    const float c = t.c;
+    const float d = t.d;
+    const float e = t.e;
+    float f = t.f;
+    const float det = t.det;
 
-    // Get the segment between the two origins
-    VxVector diff = ray.GetOrigin() - segment.GetOrigin();
+    float rayT = 0.0f;
+    float segT = 0.0f;
 
-    float a = DotProduct(dir0, dir0);
-    float b = DotProduct(dir0, dir1);
-    float c = DotProduct(dir1, dir1);
-    float d = DotProduct(dir0, diff);
-    float e = DotProduct(dir1, diff);
-
-    float det = a * c - b * b;
-
-    // Default parameters
-    float s0, s1;
-
-    if (XAbs(det) < EPSILON) {
-        // Lines are parallel
-        s0 = 0.0f;
-        if (XAbs(c) > EPSILON) {
-            s1 = e / c;
+    if (det < EPSILON) {
+        // Parallel case
+        if (b <= 0.0f) {
+            // Evaluate with segment clamped at 1
+            segT = 1.0f;
+            const float dPlusB = d + b;
+            if (dPlusB >= 0.0f) {
+                rayT = 0.0f;
+                f = f + e + e + c;
+            } else {
+                rayT = -(dPlusB / a);
+                f = f + dPlusB * rayT + e + e + c;
+            }
         } else {
-            s1 = 0.0f;
+            // Evaluate with segment clamped at 0
+            segT = 0.0f;
+            if (d < 0.0f) {
+                rayT = -(d / a);
+                f = f + rayT * d;
+            } else {
+                rayT = 0.0f;
+            }
         }
     } else {
-        // Compute the unconstrained parameters
-        s0 = (b * e - c * d) / det;
-        s1 = (a * e - b * d) / det;
-    }
+        const float rayParam = e * b - d * c;
+        const float segParam = d * b - e * a;
 
-    // Apply constraints: ray.t >= 0, 0 <= segment.t <= 1
-    if (s0 < 0.0f) {
-        s0 = 0.0f;
-        // Recompute s1 with s0 fixed at 0
-        if (XAbs(c) > EPSILON) {
-            s1 = e / c;
+        if (segParam < 0.0f) {
+            // Clamp segment to 0
+            segT = 0.0f;
+            if (d < 0.0f) {
+                rayT = -(d / a);
+                f = f + rayT * d;
+            } else {
+                rayT = 0.0f;
+            }
+        } else if (segParam > det) {
+            // Clamp segment to 1
+            segT = 1.0f;
+            if (-b <= d) {
+                rayT = 0.0f;
+                f = f + e + e + c;
+            } else {
+                const float dPlusB = d + b;
+                rayT = -(dPlusB / a);
+                f = f + dPlusB * rayT + e + e + c;
+            }
+        } else if (rayParam < 0.0f) {
+            // Clamp ray to 0 and optimize segment parameter
+            rayT = 0.0f;
+            if (e >= 0.0f) {
+                segT = 0.0f;
+            } else if (-e > c) {
+                segT = 1.0f;
+                f = f + e + e + c;
+            } else {
+                segT = -(e / c);
+                f = f + segT * e;
+            }
         } else {
-            s1 = 0.0f;
+            // Both parameters in range
+            const float invDet = 1.0f / det;
+            rayT = rayParam * invDet;
+            segT = segParam * invDet;
+            f = f + DistanceQuadraticPart(t, rayT, segT);
         }
     }
 
-    if (s1 < 0.0f) {
-        s1 = 0.0f;
-        // Recompute s0 with s1 fixed at 0
-        if (XAbs(a) > EPSILON) {
-            s0 = -d / a;
-            if (s0 < 0.0f) s0 = 0.0f;
-        } else {
-            s0 = 0.0f;
-        }
-    } else if (s1 > 1.0f) {
-        s1 = 1.0f;
-        // Recompute s0 with s1 fixed at 1
-        if (XAbs(a) > EPSILON) {
-            s0 = (b - d) / a;
-            if (s0 < 0.0f) s0 = 0.0f;
-        } else {
-            s0 = 0.0f;
-        }
-    }
+    if (t0) *t0 = rayT;
+    if (t1) *t1 = segT;
 
-    // Store parameters if requested
-    if (t0) *t0 = s0;
-    if (t1) *t1 = s1;
-
-    // Compute closest points
-    VxVector closest0, closest1;
-    ray.Interpolate(closest0, s0);
-    segment.Interpolate(closest1, s1);
-
-    // Return the squared distance between the closest points
-    return SquareMagnitude(closest1 - closest0);
+    return XAbs(f);
 }
 
 float VxDistance::SegmentSegmentSquareDistance(const VxRay &segment0, const VxRay &segment1, float *t0, float *t1) {
-    // Direction vectors
-    const VxVector &dir0 = segment0.GetDirection();
-    const VxVector &dir1 = segment1.GetDirection();
+    const RayPairTerms t = MakeRayPairTerms(segment0, segment1);
+    const float a = t.a;
+    const float b = t.b;
+    const float c = t.c;
+    const float d = t.d;
+    const float e = t.e;
+    float f = t.f;
+    const float det = t.det;
 
-    // Get the segment between the two origins
-    VxVector diff = segment0.GetOrigin() - segment1.GetOrigin();
-
-    float a = DotProduct(dir0, dir0);
-    float b = DotProduct(dir0, dir1);
-    float c = DotProduct(dir1, dir1);
-    float d = DotProduct(dir0, diff);
-    float e = DotProduct(dir1, diff);
-
-    float det = a * c - b * b;
-
-    // Default parameters
     float s0, s1;
 
-    if (XAbs(det) < EPSILON) {
-        // Lines are parallel
-        s0 = 0.0f;
-        if (XAbs(c) > EPSILON) {
-            s1 = e / c;
-        } else {
-            s1 = 0.0f;
-        }
-    } else {
-        // Compute the unconstrained parameters
-        s0 = (b * e - c * d) / det;
-        s1 = (a * e - b * d) / det;
-    }
+    if (det < EPSILON) {
+        // Parallel case: choose the minimum endpoint-to-segment distance.
+        // This correctly handles collinear overlap (distance = 0) and disjoint parallel segments.
 
-    // For segments, both parameters must be between 0 and 1
-    // Apply constraints systematically
-    if (s0 < 0.0f) {
-        s0 = 0.0f;
-        // Recompute s1 with s0 fixed at 0
-        if (XAbs(c) > EPSILON) {
-            s1 = e / c;
-            // Clamp s1 to [0,1]
-            if (s1 < 0.0f) s1 = 0.0f;
-            else if (s1 > 1.0f) s1 = 1.0f;
-        } else {
-            s1 = 0.0f;
-        }
-    } else if (s0 > 1.0f) {
-        s0 = 1.0f;
-        // Recompute s1 with s0 fixed at 1
-        if (XAbs(c) > EPSILON) {
-            s1 = (e + b) / c;
-            // Clamp s1 to [0,1]
-            if (s1 < 0.0f) s1 = 0.0f;
-            else if (s1 > 1.0f) s1 = 1.0f;
-        } else {
-            s1 = 0.0f;
-        }
-    } else {
-        // s0 is in [0,1], check s1
-        if (s1 < 0.0f) {
-            s1 = 0.0f;
-            // Recompute s0 with s1 fixed at 0
-            if (XAbs(a) > EPSILON) {
-                s0 = -d / a;
-                // Clamp s0 to [0,1]
-                if (s0 < 0.0f) s0 = 0.0f;
-                else if (s0 > 1.0f) s0 = 1.0f;
-            } else {
-                s0 = 0.0f;
-            }
-        } else if (s1 > 1.0f) {
-            s1 = 1.0f;
-            // Recompute s0 with s1 fixed at 1
-            if (XAbs(a) > EPSILON) {
-                s0 = (b - d) / a;
-                // Clamp s0 to [0,1]
-                if (s0 < 0.0f) s0 = 0.0f;
-                else if (s0 > 1.0f) s0 = 1.0f;
-            } else {
-                s0 = 0.0f;
+        const VxVector p0 = segment0.m_Origin;
+        const VxVector q0 = segment0.m_Origin + segment0.m_Direction;
+        const VxVector p1 = segment1.m_Origin;
+        const VxVector q1 = segment1.m_Origin + segment1.m_Direction;
+
+        float bestDist = FLT_MAX;
+        float bestS0 = 0.0f;
+        float bestS1 = 0.0f;
+
+        // p0 -> segment1
+        {
+            float tParam = 0.0f;
+            float distVal = PointSegmentSquareDistance(p0, segment1, &tParam);
+            if (distVal < bestDist) {
+                bestDist = distVal;
+                bestS0 = 0.0f;
+                bestS1 = tParam;
             }
         }
-        // If both s0 and s1 are in range, we're done
+
+        // q0 -> segment1
+        {
+            float tParam = 0.0f;
+            float distVal = PointSegmentSquareDistance(q0, segment1, &tParam);
+            if (distVal < bestDist) {
+                bestDist = distVal;
+                bestS0 = 1.0f;
+                bestS1 = tParam;
+            }
+        }
+
+        // p1 -> segment0
+        {
+            float tParam = 0.0f;
+            float distVal = PointSegmentSquareDistance(p1, segment0, &tParam);
+            if (distVal < bestDist) {
+                bestDist = distVal;
+                bestS0 = tParam;
+                bestS1 = 0.0f;
+            }
+        }
+
+        // q1 -> segment0
+        {
+            float tParam = 0.0f;
+            float distVal = PointSegmentSquareDistance(q1, segment0, &tParam);
+            if (distVal < bestDist) {
+                bestDist = distVal;
+                bestS0 = tParam;
+                bestS1 = 1.0f;
+            }
+        }
+
+        s0 = bestS0;
+        s1 = bestS1;
+        f = bestDist;
+    } else {
+        // Non-parallel case
+        float seg0Param = e * b - d * c;
+        float seg1Param = d * b - e * a;
+
+        if (seg0Param < 0.0f) {
+            // seg0 parameter < 0
+            if (seg1Param < 0.0f) {
+                // Both < 0
+                if (d < 0.0f) {
+                    s1 = 0.0f;
+                    if (-d >= a) {
+                        s0 = 1.0f;
+                        f = f + d + d + a;
+                    } else {
+                        s0 = -(d / a);
+                        f = f + s0 * d;
+                    }
+                } else {
+                    s0 = 0.0f;
+                    if (e >= 0.0f) {
+                        s1 = 0.0f;
+                    } else if (-e >= c) {
+                        s1 = 1.0f;
+                        f = f + e + e + c;
+                    } else {
+                        s1 = -(e / c);
+                        f = f + s1 * e;
+                    }
+                }
+            } else if (seg1Param > det) {
+                // seg0 param < 0, seg1 param > 1
+                float dPlusB = d + b;
+                if (dPlusB < 0.0f) {
+                    s1 = 1.0f;
+                    if (-dPlusB >= a) {
+                        s0 = 1.0f;
+                        f = f + dPlusB + e + dPlusB + e + c + a;
+                    } else {
+                        s0 = -(dPlusB / a);
+                        f = f + dPlusB * s0 + e + e + c;
+                    }
+                } else {
+                    s0 = 0.0f;
+                    if (e >= 0.0f) {
+                        s1 = 0.0f;
+                    } else if (-e >= c) {
+                        s1 = 1.0f;
+                        f = f + e + e + c;
+                    } else {
+                        s1 = -(e / c);
+                        f = f + s1 * e;
+                    }
+                }
+            } else {
+                // seg0 param < 0, seg1 param in [0, 1]
+                if (d < 0.0f) {
+                    s1 = 0.0f;
+                    if (-d >= a) {
+                        s0 = 1.0f;
+                        f = f + d + d + a;
+                    } else {
+                        s0 = -(d / a);
+                        f = f + s0 * d;
+                    }
+                } else {
+                    s0 = 0.0f;
+                    if (e >= 0.0f) {
+                        s1 = 0.0f;
+                    } else if (-e >= c) {
+                        s1 = 1.0f;
+                        f = f + e + e + c;
+                    } else {
+                        s1 = -(e / c);
+                        f = f + s1 * e;
+                    }
+                }
+            }
+        } else if (seg0Param > det) {
+            // seg0 parameter > 1
+            if (seg1Param < 0.0f) {
+                // seg0 param > 1, seg1 param < 0
+                float dPlusB = d + b;
+                if (dPlusB < 0.0f) {
+                    s1 = 1.0f;
+                    if (-dPlusB >= a) {
+                        s0 = 1.0f;
+                        f = f + dPlusB + e + dPlusB + e + c + a;
+                    } else {
+                        s0 = -(dPlusB / a);
+                        f = f + dPlusB * s0 + e + e + c;
+                    }
+                } else {
+                    s0 = 0.0f;
+                    if (e >= 0.0f) {
+                        s1 = 0.0f;
+                    } else if (-e >= c) {
+                        s1 = 1.0f;
+                        f = f + e + e + c;
+                    } else {
+                        s1 = -(e / c);
+                        f = f + s1 * e;
+                    }
+                }
+            } else if (seg1Param > det) {
+                // Both > det (both segments at end)
+                float ePlusB = e + b;
+                s0 = 1.0f;
+                if (-ePlusB < c) {
+                    s1 = -(ePlusB / c);
+                    f = f + ePlusB * s1 + d + d + a;
+                } else {
+                    s1 = 1.0f;
+                    f = f + ePlusB + d + b + ePlusB + d + b + c + a;
+                }
+            } else {
+                // seg0 param > 1, seg1 param in [0, 1]
+                // FIX: Clamp s0 to 1, compute optimal s1 (was incorrectly clamping s1)
+                s0 = 1.0f;
+                float ePlusB = e + b;
+                if (ePlusB >= 0.0f) {
+                    // s1 would be negative, clamp to 0
+                    s1 = 0.0f;
+                    f = f + d + d + a;
+                } else if (-ePlusB >= c) {
+                    // s1 would be > 1, clamp to 1
+                    s1 = 1.0f;
+                    f = f + ePlusB + ePlusB + c + d + d + a;
+                } else {
+                    // s1 is in (0, 1)
+                    s1 = -(ePlusB / c);
+                    f = f + ePlusB * s1 + d + d + a;
+                }
+            }
+        } else {
+            // seg0 param in [0, det]
+            if (seg1Param < 0.0f) {
+                // seg0 param in range, seg1 param < 0
+                if (d < 0.0f) {
+                    s1 = 0.0f;
+                    if (-d >= a) {
+                        s0 = 1.0f;
+                        f = f + d + d + a;
+                    } else {
+                        s0 = -(d / a);
+                        f = f + s0 * d;
+                    }
+                } else {
+                    s0 = 0.0f;
+                    if (e >= 0.0f) {
+                        s1 = 0.0f;
+                    } else if (-e >= c) {
+                        s1 = 1.0f;
+                        f = f + e + e + c;
+                    } else {
+                        s1 = -(e / c);
+                        f = f + s1 * e;
+                    }
+                }
+            } else if (seg1Param > det) {
+                // seg0 param in range, seg1 param > 1
+                float dPlusB = d + b;
+                s1 = 1.0f;
+                if (dPlusB < 0.0f) {
+                    if (-dPlusB >= a) {
+                        s0 = 1.0f;
+                        f = f + dPlusB + e + dPlusB + e + c + a;
+                    } else {
+                        s0 = -(dPlusB / a);
+                        f = f + dPlusB * s0 + e + e + c;
+                    }
+                } else {
+                    s0 = 0.0f;
+                    f = f + e + e + c;
+                }
+            } else {
+                // Both in range
+                float invDet = 1.0f / det;
+                s0 = seg0Param * invDet;
+                s1 = invDet * seg1Param;
+                f = f + (s1 * c + s0 * b + e + e) * s1 + (s1 * b + s0 * a + d + d) * s0;
+            }
+        }
     }
 
-    // Store parameters if requested
     if (t0) *t0 = s0;
     if (t1) *t1 = s1;
 
-    // Compute closest points
-    VxVector closest0, closest1;
-    segment0.Interpolate(closest0, s0);
-    segment1.Interpolate(closest1, s1);
-
-    // Return the squared distance between the closest points
-    return SquareMagnitude(closest1 - closest0);
+    return XAbs(f);
 }
 
 // Point-Line distance calculations
 
 float VxDistance::PointLineSquareDistance(const VxVector &point, const VxRay &line, float *t0) {
-    // Direction vector
-    const VxVector &dir = line.GetDirection();
+    const VxVector diff = point - line.m_Origin;
+    const float t = DotProduct(diff, line.m_Direction) / SquareMagnitude(line.m_Direction);
 
-    // Vector from line origin to point
-    VxVector diff = point - line.GetOrigin();
+    if (t0) *t0 = t;
 
-    // Dot products
-    float a = DotProduct(dir, dir);  // Length squared of line.dir
-    float b = DotProduct(dir, diff); // Projection of diff onto line.dir
-
-    // Parameter of the closest point on the line
-    float s = 0.0f;
-    if (XAbs(a) > EPSILON) {
-        s = b / a;
-    }
-
-    // Store parameter if requested
-    if (t0) *t0 = s;
-
-    // Compute closest point on the line
-    VxVector closest;
-    line.Interpolate(closest, s);
-
-    // Return the squared distance to the closest point
-    return SquareMagnitude(point - closest);
+    const VxVector d = diff - (line.m_Direction * t);
+    return SquareMagnitude(d);
 }
 
 float VxDistance::PointRaySquareDistance(const VxVector &point, const VxRay &ray, float *t0) {
-    // Direction vector
-    const VxVector &dir = ray.GetDirection();
+    VxVector diff = point - ray.m_Origin;
+    const float dotDiffDir = DotProduct(diff, ray.m_Direction);
 
-    // Vector from ray origin to point
-    VxVector diff = point - ray.GetOrigin();
-
-    // Dot products
-    float a = DotProduct(dir, dir);  // Length squared of ray.dir
-    float b = DotProduct(dir, diff); // Projection of diff onto ray.dir
-
-    // Parameter of the closest point on the ray (constrained to be >= 0)
-    float s = 0.0f;
-    if (XAbs(a) > EPSILON) {
-        s = b / a;
-        if (s < 0.0f) s = 0.0f;
+    float t;
+    if (dotDiffDir > 0.0f) {
+        t = dotDiffDir / SquareMagnitude(ray.m_Direction);
+        diff -= ray.m_Direction * t;
+    } else {
+        t = 0.0f;
     }
 
-    // Store parameter if requested
-    if (t0) *t0 = s;
+    if (t0) *t0 = t;
 
-    // Compute closest point on the ray
-    VxVector closest;
-    ray.Interpolate(closest, s);
-
-    // Return the squared distance to the closest point
-    return SquareMagnitude(point - closest);
+    return SquareMagnitude(diff);
 }
 
 float VxDistance::PointSegmentSquareDistance(const VxVector &point, const VxRay &segment, float *t0) {
-    // Direction vector
-    const VxVector &dir = segment.GetDirection();
+    VxVector diff = point - segment.m_Origin;
+    const float dotDiffDir = DotProduct(diff, segment.m_Direction);
 
-    // Vector from segment origin to point
-    VxVector diff = point - segment.GetOrigin();
-
-    // Dot products
-    float a = DotProduct(dir, dir);  // Length squared of segment.dir
-    float b = DotProduct(dir, diff); // Projection of diff onto segment.dir
-
-    // Parameter of the closest point on the segment (constrained to be between 0 and 1)
-    float s = 0.0f;
-    if (XAbs(a) > EPSILON) {
-        s = b / a;
-        if (s < 0.0f) s = 0.0f;
-        else if (s > 1.0f) s = 1.0f;
+    float t;
+    if (dotDiffDir > 0.0f) {
+        const float dotDirDir = SquareMagnitude(segment.m_Direction);
+        if (dotDiffDir < dotDirDir) {
+            t = dotDiffDir / dotDirDir;
+            diff -= segment.m_Direction * t;
+        } else {
+            // clamp to segment end
+            t = 1.0f;
+            diff -= segment.m_Direction;
+        }
+    } else {
+        t = 0.0f;
     }
 
-    // Store parameter if requested
-    if (t0) *t0 = s;
+    if (t0) *t0 = t;
 
-    // Compute the closest point on the segment
-    VxVector closest;
-    segment.Interpolate(closest, s);
-
-    // Return the squared distance to the closest point
-    return SquareMagnitude(point - closest);
+    return SquareMagnitude(diff);
 }

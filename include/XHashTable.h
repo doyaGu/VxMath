@@ -5,6 +5,11 @@
 #include "XArray.h"
 #include "XHashFun.h"
 
+#if VX_HAS_CXX11
+#include <initializer_list>
+#include <utility>
+#endif
+
 #ifdef VX_MSVC
 #pragma warning(disable : 4786)
 #endif
@@ -46,7 +51,7 @@ public:
      * @brief Copy constructor.
      * @param e The entry to copy.
      */
-    XHashTableEntry(const XHashTableEntry<T, K> &e) : m_Key(e.m_Key), m_Data(e.m_Data), m_Next(NULL) {}
+    XHashTableEntry(const XHashTableEntry<T, K> &e) : m_Key(e.m_Key), m_Data(e.m_Data), m_Next(e.m_Next) {}
 
     /**
      * @brief Copy assignment operator.
@@ -57,7 +62,7 @@ public:
         if (this != &e) {
             m_Key = e.m_Key;
             m_Data = e.m_Data;
-            m_Next = NULL; // Note: m_Next is not copied as it's managed by the hash table
+            m_Next = e.m_Next;
         }
         return *this;
     }
@@ -146,6 +151,19 @@ public:
      * @param n The iterator to copy.
      */
     XHashTableIt(const tIterator &n) : m_Node(n.m_Node), m_Table(n.m_Table) {}
+
+    /**
+     * @brief Copy assignment operator.
+     * @param n The iterator to copy from.
+     * @return Reference to this iterator.
+     */
+    tIterator &operator=(const tIterator &n) {
+        if (this != &n) {
+            m_Node = n.m_Node;
+            m_Table = n.m_Table;
+        }
+        return *this;
+    }
 
 #if VX_HAS_CXX11
     /**
@@ -302,6 +320,19 @@ public:
      */
     XHashTableConstIt(const tConstIterator &n) : m_Node(n.m_Node), m_Table(n.m_Table) {}
 
+    /**
+     * @brief Copy assignment operator.
+     * @param n The iterator to copy from.
+     * @return Reference to this iterator.
+     */
+    tConstIterator &operator=(const tConstIterator &n) {
+        if (this != &n) {
+            m_Node = n.m_Node;
+            m_Table = n.m_Table;
+        }
+        return *this;
+    }
+
 #if VX_HAS_CXX11
     /**
      * @brief Move constructor (C++11).
@@ -441,7 +472,7 @@ class XHashTable {
     typedef XHashTableIt<T, K, H, Eq> tIterator;
     typedef XHashTableConstIt<T, K, H, Eq> tConstIterator;
     typedef XHashTablePair<T, K, H, Eq> tPair;
-    
+
     /// @brief Friend class declaration for the iterator.
     friend class XHashTableIt<T, K, H, Eq>;
     /// @brief Friend class declaration for the const iterator.
@@ -482,7 +513,17 @@ public:
      * @brief Move constructor (C++11).
      * @param a The hash table to move from.
      */
-    XHashTable(XHashTable &&a) VX_NOEXCEPT { XMove(a); }
+    XHashTable(XHashTable &&a) VX_NOEXCEPT { XMove(std::move(a)); }
+
+    /**
+     * @brief Constructs the table from an initializer list of key/value pairs (C++11).
+     */
+    XHashTable(std::initializer_list<std::pair<K, T>> init, int initialize = 16)
+        : XHashTable(((int) init.size() * 2 > initialize) ? (int) init.size() * 2 : initialize) {
+        for (const auto &kv : init) {
+            Insert(kv.first, kv.second);
+        }
+    }
 #endif
 
     /**
@@ -570,7 +611,18 @@ public:
             // We clear the current table
             Clear();
             // we then move the content of a
-            XMove(a);
+            XMove(std::move(a));
+        }
+        return *this;
+    }
+
+    /**
+     * @brief Assigns the table from an initializer list of key/value pairs (C++11).
+     */
+    tTable &operator=(std::initializer_list<std::pair<K, T>> init) {
+        Clear();
+        for (const auto &kv : init) {
+            Insert(kv.first, kv.second);
         }
         return *this;
     }
@@ -606,6 +658,32 @@ public:
         return TRUE;
     }
 
+#if VX_HAS_CXX11
+    /**
+     * @brief Inserts an element by moving the value (C++11).
+     */
+    XBOOL Insert(const K &key, T &&o, XBOOL override) {
+        while (true) {
+            int index = Index(key);
+            tEntry e = XFind(index, key);
+            if (!e) {
+                if (m_Pool.Size() == m_Pool.Allocated()) {
+                    Rehash(m_Table.Size() * 2);
+                    continue;
+                }
+                XInsert(index, key, std::move(o));
+                return TRUE;
+            }
+
+            if (!override)
+                return FALSE;
+
+            e->m_Data = std::move(o);
+            return TRUE;
+        }
+    }
+#endif
+
     /**
      * @brief Inserts or updates an element.
      * @param key The key of the element.
@@ -634,6 +712,32 @@ public:
             return Iterator(XInsert(index, key, o), this);
         }
     }
+
+#if VX_HAS_CXX11
+    /**
+     * @brief Inserts or updates an element by moving the value (C++11).
+     */
+    Iterator Insert(const K &key, T &&o) {
+        Eq equalFunc;
+
+        while (true) {
+            int index = Index(key);
+            for (tEntry e = m_Table[index]; e != 0; e = e->m_Next) {
+                if (equalFunc(e->m_Key, key)) {
+                    e->m_Data = std::move(o);
+                    return Iterator(e, this);
+                }
+            }
+
+            if (m_Pool.Size() == m_Pool.Allocated()) {
+                Rehash(m_Table.Size() * 2);
+                continue;
+            }
+
+            return Iterator(XInsert(index, key, std::move(o)), this);
+        }
+    }
+#endif
 
     /**
      * @brief Inserts an element and reports whether it was new.
@@ -664,6 +768,31 @@ public:
         }
     }
 
+#if VX_HAS_CXX11
+    /**
+     * @brief Inserts an element and reports whether it was new by moving the value (C++11).
+     */
+    Pair TestInsert(const K &key, T &&o) {
+        Eq equalFunc;
+
+        while (true) {
+            int index = Index(key);
+            for (tEntry e = m_Table[index]; e != 0; e = e->m_Next) {
+                if (equalFunc(e->m_Key, key)) {
+                    return Pair(Iterator(e, this), 0);
+                }
+            }
+
+            if (m_Pool.Size() == m_Pool.Allocated()) {
+                Rehash(m_Table.Size() * 2);
+                continue;
+            }
+
+            return Pair(Iterator(XInsert(index, key, std::move(o)), this), 1);
+        }
+    }
+#endif
+
     /**
      * @brief Inserts an element only if the key does not already exist.
      * @param key The key of the element.
@@ -692,6 +821,64 @@ public:
         }
     }
 
+#if VX_HAS_CXX11
+    /**
+     * @brief Inserts an element only if the key does not already exist by moving the value (C++11).
+     */
+    Iterator InsertUnique(const K &key, T &&o) {
+        Eq equalFunc;
+
+        while (true) {
+            int index = Index(key);
+            for (tEntry e = m_Table[index]; e != 0; e = e->m_Next) {
+                if (equalFunc(e->m_Key, key)) {
+                    return Iterator(e, this);
+                }
+            }
+
+            if (m_Pool.Size() == m_Pool.Allocated()) {
+                Rehash(m_Table.Size() * 2);
+                continue;
+            }
+
+            return Iterator(XInsert(index, key, std::move(o)), this);
+        }
+    }
+
+    /**
+     * @brief Constructs a value in-place (via temporary) and inserts/overwrites (C++11).
+     */
+    template <class... Args>
+    Iterator Emplace(const K &key, Args &&... args) {
+        return Insert(key, T(std::forward<Args>(args)...));
+    }
+
+    /**
+     * @brief Constructs a value in-place (via temporary) and inserts if missing (C++11).
+     */
+    template <class... Args>
+    Iterator EmplaceUnique(const K &key, Args &&... args) {
+        return InsertUnique(key, T(std::forward<Args>(args)...));
+    }
+
+    /**
+     * @brief Constructs a value in-place (via temporary) and inserts if missing, reporting whether it was new (C++11).
+     */
+    template <class... Args>
+    Pair TestEmplace(const K &key, Args &&... args) {
+        return TestInsert(key, T(std::forward<Args>(args)...));
+    }
+
+    /// @brief STL-compatible begin/end for range-for and algorithms (C++11).
+    Iterator begin() { return Begin(); }
+    ConstIterator begin() const { return Begin(); }
+    ConstIterator cbegin() const { return Begin(); }
+
+    Iterator end() { return End(); }
+    ConstIterator end() const { return End(); }
+    ConstIterator cend() const { return End(); }
+#endif
+
     /**
      * @brief Removes an element by its key.
      * @param key The key of the element to remove.
@@ -713,11 +900,19 @@ public:
                     m_Table[index] = e->m_Next;
                 }
 
-                // then removed it from the pool
+                // then remove it from the pool
+                // NOTE: FastRemove compacts the pool by moving the last entry into the removed slot.
+                // If the moved entry's m_Next pointed to the removed slot, the move would create a
+                // self-referential link (cycle). Fix that up before the move.
+                tEntry oldLast = (m_Pool.Size() > 0) ? (m_Pool.End() - 1) : nullptr;
+                if (oldLast && oldLast != e && oldLast->m_Next == e) {
+                    oldLast->m_Next = e->m_Next;
+                }
+
                 m_Pool.FastRemove(e);
                 if (e != m_Pool.End()) // wasn't the last one... we need to remap
                 {
-                    RematEntry(m_Pool.End(), e);
+                    RematEntry(oldLast, e);
                 }
 
                 break;
@@ -749,11 +944,17 @@ public:
                     old = m_Table[index];
                 }
 
-                // then removed it from the pool
+                // then remove it from the pool
+                // See Remove(key) for why we fix up oldLast->m_Next.
+                tEntry oldLast = (m_Pool.Size() > 0) ? (m_Pool.End() - 1) : nullptr;
+                if (oldLast && oldLast != e && oldLast->m_Next == e) {
+                    oldLast->m_Next = e->m_Next;
+                }
+
                 m_Pool.FastRemove(e);
                 if (e != m_Pool.End()) // wasn't the last one... we need to remap
                 {
-                    RematEntry(m_Pool.End(), e);
+                    RematEntry(oldLast, e);
                     if (old == m_Pool.End())
                         old = e;
                 }
@@ -928,7 +1129,7 @@ public:
      */
     int GetMemoryOccupation(XBOOL addstatic = FALSE) const {
         return m_Table.GetMemoryOccupation(addstatic) +
-            m_Pool.Allocated() * sizeof(tEntry) +
+            m_Pool.Allocated() * sizeof(Entry) +
             (addstatic ? sizeof(*this) : 0);
     }
 
@@ -939,12 +1140,23 @@ public:
      * It adjusts the size of the internal bucket array and reserves space in the element pool.
      */
     void Reserve(const int iCount) {
-        // Reserve the elements
-        m_Pool.Reserve(iCount);
+        int requiredCount = iCount;
+        if (requiredCount < 0)
+            requiredCount = 0;
+        if (requiredCount < Size())
+            requiredCount = Size();
 
-        int tableSize = Near2Power((int) (iCount / LOAD_FACTOR));
-        m_Table.Resize(tableSize);
-        m_Table.Fill(0);
+        // Compute a bucket count that can hold requiredCount at the target load factor.
+        // Never shrink the table; Reserve is intended to reduce rehashing.
+        int tableSize = Near2Power((int) ((float) requiredCount / LOAD_FACTOR) + 1);
+        if (tableSize < 4)
+            tableSize = 4;
+        if (tableSize < m_Table.Size())
+            tableSize = m_Table.Size();
+
+        if (tableSize != m_Table.Size() || requiredCount > m_Pool.Allocated()) {
+            Rehash(tableSize);
+        }
     }
 
 private:
@@ -1079,6 +1291,17 @@ private:
         m_Table[index] = newe;
         return newe;
     }
+
+#if VX_HAS_CXX11
+    tEntry XInsert(int index, const K &key, T &&o) {
+        tEntry newe = GetFreeEntry();
+        newe->m_Key = key;
+        newe->m_Data = std::move(o);
+        newe->m_Next = m_Table[index];
+        m_Table[index] = newe;
+        return newe;
+    }
+#endif
 
     /**
      * @brief Gets a new, uninitialized entry from the memory pool.
