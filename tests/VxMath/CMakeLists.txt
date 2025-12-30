@@ -4,7 +4,7 @@
 # Ground-truth VxMath.dll setup
 #=============================================================================
 # Option to use ground-truth DLL from bin/ for testing (default: OFF uses built lib)
-option(VXMATH_USE_GROUND_TRUTH_DLL "Link tests against ground-truth bin/VxMath.dll" TRUE)
+option(VXMATH_USE_GROUND_TRUTH_DLL "Link tests against ground-truth bin/VxMath.dll" OFF)
 
 if (VXMATH_USE_GROUND_TRUTH_DLL AND WIN32)
     # Create an IMPORTED target for the ground-truth DLL
