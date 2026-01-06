@@ -1,21 +1,48 @@
-cmake_minimum_required(VERSION 3.15)
+cmake_minimum_required(VERSION 3.21)
 
 project(VxMath
         VERSION 0.1.0
         LANGUAGES CXX
 )
 
-# Only allow out-of-source builds
-if (PROJECT_SOURCE_DIR STREQUAL PROJECT_BINARY_DIR)
+# Determine if VxMath is being used as a subproject
+if(CMAKE_VERSION VERSION_GREATER_EQUAL "3.21")
+    # Use the built-in variable for CMake 3.21+
+    if(CMAKE_PROJECT_NAME STREQUAL PROJECT_NAME)
+        set(VXMATH_IS_TOP_LEVEL ON)
+    else()
+        set(VXMATH_IS_TOP_LEVEL OFF)
+    endif()
+else()
+    # Fallback for older CMake versions
+    if(CMAKE_CURRENT_SOURCE_DIR STREQUAL CMAKE_SOURCE_DIR)
+        set(VXMATH_IS_TOP_LEVEL ON)
+    else()
+        set(VXMATH_IS_TOP_LEVEL OFF)
+    endif()
+endif()
+
+# Only enforce out-of-source builds when VxMath is the top-level project
+if (VXMATH_IS_TOP_LEVEL AND PROJECT_SOURCE_DIR STREQUAL PROJECT_BINARY_DIR)
     message(FATAL_ERROR "In-source builds not allowed. Please make a new directory (called a build directory) and run CMake from there.")
 endif ()
 
-# Set C++ standard
-set(CMAKE_CXX_STANDARD 17)
-set(CMAKE_CXX_STANDARD_REQUIRED YES)
-set(CMAKE_CXX_EXTENSIONS NO)
+# Set C++ standard only if not already set by parent project
+if(NOT CMAKE_CXX_STANDARD)
+    set(CMAKE_CXX_STANDARD 17)
+endif()
+if(NOT DEFINED CMAKE_CXX_STANDARD_REQUIRED)
+    set(CMAKE_CXX_STANDARD_REQUIRED YES)
+endif()
+if(NOT DEFINED CMAKE_CXX_EXTENSIONS)
+    set(CMAKE_CXX_EXTENSIONS NO)
+endif()
 
-option(VX_BUILD_TESTS "Build the test suite" OFF)
+# Project options - defaults depend on whether this is a top-level project
+option(VXMATH_BUILD_TESTS "Build the test suite" ${VXMATH_IS_TOP_LEVEL})
+option(VXMATH_BUILD_SHARED "Build shared library" ON)
+option(VXMATH_BUILD_STATIC "Build static library" ON)
+option(VXMATH_INSTALL "Generate install target" ${VXMATH_IS_TOP_LEVEL})
 
 # Add path for custom modules
 list(PREPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
@@ -25,45 +52,50 @@ include(GenerateExportHeader)
 include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
 
-# Use folders to organize targets in an IDE
-set_property(GLOBAL PROPERTY USE_FOLDERS ON)
-set_property(GLOBAL PROPERTY PREDEFINED_TARGETS_FOLDER "CMakeTargets")
+# Use folders to organize targets in an IDE (only when top-level)
+if(VXMATH_IS_TOP_LEVEL)
+    set_property(GLOBAL PROPERTY USE_FOLDERS ON)
+    set_property(GLOBAL PROPERTY PREDEFINED_TARGETS_FOLDER "CMakeTargets")
+endif()
 
 # Platform checks
 if (NOT WIN32)
     message(FATAL_ERROR "Currently only Windows is supported.")
 endif ()
 
-# Build type handling
-get_property(IS_MULTI_CONFIG GLOBAL PROPERTY GENERATOR_IS_MULTI_CONFIG)
-if (NOT IS_MULTI_CONFIG AND NOT CMAKE_BUILD_TYPE)
-    message(STATUS "Setting build type to 'Release' as no build type was specified")
-    set(CMAKE_BUILD_TYPE Release CACHE STRING "Choose the build type" FORCE)
-    set_property(CACHE CMAKE_BUILD_TYPE PROPERTY STRINGS "Debug" "Release" "RelWithDebInfo" "MinSizeRel")
-endif ()
+# Build type handling (only when top-level)
+if(VXMATH_IS_TOP_LEVEL)
+    get_property(IS_MULTI_CONFIG GLOBAL PROPERTY GENERATOR_IS_MULTI_CONFIG)
+    if (NOT IS_MULTI_CONFIG AND NOT CMAKE_BUILD_TYPE)
+        message(STATUS "Setting build type to 'Release' as no build type was specified")
+        set(CMAKE_BUILD_TYPE Release CACHE STRING "Choose the build type" FORCE)
+        set_property(CACHE CMAKE_BUILD_TYPE PROPERTY STRINGS "Debug" "Release" "RelWithDebInfo" "MinSizeRel")
+    endif ()
+endif()
 
-# Install prefix
-if (CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
+# Install prefix (only when top-level)
+if (VXMATH_IS_TOP_LEVEL AND CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
     set(CMAKE_INSTALL_PREFIX "${PROJECT_SOURCE_DIR}/install" CACHE PATH "Installation directory" FORCE)
     message(STATUS "Setting install directory to ${CMAKE_INSTALL_PREFIX}")
 endif ()
 
-# Generate compile commands for IDEs/tools
-set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
-
-# Project options
-option(VX_BUILD_SHARED "Build shared library" ON)
-option(VX_BUILD_STATIC "Build static library" ON)
-option(VX_INSTALL "Generate install target" ON)
+# Generate compile commands for IDEs/tools (only when top-level)
+if(VXMATH_IS_TOP_LEVEL)
+    set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+endif()
 
 # Validate options
-if (NOT VX_BUILD_SHARED AND NOT VX_BUILD_STATIC)
-    message(FATAL_ERROR "At least one of VX_BUILD_SHARED or VX_BUILD_STATIC must be enabled")
+if (NOT VXMATH_BUILD_SHARED AND NOT VXMATH_BUILD_STATIC)
+    message(FATAL_ERROR "At least one of VXMATH_BUILD_SHARED or VXMATH_BUILD_STATIC must be enabled")
 endif ()
 
 # Cache internal variables
-set(VX_INCLUDE_DIR "${PROJECT_SOURCE_DIR}/include" CACHE INTERNAL "")
-set(VX_SOURCE_DIR "${PROJECT_SOURCE_DIR}/src" CACHE INTERNAL "")
+set(VXMATH_INCLUDE_DIR "${PROJECT_SOURCE_DIR}/include" CACHE INTERNAL "")
+set(VXMATH_SOURCE_DIR "${PROJECT_SOURCE_DIR}/src" CACHE INTERNAL "")
+
+# Backward compatibility aliases for old variable names
+set(VX_INCLUDE_DIR "${VXMATH_INCLUDE_DIR}" CACHE INTERNAL "")
+set(VX_SOURCE_DIR "${VXMATH_SOURCE_DIR}" CACHE INTERNAL "")
 
 # Configure compiler-specific settings
 # MSVC specific settings
@@ -104,20 +136,23 @@ endif ()
 # Add subdirectories
 add_subdirectory(deps)
 add_subdirectory(src)
-if (VX_BUILD_TESTS)
+if (VXMATH_BUILD_TESTS)
+    enable_testing()
     add_subdirectory(tests)
 endif ()
 
 # Export and packaging
-if (VX_INSTALL)
+if (VXMATH_INSTALL)
     # Export targets for build tree
-    export(TARGETS ${VX_EXPORTED_TARGETS}
+    export(TARGETS ${VXMATH_EXPORTED_TARGETS}
             FILE "${CMAKE_CURRENT_BINARY_DIR}/VxMathTargets.cmake"
+            NAMESPACE VxMath::
     )
 
     # Install targets and export for install tree
     install(EXPORT VxMathTargets
             FILE VxMathTargets.cmake
+            NAMESPACE VxMath::
             DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/VxMath
     )
 
@@ -142,6 +177,8 @@ if (VX_INSTALL)
             DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/VxMath
     )
 
-    # Add package to CMake package registry
-    export(PACKAGE VxMath)
+    # Add package to CMake package registry (only when top-level)
+    if(VXMATH_IS_TOP_LEVEL)
+        export(PACKAGE VxMath)
+    endif()
 endif ()

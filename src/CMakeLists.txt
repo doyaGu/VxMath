@@ -94,7 +94,7 @@ function(vx_configure_target TARGET_NAME)
 
     target_include_directories(${TARGET_NAME}
             PUBLIC
-            $<BUILD_INTERFACE:${VX_INCLUDE_DIR}>
+            $<BUILD_INTERFACE:${VXMATH_INCLUDE_DIR}>
             $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
             PRIVATE
             ${CMAKE_CURRENT_SOURCE_DIR}
@@ -112,10 +112,11 @@ function(vx_configure_target TARGET_NAME)
 endfunction()
 
 # Track created targets for export
-set(VX_TARGETS)
+set(VXMATH_TARGETS)
 
-if(VX_BUILD_SHARED)
+if(VXMATH_BUILD_SHARED)
     add_library(VxMath SHARED)
+    add_library(VxMath::VxMath ALIAS VxMath)
     vx_configure_target(VxMath)
 
     # Shared library specific settings
@@ -127,11 +128,12 @@ if(VX_BUILD_SHARED)
 
     target_compile_definitions(VxMath PRIVATE VX_API)
 
-    list(APPEND VX_TARGETS VxMath)
+    list(APPEND VXMATH_TARGETS VxMath)
 endif()
 
-if(VX_BUILD_STATIC)
+if(VXMATH_BUILD_STATIC)
     add_library(VxMathStatic STATIC)
+    add_library(VxMath::VxMathStatic ALIAS VxMathStatic)
     vx_configure_target(VxMathStatic)
 
     # Static library specific settings
@@ -142,15 +144,15 @@ if(VX_BUILD_STATIC)
 
     target_compile_definitions(VxMathStatic PUBLIC VX_LIB)
 
-    list(APPEND VX_TARGETS VxMathStatic)
+    list(APPEND VXMATH_TARGETS VxMathStatic)
 endif()
 
 # Export targets to parent scope
-set(VX_EXPORTED_TARGETS ${VX_TARGETS} PARENT_SCOPE)
+set(VXMATH_EXPORTED_TARGETS ${VXMATH_TARGETS} PARENT_SCOPE)
 
-if(VX_INSTALL)
+if(VXMATH_INSTALL)
     # Install libraries
-    install(TARGETS ${VX_TARGETS}
+    install(TARGETS ${VXMATH_TARGETS}
             EXPORT VxMathTargets
             RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
             LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}

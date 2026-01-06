@@ -1,5 +1,4 @@
 include(CTest)
-enable_testing()
 
 include(FetchContent)
 FetchContent_Declare(
