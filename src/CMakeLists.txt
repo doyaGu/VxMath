@@ -49,6 +49,7 @@ set(VXMATH_PRIVATE_HEADERS
         VxBlitEngine.h
         VxSIMD.h
         VxSIMD.inl
+        NeuQuant.h
 )
 
 set(VXMATH_SOURCES
@@ -83,6 +84,7 @@ set(VXMATH_SOURCES
         VxMemory.cpp
         XString.cpp
         EscapeURL.cpp
+        NeuQuant.cpp
 )
 
 function(vx_configure_target TARGET_NAME)
