@@ -22,6 +22,17 @@ if(TARGET VxMath::VxMathStatic)
     set(VxMath_Static_FOUND TRUE)
 endif()
 
+# Provide a default target name for consumers.
+# - If the shared target exists, it is already VxMath::VxMath.
+# - If only the static target is available, synthesize VxMath::VxMath as an
+#   interface target that links to VxMath::VxMathStatic.
+if(NOT TARGET VxMath::VxMath AND TARGET VxMath::VxMathStatic)
+    add_library(VxMath::VxMath INTERFACE IMPORTED)
+    set_property(TARGET VxMath::VxMath PROPERTY
+            INTERFACE_LINK_LIBRARIES VxMath::VxMathStatic
+    )
+endif()
+
 # Check requested components
 foreach(_COMPONENT ${VxMath_FIND_COMPONENTS})
     if(NOT _COMPONENT IN_LIST _VX_SUPPORTED_COMPONENTS)

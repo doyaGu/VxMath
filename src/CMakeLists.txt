@@ -103,9 +103,9 @@ function(vx_configure_target TARGET_NAME)
             ${SIMDE_INCLUDE_DIR}
     )
 
-    if(DEFINED STB_INCLUDE_DIR AND EXISTS "${STB_INCLUDE_DIR}")
+    if (DEFINED STB_INCLUDE_DIR AND EXISTS "${STB_INCLUDE_DIR}")
         target_include_directories(${TARGET_NAME} PRIVATE ${STB_INCLUDE_DIR})
-    endif()
+    endif ()
 
     set_target_properties(${TARGET_NAME} PROPERTIES
             VERSION ${PROJECT_VERSION}
@@ -116,7 +116,7 @@ endfunction()
 # Track created targets for export
 set(VXMATH_TARGETS)
 
-if(VXMATH_BUILD_SHARED)
+if (VXMATH_BUILD_SHARED)
     add_library(VxMath SHARED)
     add_library(VxMath::VxMath ALIAS VxMath)
     vx_configure_target(VxMath)
@@ -128,12 +128,18 @@ if(VXMATH_BUILD_SHARED)
             LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib"
     )
 
+    # Ensure the DLL build is not treated as a static build even if VX_LIB is
+    # globally defined by a parent project/toolchain.
     target_compile_definitions(VxMath PRIVATE VX_API)
+    target_compile_options(VxMath PRIVATE
+            $<$<CXX_COMPILER_ID:MSVC>:/UVX_LIB>
+            $<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-UVX_LIB>
+    )
 
     list(APPEND VXMATH_TARGETS VxMath)
-endif()
+endif ()
 
-if(VXMATH_BUILD_STATIC)
+if (VXMATH_BUILD_STATIC)
     add_library(VxMathStatic STATIC)
     add_library(VxMath::VxMathStatic ALIAS VxMathStatic)
     vx_configure_target(VxMathStatic)
@@ -144,15 +150,16 @@ if(VXMATH_BUILD_STATIC)
             POSITION_INDEPENDENT_CODE ON
     )
 
+    # Static library usage: suppress dllimport/dllexport in headers.
     target_compile_definitions(VxMathStatic PUBLIC VX_LIB)
 
     list(APPEND VXMATH_TARGETS VxMathStatic)
-endif()
+endif ()
 
 # Export targets to parent scope
 set(VXMATH_EXPORTED_TARGETS ${VXMATH_TARGETS} PARENT_SCOPE)
 
-if(VXMATH_INSTALL)
+if (VXMATH_INSTALL)
     # Install libraries
     install(TARGETS ${VXMATH_TARGETS}
             EXPORT VxMathTargets
@@ -163,4 +170,4 @@ if(VXMATH_INSTALL)
 
     # Install headers
     install(FILES ${VXMATH_PUBLIC_HEADERS} DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
-endif()
+endif ()
