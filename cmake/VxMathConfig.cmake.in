@@ -3,7 +3,7 @@
 # VxMath Package Configuration File
 
 # Include targets
-if(NOT TARGET VxMath::VxMath AND NOT TARGET VxMath::Static)
+if(NOT TARGET VxMath::VxMath AND NOT TARGET VxMath::VxMathStatic)
     include("${CMAKE_CURRENT_LIST_DIR}/VxMathTargets.cmake")
 endif()
 
@@ -18,7 +18,7 @@ if(TARGET VxMath::VxMath)
     set(VxMath_Shared_FOUND TRUE)
 endif()
 
-if(TARGET VxMath::Static)
+if(TARGET VxMath::VxMathStatic)
     set(VxMath_Static_FOUND TRUE)
 endif()
 
@@ -42,13 +42,6 @@ foreach(_COMPONENT ${VxMath_FIND_COMPONENTS})
         return()
     endif()
 endforeach()
-
-# Set legacy variables for compatibility
-if(TARGET VxMath::VxMath)
-    get_target_property(VxMath_INCLUDE_DIRS VxMath::VxMath INTERFACE_INCLUDE_DIRECTORIES)
-elseif(TARGET VxMath::Static)
-    get_target_property(VxMath_INCLUDE_DIRS VxMath::Static INTERFACE_INCLUDE_DIRECTORIES)
-endif()
 
 set(VxMath_FOUND TRUE)
 check_required_components(VxMath)
