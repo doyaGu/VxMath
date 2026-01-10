@@ -383,12 +383,12 @@ public:
         return m_Buffer[0];
     }
 
-    char &XString::Back() {
+    char &Back() {
         XASSERT(m_Length > 0);
         return m_Buffer[m_Length - 1];
     }
 
-    const char &XString::Back() const {
+    const char &Back() const {
         XASSERT(m_Length > 0);
         return m_Buffer[m_Length - 1];
     }
