@@ -118,7 +118,6 @@ set(VXMATH_TARGETS)
 
 if (VXMATH_BUILD_SHARED)
     add_library(VxMath SHARED)
-    add_library(VxMath::VxMath ALIAS VxMath)
     vx_configure_target(VxMath)
 
     # Shared library specific settings
@@ -141,7 +140,6 @@ endif ()
 
 if (VXMATH_BUILD_STATIC)
     add_library(VxMathStatic STATIC)
-    add_library(VxMath::VxMathStatic ALIAS VxMathStatic)
     vx_configure_target(VxMathStatic)
 
     # Static library specific settings
@@ -160,14 +158,14 @@ endif ()
 set(VXMATH_EXPORTED_TARGETS ${VXMATH_TARGETS} PARENT_SCOPE)
 
 if (VXMATH_INSTALL)
-    # Install libraries
+    # Install libraries to Bin directory
     install(TARGETS ${VXMATH_TARGETS}
             EXPORT VxMathTargets
-            RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
-            LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
-            ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+            RUNTIME DESTINATION Bin
+            LIBRARY DESTINATION Bin
+            ARCHIVE DESTINATION lib
     )
 
-    # Install headers
-    install(FILES ${VXMATH_PUBLIC_HEADERS} DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+    # Install headers to include root
+    install(FILES ${VXMATH_PUBLIC_HEADERS} DESTINATION include)
 endif ()

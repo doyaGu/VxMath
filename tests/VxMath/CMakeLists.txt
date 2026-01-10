@@ -56,7 +56,7 @@ function(vx_add_test TEST_NAME)
 
     target_include_directories(${TEST_NAME} PRIVATE
             ${NEMO_INCLUDE_DIR}
-            ${PROJECT_SOURCE_DIR}/src/VxMath
+            ${PROJECT_SOURCE_DIR}/src
             ${STB_INCLUDE_DIR}
     )
 
@@ -114,7 +114,7 @@ foreach (TEST_SOURCE ${VXMATH_TEST_SOURCES})
     # Add special include path for SIMD tests
     if (${TEST_NAME} MATCHES "^SIMD")
         target_include_directories(${TEST_NAME} PRIVATE
-                ${PROJECT_SOURCE_DIR}/src/VxMath
+                ${PROJECT_SOURCE_DIR}/src
                 ${PROJECT_SOURCE_DIR}/deps/simde
                 ${CMAKE_CURRENT_SOURCE_DIR}  # For SIMDTestCommon.h
         )
