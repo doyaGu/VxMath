@@ -4,7 +4,6 @@
 
 #include <direct.h>
 #include <shellapi.h>
-#include <string>
 
 #include "XString.h"
 #include "VxColor.h"
@@ -134,21 +133,22 @@ XBOOL VxGetEnvironmentVariable(char *envName, XString &envValue) {
         return FALSE;
     }
 
-    DWORD required = GetEnvironmentVariableA(envName, nullptr, 0);
+    DWORD required = GetEnvironmentVariableA(envName, NULL, 0);
     if (required == 0) {
         envValue = "";
         return FALSE;
     }
 
-    std::string buffer(required, '\0');
-    DWORD written = GetEnvironmentVariableA(envName, buffer.data(), required);
+    XString buffer;
+    buffer.Reserve((XWORD) required);
+    DWORD written = GetEnvironmentVariableA(envName, buffer.Str(), required);
     if (written == 0 || written >= required) {
         envValue = "";
         return FALSE;
     }
 
-    buffer.resize(written);
-    envValue = buffer.c_str();
+    buffer.Resize((XWORD) written);
+    envValue = buffer;
     return TRUE;
 }
 
