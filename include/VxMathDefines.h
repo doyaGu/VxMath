@@ -84,6 +84,12 @@
 #define NULL 0
 #endif
 
+#ifdef WIN32
+#define ENDIANSWAP16(x)
+#define ENDIANSWAP32(x)		
+#define ENDIANSWAPFLOAT(x)
+#endif
+
 typedef char *XSTRING;
 typedef char XCHAR;
 typedef int XBOOL;
