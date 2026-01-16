@@ -319,17 +319,28 @@ public:
     operator void *() { return &m_Data[0]; }
 
     /**
-     * @brief Compares two matrices for pointer equality (identity).
-     * @remarks This operator does not compare the contents of the matrices.
-     * @return TRUE if the matrices are the same object, FALSE otherwise.
+     * @brief Compares two matrices for equality.
+     * @remarks This operator compares the contents of the matrices.
+     * @return TRUE if the matrices have the same contents, FALSE otherwise.
      */
-    XBOOL operator==(const VxMatrix &mat) const { return (this == &mat); }
+    XBOOL operator==(const VxMatrix &mat) const
+    {
+        for (int i = 0; i < 4; ++i) {
+            for (int j = 0; j < 4; ++j) {
+                if (m_Data[i][j] != mat.m_Data[i][j]) {
+                    return FALSE;
+                }
+            }
+        }
+        return TRUE;
+    }
+
     /**
-     * @brief Compares two matrices for pointer inequality (identity).
-     * @remarks This operator does not compare the contents of the matrices.
-     * @return TRUE if the matrices are not the same object, FALSE otherwise.
+     * @brief Compares two matrices for inequality.
+     * @remarks This operator compares the contents of the matrices.
+     * @return TRUE if the matrices have different contents, FALSE otherwise.
      */
-    XBOOL operator!=(const VxMatrix &mat) const { return (this != &mat); }
+    XBOOL operator!=(const VxMatrix &mat) const { return !(*this == mat); }
 
     /**
      * @brief Multiplies this matrix by another matrix and assigns the result to this matrix.
