@@ -71,15 +71,17 @@ VX_EXPORT void Vx3DRotateVector(VxVector *ResultVector, const VxMatrix &Mat, con
 VX_EXPORT void Vx3DRotateVectorMany(VxVector *ResultVector, const VxMatrix &Mat, const VxVector *Vector, int count, int stride);
 
 /**
- * @brief Multiplies two 4x4 matrices.
+ * @brief Multiplies two affine 3D transformation matrices.
  * @param ResultMat The resulting matrix (MatA * MatB).
  * @param MatA The first matrix operand.
  * @param MatB The second matrix operand.
+ * @remarks This function enforces an affine output matrix by forcing the last column to [0,0,0,1].
+ * Use `Vx3DMultiplyMatrix4()` when projective terms must be preserved.
  */
 VX_EXPORT void Vx3DMultiplyMatrix(VxMatrix &ResultMat, const VxMatrix &MatA, const VxMatrix &MatB);
 
 /**
- * @brief Multiplies two 4x4 matrices (potentially an optimized version).
+ * @brief Multiplies two full 4x4 matrices.
  * @param ResultMat The resulting matrix (MatA * MatB).
  * @param MatA The first matrix operand.
  * @param MatB The second matrix operand.
@@ -346,6 +348,7 @@ public:
      * @brief Multiplies this matrix by another matrix and assigns the result to this matrix.
      * @param mat The matrix to multiply with.
      * @return A reference to this modified matrix.
+     * @remarks Uses affine multiplication (`Vx3DMultiplyMatrix`).
      */
     VxMatrix &operator*=(const VxMatrix &mat) {
         VxMatrix tmp = *this;
@@ -357,6 +360,7 @@ public:
      * @brief Multiplies this matrix by another matrix.
      * @param iMat The matrix to multiply with.
      * @return The resulting new matrix.
+     * @remarks Uses affine multiplication (`Vx3DMultiplyMatrix`).
      */
     VxMatrix operator*(const VxMatrix &iMat) const {
         VxMatrix temp;
