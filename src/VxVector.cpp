@@ -26,8 +26,9 @@ inline float TableSin(float x) {
 
     // Range reduction and table lookup
     const float scaled = x * SIN_TABLE_SCALE;
-    const int index = static_cast<int>(scaled) & (SIN_TABLE_SIZE - 1);
-    const float frac = scaled - static_cast<float>(index);
+    const int baseIndex = static_cast<int>(floorf(scaled));
+    const int index = baseIndex & (SIN_TABLE_SIZE - 1);
+    const float frac = scaled - static_cast<float>(baseIndex);
 
     // Linear interpolation between table entries
     const float v0 = g_SinTable[index];
@@ -39,8 +40,9 @@ inline float TableCos(float x) {
     InitializeTables();
 
     const float scaled = x * SIN_TABLE_SCALE;
-    const int index = static_cast<int>(scaled) & (SIN_TABLE_SIZE - 1);
-    const float frac = scaled - static_cast<float>(index);
+    const int baseIndex = static_cast<int>(floorf(scaled));
+    const int index = baseIndex & (SIN_TABLE_SIZE - 1);
+    const float frac = scaled - static_cast<float>(baseIndex);
 
     const float v0 = g_CosTable[index];
     const float v1 = g_CosTable[index + 1];
