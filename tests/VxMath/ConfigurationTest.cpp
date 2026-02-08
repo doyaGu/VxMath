@@ -327,6 +327,57 @@ TEST_F(VxConfigurationTest, BuildFromMemory) {
     EXPECT_FLOAT_EQ(floatValue, 3.14f);
 }
 
+TEST_F(VxConfigurationTest, BuildFromMemoryRejectsMismatchedClosingTags) {
+    const char *configText =
+        "<Parent>\n"
+        "  <Child>\n"
+        "    Key = Value\n"
+        "  </Parent>\n"
+        "</Child>\n";
+
+    int line = 0;
+    XString error;
+    EXPECT_FALSE(config->BuildFromMemory(configText, line, error));
+    EXPECT_NE(error.Find("Mismatched closing tag"), XString::NOTFOUND);
+}
+
+TEST_F(VxConfigurationTest, BuildFromMemoryRejectsUnexpectedClosingTags) {
+    const char *configText =
+        "RootKey = RootValue\n"
+        "</Root>\n";
+
+    int line = 0;
+    XString error;
+    EXPECT_FALSE(config->BuildFromMemory(configText, line, error));
+    EXPECT_NE(error.Find("Unexpected closing tag"), XString::NOTFOUND);
+}
+
+TEST_F(VxConfigurationTest, BuildFromMemoryRejectsMissingClosingTags) {
+    const char *configText =
+        "<Parent>\n"
+        "  Key = Value\n";
+
+    int line = 0;
+    XString error;
+    EXPECT_FALSE(config->BuildFromMemory(configText, line, error));
+    EXPECT_NE(error.Find("Missing closing tag"), XString::NOTFOUND);
+}
+
+TEST_F(VxConfigurationTest, BuildFromMemoryAcceptsDottedClosingTagPath) {
+    const char *configText =
+        "<Parent.Child>\n"
+        "  Key = Value\n"
+        "</Parent.Child>\n";
+
+    int line = 0;
+    XString error;
+    EXPECT_TRUE(config->BuildFromMemory(configText, line, error));
+
+    VxConfigurationEntry *entry = config->GetEntry("Parent.Child.Key", TRUE);
+    EXPECT_NE(entry, nullptr);
+    EXPECT_STREQ(entry->GetValue(), "Value");
+}
+
 TEST_F(VxConfigurationTest, BuildFromFile) {
     const std::string configContent =
         "# Test configuration file\n"

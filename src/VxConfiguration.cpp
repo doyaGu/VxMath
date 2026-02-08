@@ -8,6 +8,20 @@
 #endif
 #include <Windows.h>
 
+static XString GetSectionPath(const VxConfigurationSection *section) {
+    if (!section || !section->GetParent()) {
+        return "";
+    }
+
+    XString path(section->GetName());
+    const VxConfigurationSection *parent = section->GetParent();
+    while (parent && parent->GetParent()) {
+        path = XString(parent->GetName()) + "." + path;
+        parent = parent->GetParent();
+    }
+    return path;
+}
+
 VxConfiguration::VxConfiguration(unsigned short indent) : m_Root(NULL), m_DefaultRoot(NULL), m_Indent(indent) {
     m_Root = new VxConfigurationSection("root", NULL);
 }
@@ -487,6 +501,13 @@ XBOOL VxConfiguration::BuildFromMemory(const char *buffer, int &cline, XString &
         ++cline;
     }
 
+    if (currentSection != m_Root) {
+        error = "Missing closing tag for section: ";
+        error += currentSection->GetName();
+        delete[] bufferCopy;
+        return FALSE;
+    }
+
     delete[] bufferCopy;
     return TRUE;
 }
@@ -625,10 +646,38 @@ XBOOL VxConfiguration::ManageSection(char *line, VxConfigurationSection **curren
     // Check for closing tag format </SectionName>
     size_t len = strlen(line);
     if (len > 3 && line[0] == '<' && line[1] == '/' && line[len - 1] == '>') {
-        // This is a closing tag, return to parent section
-        if (*current && (*current)->GetParent()) {
-            *current = (*current)->GetParent();
-        } else {
+        XString tagName(line + 2, len - 3);
+        char *closingTag = Shrink(tagName.Str());
+        if (!closingTag || !*closingTag) {
+            error = "Invalid closing tag format: ";
+            error += line;
+            return FALSE;
+        }
+
+        if (!*current || *current == m_Root) {
+            error = "Unexpected closing tag: ";
+            error += closingTag;
+            return FALSE;
+        }
+
+        const char *expectedName = (*current)->GetName();
+        XString expectedPath = GetSectionPath(*current);
+        if (strcmp(closingTag, expectedName) != 0 &&
+            (expectedPath.Empty() || strcmp(closingTag, expectedPath.CStr()) != 0)) {
+            error = "Mismatched closing tag: ";
+            error += closingTag;
+            error += " (expected ";
+            error += expectedName;
+            if (!expectedPath.Empty()) {
+                error += " or ";
+                error += expectedPath.CStr();
+            }
+            error += ")";
+            return FALSE;
+        }
+
+        *current = (*current)->GetParent();
+        if (!*current) {
             *current = m_Root;
         }
         return TRUE;
