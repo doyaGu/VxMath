@@ -25,7 +25,7 @@ XBOOL VxThread::CreateThread(VxThreadFunction *func, void *args) {
 
     if (m_Name.Length() == 0) {
         m_Name = "THREAD_";
-        m_Name << *(int *) &m_Thread;
+        m_Name << m_ThreadID;
     }
 
     GetMutex().EnterMutex();
