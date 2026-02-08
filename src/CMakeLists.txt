@@ -1,5 +1,6 @@
 set(VXMATH_PUBLIC_HEADERS
         ${VX_INCLUDE_DIR}/VxMathCompiler.h
+        ${VX_INCLUDE_DIR}/FixedSizeAllocator.h
         ${VX_INCLUDE_DIR}/VxMemory.h
         ${VX_INCLUDE_DIR}/VxMathDefines.h
         ${VX_INCLUDE_DIR}/VxMath.h
