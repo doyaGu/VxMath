@@ -235,18 +235,26 @@ XBOOL VxMakePath(char *fullpath, char *path, char *file) {
     if (!path || !file || !fullpath)
         return FALSE;
 
-    strcpy(fullpath, path);
-    int pathLen = strlen(path);
+    const size_t pathLen = strlen(path);
+    const size_t fileLen = strlen(file);
+    if (pathLen >= MAX_PATH)
+        return FALSE;
 
-    if (pathLen >= MAX_PATH - strlen(file) - 1) return FALSE;
+    const bool needSep = (pathLen > 0 && path[pathLen - 1] != '\\' && path[pathLen - 1] != '/');
+    const size_t totalLen = pathLen + (needSep ? 1 : 0) + fileLen;
+    if (totalLen >= MAX_PATH)
+        return FALSE;
 
-    // Check if we need to add a path separator
-    if (pathLen > 0 && fullpath[pathLen - 1] != '\\' && fullpath[pathLen - 1] != '/') {
-        fullpath[pathLen] = '\\';
-        ++pathLen; // Increment position since we added a separator
-    }
+    if (pathLen)
+        memcpy(fullpath, path, pathLen);
 
-    strcpy(&fullpath[pathLen], file); // Use current pathLen, not pathLen + 1
+    size_t pos = pathLen;
+    if (needSep)
+        fullpath[pos++] = '\\';
+
+    if (fileLen)
+        memcpy(fullpath + pos, file, fileLen);
+    fullpath[pos + fileLen] = '\0';
     return TRUE;
 }
 
