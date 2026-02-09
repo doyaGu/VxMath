@@ -1070,31 +1070,31 @@ void VxConfigurationEntry::SetValue(const char *value) { m_Value = value ? value
 
 void VxConfigurationEntry::SetValue(int value) {
     char buffer[32];
-    sprintf(buffer, "%d", value);
+    snprintf(buffer, sizeof(buffer), "%d", value);
     m_Value = buffer;
 }
 
 void VxConfigurationEntry::SetValue(long value) {
     char buffer[32];
-    sprintf(buffer, "%ld", value);
+    snprintf(buffer, sizeof(buffer), "%ld", value);
     m_Value = buffer;
 }
 
 void VxConfigurationEntry::SetValue(unsigned int value) {
     char buffer[32];
-    sprintf(buffer, "%u", value);
+    snprintf(buffer, sizeof(buffer), "%u", value);
     m_Value = buffer;
 }
 
 void VxConfigurationEntry::SetValue(unsigned long value) {
     char buffer[32];
-    sprintf(buffer, "%lu", value);
+    snprintf(buffer, sizeof(buffer), "%lu", value);
     m_Value = buffer;
 }
 
 void VxConfigurationEntry::SetValue(float value) {
     char buffer[32];
-    sprintf(buffer, "%f", value);
+    snprintf(buffer, sizeof(buffer), "%f", value);
     m_Value = buffer;
 }
 
