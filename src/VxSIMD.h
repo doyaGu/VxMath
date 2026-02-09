@@ -306,7 +306,7 @@ VX_SIMD_INLINE VxSIMDFeatures VxDetectSIMDFeatures() {
  * @brief Gets the cached CPU features (only detects once)
  * @return Reference to the cached CPU features
  */
-VX_SIMD_INLINE const VxSIMDFeatures& VxGetSIMDFeatures() {
+VX_SIMD_INLINE const VxSIMDFeatures &VxGetSIMDFeatures() {
     static VxSIMDFeatures features = VxDetectSIMDFeatures();
     return features;
 }
@@ -314,7 +314,7 @@ VX_SIMD_INLINE const VxSIMDFeatures& VxGetSIMDFeatures() {
 /**
  * @brief Returns a string describing available SIMD instruction sets
  */
-VX_SIMD_INLINE const char* VxGetSIMDInfo() {
+VX_SIMD_INLINE const char *VxGetSIMDInfo() {
     static char info_buffer[256] = {0};
     if (info_buffer[0] == '\0') {
         const VxSIMDFeatures& features = VxGetSIMDFeatures();
