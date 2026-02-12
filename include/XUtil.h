@@ -12,7 +12,7 @@
 #define XASSERT(a) assert(a)
 
 /// @brief A function pointer type for comparison functions used in sorting.
-typedef int (__cdecl *VxSortFunc)(const void *elem1, const void *elem2);
+typedef int (VX_CDECL *VxSortFunc)(const void *elem1, const void *elem2);
 
 /**
  * @brief Selects one of two references based on a condition.
@@ -205,6 +205,17 @@ inline XBOOL Is2Power(int x) {
 inline int Near2Power(int v) {
     int i = LowestBitMask(v);
     while (i < v) i <<= 1;
+    return i;
+}
+
+/**
+ * @brief Returns the smallest power of 2 that is greater than or equal to `v`.
+ * @param v The size_t value.
+ * @return The nearest superior power of 2.
+ */
+inline size_t Near2Power(size_t v) {
+    size_t i = v & (~v + 1);
+    while (i < v && i <= (static_cast<size_t>(-1) >> 1)) i <<= 1;
     return i;
 }
 
