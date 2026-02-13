@@ -165,12 +165,6 @@ void VxGenerateMipMap(const VxImageDescEx &src_desc, XBYTE *Buffer) {
     int dstWidth = src_desc.Width >> 1;
     int dstHeight = Height >> 1;
 
-#if defined(VX_SIMD_SSE2)
-    const bool useSSE2 = VxGetSIMDFeatures().SSE2;
-#else
-    const bool useSSE2 = false;
-#endif
-
     if (dstWidth == 0) {
         // Width is 0, only vertical averaging
         if (dstHeight) {
@@ -178,24 +172,22 @@ void VxGenerateMipMap(const VxImageDescEx &src_desc, XBYTE *Buffer) {
             XBYTE *srcPtr = Image;
             int h = dstHeight;
 #if defined(VX_SIMD_SSE2)
-            if (useSSE2) {
-                __m128i zero = _mm_setzero_si128();
-                // Process 4 output pixels at a time if possible
-                while (h >= 4) {
-                    for (int i = 0; i < 4; i++) {
-                        __m128i p0 = _mm_cvtsi32_si128(*(int *) srcPtr);
-                        __m128i p1 = _mm_cvtsi32_si128(*(int *) (srcPtr + BytesPerLine));
-                        __m128i lo0 = _mm_unpacklo_epi8(p0, zero);
-                        __m128i lo1 = _mm_unpacklo_epi8(p1, zero);
-                        __m128i sum = _mm_add_epi16(lo0, lo1);
-                        sum = _mm_srli_epi16(sum, 1);
-                        __m128i result = _mm_packus_epi16(sum, zero);
-                        *(int *) dstPtr = _mm_cvtsi128_si32(result);
-                        dstPtr += BytesPerLine;
-                        srcPtr += BytesPerLine * 2;
-                    }
-                    h -= 4;
+            __m128i zero = _mm_setzero_si128();
+            // Process 4 output pixels at a time if possible
+            while (h >= 4) {
+                for (int i = 0; i < 4; i++) {
+                    __m128i p0 = _mm_cvtsi32_si128(*(int *) srcPtr);
+                    __m128i p1 = _mm_cvtsi32_si128(*(int *) (srcPtr + BytesPerLine));
+                    __m128i lo0 = _mm_unpacklo_epi8(p0, zero);
+                    __m128i lo1 = _mm_unpacklo_epi8(p1, zero);
+                    __m128i sum = _mm_add_epi16(lo0, lo1);
+                    sum = _mm_srli_epi16(sum, 1);
+                    __m128i result = _mm_packus_epi16(sum, zero);
+                    *(int *) dstPtr = _mm_cvtsi128_si32(result);
+                    dstPtr += BytesPerLine;
+                    srcPtr += BytesPerLine * 2;
                 }
+                h -= 4;
             }
 #endif
             while (h > 0) {
@@ -226,69 +218,66 @@ void VxGenerateMipMap(const VxImageDescEx &src_desc, XBYTE *Buffer) {
         XULONG *srcPtr = (XULONG *) Image;
 
 #if defined(VX_SIMD_SSE2)
-        if (useSSE2) {
-            // SSE2 path - process 2 output pixels at a time (4 source pixels)
-            __m128i zero = _mm_setzero_si128();
-            int w = dstWidth;
-            while (w >= 2) {
-                // Load 4 source pixels (16 bytes)
-                __m128i src = _mm_loadu_si128((const __m128i *) srcPtr);
-                // Unpack bytes to 16-bit
-                __m128i lo = _mm_unpacklo_epi8(src, zero);
-                __m128i hi = _mm_unpackhi_epi8(src, zero);
+        // SSE2 path - process 2 output pixels at a time (4 source pixels)
+        __m128i zero = _mm_setzero_si128();
+        int w = dstWidth;
+        while (w >= 2) {
+            // Load 4 source pixels (16 bytes)
+            __m128i src = _mm_loadu_si128((const __m128i *) srcPtr);
+            // Unpack bytes to 16-bit
+            __m128i lo = _mm_unpacklo_epi8(src, zero);
+            __m128i hi = _mm_unpackhi_epi8(src, zero);
 
-                // Extract odd/even pixels and average
-                __m128i p0 = _mm_unpacklo_epi64(lo, hi);
-                __m128i p1 = _mm_unpackhi_epi64(lo, hi);
-                __m128i sum = _mm_add_epi16(p0, p1);
-                sum = _mm_srli_epi16(sum, 1);
+            // Extract odd/even pixels and average
+            __m128i p0 = _mm_unpacklo_epi64(lo, hi);
+            __m128i p1 = _mm_unpackhi_epi64(lo, hi);
+            __m128i sum = _mm_add_epi16(p0, p1);
+            sum = _mm_srli_epi16(sum, 1);
 
-                // Pack back to bytes
-                __m128i result = _mm_packus_epi16(sum, zero);
-                _mm_storel_epi64((__m128i *) dstPtr, result);
+            // Pack back to bytes
+            __m128i result = _mm_packus_epi16(sum, zero);
+            _mm_storel_epi64((__m128i *) dstPtr, result);
 
-                srcPtr += 4;
-                dstPtr += 8;
-                w -= 2;
-            }
-            // Handle remaining pixel
-            while (w > 0) {
-                XULONG p0 = srcPtr[0];
-                XULONG p1 = srcPtr[1];
-                XULONG rb0 = p0 & 0x00FF00FF;
-                XULONG rb1 = p1 & 0x00FF00FF;
-                XULONG ag0 = (p0 & 0xFF00FF00) >> 8;
-                XULONG ag1 = (p1 & 0xFF00FF00) >> 8;
-                XULONG rbAvg = ((rb0 + rb1) >> 1) & 0x00FF00FF;
-                XULONG agAvg = ((ag0 + ag1) << 7) & 0xFF00FF00;
-                *(XULONG *) dstPtr = rbAvg | agAvg;
-                srcPtr += 2;
-                dstPtr += 4;
-                --w;
-            }
-        } else
-#endif
-        {
-            // Plain C path
-            int w = dstWidth;
-            do {
-                XULONG p0 = srcPtr[0];
-                XULONG p1 = srcPtr[1];
-
-                XULONG rb0 = p0 & 0x00FF00FF;
-                XULONG rb1 = p1 & 0x00FF00FF;
-                XULONG ag0 = (p0 & 0xFF00FF00) >> 8;
-                XULONG ag1 = (p1 & 0xFF00FF00) >> 8;
-
-                XULONG rbAvg = ((rb0 + rb1) >> 1) & 0x00FF00FF;
-                XULONG agAvg = ((ag0 + ag1) << 7) & 0xFF00FF00;
-
-                *(XULONG *) dstPtr = rbAvg | agAvg;
-                srcPtr += 2;
-                dstPtr += 4;
-                --w;
-            } while (w);
+            srcPtr += 4;
+            dstPtr += 8;
+            w -= 2;
         }
+        // Handle remaining pixel
+        while (w > 0) {
+            XULONG p0 = srcPtr[0];
+            XULONG p1 = srcPtr[1];
+            XULONG rb0 = p0 & 0x00FF00FF;
+            XULONG rb1 = p1 & 0x00FF00FF;
+            XULONG ag0 = (p0 & 0xFF00FF00) >> 8;
+            XULONG ag1 = (p1 & 0xFF00FF00) >> 8;
+            XULONG rbAvg = ((rb0 + rb1) >> 1) & 0x00FF00FF;
+            XULONG agAvg = ((ag0 + ag1) << 7) & 0xFF00FF00;
+            *(XULONG *) dstPtr = rbAvg | agAvg;
+            srcPtr += 2;
+            dstPtr += 4;
+            --w;
+        }
+#else
+        // Plain C path
+        int w = dstWidth;
+        do {
+            XULONG p0 = srcPtr[0];
+            XULONG p1 = srcPtr[1];
+
+            XULONG rb0 = p0 & 0x00FF00FF;
+            XULONG rb1 = p1 & 0x00FF00FF;
+            XULONG ag0 = (p0 & 0xFF00FF00) >> 8;
+            XULONG ag1 = (p1 & 0xFF00FF00) >> 8;
+
+            XULONG rbAvg = ((rb0 + rb1) >> 1) & 0x00FF00FF;
+            XULONG agAvg = ((ag0 + ag1) << 7) & 0xFF00FF00;
+
+            *(XULONG *) dstPtr = rbAvg | agAvg;
+            srcPtr += 2;
+            dstPtr += 4;
+            --w;
+        } while (w);
+#endif
         return;
     }
 
@@ -297,96 +286,93 @@ void VxGenerateMipMap(const VxImageDescEx &src_desc, XBYTE *Buffer) {
     XULONG *srcPtr = (XULONG *) Image;
 
 #if defined(VX_SIMD_SSE2)
-    if (useSSE2) {
-        // SSE2 path - process 2 output pixels at a time
-        __m128i zero = _mm_setzero_si128();
-        int h = dstHeight;
+    // SSE2 path - process 2 output pixels at a time
+    __m128i zero = _mm_setzero_si128();
+    int h = dstHeight;
+    do {
+        XULONG *rowStart = srcPtr;
+        int w = dstWidth;
+        while (w >= 2) {
+            // Load 4 source pixels from current row
+            __m128i src0 = _mm_loadu_si128((const __m128i *) srcPtr);
+            // Load 4 source pixels from next row
+            __m128i src1 = _mm_loadu_si128((const __m128i *) ((XBYTE *) srcPtr + BytesPerLine));
+
+            // Unpack to 16-bit
+            __m128i lo0 = _mm_unpacklo_epi8(src0, zero);
+            __m128i hi0 = _mm_unpackhi_epi8(src0, zero);
+            __m128i lo1 = _mm_unpacklo_epi8(src1, zero);
+            __m128i hi1 = _mm_unpackhi_epi8(src1, zero);
+
+            // Sum all 4 pixels for each output pixel
+            __m128i p0 = _mm_unpacklo_epi64(lo0, hi0);
+            __m128i p1 = _mm_unpackhi_epi64(lo0, hi0);
+            __m128i p2 = _mm_unpacklo_epi64(lo1, hi1);
+            __m128i p3 = _mm_unpackhi_epi64(lo1, hi1);
+
+            __m128i sum = _mm_add_epi16(_mm_add_epi16(_mm_add_epi16(p0, p1), p2), p3);
+            sum = _mm_srli_epi16(sum, 2);
+
+            // Pack back to bytes
+            __m128i result = _mm_packus_epi16(sum, zero);
+            _mm_storel_epi64((__m128i *) dstPtr, result);
+
+            srcPtr += 4;
+            dstPtr += 8;
+            w -= 2;
+        }
+        // Handle remaining pixel
+        while (w > 0) {
+            XULONG p0 = srcPtr[0];
+            XULONG p1 = srcPtr[1];
+            XULONG p2 = *(XULONG *) ((XBYTE *) srcPtr + BytesPerLine);
+            XULONG p3 = *(XULONG *) ((XBYTE *) srcPtr + BytesPerLine + 4);
+
+            XULONG rb = (p0 & 0x00FF00FF) + (p1 & 0x00FF00FF) +
+                (p2 & 0x00FF00FF) + (p3 & 0x00FF00FF);
+            XULONG ag = ((p0 & 0xFF00FF00) >> 8) + ((p1 & 0xFF00FF00) >> 8) +
+                ((p2 & 0xFF00FF00) >> 8) + ((p3 & 0xFF00FF00) >> 8);
+
+            XULONG rbAvg = (rb >> 2) & 0x00FF00FF;
+            XULONG agAvg = ((ag >> 2) << 8) & 0xFF00FF00;
+
+            *(XULONG *) dstPtr = rbAvg | agAvg;
+            srcPtr += 2;
+            dstPtr += 4;
+            --w;
+        }
+        srcPtr = (XULONG *) ((XBYTE *) rowStart + BytesPerLine * 2);
+        --h;
+    } while (h);
+#else
+    // Plain C path
+    int h = dstHeight;
+    do {
+        XULONG *rowStart = srcPtr;
+        int w = dstWidth;
         do {
-            XULONG *rowStart = srcPtr;
-            int w = dstWidth;
-            while (w >= 2) {
-                // Load 4 source pixels from current row
-                __m128i src0 = _mm_loadu_si128((const __m128i *) srcPtr);
-                // Load 4 source pixels from next row
-                __m128i src1 = _mm_loadu_si128((const __m128i *) ((XBYTE *) srcPtr + BytesPerLine));
+            XULONG p0 = srcPtr[0];
+            XULONG p1 = srcPtr[1];
+            XULONG p2 = *(XULONG *) ((XBYTE *) srcPtr + BytesPerLine);
+            XULONG p3 = *(XULONG *) ((XBYTE *) srcPtr + BytesPerLine + 4);
 
-                // Unpack to 16-bit
-                __m128i lo0 = _mm_unpacklo_epi8(src0, zero);
-                __m128i hi0 = _mm_unpackhi_epi8(src0, zero);
-                __m128i lo1 = _mm_unpacklo_epi8(src1, zero);
-                __m128i hi1 = _mm_unpackhi_epi8(src1, zero);
+            XULONG rb = (p0 & 0x00FF00FF) + (p1 & 0x00FF00FF) +
+                (p2 & 0x00FF00FF) + (p3 & 0x00FF00FF);
+            XULONG ag = ((p0 & 0xFF00FF00) >> 8) + ((p1 & 0xFF00FF00) >> 8) +
+                ((p2 & 0xFF00FF00) >> 8) + ((p3 & 0xFF00FF00) >> 8);
 
-                // Sum all 4 pixels for each output pixel
-                __m128i p0 = _mm_unpacklo_epi64(lo0, hi0);
-                __m128i p1 = _mm_unpackhi_epi64(lo0, hi0);
-                __m128i p2 = _mm_unpacklo_epi64(lo1, hi1);
-                __m128i p3 = _mm_unpackhi_epi64(lo1, hi1);
+            XULONG rbAvg = (rb >> 2) & 0x00FF00FF;
+            XULONG agAvg = ((ag >> 2) << 8) & 0xFF00FF00;
 
-                __m128i sum = _mm_add_epi16(_mm_add_epi16(_mm_add_epi16(p0, p1), p2), p3);
-                sum = _mm_srli_epi16(sum, 2);
-
-                // Pack back to bytes
-                __m128i result = _mm_packus_epi16(sum, zero);
-                _mm_storel_epi64((__m128i *) dstPtr, result);
-
-                srcPtr += 4;
-                dstPtr += 8;
-                w -= 2;
-            }
-            // Handle remaining pixel
-            while (w > 0) {
-                XULONG p0 = srcPtr[0];
-                XULONG p1 = srcPtr[1];
-                XULONG p2 = *(XULONG *) ((XBYTE *) srcPtr + BytesPerLine);
-                XULONG p3 = *(XULONG *) ((XBYTE *) srcPtr + BytesPerLine + 4);
-
-                XULONG rb = (p0 & 0x00FF00FF) + (p1 & 0x00FF00FF) +
-                    (p2 & 0x00FF00FF) + (p3 & 0x00FF00FF);
-                XULONG ag = ((p0 & 0xFF00FF00) >> 8) + ((p1 & 0xFF00FF00) >> 8) +
-                    ((p2 & 0xFF00FF00) >> 8) + ((p3 & 0xFF00FF00) >> 8);
-
-                XULONG rbAvg = (rb >> 2) & 0x00FF00FF;
-                XULONG agAvg = ((ag >> 2) << 8) & 0xFF00FF00;
-
-                *(XULONG *) dstPtr = rbAvg | agAvg;
-                srcPtr += 2;
-                dstPtr += 4;
-                --w;
-            }
-            srcPtr = (XULONG *) ((XBYTE *) rowStart + BytesPerLine * 2);
-            --h;
-        } while (h);
-    } else
+            *(XULONG *) dstPtr = rbAvg | agAvg;
+            srcPtr += 2;
+            dstPtr += 4;
+            --w;
+        } while (w);
+        srcPtr = (XULONG *) ((XBYTE *) rowStart + BytesPerLine * 2);
+        --h;
+    } while (h);
 #endif
-    {
-        // Plain C path
-        int h = dstHeight;
-        do {
-            XULONG *rowStart = srcPtr;
-            int w = dstWidth;
-            do {
-                XULONG p0 = srcPtr[0];
-                XULONG p1 = srcPtr[1];
-                XULONG p2 = *(XULONG *) ((XBYTE *) srcPtr + BytesPerLine);
-                XULONG p3 = *(XULONG *) ((XBYTE *) srcPtr + BytesPerLine + 4);
-
-                XULONG rb = (p0 & 0x00FF00FF) + (p1 & 0x00FF00FF) +
-                    (p2 & 0x00FF00FF) + (p3 & 0x00FF00FF);
-                XULONG ag = ((p0 & 0xFF00FF00) >> 8) + ((p1 & 0xFF00FF00) >> 8) +
-                    ((p2 & 0xFF00FF00) >> 8) + ((p3 & 0xFF00FF00) >> 8);
-
-                XULONG rbAvg = (rb >> 2) & 0x00FF00FF;
-                XULONG agAvg = ((ag >> 2) << 8) & 0xFF00FF00;
-
-                *(XULONG *) dstPtr = rbAvg | agAvg;
-                srcPtr += 2;
-                dstPtr += 4;
-                --w;
-            } while (w);
-            srcPtr = (XULONG *) ((XBYTE *) rowStart + BytesPerLine * 2);
-            --h;
-        } while (h);
-    }
 }
 
 //------------------------------------------------------------------------------
@@ -466,18 +452,12 @@ XBOOL VxConvertToNormalMap(const VxImageDescEx &image, XULONG ColorMask) {
     int Width = image.Width;
     int Height = image.Height;
 
-#if defined(VX_SIMD_SSE2)
-    const bool useSSE2 = VxGetSIMDFeatures().SSE2;
-#else
-    const bool useSSE2 = false;
-#endif
-
     if (ColorMask == 0xFFFFFFFF) {
         // Use luminance from RGB
         const float scale = 0.0013071896f; // 1.0 / 765.0 (255*3)
 
 #if defined(VX_SIMD_SSE2)
-        if (useSSE2 && Width >= 8) {
+        if (Width >= 8) {
             __m128 scaleVec = _mm_set1_ps(scale);
             __m128 one = _mm_set1_ps(1.0f);
 
@@ -638,10 +618,11 @@ static inline int SseLuminance(XULONG pixel) {
 
 XBOOL VxConvertToBumpMap(const VxImageDescEx &image) {
     if (image.BitsPerPixel != 32) return FALSE;
+    if (image.Image == nullptr) return FALSE;
+    if (image.Width < 2 || image.Height <= 0 || image.BytesPerLine <= 0) return FALSE;
 
     // Allocate temporary copy of the image
-    int imageSize = image.BytesPerLine * image.Height;
-    XBYTE *tempImage = (XBYTE *) operator new(imageSize);
+    XBYTE *tempImage = new XBYTE[imageSize];
     memcpy(tempImage, image.Image, imageSize);
 
     XBYTE *srcPtr = tempImage;
@@ -653,7 +634,7 @@ XBOOL VxConvertToBumpMap(const VxImageDescEx &image) {
     // Calculate pointer to last row of source (for wrap-around)
     XBYTE *lastRowPtr = tempImage + BytesPerLine * (Height - 1);
 
-    for (int y = 0; (unsigned int) y < (unsigned int) Height; y++) {
+    for (int y = 0; y < Height; y++) {
         // Get pointer to row above (wrap to last row if at top)
         XBYTE *abovePtr;
         if (y == 0) {
@@ -704,7 +685,7 @@ XBOOL VxConvertToBumpMap(const VxImageDescEx &image) {
 
 #if defined(VX_SIMD_SSE2)
         // SSE2 optimized middle pixels - process 4 pixels at a time
-        if (VxGetSIMDFeatures().SSE2 && Width >= 6) {
+        if (Width >= 6) {
             __m128i zero = _mm_setzero_si128();
 
             unsigned int x = 1;
@@ -837,7 +818,7 @@ XBOOL VxConvertToBumpMap(const VxImageDescEx &image) {
         srcPtr += BytesPerLine;
     }
 
-    operator delete(tempImage);
+    delete[] tempImage;
     return TRUE;
 }
 
