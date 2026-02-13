@@ -92,10 +92,6 @@
 #   endif
 #endif
 
-#ifndef MAX_PATH
-#define MAX_PATH _MAX_PATH
-#endif
-
 #ifndef _MAX_DRIVE
 #define _MAX_DRIVE 3
 #endif
