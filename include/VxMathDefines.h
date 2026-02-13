@@ -84,6 +84,36 @@
 #define NULL 0
 #endif
 
+#ifndef WIN32
+#ifndef _MAX_PATH
+#   ifdef PATH_MAX
+#       define _MAX_PATH PATH_MAX
+#   else
+#       define _MAX_PATH 260
+#   endif
+#endif
+
+#ifndef MAX_PATH
+#define MAX_PATH _MAX_PATH
+#endif
+
+#ifndef _MAX_DRIVE
+#define _MAX_DRIVE 3
+#endif
+
+#ifndef _MAX_DIR
+#define _MAX_DIR 256
+#endif
+
+#ifndef _MAX_FNAME
+#define _MAX_FNAME 256
+#endif
+
+#ifndef _MAX_EXT
+#define _MAX_EXT 256
+#endif
+#endif // !WIN32
+
 #ifdef WIN32
 #define ENDIANSWAP16(x)
 #define ENDIANSWAP32(x)		
