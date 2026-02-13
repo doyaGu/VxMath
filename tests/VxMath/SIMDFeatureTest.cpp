@@ -5,7 +5,6 @@
  * Tests cover:
  * - CPU feature detection (VxDetectSIMDFeatures)
  * - Feature caching (VxGetSIMDFeatures)
- * - SIMD info string (VxGetSIMDInfo)
  * - Aligned memory allocation (VxNewAligned/VxDeleteAligned)
  * - Dispatch table validity
  */
@@ -68,41 +67,6 @@ TEST(SIMDFeatureDetection, VxGetSIMDFeatures_ReturnsCachedValue) {
     EXPECT_EQ(ref1.AVX, ref2.AVX);
     EXPECT_EQ(ref1.AVX2, ref2.AVX2);
     EXPECT_EQ(ref1.FMA, ref2.FMA);
-}
-
-TEST(SIMDFeatureDetection, VxGetSIMDInfo_ReturnsNonEmptyString) {
-    const char* info = VxGetSIMDInfo();
-
-    ASSERT_NE(info, nullptr);
-    EXPECT_GT(strlen(info), 0) << "SIMD info string should not be empty";
-    EXPECT_NE(strstr(info, "VxMath"), nullptr) << "Info should mention VxMath";
-
-    // Should mention active variant
-    EXPECT_NE(strstr(info, "Active variant"), nullptr);
-}
-
-TEST(SIMDFeatureDetection, VxGetSIMDInfo_ContainsDetectedFeatures) {
-    const char* info = VxGetSIMDInfo();
-    const VxSIMDFeatures& features = VxGetSIMDFeatures();
-
-    // Verify detected features appear in info string
-#if defined(VX_SIMD_X86)
-    if (features.SSE) {
-        EXPECT_NE(strstr(info, "SSE"), nullptr) << "Info should list SSE if available";
-    }
-    if (features.SSE2) {
-        EXPECT_NE(strstr(info, "SSE2"), nullptr) << "Info should list SSE2 if available";
-    }
-    if (features.AVX) {
-        EXPECT_NE(strstr(info, "AVX"), nullptr) << "Info should list AVX if available";
-    }
-    if (features.AVX2) {
-        EXPECT_NE(strstr(info, "AVX2"), nullptr) << "Info should list AVX2 if available";
-    }
-    if (features.FMA) {
-        EXPECT_NE(strstr(info, "FMA"), nullptr) << "Info should list FMA if available";
-    }
-#endif
 }
 
 //=============================================================================

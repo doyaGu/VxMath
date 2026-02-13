@@ -84,6 +84,10 @@
 #include <simde/x86/sse2.h>
 #endif
 
+#if defined(VX_SIMD_X86) && !defined(VX_SIMD_SSE2)
+#error "VxMath requires SSE2 on x86/x64 builds."
+#endif
+
 /* SSE3 */
 #if defined(__SSE3__)
 #define VX_SIMD_SSE3 1
@@ -93,6 +97,9 @@
 /* SSSE3 */
 #if defined(__SSSE3__)
 #define VX_SIMD_SSSE3 1
+#include <simde/x86/ssse3.h>
+#elif defined(VX_SIMD_SSE2)
+/* Provide SSSE3 intrinsics via SIMDe emulation when the compiler target is below SSSE3. */
 #include <simde/x86/ssse3.h>
 #endif
 
@@ -189,7 +196,7 @@ typedef __m128i vx_simd_int4;
 #define VX_SIMD_NR_THREE_HALF _mm_set1_ps(1.5f)
 
 // Epsilon values for comparisons
-#define VX_SIMD_EPSILON   _mm_set1_ps(1.0e-5f)
+#define VX_SIMD_EPSILON   _mm_set1_ps(EPSILON)
 
 // Identity matrix rows
 #define VX_SIMD_IDENTITY_R0 _mm_setr_ps(1.0f, 0.0f, 0.0f, 0.0f)
@@ -247,6 +254,19 @@ struct VxSIMDFeatures {
 #else
 #include <cpuid.h>
 #endif
+
+VX_SIMD_INLINE uint64_t VxReadXCR0() {
+#if defined(VX_SIMD_MSVC)
+    return static_cast<uint64_t>(_xgetbv(0));
+#elif defined(VX_SIMD_GCC)
+    uint32_t eax = 0;
+    uint32_t edx = 0;
+    __asm__ volatile(".byte 0x0f, 0x01, 0xd0" : "=a"(eax), "=d"(edx) : "c"(0));
+    return (static_cast<uint64_t>(edx) << 32) | eax;
+#else
+    return 0;
+#endif
+}
 #endif
 
 /**
@@ -275,16 +295,25 @@ VX_SIMD_INLINE VxSIMDFeatures VxDetectSIMDFeatures() {
         // ECX register (info[2])
         features.SSE3   = (info[2] & (1 << 0)) != 0;
         features.SSSE3  = (info[2] & (1 << 9)) != 0;
-        features.FMA    = (info[2] & (1 << 12)) != 0;
+        const bool fmaCpu = (info[2] & (1 << 12)) != 0;
         features.SSE4_1 = (info[2] & (1 << 19)) != 0;
         features.SSE4_2 = (info[2] & (1 << 20)) != 0;
         features.XSAVE  = (info[2] & (1 << 26)) != 0;
         features.OSXSAVE= (info[2] & (1 << 27)) != 0;
-        features.AVX    = (info[2] & (1 << 28)) != 0;
+        const bool avxCpu = (info[2] & (1 << 28)) != 0;
 
         // EDX register (info[3])
         features.SSE    = (info[3] & (1 << 25)) != 0;
         features.SSE2   = (info[3] & (1 << 26)) != 0;
+
+        bool avxStateEnabled = false;
+        if (features.OSXSAVE) {
+            const uint64_t xcr0 = VxReadXCR0();
+            avxStateEnabled = (xcr0 & 0x6) == 0x6; // XMM and YMM state
+        }
+
+        features.AVX = avxCpu && avxStateEnabled;
+        features.FMA = fmaCpu && features.AVX;
     }
 
     if (max_id >= 7) {
@@ -294,8 +323,17 @@ VX_SIMD_INLINE VxSIMDFeatures VxDetectSIMDFeatures() {
         __cpuid_count(7, 0, info[0], info[1], info[2], info[3]);
 #endif
         // EBX register (info[1])
-        features.AVX2    = (info[1] & (1 << 5)) != 0;
-        features.AVX512F = (info[1] & (1 << 16)) != 0;
+        const bool avx2Cpu = (info[1] & (1 << 5)) != 0;
+        const bool avx512fCpu = (info[1] & (1 << 16)) != 0;
+
+        features.AVX2 = avx2Cpu && features.AVX;
+
+        bool avx512StateEnabled = false;
+        if (features.OSXSAVE) {
+            const uint64_t xcr0 = VxReadXCR0();
+            avx512StateEnabled = (xcr0 & 0xE6) == 0xE6; // XMM,YMM,opmask,ZMM_hi256,Hi16_ZMM
+        }
+        features.AVX512F = avx512fCpu && avx512StateEnabled;
     }
 #endif
 
@@ -309,37 +347,6 @@ VX_SIMD_INLINE VxSIMDFeatures VxDetectSIMDFeatures() {
 VX_SIMD_INLINE const VxSIMDFeatures &VxGetSIMDFeatures() {
     static VxSIMDFeatures features = VxDetectSIMDFeatures();
     return features;
-}
-
-/**
- * @brief Returns a string describing available SIMD instruction sets
- */
-VX_SIMD_INLINE const char *VxGetSIMDInfo() {
-    static char info_buffer[256] = {0};
-    if (info_buffer[0] == '\0') {
-        const VxSIMDFeatures& features = VxGetSIMDFeatures();
-        char* p = info_buffer;
-        p += sprintf(p, "VxMath SIMD Support: ");
-
-        bool has_any = false;
-#if defined(VX_SIMD_X86)
-        if (features.SSE) { p += sprintf(p, "SSE "); has_any = true; }
-        if (features.SSE2) { p += sprintf(p, "SSE2 "); has_any = true; }
-        if (features.SSE3) { p += sprintf(p, "SSE3 "); has_any = true; }
-        if (features.SSSE3) { p += sprintf(p, "SSSE3 "); has_any = true; }
-        if (features.SSE4_1) { p += sprintf(p, "SSE4.1 "); has_any = true; }
-        if (features.SSE4_2) { p += sprintf(p, "SSE4.2 "); has_any = true; }
-        if (features.AVX) { p += sprintf(p, "AVX "); has_any = true; }
-        if (features.AVX2) { p += sprintf(p, "AVX2 "); has_any = true; }
-        if (features.FMA) { p += sprintf(p, "FMA "); has_any = true; }
-        if (features.AVX512F) { p += sprintf(p, "AVX512F "); has_any = true; }
-#endif
-        if (!has_any) {
-            p += sprintf(p, "None (SIMD not available)");
-        }
-        sprintf(p, "\nActive variant: SSE (inline)");
-    }
-    return info_buffer;
 }
 
 // ============================================================================

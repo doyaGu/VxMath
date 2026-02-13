@@ -346,6 +346,23 @@ TEST(SIMDUtility, Normalize3_ZeroVector) {
     EXPECT_FALSE(std::isnan(result[2]));
 }
 
+TEST(SIMDUtility, Normalize3_MatchesScalarEpsilonThreshold) {
+    // magSq is > EPSILON but < 1e-5f, so scalar Normalize() still normalizes.
+    VxVector v(0.002f, 0.0f, 0.0f); // magSq = 4e-6
+    ASSERT_GT(v.SquareMagnitude(), EPSILON);
+    ASSERT_LT(v.SquareMagnitude(), 1.0e-5f);
+
+    __m128 vec = VxSIMDLoadFloat3(&v.x);
+    __m128 norm = VxSIMDNormalize3(vec);
+
+    VxVector result;
+    VxSIMDStoreFloat3(&result.x, norm);
+
+    EXPECT_NEAR(result.x, 1.0f, 1e-5f);
+    EXPECT_NEAR(result.y, 0.0f, 1e-5f);
+    EXPECT_NEAR(result.z, 0.0f, 1e-5f);
+}
+
 TEST(SIMDUtility, Normalize4_VariousVectors) {
     VxMathTest::RandomGenerator rng(47);
 
@@ -365,6 +382,23 @@ TEST(SIMDUtility, Normalize4_VariousVectors) {
                                    result.z * result.z + result.w * result.w);
         EXPECT_NEAR(mag, 1.0f, 1e-5f) << "Normalized vector4 should have magnitude 1";
     }
+}
+
+TEST(SIMDUtility, Normalize4_ZeroVector_NoNaN) {
+    __m128 zero = _mm_setzero_ps();
+    __m128 norm = VxSIMDNormalize4(zero);
+
+    float result[4];
+    _mm_storeu_ps(result, norm);
+
+    EXPECT_FLOAT_EQ(result[0], 0.0f);
+    EXPECT_FLOAT_EQ(result[1], 0.0f);
+    EXPECT_FLOAT_EQ(result[2], 0.0f);
+    EXPECT_FLOAT_EQ(result[3], 0.0f);
+    EXPECT_FALSE(std::isnan(result[0]));
+    EXPECT_FALSE(std::isnan(result[1]));
+    EXPECT_FALSE(std::isnan(result[2]));
+    EXPECT_FALSE(std::isnan(result[3]));
 }
 
 //=============================================================================
