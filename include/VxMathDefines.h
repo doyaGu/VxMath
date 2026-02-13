@@ -84,7 +84,6 @@
 #define NULL 0
 #endif
 
-#ifndef WIN32
 #ifndef _MAX_PATH
 #   ifdef PATH_MAX
 #       define _MAX_PATH PATH_MAX
@@ -112,7 +111,6 @@
 #ifndef _MAX_EXT
 #define _MAX_EXT 256
 #endif
-#endif // !WIN32
 
 #ifdef WIN32
 #define ENDIANSWAP16(x)
