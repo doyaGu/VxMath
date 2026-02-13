@@ -83,6 +83,8 @@ set(VXMATH_TEST_SOURCES
         IntersectionTest.cpp
         DistanceTest.cpp
         PropertyTests.cpp
+        FixedSizeAllocatorTest.cpp
+        WindowTest.cpp
         ImageTest.cpp
         # SIMD Tests
         SIMDFeatureTest.cpp

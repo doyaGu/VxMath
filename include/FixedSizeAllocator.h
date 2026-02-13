@@ -1,7 +1,9 @@
 #ifndef FIXEDSIZEALLOCATOR_H
 #define FIXEDSIZEALLOCATOR_H
 
-#include <limits.h>
+#include <stddef.h>
+#include <string.h>
+#include <new>
 
 #include "XArray.h"
 #include "XBitArray.h"
@@ -11,10 +13,15 @@ class XFixedSizeAllocator
 public:
     enum { DEFAULT_CHUNK_SIZE = 4096 };
 
-    XFixedSizeAllocator(const int iBlockSize, const int iPageSize = DEFAULT_CHUNK_SIZE)
-        : m_PageSize(iPageSize), m_BlockSize(iBlockSize < sizeof(int) ? sizeof(int) : iBlockSize), // Ensure block size is at least sizeof(int) for free list
+    XFixedSizeAllocator(size_t iBlockSize, size_t iPageSize = DEFAULT_CHUNK_SIZE)
+        : m_PageSize(iPageSize),
+          m_BlockSize(iBlockSize < sizeof(size_t) ? sizeof(size_t) : iBlockSize), // Ensure block size can store free-list link.
           m_AChunk(NULL), m_DChunk(NULL)
     {
+        // Align block size to allow safe reads/writes of the free-list link (stored as size_t).
+        const size_t align = sizeof(size_t);
+        m_BlockSize = (m_BlockSize + (align - 1)) & ~(align - 1);
+
         // Calculate how many blocks fit in a page
         m_BlockCount = m_PageSize / m_BlockSize;
         if (m_BlockCount == 0)
@@ -27,24 +34,27 @@ public:
     }
 
     // return the number of allocated chunks
-    int GetChunksCount()
+    size_t GetChunksCount()
     {
         return m_Chunks.Size();
     }
 
     // return the total size of all chunks
-    int GetChunksTotalSize()
+    size_t GetChunksTotalSize()
     {
         return m_Chunks.Size() * m_PageSize;
     }
 
     // return the occupied memory in chunks
-    int GetChunksOccupation()
+    size_t GetChunksOccupation()
     {
-        int occupation = 0;
+        size_t occupation = 0;
         for (Chunks::Iterator it = m_Chunks.Begin(); it != m_Chunks.End(); ++it)
         {
-            occupation += (it->m_BlockCount - it->m_BlockAvailables) * m_BlockSize;
+            Chunk *c = *it;
+            if (!c)
+                continue;
+            occupation += (c->m_BlockCount - c->m_BlockAvailables) * m_BlockSize;
         }
         return occupation;
     }
@@ -55,7 +65,10 @@ public:
         // we clear all the chunks
         for (Chunks::Iterator it = m_Chunks.Begin(); it != m_Chunks.End(); ++it)
         {
-            it->CallDtor(iDummy, m_BlockSize, m_BlockCount);
+            Chunk *c = *it;
+            if (!c)
+                continue;
+            c->CallDtor(iDummy, m_BlockSize, m_BlockCount);
         }
     }
 
@@ -64,7 +77,10 @@ public:
         // Destroy all chunks
         for (Chunks::Iterator it = m_Chunks.Begin(); it != m_Chunks.End(); ++it)
         {
-            it->Destroy();
+            Chunk *c = *it;
+            if (!c)
+                continue;
+            delete c;
         }
         m_Chunks.Clear();
         m_AChunk = NULL;
@@ -82,18 +98,19 @@ public:
         // Find a chunk with available blocks
         for (Chunks::Iterator it = m_Chunks.Begin(); it != m_Chunks.End(); ++it)
         {
-            if (it->m_BlockAvailables > 0)
+            Chunk *c = *it;
+            if (c && c->m_BlockAvailables > 0)
             {
-                m_AChunk = &(*it);
+                m_AChunk = c;
                 return m_AChunk->Allocate(m_BlockSize);
             }
         }
 
         // No chunks with available blocks, create a new one
-        Chunk newChunk;
-        newChunk.Init(m_BlockSize, m_BlockCount);
+        Chunk *newChunk = new Chunk();
+        newChunk->Init(m_BlockSize, m_BlockCount);
         m_Chunks.PushBack(newChunk);
-        m_AChunk = &m_Chunks.Back();
+        m_AChunk = newChunk;
         return m_AChunk->Allocate(m_BlockSize);
     }
 
@@ -115,9 +132,14 @@ private:
     class Chunk
     {
     public:
-        Chunk() : m_Data(NULL), m_FirstAvailableBlock(0), m_BlockAvailables(0), m_BlockCount(0) {}
+        Chunk() : m_Data(NULL), m_FirstAvailableBlock(INVALID_BLOCK_INDEX), m_BlockAvailables(0), m_BlockCount(0) {}
 
-        void Init(size_t iBlockSize, unsigned int iBlockCount)
+        ~Chunk()
+        {
+            Destroy();
+        }
+
+        void Init(size_t iBlockSize, size_t iBlockCount)
         {
             m_BlockCount = iBlockCount;
             m_BlockAvailables = iBlockCount;
@@ -126,17 +148,17 @@ private:
             // Allocate memory for the chunk
             m_Data = new unsigned char[iBlockCount * iBlockSize];
 
-            // Initialize free list - each free block contains index of next free block
-            for (unsigned int i = 0; i < iBlockCount - 1; ++i)
+            // Initialize free list - each free block contains index of next free block.
+            for (size_t i = 0; i + 1 < iBlockCount; ++i)
             {
-                *(unsigned int *)(m_Data + i * iBlockSize) = i + 1;
+                WriteFreeListIndex(m_Data + i * iBlockSize, i + 1);
             }
-            // Last block marks end of free list
-            *(unsigned int *)(m_Data + (iBlockCount - 1) * iBlockSize) = UINT_MAX;
+            // Last block marks end of free list.
+            WriteFreeListIndex(m_Data + (iBlockCount - 1) * iBlockSize, INVALID_BLOCK_INDEX);
         }
 
         template <class T>
-        void CallDtor(T *iDummy, size_t iBlockSize, unsigned int iBlockCount)
+        void CallDtor(T *iDummy, size_t iBlockSize, size_t iBlockCount)
         {
             // everything is clear -> nothing to do
             if (m_BlockAvailables == iBlockCount)
@@ -148,7 +170,7 @@ private:
             {
                 // we need to clean everything
                 // we call the dtor of the used blocks
-                for (unsigned int i = 0; i < iBlockCount; ++i)
+                for (size_t i = 0; i < iBlockCount; ++i)
                 {
 
                     unsigned char *p = m_Data + i * iBlockSize;
@@ -162,21 +184,20 @@ private:
 
                 {
                     // we mark the objects used
-                    int freeb = m_FirstAvailableBlock;
-                    for (unsigned int i = 0; i < m_BlockAvailables - 1; ++i)
+                    size_t freeb = m_FirstAvailableBlock;
+                    size_t marked = 0;
+                    while (marked < m_BlockAvailables && freeb != INVALID_BLOCK_INDEX)
                     {
-
                         freeBlocks.Set(freeb);
-
                         unsigned char *p = m_Data + freeb * iBlockSize;
-                        freeb = *(int *)p;
+                        freeb = ReadFreeListIndex(p);
+                        ++marked;
                     }
-                    freeBlocks.Set(freeb);
                 }
 
                 {
                     // we call the dtor of the used blocks
-                    for (unsigned int i = 0; i < iBlockCount; ++i)
+                    for (size_t i = 0; i < iBlockCount; ++i)
                     {
 
                         if (freeBlocks.IsSet(i))
@@ -195,7 +216,7 @@ private:
             m_Data = NULL;
             m_BlockCount = 0;
             m_BlockAvailables = 0;
-            m_FirstAvailableBlock = 0;
+            m_FirstAvailableBlock = INVALID_BLOCK_INDEX;
         }
 
         void *Allocate(size_t iBlockSize)
@@ -209,7 +230,7 @@ private:
             unsigned char *result = m_Data + m_FirstAvailableBlock * iBlockSize;
 
             // Update the free list head to next available block
-            m_FirstAvailableBlock = *(unsigned int *)result;
+            m_FirstAvailableBlock = ReadFreeListIndex(result);
             m_BlockAvailables--;
 
             return result;
@@ -220,30 +241,60 @@ private:
             if (!iP)
                 return;
 
-            // Calculate block index within this chunk
-            unsigned char *ptr = (unsigned char *)iP;
-            unsigned int blockIndex = (unsigned int)((ptr - m_Data) / iBlockSize);
-
-            // Validate the pointer is properly aligned
-            if ((ptr - m_Data) % iBlockSize != 0)
+            // Calculate block index within this chunk.
+            unsigned char *ptr = static_cast<unsigned char *>(iP);
+            ptrdiff_t offset = ptr - m_Data;
+            if (offset < 0)
             {
-                return; // Invalid pointer
+                return; // Invalid pointer.
             }
 
-            // Add this block to the front of the free list
-            *(unsigned int *)iP = m_FirstAvailableBlock;
+            size_t byteOffset = static_cast<size_t>(offset);
+            // Validate the pointer is properly aligned.
+            if ((byteOffset % iBlockSize) != 0)
+            {
+                return; // Invalid pointer.
+            }
+            size_t blockIndex = byteOffset / iBlockSize;
+
+            if (blockIndex >= m_BlockCount)
+            {
+                return; // Out of range.
+            }
+
+            if (m_BlockAvailables >= m_BlockCount)
+            {
+                return; // Likely double free or corruption.
+            }
+
+            // Add this block to the front of the free list.
+            WriteFreeListIndex(static_cast<unsigned char *>(iP), m_FirstAvailableBlock);
             m_FirstAvailableBlock = blockIndex;
             m_BlockAvailables++;
         }
 
+        static void WriteFreeListIndex(unsigned char *iBlock, size_t iIndex)
+        {
+            memcpy(iBlock, &iIndex, sizeof(size_t));
+        }
+
+        static size_t ReadFreeListIndex(const unsigned char *iBlock)
+        {
+            size_t index = INVALID_BLOCK_INDEX;
+            memcpy(&index, iBlock, sizeof(size_t));
+            return index;
+        }
+
         unsigned char *m_Data;
-        unsigned int m_FirstAvailableBlock;
-        unsigned int m_BlockAvailables;
-        unsigned int m_BlockCount;
+        size_t m_FirstAvailableBlock;
+        size_t m_BlockAvailables;
+        size_t m_BlockCount;
+
+        static const size_t INVALID_BLOCK_INDEX = static_cast<size_t>(-1);
     };
 
     // types
-    typedef XArray<Chunk> Chunks;
+    typedef XArray<Chunk *> Chunks;
 
     // function to find the chunk containing the ptr
     Chunk *FindChunk(void *iP)
@@ -263,12 +314,15 @@ private:
         // Search all chunks
         for (Chunks::Iterator it = m_Chunks.Begin(); it != m_Chunks.End(); ++it)
         {
+            Chunk *c = *it;
+            if (!c)
+                continue;
             unsigned char *ptr = (unsigned char *)iP;
-            unsigned char *chunkStart = it->m_Data;
-            unsigned char *chunkEnd = chunkStart + (it->m_BlockCount * m_BlockSize);
+            unsigned char *chunkStart = c->m_Data;
+            unsigned char *chunkEnd = chunkStart + (c->m_BlockCount * m_BlockSize);
             if (ptr >= chunkStart && ptr < chunkEnd)
             {
-                return &(*it);
+                return c;
             }
         }
 
@@ -280,7 +334,7 @@ private:
     // Block size
     size_t m_BlockSize;
     // Blocks Count (per Chunk)
-    unsigned int m_BlockCount;
+    size_t m_BlockCount;
 
     // the chunks
     Chunks m_Chunks;
@@ -299,11 +353,16 @@ public:
 
     T *Allocate()
     {
-        return new (m_Allocator.Allocate()) T;
+        void *mem = m_Allocator.Allocate();
+        if (!mem)
+            return NULL;
+        return new (mem) T;
     }
 
     void Free(T *iP)
     {
+        if (!iP)
+            return;
         if (m_CallDtor)
             iP->~T();
 
