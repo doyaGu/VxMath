@@ -622,6 +622,7 @@ XBOOL VxConvertToBumpMap(const VxImageDescEx &image) {
     if (image.Width < 2 || image.Height <= 0 || image.BytesPerLine <= 0) return FALSE;
 
     // Allocate temporary copy of the image
+    int imageSize = image.BytesPerLine * image.Height;
     XBYTE *tempImage = new XBYTE[imageSize];
     memcpy(tempImage, image.Image, imageSize);
 
