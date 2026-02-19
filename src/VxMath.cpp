@@ -2,25 +2,34 @@
 
 #include <stdio.h>
 
+#if defined(_WIN32)
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
 #endif
 #include <Windows.h>
+#endif
 
 #include "VxEigenMatrix.h"
 
 extern void InitializeTables();
 
+#if defined(_WIN32)
 HINSTANCE g_hinstDLL;
 CRITICAL_SECTION g_CriticalSection;
+#endif
 
 void InitVxMath() {
     VxDetectProcessor();
     InitializeTables();
+#if defined(_WIN32)
     ::InitializeCriticalSection(&g_CriticalSection);
+#endif
 }
 
 void InterpolateFloatArray(void *Res, void *array1, void *array2, float factor, int count) {
+    if (!Res || !array1 || !array2 || count == 0)
+        return;
+
     float *pRes = static_cast<float *>(Res);
     float *pArray1 = static_cast<float *>(array1);
     float *pArray2 = static_cast<float *>(array2);
@@ -31,10 +40,13 @@ void InterpolateFloatArray(void *Res, void *array1, void *array2, float factor, 
         ++pRes;
         ++pArray2;
         --count;
-    } while (count);
+    } while (count > 0);
 }
 
-void InterpolateVectorArray(void *Res, void *Inarray1, void *Inarray2, float factor, int count, XULONG StrideRes, XULONG StrideIn) {
+void InterpolateVectorArray(void *Res, void *Inarray1, void *Inarray2, float factor, int count, XDWORD StrideRes, XDWORD StrideIn) {
+    if (!Res || !Inarray1 || !Inarray2 || count == 0)
+        return;
+
     VxVector *pRes = static_cast<VxVector *>(Res);
     VxVector *pArray1 = static_cast<VxVector *>(Inarray1);
     VxVector *pArray2 = static_cast<VxVector *>(Inarray2);
@@ -47,7 +59,7 @@ void InterpolateVectorArray(void *Res, void *Inarray1, void *Inarray2, float fac
         pArray2 = reinterpret_cast<VxVector *>(reinterpret_cast<char *>(pArray2) + StrideIn);
         pRes = reinterpret_cast<VxVector *>(reinterpret_cast<char *>(pRes) + StrideRes);
         --count;
-    } while (count);
+    } while (count > 0);
 }
 
 XBOOL VxTransformBox2D(const VxMatrix &World_ProjectionMat, const VxBbox &box, VxRect *ScreenSize, VxRect *Extents, VXCLIP_FLAGS &OrClipFlags, VXCLIP_FLAGS &AndClipFlags) {
@@ -68,8 +80,8 @@ XBOOL VxTransformBox2D(const VxMatrix &World_ProjectionMat, const VxBbox &box, V
 
     // Use local variables for thread safety
     VxVector4 transformedVertices[8];
-    XULONG allVerticesFlags = 0;
-    XULONG allVerticesFlagsAnded = 0xFFFFFFFF;
+    XDWORD allVerticesFlags = 0;
+    XDWORD allVerticesFlagsAnded = 0xFFFFFFFF;
 
     // Transform first corner (Min)
     Vx3DMultiplyMatrixVector4(&transformedVertices[0], World_ProjectionMat, &box.Min);
@@ -117,7 +129,7 @@ XBOOL VxTransformBox2D(const VxMatrix &World_ProjectionMat, const VxBbox &box, V
 
     // Check each vertex against clip planes
     for (int i = 0; i < vertexCount; i++) {
-        XULONG vertexFlags = 0;
+        XDWORD vertexFlags = 0;
         const VxVector4 &vertex = transformedVertices[i];
 
         // Check against frustum planes using homogeneous coordinates
@@ -284,12 +296,12 @@ void VxProjectBoxZExtents(const VxMatrix &World_ProjectionMat, const VxBbox &box
 /**
  * Fills an array with copies of a structure
  */
-XBOOL VxFillStructure(int Count, void *Dst, XULONG Stride, XULONG SizeSrc, void *Src) {
+XBOOL VxFillStructure(int Count, void *Dst, XDWORD Stride, XDWORD SizeSrc, const void *Src) {
     if (!Src || !Dst || !Count || !SizeSrc || !Stride || (SizeSrc & 3) != 0)
         return FALSE;
 
     XDWORD *pDst = static_cast<XDWORD *>(Dst);
-    XDWORD *pSrc = static_cast<XDWORD *>(Src);
+    const XDWORD *pSrc = static_cast<const XDWORD *>(Src);
 
     switch (SizeSrc) {
     case 4: {
@@ -347,13 +359,13 @@ XBOOL VxFillStructure(int Count, void *Dst, XULONG Stride, XULONG SizeSrc, void 
     default: {
         int cnt = Count;
         do {
-            XULONG dwordCount = SizeSrc >> 2;
+            XDWORD dwordCount = SizeSrc >> 2;
             do {
                 *pDst++ = *pSrc++;
                 --dwordCount;
             } while (dwordCount);
             pDst = reinterpret_cast<XDWORD *>(reinterpret_cast<char *>(pDst) + Stride - SizeSrc);
-            pSrc = static_cast<XDWORD *>(Src);
+            pSrc = static_cast<const XDWORD *>(Src);
             --cnt;
         } while (cnt);
         break;
@@ -366,11 +378,11 @@ XBOOL VxFillStructure(int Count, void *Dst, XULONG Stride, XULONG SizeSrc, void 
 /**
  * Copies structures from one array to another
  */
-XBOOL VxCopyStructure(int Count, void *Dst, XULONG OutStride, XULONG SizeSrc, void *Src, XULONG InStride) {
+XBOOL VxCopyStructure(int Count, void *Dst, XDWORD OutStride, XDWORD SizeSrc, const void *Src, XDWORD InStride) {
     if (!Src || !Dst || !Count || !SizeSrc || !OutStride || !InStride || (SizeSrc & 3) != 0)
         return FALSE;
 
-    XDWORD *pSrc = static_cast<XDWORD *>(Src);
+    const XDWORD *pSrc = static_cast<const XDWORD *>(Src);
     XDWORD *pDst = static_cast<XDWORD *>(Dst);
 
     switch (SizeSrc) {
@@ -378,7 +390,7 @@ XBOOL VxCopyStructure(int Count, void *Dst, XULONG OutStride, XULONG SizeSrc, vo
         int cnt = Count;
         do {
             *pDst = *pSrc;
-            pSrc = reinterpret_cast<XDWORD *>(reinterpret_cast<char *>(pSrc) + InStride);
+            pSrc = reinterpret_cast<const XDWORD *>(reinterpret_cast<const char *>(pSrc) + InStride);
             pDst = reinterpret_cast<XDWORD *>(reinterpret_cast<char *>(pDst) + OutStride);
             --cnt;
         } while (cnt);
@@ -390,7 +402,7 @@ XBOOL VxCopyStructure(int Count, void *Dst, XULONG OutStride, XULONG SizeSrc, vo
             XDWORD v1 = pSrc[1];
             pDst[0] = pSrc[0];
             pDst[1] = v1;
-            pSrc = reinterpret_cast<XDWORD *>(reinterpret_cast<char *>(pSrc) + InStride);
+            pSrc = reinterpret_cast<const XDWORD *>(reinterpret_cast<const char *>(pSrc) + InStride);
             pDst = reinterpret_cast<XDWORD *>(reinterpret_cast<char *>(pDst) + OutStride);
             --cnt;
         } while (cnt);
@@ -404,7 +416,7 @@ XBOOL VxCopyStructure(int Count, void *Dst, XULONG OutStride, XULONG SizeSrc, vo
             XDWORD v2 = pSrc[2];
             pDst[1] = v1;
             pDst[2] = v2;
-            pSrc = reinterpret_cast<XDWORD *>(reinterpret_cast<char *>(pSrc) + InStride);
+            pSrc = reinterpret_cast<const XDWORD *>(reinterpret_cast<const char *>(pSrc) + InStride);
             pDst = reinterpret_cast<XDWORD *>(reinterpret_cast<char *>(pDst) + OutStride);
             --cnt;
         } while (cnt);
@@ -419,7 +431,7 @@ XBOOL VxCopyStructure(int Count, void *Dst, XULONG OutStride, XULONG SizeSrc, vo
             XDWORD v3 = pSrc[3];
             pDst[2] = pSrc[2];
             pDst[3] = v3;
-            pSrc = reinterpret_cast<XDWORD *>(reinterpret_cast<char *>(pSrc) + InStride);
+            pSrc = reinterpret_cast<const XDWORD *>(reinterpret_cast<const char *>(pSrc) + InStride);
             pDst = reinterpret_cast<XDWORD *>(reinterpret_cast<char *>(pDst) + OutStride);
             --cnt;
         } while (cnt);
@@ -427,14 +439,14 @@ XBOOL VxCopyStructure(int Count, void *Dst, XULONG OutStride, XULONG SizeSrc, vo
     }
     default: {
         int cnt = Count;
-        XULONG InStrideAdj = InStride - SizeSrc;
+        XDWORD InStrideAdj = InStride - SizeSrc;
         do {
-            XULONG dwordCount = SizeSrc >> 2;
+            XDWORD dwordCount = SizeSrc >> 2;
             do {
                 *pDst++ = *pSrc++;
                 --dwordCount;
             } while (dwordCount);
-            pSrc = reinterpret_cast<XDWORD *>(reinterpret_cast<char *>(pSrc) + InStrideAdj);
+            pSrc = reinterpret_cast<const XDWORD *>(reinterpret_cast<const char *>(pSrc) + InStrideAdj);
             pDst = reinterpret_cast<XDWORD *>(reinterpret_cast<char *>(pDst) + OutStride - SizeSrc);
             --cnt;
         } while (cnt);
@@ -448,23 +460,23 @@ XBOOL VxCopyStructure(int Count, void *Dst, XULONG OutStride, XULONG SizeSrc, vo
 /**
  * Copies structures from an array to another using an index array
  */
-XBOOL VxIndexedCopy(const VxStridedData &Dst, const VxStridedData &Src, XULONG SizeSrc, int *Indices, int IndexCount) {
+XBOOL VxIndexedCopy(const VxStridedData &Dst, const VxStridedData &Src, XDWORD SizeSrc, const int *Indices, int IndexCount) {
     // Validate parameters
-    if (IndexCount <= 0)
+    if (IndexCount == 0)
         return FALSE;
     if (SizeSrc == 0 || (SizeSrc & 3) != 0)
         return FALSE;
     if (Dst.Ptr == nullptr || Src.Ptr == nullptr || Indices == nullptr)
         return FALSE;
 
-    XULONG DstStride = Dst.Stride;
+    XDWORD DstStride = Dst.Stride;
     VxStridedData srcCopy = Src;
 
     switch (SizeSrc) {
     case 4: {
         int cnt = IndexCount;
         XDWORD *pDst = static_cast<XDWORD *>(Dst.Ptr);
-        int *pIdx = Indices;
+        const int *pIdx = Indices;
         do {
             *pDst = *reinterpret_cast<XDWORD *>(static_cast<char *>(srcCopy.Ptr) + *pIdx * srcCopy.Stride);
             pDst = reinterpret_cast<XDWORD *>(reinterpret_cast<char *>(pDst) + DstStride);
@@ -476,7 +488,7 @@ XBOOL VxIndexedCopy(const VxStridedData &Dst, const VxStridedData &Src, XULONG S
     case 8: {
         int cnt = IndexCount;
         XDWORD *pDst = static_cast<XDWORD *>(Dst.Ptr);
-        int *pIdx = Indices;
+        const int *pIdx = Indices;
         do {
             XDWORD *pSrc = reinterpret_cast<XDWORD *>(static_cast<char *>(srcCopy.Ptr) + *pIdx * srcCopy.Stride);
             XDWORD v1 = pSrc[1];
@@ -491,7 +503,7 @@ XBOOL VxIndexedCopy(const VxStridedData &Dst, const VxStridedData &Src, XULONG S
     case 12: {
         int cnt = IndexCount;
         XDWORD *pDst = static_cast<XDWORD *>(Dst.Ptr);
-        int *pIdx = Indices;
+        const int *pIdx = Indices;
         do {
             XDWORD *pSrc = reinterpret_cast<XDWORD *>(static_cast<char *>(srcCopy.Ptr) + *pIdx * srcCopy.Stride);
             XDWORD v1 = pSrc[1];
@@ -507,7 +519,7 @@ XBOOL VxIndexedCopy(const VxStridedData &Dst, const VxStridedData &Src, XULONG S
     case 16: {
         int cnt = IndexCount;
         XDWORD *pDst = static_cast<XDWORD *>(Dst.Ptr);
-        int *pIdx = Indices;
+        const int *pIdx = Indices;
         do {
             XDWORD *pSrc = reinterpret_cast<XDWORD *>(static_cast<char *>(srcCopy.Ptr) + *pIdx * srcCopy.Stride);
             XDWORD v1 = pSrc[1];
@@ -525,7 +537,7 @@ XBOOL VxIndexedCopy(const VxStridedData &Dst, const VxStridedData &Src, XULONG S
     case 20: {
         int cnt = IndexCount;
         XDWORD *pDst = static_cast<XDWORD *>(Dst.Ptr);
-        int *pIdx = Indices;
+        const int *pIdx = Indices;
         do {
             XDWORD *pSrc = reinterpret_cast<XDWORD *>(static_cast<char *>(srcCopy.Ptr) + *pIdx * srcCopy.Stride);
             XDWORD v1 = pSrc[1];
@@ -544,7 +556,7 @@ XBOOL VxIndexedCopy(const VxStridedData &Dst, const VxStridedData &Src, XULONG S
     case 24: {
         int cnt = IndexCount;
         XDWORD *pDst = static_cast<XDWORD *>(Dst.Ptr);
-        int *pIdx = Indices;
+        const int *pIdx = Indices;
         do {
             XDWORD *pSrc = reinterpret_cast<XDWORD *>(static_cast<char *>(srcCopy.Ptr) + *pIdx * srcCopy.Stride);
             XDWORD v1 = pSrc[1];
@@ -565,11 +577,11 @@ XBOOL VxIndexedCopy(const VxStridedData &Dst, const VxStridedData &Src, XULONG S
     default: {
         int cnt = IndexCount;
         XDWORD *pDst = static_cast<XDWORD *>(Dst.Ptr);
-        int *pIdx = Indices;
+        const int *pIdx = Indices;
         do {
             XDWORD *pSrc = reinterpret_cast<XDWORD *>(static_cast<char *>(srcCopy.Ptr) + *pIdx * srcCopy.Stride);
             XDWORD *pDstSave = pDst;
-            XULONG dwordCount = SizeSrc >> 2;
+            XDWORD dwordCount = SizeSrc >> 2;
             do {
                 *pDst++ = *pSrc++;
                 --dwordCount;
@@ -593,7 +605,7 @@ XBOOL VxPtInRect(CKRECT *rect, CKPOINT *pt) {
     return pt->y <= rect->bottom && pt->y >= rect->top;
 }
 
-XBOOL VxComputeBestFitBBox(const XBYTE *Points, XULONG Stride, int Count, VxMatrix &BBoxMatrix, float AdditionalBorder) {
+XBOOL VxComputeBestFitBBox(const XBYTE *Points, XDWORD Stride, int Count, VxMatrix &BBoxMatrix, float AdditionalBorder) {
     if (Count > 0 && Points) {
         // Create and compute covariance matrix
         VxEigenMatrix eigenMat;
@@ -711,7 +723,7 @@ XBOOL VxComputeBestFitBBox(const XBYTE *Points, XULONG Stride, int Count, VxMatr
     return FALSE;
 }
 
-#ifndef VX_LIB
+#if defined(_WIN32) && !defined(VX_LIB)
 BOOL APIENTRY DllMain(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID lpReserved) {
     switch (fdwReason) {
         case DLL_PROCESS_ATTACH:

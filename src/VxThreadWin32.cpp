@@ -19,13 +19,15 @@ XBOOL VxThread::CreateThread(VxThreadFunction *func, void *args) {
 
     m_Func = func;
     m_Args = args;
-    m_Thread = ::CreateThread(NULL, 0, ThreadFunc, this, 0, (LPDWORD) &m_ThreadID);
+    DWORD threadId = 0;
+    m_Thread = ::CreateThread(NULL, 0, ThreadFunc, this, 0, &threadId);
     if (!m_Thread)
         return FALSE;
+    m_ThreadID = static_cast<XUINTPTR>(threadId);
 
     if (m_Name.Length() == 0) {
         m_Name = "THREAD_";
-        m_Name << m_ThreadID;
+        m_Name << static_cast<unsigned int>(m_ThreadID);
     }
 
     GetMutex().EnterMutex();
@@ -97,6 +99,11 @@ VxThread *VxThread::GetCurrentVxThread() {
 }
 
 int VxThread::Wait(unsigned int *status, unsigned int timeout) {
+    unsigned int localStatus = 0;
+    if (!status) {
+        status = &localStatus;
+    }
+
     DWORD dwMilliseconds = (timeout != 0) ? timeout : -1;
     switch (::WaitForSingleObject(m_Thread, dwMilliseconds)) {
     case WAIT_ABANDONED:
@@ -109,16 +116,18 @@ int VxThread::Wait(unsigned int *status, unsigned int timeout) {
         break;
     }
 
-    if (*status == VXTS_INITIALE || GetExitCode(*status))
+    if (!GetExitCode(*status))
+        return VXTERROR_EXITCODE;
+    if (*status == VXT_STILLACTIVE)
         return VXTERROR_WAIT;
-    return VXTERROR_EXITCODE;
+    return VXT_OK;
 }
 
 const GENERIC_HANDLE VxThread::GetHandle() const {
     return m_Thread;
 }
 
-XULONG VxThread::GetID() const {
+XUINTPTR VxThread::GetID() const {
     return m_ThreadID;
 }
 
@@ -138,8 +147,8 @@ XBOOL VxThread::Terminate(unsigned int *status) {
         return ::TerminateThread((HANDLE) m_Thread, 0);
 }
 
-XULONG VxThread::GetCurrentVxThreadId() {
-    return ::GetCurrentThreadId();
+XUINTPTR VxThread::GetCurrentVxThreadId() {
+    return static_cast<XUINTPTR>(::GetCurrentThreadId());
 }
 
 void VxThread::SetPriority() {
@@ -179,14 +188,14 @@ XHashTable<VxThread *, GENERIC_HANDLE> &VxThread::GetHashThread() {
     return hashThread;
 }
 
-XULONG VX_STDCALL VxThread::ThreadFunc(void *args) {
+unsigned long VX_STDCALL VxThread::ThreadFunc(void *args) {
     if (!args)
         return VXTERROR_NULLTHREAD;
 
     VxThread *thread = (VxThread *) args;
     thread->m_State |= VXTS_STARTED;
 
-    XULONG ret;
+    unsigned long ret;
     if (thread->m_Func)
         ret = thread->m_Func(thread->m_Args);
     else

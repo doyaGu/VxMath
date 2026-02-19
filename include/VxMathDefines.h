@@ -2,11 +2,31 @@
 #define VXMATHDEFINES_H
 
 #include "VxMathCompiler.h"
-#include "VxMemory.h"
 
 #include <stddef.h>
 #include <stdint.h>
+#include <stdlib.h>
 #include <limits.h>
+#include <string.h>
+
+#if !defined(_WIN32) && !defined(WIN32)
+#include <strings.h>
+#ifndef stricmp
+#define stricmp strcasecmp
+#endif
+#ifndef strcmpi
+#define strcmpi strcasecmp
+#endif
+#ifndef strnicmp
+#define strnicmp strncasecmp
+#endif
+#ifndef _stricmp
+#define _stricmp strcasecmp
+#endif
+#ifndef _strnicmp
+#define _strnicmp strncasecmp
+#endif
+#endif
 
 /// @brief Internal helper macro to stringify a token.
 #define _QUOTE(x) #x
@@ -114,13 +134,32 @@
 #define ENDIANSWAPFLOAT(x)
 #endif
 
+// Basic type definitions
 typedef char *XSTRING;
 typedef char XCHAR;
-typedef int XBOOL;
-typedef unsigned char XBYTE;
-typedef unsigned short XWORD;
-typedef unsigned int XDWORD;
-typedef unsigned long XULONG;
+typedef int32_t XBOOL;
+typedef uint8_t XBYTE;
+typedef uint16_t XWORD;
+typedef uint32_t XDWORD;
+typedef intptr_t XINTPTR;
+typedef uintptr_t XUINTPTR;
+typedef size_t XSIZE;
+
+#ifndef _WIN32
+#ifndef VK_SHIFT
+#define VK_SHIFT 0x10
+#define VK_CONTROL 0x11
+#define VK_MENU 0x12
+#define VK_PRINT 0x2A
+#define VK_LSHIFT 0xA0
+#define VK_RSHIFT 0xA1
+#define VK_LCONTROL 0xA2
+#define VK_RCONTROL 0xA3
+#define VK_LMENU 0xA4
+#define VK_RMENU 0xA5
+#define VK_NONCONVERT 0x1D
+#endif
+#endif
 
 /// @brief Generic function pointer type.
 typedef int (VX_STDCALL *FUNC_PTR)();

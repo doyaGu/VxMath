@@ -1,9 +1,17 @@
 #include "VxWindowFunctions.h"
 
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
 #include <Windows.h>
+
+#if defined(_MSC_VER)
+#include <float.h>
+#endif
 
 #include <direct.h>
 #include <shellapi.h>
+#include <string>
 
 #include "XString.h"
 #include "VxColor.h"
@@ -12,7 +20,7 @@
 
 extern void VxDoBlitUpsideDown(const VxImageDescEx &src_desc, const VxImageDescEx &dst_desc);
 
-char VxScanCodeToAscii(XULONG scancode, unsigned char keystate[256]) {
+char VxScanCodeToAscii(XDWORD scancode, unsigned char keystate[256]) {
     unsigned char state[256];
 
     GetKeyboardState(state);
@@ -52,7 +60,7 @@ char VxScanCodeToAscii(XULONG scancode, unsigned char keystate[256]) {
     return (ret != 0) ? ch : '\0';
 }
 
-int VxScanCodeToName(XULONG scancode, char *keyName) {
+int VxScanCodeToName(XDWORD scancode, char *keyName) {
     DWORD code = (scancode & 0x7F) << 16;
     if (scancode > 0x7F)
         code |= 0x1000000;
@@ -91,10 +99,10 @@ XBOOL VxSetCursor(VXCURSOR_POINTER cursorID) {
 
 XWORD VxGetFPUControlWord() {
     XWORD cw = 0;
-#if defined(_MSC_VER)  // MSVC
-    __asm {
-        fstcw cw
-    }
+#if defined(_MSC_VER)  // MSVC (x86/x64)
+    unsigned int msCw = 0;
+    (void)_controlfp_s(&msCw, 0, 0); // query current control word
+    cw = static_cast<XWORD>(msCw);
 #elif defined(__GNUC__) || defined(__clang__)  // GCC / Clang
     __asm__ __volatile__ ("fstcw %0" : "=m" (cw));
 #else
@@ -104,10 +112,19 @@ XWORD VxGetFPUControlWord() {
 }
 
 void VxSetFPUControlWord(XWORD Fpu) {
-#if defined(_MSC_VER)  // MSVC
-    __asm {
-        fldcw Fpu
-    }
+#if defined(_MSC_VER)  // MSVC (x86/x64)
+    unsigned int ignored = 0;
+    unsigned int cw = static_cast<unsigned int>(Fpu);
+
+    // On MSVC x64, only a subset of the legacy x87 control word bits are supported by _controlfp_s.
+    // Passing an all-bits mask triggers a UCRT assertion.
+#if defined(_M_IX86)
+    const unsigned int mask = _MCW_DN | _MCW_EM | _MCW_RC | _MCW_PC;
+#else
+    const unsigned int mask = _MCW_DN | _MCW_EM | _MCW_RC;
+#endif
+
+    (void)_controlfp_s(&ignored, cw, mask);
 #elif defined(__GNUC__) || defined(__clang__)  // GCC / Clang
     __asm__ __volatile__ ("fldcw %0" : : "m" (Fpu));
 #else
@@ -115,7 +132,12 @@ void VxSetFPUControlWord(XWORD Fpu) {
 #endif
 }
 
-void VxSetBaseFPUControlWord() {}
+void VxSetBaseFPUControlWord() {
+#if defined(_MSC_VER)
+    unsigned int ignored = 0;
+    (void)_controlfp_s(&ignored, _CW_DEFAULT, _MCW_EM | _MCW_DN | _MCW_RC | _MCW_PC);
+#endif
+}
 
 void VxAddLibrarySearchPath(char *path) {
     char buffer[4096];
@@ -133,22 +155,21 @@ XBOOL VxGetEnvironmentVariable(char *envName, XString &envValue) {
         return FALSE;
     }
 
-    DWORD required = GetEnvironmentVariableA(envName, NULL, 0);
+    DWORD required = GetEnvironmentVariableA(envName, nullptr, 0);
     if (required == 0) {
         envValue = "";
         return FALSE;
     }
 
-    XString buffer;
-    buffer.Reserve((XWORD) required);
-    DWORD written = GetEnvironmentVariableA(envName, buffer.Str(), required);
+    std::string buffer(required, '\0');
+    DWORD written = GetEnvironmentVariableA(envName, buffer.data(), required);
     if (written == 0 || written >= required) {
         envValue = "";
         return FALSE;
     }
 
-    buffer.Resize((XWORD) written);
-    envValue = buffer;
+    buffer.resize(written);
+    envValue = buffer.c_str();
     return TRUE;
 }
 
@@ -212,12 +233,22 @@ XBOOL VxDeleteDirectory(char *path) {
     typedef int (WINAPI *LPFSHPROC)(LPSHFILEOPSTRUCTA);
     LPFSHPROC mySHFileOperation = (LPFSHPROC) lib.GetFunctionPtr("SHFileOperation");
     if (mySHFileOperation || (mySHFileOperation = (LPFSHPROC) lib.GetFunctionPtr("SHFileOperationA"))) {
+        if (!path || !*path) {
+            lib.ReleaseLibrary();
+            return FALSE;
+        }
+
+        // SHFileOperation expects pFrom to be a double-null-terminated list of paths.
+        // Passing a plain C string can cause silent failures.
+        XString from(path);
+        from << '\0' << '\0';
+
         SHFILEOPSTRUCTA fileOp;
         memset(&fileOp, 0, sizeof(SHFILEOPSTRUCTA));
-        fileOp.pFrom = path;
+        fileOp.pFrom = from.CStr();
         fileOp.wFunc = FO_DELETE;
-        fileOp.fFlags = FOF_NO_UI;
-        ret = mySHFileOperation(&fileOp) == 0;
+        fileOp.fFlags = FOF_NOCONFIRMATION | FOF_NOERRORUI | FOF_SILENT;
+        ret = (mySHFileOperation(&fileOp) == 0) && !fileOp.fAnyOperationsAborted;
     }
     lib.ReleaseLibrary();
     return ret;
@@ -258,7 +289,7 @@ XBOOL VxMakePath(char *fullpath, char *path, char *file) {
     return TRUE;
 }
 
-XBOOL VxTestDiskSpace(const char *dir, XULONG size) {
+XBOOL VxTestDiskSpace(const char *dir, size_t size) {
     HMODULE hKernel32 = GetModuleHandleA("kernel32.dll");
     typedef BOOL (__stdcall *LPFNGETDISKFREESPACEEXA)(LPCSTR, PULARGE_INTEGER, PULARGE_INTEGER, PULARGE_INTEGER);
     LPFNGETDISKFREESPACEEXA lpfnGetDiskFreeSpaceExA = (LPFNGETDISKFREESPACEEXA) GetProcAddress(hKernel32, "GetDiskFreeSpaceExA");
@@ -280,12 +311,12 @@ XBOOL VxTestDiskSpace(const char *dir, XULONG size) {
     }
 }
 
-int VxMessageBox(WIN_HANDLE hWnd, char *lpText, char *lpCaption, XULONG uType) {
+int VxMessageBox(WIN_HANDLE hWnd, char *lpText, char *lpCaption, XDWORD uType) {
     return MessageBoxA((HWND) hWnd, lpText, lpCaption, uType);
 }
 
-XULONG VxGetModuleFileName(INSTANCE_HANDLE Handle, char *string, XULONG StringSize) {
-    return GetModuleFileNameA((HMODULE) Handle, string, StringSize);
+size_t VxGetModuleFileName(INSTANCE_HANDLE Handle, char *string, size_t StringSize) {
+    return GetModuleFileNameA((HMODULE) Handle, string, (DWORD) StringSize);
 }
 
 INSTANCE_HANDLE VxGetModuleHandle(const char *filename) {
@@ -309,7 +340,7 @@ XBOOL VxCreateFileTree(char *file) {
     return TRUE;
 }
 
-XULONG VxURLDownloadToCacheFile(char *File, char *CachedFile, int szCachedFile) {
+XDWORD VxURLDownloadToCacheFile(char *File, char *CachedFile, int szCachedFile) {
     char *cachedFile = CachedFile;
     CachedFile[0] = '\0';
 
@@ -317,11 +348,14 @@ XULONG VxURLDownloadToCacheFile(char *File, char *CachedFile, int szCachedFile) 
     if (!sl.Load("Urlmon.dll"))
         return E_FAIL;
 
-    typedef HRESULT (__stdcall *LPFNURLDOWNLOADTOCACHEFILE)(LPUNKNOWN, LPCSTR, LPTSTR, DWORD, DWORD, IBindStatusCallback *);
-    LPFNURLDOWNLOADTOCACHEFILE lpfnURLDownloadToCacheFileA = (LPFNURLDOWNLOADTOCACHEFILE) sl.GetFunctionPtr("URLDownloadToCacheFileA");
-    XULONG ret = E_FAIL;
+    // Use a minimal signature to avoid pulling in urlmon/COM headers.
+    // We always pass NULL for the COM-related parameters.
+    typedef HRESULT(WINAPI *LPFNURLDOWNLOADTOCACHEFILEA)(void *, const char *, char *, DWORD, DWORD, void *);
+    LPFNURLDOWNLOADTOCACHEFILEA lpfnURLDownloadToCacheFileA =
+        (LPFNURLDOWNLOADTOCACHEFILEA) sl.GetFunctionPtr("URLDownloadToCacheFileA");
+    XDWORD ret = E_FAIL;
     if (lpfnURLDownloadToCacheFileA)
-        ret = lpfnURLDownloadToCacheFileA(NULL, File, cachedFile, szCachedFile, 0, NULL);
+        ret = lpfnURLDownloadToCacheFileA(NULL, File, cachedFile, (DWORD) szCachedFile, 0, NULL);
     sl.ReleaseLibrary();
     return ret;
 }
@@ -407,10 +441,16 @@ XBYTE *VxConvertBitmap(BITMAP_HANDLE Bitmap, VxImageDescEx &desc) {
     srcDesc.AlphaMask = 0;
     srcDesc.Image = static_cast<XBYTE *>(dibSection.dsBm.bmBits);
 
-    // Create destination desc (32-bit)
-    VxImageDescEx dstDesc = srcDesc;
+    // Create destination desc (32-bit ARGB)
+    VxImageDescEx dstDesc;
+    dstDesc.Width = srcDesc.Width;
+    dstDesc.Height = srcDesc.Height;
     dstDesc.BytesPerLine = 4 * srcDesc.Width;
     dstDesc.BitsPerPixel = 32;
+    dstDesc.RedMask = R_MASK;
+    dstDesc.GreenMask = G_MASK;
+    dstDesc.BlueMask = B_MASK;
+    dstDesc.AlphaMask = A_MASK;
 
     XBYTE *newImage = new XBYTE[4 * srcDesc.Width * dstDesc.Height];
     if (!newImage) {
@@ -506,19 +546,20 @@ XBOOL VxCopyBitmap(BITMAP_HANDLE Bitmap, const VxImageDescEx &desc) {
         bytePerLine = (int) dibSection.dsBmih.biSizeImage / dibSection.dsBm.bmHeight;
     }
 
-    // Create source desc
-    VxImageDescEx srcDesc;
-    srcDesc.Width = dibSection.dsBm.bmWidth;
-    srcDesc.Height = dibSection.dsBm.bmHeight;
-    srcDesc.BytesPerLine = bytePerLine;
-    srcDesc.BitsPerPixel = dibSection.dsBm.bmBitsPixel;
-    srcDesc.RedMask = R_MASK;
-    srcDesc.GreenMask = G_MASK;
-    srcDesc.BlueMask = B_MASK;
-    srcDesc.AlphaMask = 0;
-    srcDesc.Image = static_cast<XBYTE *>(dibSection.dsBm.bmBits);
+    // Create destination desc for the bitmap memory (24-bit)
+    VxImageDescEx dstDesc;
+    dstDesc.Width = dibSection.dsBm.bmWidth;
+    dstDesc.Height = dibSection.dsBm.bmHeight;
+    dstDesc.BytesPerLine = bytePerLine;
+    dstDesc.BitsPerPixel = dibSection.dsBm.bmBitsPixel;
+    dstDesc.RedMask = R_MASK;
+    dstDesc.GreenMask = G_MASK;
+    dstDesc.BlueMask = B_MASK;
+    dstDesc.AlphaMask = 0;
+    dstDesc.Image = static_cast<XBYTE *>(dibSection.dsBm.bmBits);
 
-    VxDoBlitUpsideDown(srcDesc, desc);
+    // Copy from provided image -> bitmap.
+    VxDoBlitUpsideDown(desc, dstDesc);
 
     if (bitmap24 != Bitmap) DeleteObject(bitmap24);
 
@@ -597,7 +638,7 @@ XBOOL VxGetFontInfo(FONT_HANDLE Font, VXFONTINFO &desc) {
     return TRUE;
 }
 
-XBOOL VxDrawBitmapText(BITMAP_HANDLE Bitmap, FONT_HANDLE Font, char *string, CKRECT *rect, XULONG Align, XULONG BkColor, XULONG FontColor) {
+XBOOL VxDrawBitmapText(BITMAP_HANDLE Bitmap, FONT_HANDLE Font, const char *string, CKRECT *rect, XDWORD Align, XDWORD BkColor, XDWORD FontColor) {
     if (!Bitmap || !Font || !string || !rect) return FALSE;
 
     HDC hDC = CreateCompatibleDC(NULL);

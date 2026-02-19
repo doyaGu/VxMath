@@ -123,7 +123,7 @@ public:
     VX_EXPORT const GENERIC_HANDLE GetHandle() const;
 
     /// @brief Gets the unique ID of the thread.
-    VX_EXPORT XULONG GetID() const;
+    VX_EXPORT XUINTPTR GetID() const;
 
     /**
      * @brief Retrieves the exit code of a terminated thread.
@@ -141,7 +141,7 @@ public:
     VX_EXPORT XBOOL Terminate(unsigned int *status = 0);
 
     /// @brief Gets the unique ID of the currently executing thread.
-    VX_EXPORT static XULONG GetCurrentVxThreadId();
+    VX_EXPORT static XUINTPTR GetCurrentVxThreadId();
 
 protected:
     /**
@@ -171,10 +171,12 @@ private:
     static XHashTable<VxThread *, GENERIC_HANDLE> &GetHashThread();
 
     /// @brief The internal static function that the OS calls to start the thread.
-    static XULONG VX_STDCALL ThreadFunc(void *args);
+    static unsigned long VX_STDCALL ThreadFunc(void *args);
+    /// @brief POSIX thread trampoline that adapts pthread signature to ThreadFunc.
+    static void *ThreadEntryPoint(void *args);
 
     GENERIC_HANDLE m_Thread;     ///< The native thread handle.
-    unsigned int m_ThreadID;     ///< The unique thread identifier.
+    XUINTPTR m_ThreadID;         ///< The unique thread identifier.
     unsigned int m_State;        ///< The current state of the thread, from `VXTHREAD_STATE`.
     unsigned int m_Priority;     ///< The priority of the thread, from `VXTHREAD_PRIORITY`.
     VxThreadFunction *m_Func;    ///< Pointer to the external function to execute.

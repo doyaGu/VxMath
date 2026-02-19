@@ -14,7 +14,7 @@ XString::XString(const char *iString, int iLength) : XBaseString() {
         return;
     }
 
-    m_Length = (iLength > 0) ? iLength : strlen(iString);
+    m_Length = (iLength > 0) ? iLength : (XWORD) strlen(iString);
     m_Allocated = m_Length + 1;
     m_Buffer = new char[m_Allocated];
     strncpy(m_Buffer, iString, m_Length);
@@ -31,8 +31,8 @@ XString::XString(int iLength) : XBaseString() {
     }
 
     m_Length = 0;
-    m_Allocated = iLength;
-    m_Buffer = new char[iLength];
+    m_Allocated = iLength + 1;
+    m_Buffer = new char[m_Allocated];
     memset(m_Buffer, 0, m_Allocated);
 }
 
@@ -100,10 +100,18 @@ XString &XString::operator=(const XBaseString &iSrc) {
 
 // Create from a string and a length
 XString &XString::Create(const char *iString, int iLength) {
-    if (iString && iLength > 0) {
-        CheckSize(iLength);
-        m_Length = iLength;
-        strncpy(m_Buffer, iString, iLength);
+    if (iString) {
+        const int length = (iLength > 0) ? iLength : (int) strlen(iString);
+        if (length <= 0) {
+            m_Length = 0;
+            if (m_Buffer)
+                m_Buffer[0] = '\0';
+            return *this;
+        }
+
+        CheckSize(length);
+        m_Length = (XWORD) length;
+        strncpy(m_Buffer, iString, m_Length);
         m_Buffer[m_Length] = '\0';
     } else {
         m_Length = 0;
@@ -115,6 +123,13 @@ XString &XString::Create(const char *iString, int iLength) {
 
 // Format the string sprintf style
 XString &XString::Format(const char *iFormat, ...) {
+    if (!iFormat) {
+        m_Length = 0;
+        if (m_Buffer)
+            m_Buffer[0] = '\0';
+        return *this;
+    }
+
     va_list args;
     va_start(args, iFormat);
 
@@ -140,14 +155,14 @@ XString &XString::Format(const char *iFormat, ...) {
 // Capitalize all the characters of the string
 XString &XString::ToUpper() {
     for (XWORD i = 0; i < m_Length; ++i)
-        m_Buffer[i] = toupper(m_Buffer[i]);
+        m_Buffer[i] = (char) toupper((unsigned char) m_Buffer[i]);
     return *this;
 }
 
 // Uncapitalize all the characters of the string
 XString &XString::ToLower() {
     for (XWORD i = 0; i < m_Length; ++i)
-        m_Buffer[i] = tolower(m_Buffer[i]);
+        m_Buffer[i] = (char) tolower((unsigned char) m_Buffer[i]);
     return *this;
 }
 
@@ -163,8 +178,8 @@ int XString::ICompare(const XBaseString &iStr) const {
     char c1, c2;
 
     do {
-        c1 = tolower(*s1);
-        c2 = tolower(*s2);
+        c1 = (char) tolower((unsigned char) *s1);
+        c2 = (char) tolower((unsigned char) *s2);
         if (c1 != c2)
             return c1 - c2;
         s1++;
@@ -180,7 +195,7 @@ XString &XString::Trim() {
         return *this;
 
     // Trim end
-    while (m_Length > 0 && isspace(m_Buffer[m_Length - 1])) {
+    while (m_Length > 0 && isspace((unsigned char) m_Buffer[m_Length - 1])) {
         --m_Length;
     }
     m_Buffer[m_Length] = '\0';
@@ -188,7 +203,7 @@ XString &XString::Trim() {
     // Trim start
     if (m_Length > 0) {
         XWORD start = 0;
-        while (start < m_Length && isspace(m_Buffer[start])) {
+        while (start < m_Length && isspace((unsigned char) m_Buffer[start])) {
             ++start;
         }
         if (start > 0) {
@@ -207,7 +222,7 @@ XString &XString::Strip() {
     XBOOL lastWasSpace = FALSE;
 
     for (XWORD readPos = 0; readPos < m_Length; ++readPos) {
-        if (isspace(m_Buffer[readPos])) {
+        if (isspace((unsigned char) m_Buffer[readPos])) {
             if (!lastWasSpace) {
                 m_Buffer[writePos++] = ' ';
                 lastWasSpace = TRUE;
@@ -247,24 +262,28 @@ XWORD XString::Find(const XBaseString &iStr, XWORD iStart) const {
         return NOTFOUND;
 }
 
-// XWORD XString::IFind(const XBaseString &iStr, XWORD iStart) const {
-//     if (m_Length == 0 || iStr.m_Length == 0 || iStart >= m_Length)
-//         return NOTFOUND;
-//
-//     // Manual case-insensitive search
-//     for (XWORD i = iStart; i <= m_Length - iStr.m_Length; ++i) {
-//         XBOOL match = TRUE;
-//         for (XWORD j = 0; j < iStr.m_Length; ++j) {
-//             if (tolower(m_Buffer[i + j]) != tolower(iStr.m_Buffer[j])) {
-//                 match = FALSE;
-//                 break;
-//             }
-//         }
-//         if (match)
-//             return i;
-//     }
-//     return NOTFOUND;
-// }
+XWORD XString::IFind(const XBaseString &iStr, XWORD iStart) const {
+    if (m_Length == 0 || iStr.m_Length == 0 || iStart >= m_Length)
+        return NOTFOUND;
+
+    // No possible match if the needle is longer than the remaining haystack.
+    if (iStr.m_Length > m_Length || iStart > (m_Length - iStr.m_Length))
+        return NOTFOUND;
+
+    // Manual case-insensitive search.
+    for (XWORD i = iStart; i <= (m_Length - iStr.m_Length); ++i) {
+        XBOOL match = TRUE;
+        for (XWORD j = 0; j < iStr.m_Length; ++j) {
+            if (tolower((unsigned char) m_Buffer[i + j]) != tolower((unsigned char) iStr.m_Buffer[j])) {
+                match = FALSE;
+                break;
+            }
+        }
+        if (match)
+            return i;
+    }
+    return NOTFOUND;
+}
 
 XWORD XString::RFind(char iCar, XWORD iStart) const {
     if (m_Length == 0)
@@ -355,7 +374,12 @@ int XString::Replace(const XBaseString &iSrc, const XBaseString &iDest) {
         return 0;
 
     // Calculate new length
-    XWORD newLength = m_Length + count * (iDest.m_Length - iSrc.m_Length);
+    XWORD newLength = m_Length;
+    if (iDest.m_Length >= iSrc.m_Length) {
+        newLength += count * (iDest.m_Length - iSrc.m_Length);
+    } else {
+        newLength -= count * (iSrc.m_Length - iDest.m_Length);
+    }
 
     if (iSrc.m_Length == iDest.m_Length) {
         // Simple case: same length replacement
@@ -406,7 +430,7 @@ int XString::Replace(const XBaseString &iSrc, const XBaseString &iDest) {
 
 XString &XString::operator<<(const char *iString) {
     if (iString) {
-        XWORD len = strlen(iString);
+        XWORD len = (XWORD) strlen(iString);
         if (len > 0) {
             CheckSize(m_Length + len);
             strcpy(&m_Buffer[m_Length], iString);
@@ -471,22 +495,39 @@ XString &XString::operator<<(float iValue) {
     return *this;
 }
 
-// XString &XString::operator<<(const void *iValue) {
-//     if (iValue) {
-//         char buf[32];
-//         int len = snprintf(buf, sizeof(buf), "%p", iValue);
-//         if (len > 0) {
-//             CheckSize(m_Length + len);
-//             strcpy(&m_Buffer[m_Length], buf);
-//             m_Length += len;
-//         }
-//     }
-//     return *this;
-// }
+XString &XString::operator<<(double iValue) {
+    char buf[64];
+    int len = snprintf(buf, sizeof(buf), "%.15g", iValue);
+    if (len > 0) {
+        CheckSize(m_Length + (XWORD) len);
+        strcpy(&m_Buffer[m_Length], buf);
+        m_Length += (XWORD) len;
+    }
+    return *this;
+}
+
+XString &XString::operator<<(bool iValue) {
+    return (*this) << (iValue ? "true" : "false");
+}
+
+XString &XString::operator<<(const void *iValue) {
+    char buf[32];
+    int len = snprintf(buf, sizeof(buf), "%p", iValue);
+    if (len > 0) {
+        CheckSize(m_Length + (XWORD) len);
+        strcpy(&m_Buffer[m_Length], buf);
+        m_Length += (XWORD) len;
+    }
+    return *this;
+}
 
 void XString::Reserve(XWORD iLength) {
-    if (iLength + 1 > m_Allocated) {
-        m_Allocated = iLength + 1;
+    const XWORD required = iLength + 1;
+    if (required <= iLength)
+        return;
+
+    if (required > m_Allocated) {
+        m_Allocated = required;
         char *buf = new char[m_Allocated];
         if (m_Length > 0) {
             memcpy(buf, m_Buffer, m_Length + 1);

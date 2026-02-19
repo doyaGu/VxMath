@@ -42,7 +42,11 @@
 // EXPORT DEFINES FOR LIB / DLL VERSIONS
 #ifndef CK_LIB
 #   ifdef CK_PRIVATE_VERSION_VIRTOOLS
-#       define DLL_EXPORT __declspec(dllexport)	// VC++ export option
+#       if defined(WIN32)
+#           define DLL_EXPORT __declspec(dllexport)	// VC++ export option
+#       else
+#           define DLL_EXPORT
+#       endif
 #   else
 #       define DLL_EXPORT
 #   endif
@@ -51,7 +55,11 @@
 #endif
 
 #ifndef CK_LIB
-#   define PLUGIN_EXPORT extern "C" __declspec(dllexport)
+#   if defined(WIN32)
+#       define PLUGIN_EXPORT extern "C" __declspec(dllexport)
+#   else
+#       define PLUGIN_EXPORT extern "C"
+#   endif
 #else
 #   define PLUGIN_EXPORT
 #endif // CK_LIB

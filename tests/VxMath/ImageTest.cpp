@@ -75,32 +75,32 @@ TEST(VxColorTests, IntegerConstructors) {
 
 TEST(VxColorTests, UnsignedLongConstructor) {
     // Test various ARGB values
-    VxColor c_long(0x80FFC040UL); // A=128, R=255, G=192, B=64
+    VxColor c_long(0x80FFC040U); // A=128, R=255, G=192, B=64
     EXPECT_NEAR(c_long.a, 128.0f / 255.0f, EPSILON);
     EXPECT_NEAR(c_long.r, 255.0f / 255.0f, EPSILON);
     EXPECT_NEAR(c_long.g, 192.0f / 255.0f, EPSILON);
     EXPECT_NEAR(c_long.b, 64.0f / 255.0f, EPSILON);
 
     // Test pure colors
-    VxColor red(0xFFFF0000UL);
+    VxColor red(0xFFFF0000U);
     EXPECT_EQ(red.a, 1.0f);
     EXPECT_EQ(red.r, 1.0f);
     EXPECT_EQ(red.g, 0.0f);
     EXPECT_EQ(red.b, 0.0f);
 
-    VxColor green(0xFF00FF00UL);
+    VxColor green(0xFF00FF00U);
     EXPECT_EQ(green.a, 1.0f);
     EXPECT_EQ(green.r, 0.0f);
     EXPECT_EQ(green.g, 1.0f);
     EXPECT_EQ(green.b, 0.0f);
 
-    VxColor blue(0xFF0000FFUL);
+    VxColor blue(0xFF0000FFU);
     EXPECT_EQ(blue.a, 1.0f);
     EXPECT_EQ(blue.r, 0.0f);
     EXPECT_EQ(blue.g, 0.0f);
     EXPECT_EQ(blue.b, 1.0f);
 
-    VxColor transparent(0x00000000UL);
+    VxColor transparent(0x00000000U);
     EXPECT_EQ(transparent.a, 0.0f);
     EXPECT_EQ(transparent.r, 0.0f);
     EXPECT_EQ(transparent.g, 0.0f);
@@ -140,8 +140,8 @@ TEST(VxColorTests, SetterMethods) {
     EXPECT_COLOR_NEAR(c, VxColor(1.0f, 128.0f / 255.0f, 0.0f, 1.0f));
 
     // Test unsigned long setter
-    c.Set(0xAABBCCDDUL); // ARGB
-    EXPECT_COLOR_NEAR(c, VxColor(0xAABBCCDDUL));
+    c.Set(0xAABBCCDDU); // ARGB
+    EXPECT_COLOR_NEAR(c, VxColor(0xAABBCCDDU));
 
     // Test Clear method
     c.Clear();
@@ -432,8 +432,8 @@ TEST(PixelFormatTests, FormatStringConversion) {
 TEST(PixelFormatTests, BitCountsAndShifts) {
     struct FormatTest {
         VX_PIXELFORMAT format;
-        XULONG expected_rbits, expected_gbits, expected_bbits, expected_abits;
-        XULONG expected_rshift, expected_gshift, expected_bshift, expected_ashift;
+        XDWORD expected_rbits, expected_gbits, expected_bbits, expected_abits;
+        XDWORD expected_rshift, expected_gshift, expected_bshift, expected_ashift;
     };
 
     FormatTest tests[] = {
@@ -451,7 +451,7 @@ TEST(PixelFormatTests, BitCountsAndShifts) {
         VxImageDescEx desc;
         VxPixelFormat2ImageDesc(test.format, desc);
 
-        XULONG r, g, b, a;
+        XDWORD r, g, b, a;
         VxGetBitCounts(desc, r, g, b, a);
         EXPECT_EQ(r, test.expected_rbits) << "Red bits failed for " << VxPixelFormat2String(test.format);
         EXPECT_EQ(g, test.expected_gbits) << "Green bits failed for " << VxPixelFormat2String(test.format);

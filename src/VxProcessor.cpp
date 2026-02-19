@@ -13,10 +13,16 @@
 #include <thread>
 #endif
 
-#if defined(__GNUC__)
+#if defined(__i386__) || defined(__x86_64__) || defined(_M_IX86) || defined(_M_X64)
+#define VX_HAS_X86_CPUID 1
+#else
+#define VX_HAS_X86_CPUID 0
+#endif
+
+#if VX_HAS_X86_CPUID && defined(__GNUC__)
 #include <cpuid.h>
 #include <x86intrin.h>
-#elif defined(_MSC_VER)
+#elif VX_HAS_X86_CPUID && defined(_MSC_VER)
 #include <intrin.h>
 #endif
 
@@ -24,43 +30,49 @@
 float g_MSecondsPerCycle;
 ProcessorsType g_ProcessorType;
 int g_ProcessorFrequency;
-XULONG g_ProcessorFeatures;
-XULONG g_InstructionSetExtensions;
+XDWORD g_ProcessorFeatures;
+XDWORD g_InstructionSetExtensions;
 char g_ProcDescription[64];
 
 typedef struct CpuIdRegs {
-    XULONG eax;
-    XULONG ebx;
-    XULONG ecx;
-    XULONG edx;
+    XDWORD eax;
+    XDWORD ebx;
+    XDWORD ecx;
+    XDWORD edx;
 } CpuIdRegs;
 
-static CpuIdRegs cpuid(XULONG eax) {
+static CpuIdRegs cpuid(XDWORD eax) {
     CpuIdRegs regs;
-#if defined(__GNUC__)
+#if VX_HAS_X86_CPUID && defined(__GNUC__)
     __cpuid(eax, regs.eax, regs.ebx, regs.ecx, regs.edx);
-#else
+#elif VX_HAS_X86_CPUID
     int regsArray[4];
     __cpuid(regsArray, (int) eax);
     regs.eax = regsArray[0];
     regs.ebx = regsArray[1];
     regs.ecx = regsArray[2];
     regs.edx = regsArray[3];
+#else
+    regs.eax = regs.ebx = regs.ecx = regs.edx = 0;
 #endif
     return regs;
 }
 
-static inline CpuIdRegs cpuidex(XULONG eax, XULONG ecx) {
+static inline CpuIdRegs cpuidex(XDWORD eax, XDWORD ecx) {
     CpuIdRegs regs;
-#if defined(__GNUC__)
+#if VX_HAS_X86_CPUID && defined(__GNUC__)
     __cpuid_count(eax, ecx, regs.eax, regs.ebx, regs.ecx, regs.edx);
-#else
+#elif VX_HAS_X86_CPUID
     int regsArray[4];
     __cpuidex(regsArray, (int) eax, (int) ecx);
     regs.eax = regsArray[0];
     regs.ebx = regsArray[1];
     regs.ecx = regsArray[2];
     regs.edx = regsArray[3];
+#else
+    (void) eax;
+    (void) ecx;
+    regs.eax = regs.ebx = regs.ecx = regs.edx = 0;
 #endif
     return regs;
 }
@@ -73,6 +85,9 @@ typedef enum {
 } CpuVendor;
 
 static CpuVendor GetCpuVendor() {
+#if !VX_HAS_X86_CPUID
+    return CPU_VENDOR_UNKNOWN;
+#else
     CpuIdRegs regs = cpuid(0);
 
     // Intel: "GenuineIntel"
@@ -85,9 +100,27 @@ static CpuVendor GetCpuVendor() {
     }
 
     return CPU_VENDOR_UNKNOWN;
+#endif
 }
 
 static void GetProcessorNameFromCpuid(char *name, size_t maxLen) {
+#if !VX_HAS_X86_CPUID
+#if defined(__aarch64__) || defined(_M_ARM64)
+    strncpy(name, "ARM64", maxLen - 1);
+#elif defined(__arm__) || defined(_M_ARM)
+    strncpy(name, "ARM32", maxLen - 1);
+#elif defined(__riscv)
+    strncpy(name, "RISC-V", maxLen - 1);
+#elif defined(__powerpc__) || defined(__ppc__) || defined(_M_PPC)
+    strncpy(name, "PowerPC", maxLen - 1);
+#elif defined(__mips__)
+    strncpy(name, "MIPS", maxLen - 1);
+#else
+    strncpy(name, "Unknown Processor", maxLen - 1);
+#endif
+    name[maxLen - 1] = '\0';
+    return;
+#else
     CpuIdRegs regs;
     char brandString[49] = {0}; // 48 chars + null terminator
 
@@ -124,53 +157,34 @@ static void GetProcessorNameFromCpuid(char *name, size_t maxLen) {
 
     strncpy(name, trimmed, maxLen - 1);
     name[maxLen - 1] = '\0';
+#endif
 }
 
 static ProcessorsType DetermineProcessorType() {
-    CpuVendor vendor = GetCpuVendor();
-    CpuIdRegs regs = cpuid(1);
-
-    int family = ((regs.eax >> 8) & 0xF) + ((regs.eax >> 20) & 0xFF);
-    int model = ((regs.eax >> 4) & 0xF) + (((regs.eax >> 16) & 0xF) << 4);
-
-    // Check for MMX support
-    XBOOL hasMMX = (regs.edx & (1 << 23)) != 0;
-
-    switch (vendor) {
-    case CPU_VENDOR_INTEL:
-        if (family == 5) {
-            // Pentium family
-            return hasMMX ? PROC_PENTIUMMMX : PROC_PENTIUM;
-        } else if (family == 6) {
-            if (model < 3) {
-                return PROC_PENTIUMPRO;
-            } else if (model < 7) {
-                return PROC_PENTIUM2;
-            } else if (model < 11) {
-                return PROC_PENTIUM3;
-            } else {
-                return PROC_PENTIUM3; // Modern Intel cores
-            }
-        } else if (family == 15) {
-            return PROC_PENTIUM4;
-        }
-        break;
-
-    case CPU_VENDOR_AMD:
-        if (family >= 6) {
-            return PROC_ATHLON;
-        }
-        break;
-
-    default:
-        break;
-    }
-
+#if defined(__x86_64__) || defined(_M_X64)
+    return PROC_PENTIUM4;
+#elif defined(__i386__) || defined(_M_IX86)
+    return PROC_PENTIUM4;
+#elif defined(__aarch64__) || defined(_M_ARM64)
+    return PROC_PPC_ARM;
+#elif defined(__arm__) || defined(_M_ARM)
+    return PROC_PPC_ARM;
+#elif defined(__mips__)
+    return PROC_PPC_MIPS;
+#elif defined(__powerpc__) || defined(__ppc__) || defined(_M_PPC)
+    return PROC_PPC_G4;
+#elif defined(__riscv)
     return PROC_UNKNOWN;
+#else
+    return PROC_UNKNOWN;
+#endif
 }
 
 static void DetectInstructionSets() {
     g_InstructionSetExtensions = ISEX_NONE;
+#if !VX_HAS_X86_CPUID
+    return;
+#endif
 
     // Check basic feature support from CPUID function 1
     CpuIdRegs regs1 = cpuid(1);
@@ -367,7 +381,9 @@ void VxDetectProcessor() {
     fprintf(stderr, "VxMath: Detecting processor------------------------\n");
 
     std::this_thread::sleep_for(std::chrono::milliseconds(10));
+#if VX_HAS_X86_CPUID
     uint64_t timeStamp1 = __rdtsc();
+#endif
     auto start = std::chrono::steady_clock::now();
     {
         int x = 0, y = 0, z = 0;
@@ -378,16 +394,25 @@ void VxDetectProcessor() {
         }
     }
     auto end = std::chrono::steady_clock::now();
+#if VX_HAS_X86_CPUID
     uint64_t timeStamp2 = __rdtsc();
+#endif
     std::chrono::duration<double> elapsed = end - start;
     double t1 = elapsed.count();
+#if VX_HAS_X86_CPUID
     double t2 = (double) (timeStamp2 - timeStamp1);
+#else
+    double t2 = 0.0;
+#endif
     if (t1 > 0.0 && t2 > 0.0) {
         g_MSecondsPerCycle = (float) (1000.0 * t1 / t2);
         g_ProcessorFrequency = (int) (t2 / t1 / 1000000.0);
     } else {
         g_MSecondsPerCycle = 0.0f;
-        g_ProcessorFrequency = 0;
+        g_ProcessorFrequency = (int) (1.0 / t1 / 1000000.0);
+        if (g_ProcessorFrequency <= 0) {
+            g_ProcessorFrequency = 1000;
+        }
     }
 #endif
 
@@ -399,7 +424,8 @@ void VxDetectProcessor() {
 
     // Determine processor features from CPUID function 1
     CpuIdRegs regs = cpuid(1);
-    g_ProcessorFeatures = regs.edx; // Standard features
+    g_ProcessorFeatures = regs.edx; // Standard x86 features
+    g_ProcessorFeatures |= PROC_HASFPU;
 
     // Detect instruction set extensions
     DetectInstructionSets();
@@ -410,10 +436,10 @@ void VxDetectProcessor() {
     tempDesc[sizeof(tempDesc) - 1] = '\0';
 
     if (g_ProcessorFrequency < 1000) {
-        _snprintf(g_ProcDescription, sizeof(g_ProcDescription) - 1, "%s %d MHz", tempDesc, g_ProcessorFrequency);
+        snprintf(g_ProcDescription, sizeof(g_ProcDescription) - 1, "%s %d MHz", tempDesc, g_ProcessorFrequency);
     } else {
-        _snprintf(g_ProcDescription, sizeof(g_ProcDescription) - 1, "%s %.2f GHz", tempDesc,
-                  g_ProcessorFrequency / 1000.0);
+        snprintf(g_ProcDescription, sizeof(g_ProcDescription) - 1, "%s %.2f GHz", tempDesc,
+                 g_ProcessorFrequency / 1000.0);
     }
     g_ProcDescription[sizeof(g_ProcDescription) - 1] = '\0';
 
@@ -428,11 +454,11 @@ int GetProcessorFrequency() {
     return g_ProcessorFrequency;
 }
 
-XULONG GetProcessorFeatures() {
+XDWORD GetProcessorFeatures() {
     return g_ProcessorFeatures;
 }
 
-void ModifyProcessorFeatures(XULONG Add, XULONG Remove) {
+void ModifyProcessorFeatures(XDWORD Add, XDWORD Remove) {
     g_ProcessorFeatures = (g_ProcessorFeatures | Add) & ~Remove;
 }
 
@@ -440,6 +466,6 @@ ProcessorsType GetProcessorType() {
     return g_ProcessorType;
 }
 
-XULONG GetInstructionSetExtensions() {
+XDWORD GetInstructionSetExtensions() {
     return g_InstructionSetExtensions;
 }

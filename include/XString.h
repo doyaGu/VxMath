@@ -49,8 +49,7 @@ public:
     XBaseString(const char *iString) : m_Allocated(0) {
         if (iString) {
             m_Buffer = (char *) iString;
-            m_Length = 0xffff;
-            while (m_Buffer[++m_Length]);
+            m_Length = (XWORD) strlen(iString);
         } else {
             m_Buffer = NULL;
             m_Length = 0;
@@ -126,7 +125,7 @@ public:
      * @return The character at the specified index.
      */
     const char operator[](int i) const {
-        XASSERT(i < m_Length);
+        XASSERT(i >= 0 && i < m_Length);
         return m_Buffer[i];
     }
 
@@ -357,7 +356,14 @@ public:
      * @brief Gets the string as a mutable C-style string.
      * @return A `char*` pointer to the string buffer. Returns "" for a null string.
      */
-    char *Str() { return (m_Buffer) ? m_Buffer : (char *) ""; }
+    char *Str() {
+        if (!m_Buffer) {
+            m_Allocated = 1;
+            m_Buffer = new char[m_Allocated];
+            m_Buffer[0] = '\0';
+        }
+        return m_Buffer;
+    }
 
     /** @brief Appends a character. */
     void PushBack(char c) {
@@ -409,7 +415,7 @@ public:
      * @return A reference to the character at the specified index.
      */
     char &operator[](int i) {
-        XASSERT(i < m_Length);
+        XASSERT(i >= 0 && i < m_Length);
         return m_Buffer[i];
     }
 
@@ -429,7 +435,7 @@ public:
      * @return The character at the specified index.
      */
     char operator[](int i) const {
-        XASSERT(i < m_Length);
+        XASSERT(i >= 0 && i < m_Length);
         return m_Buffer[i];
     }
 
@@ -567,8 +573,8 @@ public:
                 return (*s1 == '\0') ? -1 : 1;            // One ended before the other
             }
 
-            c1 = tolower(*s1);
-            c2 = tolower(*s2);
+            c1 = (char) tolower((unsigned char) *s1);
+            c2 = (char) tolower((unsigned char) *s2);
 
             if (c1 != c2) {
                 return c1 - c2;
@@ -677,7 +683,7 @@ public:
      * @param iStart The position to start the search from.
      * @return The zero-based index of the first occurrence, or `NOTFOUND`.
      */
-    // VX_EXPORT XWORD IFind(const XBaseString &iStr, XWORD iStart = 0) const;
+    VX_EXPORT XWORD IFind(const XBaseString &iStr, XWORD iStart = 0) const;
 
     /**
      * @brief Finds the last occurrence of a character in the string.
@@ -774,7 +780,7 @@ public:
             return XString();
 
         XString result;
-        int delimLen = delimiter ? strlen(delimiter) : 0;
+        int delimLen = delimiter ? (int) strlen(delimiter) : 0;
 
         // Calculate total size
         XWORD totalSize = 0;
@@ -918,6 +924,27 @@ public:
     VX_EXPORT XString &operator<<(float iValue);
 
     /**
+     * @brief Appends a double.
+     * @param iValue The double to append, converted to a string.
+     * @return A reference to this string.
+     */
+    VX_EXPORT XString &operator<<(double iValue);
+
+    /**
+     * @brief Appends a boolean.
+     * @param iValue The boolean to append as "true" or "false".
+     * @return A reference to this string.
+     */
+    VX_EXPORT XString &operator<<(bool iValue);
+
+    /**
+     * @brief Appends a pointer address.
+     * @param iValue The pointer to append, its address converted to a string.
+     * @return A reference to this string.
+     */
+    VX_EXPORT XString &operator<<(const void *iValue);
+
+    /**
      * @brief Appends a pointer address.
      * @param iValue The pointer to append, its address converted to a string.
      * @return A reference to this string.
@@ -980,6 +1007,36 @@ public:
      * @return A new XString object.
      */
     XString operator+(float iValue) const {
+        XString tmp = *this;
+        return tmp << iValue;
+    }
+
+    /**
+     * @brief Creates a new string by concatenating this string with a double.
+     * @param iValue The double to concatenate.
+     * @return A new XString object.
+     */
+    XString operator+(double iValue) const {
+        XString tmp = *this;
+        return tmp << iValue;
+    }
+
+    /**
+     * @brief Creates a new string by concatenating this string with a boolean.
+     * @param iValue The boolean to concatenate.
+     * @return A new XString object.
+     */
+    XString operator+(bool iValue) const {
+        XString tmp = *this;
+        return tmp << iValue;
+    }
+
+    /**
+     * @brief Creates a new string by concatenating this string with a pointer address.
+     * @param iValue The pointer to concatenate.
+     * @return A new XString object.
+     */
+    XString operator+(const void *iValue) const {
         XString tmp = *this;
         return tmp << iValue;
     }
@@ -1050,6 +1107,12 @@ public:
     XString &operator+=(int v) { return (*this) << v; }
     /** @brief Appends a float. Alias for `operator<<`. */
     XString &operator+=(float v) { return (*this) << v; }
+    /** @brief Appends a double. Alias for `operator<<`. */
+    XString &operator+=(double v) { return (*this) << v; }
+    /** @brief Appends a boolean. Alias for `operator<<`. */
+    XString &operator+=(bool v) { return (*this) << v; }
+    /** @brief Appends a pointer. Alias for `operator<<`. */
+    XString &operator+=(const void *v) { return (*this) << v; }
 #if VX_HAS_CXX11
     /** @brief Appends an std::string. Alias for `operator<<` (C++11). */
     XString &operator+=(const std::string &v) { return (*this) << v; }
@@ -1104,14 +1167,14 @@ protected:
      * @brief Ensures the internal buffer has enough space for a given length.
      * @param iLength The required length, excluding the null terminator.
      */
-    VX_EXPORT void CheckSize(int iLength);
+    void CheckSize(int iLength);
 
     /**
      * @brief Assigns a new value to the string from a buffer and length.
      * @param iBuffer The source buffer to copy from.
      * @param iLength The number of characters to copy.
      */
-    VX_EXPORT void Assign(const char *iBuffer, int iLength);
+    void Assign(const char *iBuffer, int iLength);
 };
 
 #endif // XSTRING_H

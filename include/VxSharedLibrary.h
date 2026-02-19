@@ -41,7 +41,7 @@ public:
      * @param LibraryName The name or path of the library to load.
      * @return A handle to the loaded library, or NULL on failure.
      */
-    VX_EXPORT INSTANCE_HANDLE Load(char *LibraryName);
+    VX_EXPORT INSTANCE_HANDLE Load(const char *LibraryName);
 
     /// @brief Unloads the shared library if it was loaded by this object.
     VX_EXPORT void ReleaseLibrary();
@@ -51,7 +51,7 @@ public:
      * @param FunctionName The name of the function to retrieve.
      * @return A void pointer to the function, or NULL if the function is not found.
      */
-    VX_EXPORT void *GetFunctionPtr(char *FunctionName);
+    VX_EXPORT void *GetFunctionPtr(const char *FunctionName);
 
 protected:
     /// @brief Handle to the loaded shared library.

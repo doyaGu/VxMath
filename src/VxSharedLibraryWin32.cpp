@@ -18,7 +18,7 @@ void VxSharedLibrary::Attach(INSTANCE_HANDLE LibraryHandle) {
 }
 
 // Loads the shared Library from disk
-INSTANCE_HANDLE VxSharedLibrary::Load(char *LibraryName) {
+INSTANCE_HANDLE VxSharedLibrary::Load(const char *LibraryName) {
     if (m_LibraryHandle)
         ReleaseLibrary();
     XWORD fpuCtrlWord = VxGetFPUControlWord();
@@ -34,7 +34,7 @@ void VxSharedLibrary::ReleaseLibrary() {
 }
 
 // Retrieves a function pointer from the library
-void *VxSharedLibrary::GetFunctionPtr(char *FunctionName) {
+void *VxSharedLibrary::GetFunctionPtr(const char *FunctionName) {
     if (m_LibraryHandle && FunctionName)
         return (void *) (GetProcAddress((HMODULE) m_LibraryHandle, FunctionName));
     else

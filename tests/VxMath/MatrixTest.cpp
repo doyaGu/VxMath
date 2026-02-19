@@ -137,11 +137,15 @@ TEST_F(VxMatrixTest, ComparisonOperators) {
     mat1.SetIdentity();
     mat2.SetIdentity();
 
-    // These operators compare pointers, not content
+    // These operators compare matrix values.
     EXPECT_TRUE(mat1 == mat1);
+    EXPECT_TRUE(mat1 == mat2);
+    EXPECT_FALSE(mat1 != mat2);
+    EXPECT_FALSE(mat1 != mat1);
+
+    mat2[0][0] = 2.0f;
     EXPECT_FALSE(mat1 == mat2);
     EXPECT_TRUE(mat1 != mat2);
-    EXPECT_FALSE(mat1 != mat1);
 }
 
 TEST_F(VxMatrixTest, MatrixMultiplication) {

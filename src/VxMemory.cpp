@@ -1,9 +1,10 @@
 #include "VxMemory.h"
 
-#include "VxMathDefines.h"
+#include <stdlib.h>
+#include <stdint.h>
 
 // Basic memory allocation functions
-void *mynew(unsigned int n) {
+void *mynew(size_t n) {
     void *ptr = operator new(n);
     return ptr;
 }
@@ -15,7 +16,7 @@ void mydelete(void *a) {
 }
 
 // Array allocation functions
-void *mynewarray(unsigned int n) {
+void *mynewarray(size_t n) {
     void *ptr = operator new[](n);
     return ptr;
 }
@@ -26,14 +27,40 @@ void mydeletearray(void *a) {
     }
 }
 
-void *VxNewAligned(int size, int align) {
-    XBYTE *ptr = new XBYTE[size + align + 4];
-    uintptr_t addr = reinterpret_cast<uintptr_t>(ptr);
-    uintptr_t aligned = (~static_cast<uintptr_t>(align - 1) & (addr + align + 3));
-    *(reinterpret_cast<XBYTE**>(aligned - 4)) = ptr;
-    return reinterpret_cast<void*>(aligned);
+void *VxNewAligned(size_t size, int align) {
+#if defined(_MSC_VER)
+    return _aligned_malloc(size, align);
+#else
+    if (align < sizeof(void *)) {
+        align = sizeof(void *);
+    }
+    if ((align & (align - 1)) != 0) {
+        size_t pow2 = sizeof(void *);
+        while (pow2 < align) {
+            pow2 <<= 1;
+        }
+        align = pow2;
+    }
+    const size_t totalSize = size + align - 1 + sizeof(void *);
+    void *raw = malloc(totalSize);
+    if (!raw) {
+        return nullptr;
+    }
+    const uintptr_t rawAddr = reinterpret_cast<uintptr_t>(raw) + sizeof(void *);
+    const uintptr_t alignedAddr = (rawAddr + (align - 1)) & ~(static_cast<uintptr_t>(align) - 1);
+    reinterpret_cast<void **>(alignedAddr)[-1] = raw;
+    return reinterpret_cast<void *>(alignedAddr);
+#endif
 }
 
 void VxDeleteAligned(void *ptr) {
-    if (ptr) delete[] *((XBYTE **) ptr - 1);
+#if defined(_MSC_VER)
+    _aligned_free(ptr);
+#else
+    if (!ptr) {
+        return;
+    }
+    void *raw = reinterpret_cast<void **>(ptr)[-1];
+    free(raw);
+#endif
 }

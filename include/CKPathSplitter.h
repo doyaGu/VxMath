@@ -39,7 +39,7 @@ public:
      * @brief Constructs the object from a full path string.
      * @param file A pointer to the full path of the file.
      */
-    explicit CKPathSplitter(char *file);
+    explicit CKPathSplitter(const char *file);
 
     /**
      * @brief Destructor.
@@ -50,25 +50,25 @@ public:
      * @brief Returns the drive letter, followed by a colon (e.g., "C:").
      * @return A pointer to the string containing the drive.
      */
-    char *GetDrive();
+    const char *GetDrive() const;
 
     /**
      * @brief Returns the directory path, including the trailing slash (e.g., "\\path\\to\\file\\").
      * @return A pointer to the string containing the directory path.
      */
-    char *GetDir();
+    const char *GetDir() const;
 
     /**
      * @brief Returns the file name without its extension.
      * @return A pointer to the string containing the file name.
      */
-    char *GetName();
+    const char *GetName() const;
 
     /**
      * @brief Returns the file extension, including the leading period (e.g., ".txt").
      * @return A pointer to the string containing the file extension.
      */
-    char *GetExtension();
+    const char *GetExtension() const;
 
 protected:
     char m_Drive[_MAX_DRIVE]; ///< Buffer to store the drive component.
@@ -107,13 +107,13 @@ public:
      * @param Fname The file name without extension. Can be NULL.
      * @param Extension The file extension with a leading dot (e.g., ".txt"). Can be NULL.
      */
-    CKPathMaker(char *Drive, char *Directory, char *Fname, char *Extension);
+    CKPathMaker(const char *Drive, const char *Directory, const char *Fname, const char *Extension);
 
     /**
      * @brief Returns the constructed full path.
      * @return A pointer to the string containing the full path.
      */
-    char *GetFileName();
+    const char *GetFileName() const;
 
 protected:
     char m_FileName[_MAX_PATH]; ///< Buffer to store the constructed full path.
@@ -139,7 +139,7 @@ struct CKFileExtension {
         else {
             if (s[0] == '.')
                 s = &s[1];
-            int len = strlen(s);
+            size_t len = strlen(s);
             if (len > 3)
                 len = 3;
             memcpy(m_Data, s, len);

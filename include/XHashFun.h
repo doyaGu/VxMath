@@ -1,7 +1,10 @@
 #ifndef XHASHFUN_H
 #define XHASHFUN_H
 
+#include <cstdint>
+#include <cstring>
 #include <ctype.h>
+#include <type_traits>
 
 #include "VxMathDefines.h"
 #include "XString.h"
@@ -74,8 +77,16 @@ struct XEqualStringI {
 template <class K>
 struct XHashFun {
     /// @brief Default hash function.
-    int operator()(const K &iK) {
-        return (int) iK;
+    int operator()(const K &iK) const {
+        if constexpr (std::is_pointer<K>::value) {
+            const uintptr_t pointerValue = reinterpret_cast<uintptr_t>(iK);
+#if UINTPTR_MAX > 0xFFFFFFFFu
+                return static_cast<int>(pointerValue ^ (pointerValue >> 32));
+#else
+            return static_cast<int>(pointerValue);
+#endif
+        }
+        return static_cast<int>(iK);
     }
 };
 
@@ -87,7 +98,7 @@ struct XHashFun {
 inline int XHashString(const char *_s) {
     unsigned int _h = 0;
     for (; *_s; ++_s)
-        _h = 5 * _h + *_s;
+        _h = 5 * _h + (unsigned char)*_s;
     return (int)_h;
 }
 
@@ -99,7 +110,7 @@ inline int XHashString(const char *_s) {
 inline int XHashStringI(const char *_s) {
     unsigned int _h = 0;
     for (; *_s; ++_s)
-        _h = 5 * _h + tolower(*_s);
+        _h = 5 * _h + tolower((unsigned char)*_s);
     return (int)_h;
 }
 
@@ -124,13 +135,24 @@ struct XHashFun<XString> {
 /// @brief Specialization of `XHashFun` for `float` keys.
 template <>
 struct XHashFun<float> {
-    int operator()(const float _x) const { return *(int *) &_x; }
+    int operator()(const float _x) const {
+        int bits;
+        memcpy(&bits, &_x, sizeof(bits));
+        return bits;
+    }
 };
 
 /// @brief Specialization of `XHashFun` for `void*` keys.
 template <>
 struct XHashFun<void *> {
-    int operator()(const void *_x) const { return *(int *) _x >> 8; }
+    int operator()(const void *_x) const {
+        const uintptr_t pointerValue = reinterpret_cast<uintptr_t>(_x);
+#if UINTPTR_MAX > 0xFFFFFFFFu
+            return static_cast<int>(pointerValue ^ (pointerValue >> 32));
+#else
+        return static_cast<int>(pointerValue);
+#endif
+    }
 };
 
 /// @brief Specialization of `XHashFun` for `XGUID` keys.

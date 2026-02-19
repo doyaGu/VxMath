@@ -53,16 +53,13 @@ set(VXMATH_PRIVATE_HEADERS
         NeuQuant.h
 )
 
-set(VXMATH_SOURCES
+set(VXMATH_COMMON_SOURCES
         VxMath.cpp
         VxGraphicUtils.cpp
         VxBlitEngine.cpp
         VxProcessor.cpp
-        VxSharedLibraryWin32.cpp
-        VxMemoryMappedFileWin32.cpp
         CKPathSplitter.cpp
         CKDirectoryParser.cpp
-        VxWindowFunctionsWin32.cpp
         VxColor.cpp
         VxVector.cpp
         VxBbox.cpp
@@ -79,13 +76,35 @@ set(VXMATH_SOURCES
         VxIntersect_Sphere.cpp
         VxDistance.cpp
         VxFrustum.cpp
-        VxTimeProfilerWin32.cpp
-        VxMutexWin32.cpp
-        VxThreadWin32.cpp
         VxMemory.cpp
         XString.cpp
         EscapeURL.cpp
         NeuQuant.cpp
+)
+
+if (WIN32)
+    set(VXMATH_PLATFORM_SOURCES
+            VxSharedLibraryWin32.cpp
+            VxMemoryMappedFileWin32.cpp
+            VxWindowFunctionsWin32.cpp
+            VxTimeProfilerWin32.cpp
+            VxMutexWin32.cpp
+            VxThreadWin32.cpp
+    )
+else ()
+    set(VXMATH_PLATFORM_SOURCES
+            VxSharedLibraryPosix.cpp
+            VxMemoryMappedFilePosix.cpp
+            VxWindowFunctionsPosix.cpp
+            VxTimeProfilerPosix.cpp
+            VxMutexPosix.cpp
+            VxThreadPosix.cpp
+    )
+endif ()
+
+set(VXMATH_SOURCES
+        ${VXMATH_COMMON_SOURCES}
+        ${VXMATH_PLATFORM_SOURCES}
 )
 
 function(vx_configure_target TARGET_NAME)
@@ -106,6 +125,10 @@ function(vx_configure_target TARGET_NAME)
 
     if (DEFINED STB_INCLUDE_DIR AND EXISTS "${STB_INCLUDE_DIR}")
         target_include_directories(${TARGET_NAME} PRIVATE ${STB_INCLUDE_DIR})
+    endif ()
+
+    if (NOT WIN32)
+        target_link_libraries(${TARGET_NAME} PRIVATE ${CMAKE_DL_LIBS} pthread)
     endif ()
 
     set_target_properties(${TARGET_NAME} PROPERTIES
