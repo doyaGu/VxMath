@@ -62,15 +62,15 @@ VX_EXPORT void VxSetBaseFPUControlWord();
 //-------Library Function
 
 /// @brief Adds a directory to the search path for loading shared libraries.
-VX_EXPORT void VxAddLibrarySearchPath(char *path);
+VX_EXPORT void VxAddLibrarySearchPath(const char *path);
 
 /// @brief Retrieves the value of an environment variable.
-VX_EXPORT XBOOL VxGetEnvironmentVariable(char *envName, XString &envValue);
+VX_EXPORT XBOOL VxGetEnvironmentVariable(const char *envName, XString &envValue);
 /// @brief Sets the value of an environment variable.
-VX_EXPORT XBOOL VxSetEnvironmentVariable(char *envName, char *envValue);
+VX_EXPORT XBOOL VxSetEnvironmentVariable(const char *envName, const char *envValue);
 
 /// @brief Converts a URL string into its escaped format (e.g., replacing spaces with %20).
-VX_EXPORT XDWORD VxEscapeURL(char *InURL, XString &OutURL);
+VX_EXPORT XDWORD VxEscapeURL(const char *InURL, XString &OutURL);
 /// @brief Converts an escaped URL string back to its original format.
 VX_EXPORT void VxUnEscapeUrl(XString &str);
 
@@ -96,25 +96,25 @@ VX_EXPORT XBOOL VxMoveWindow(WIN_HANDLE Win, int x, int y, int Width, int Height
 /// @brief Gets the path of the system's temporary directory.
 VX_EXPORT XString VxGetTempPath();
 /// @brief Creates a new directory.
-VX_EXPORT XBOOL VxMakeDirectory(char *path);
+VX_EXPORT XBOOL VxMakeDirectory(const char *path);
 /**
  * @brief Removes an existing, empty directory.
  * @deprecated For removing a directory and its contents, see VxDeleteDirectory.
  */
-VX_EXPORT XBOOL VxRemoveDirectory(char *path);
+VX_EXPORT XBOOL VxRemoveDirectory(const char *path);
 /// @brief Deletes a directory and all its contents recursively.
-VX_EXPORT XBOOL VxDeleteDirectory(char *path);
+VX_EXPORT XBOOL VxDeleteDirectory(const char *path);
 /// @brief Gets the current working directory for the application.
 VX_EXPORT XBOOL VxGetCurrentDirectory(char *path);
 /// @brief Sets the current working directory for the application.
-VX_EXPORT XBOOL VxSetCurrentDirectory(char *path);
+VX_EXPORT XBOOL VxSetCurrentDirectory(const char *path);
 /// @brief Combines a path and a filename into a full path string.
-VX_EXPORT XBOOL VxMakePath(char *fullpath, char *path, char *file);
+VX_EXPORT XBOOL VxMakePath(char *fullpath, const char *path, const char *file);
 /// @brief Checks if a specified amount of disk space is available in a directory.
 VX_EXPORT XBOOL VxTestDiskSpace(const char *dir, size_t size);
 
 /// @brief Displays a standard message box.
-VX_EXPORT int VxMessageBox(WIN_HANDLE hWnd, char *lpText, char *lpCaption, XDWORD uType);
+VX_EXPORT int VxMessageBox(WIN_HANDLE hWnd, const char *lpText, const char *lpCaption, XDWORD uType);
 
 //------ Process access {secret}
 /// @brief Retrieves the full path of the file for the specified module.
@@ -124,11 +124,11 @@ VX_EXPORT INSTANCE_HANDLE VxGetModuleHandle(const char *filename);
 
 //------ Recreates the whole file path (not the file itself) {secret}
 /// @brief Creates all directories in a given file path if they do not already exist.
-VX_EXPORT XBOOL VxCreateFileTree(char *file);
+VX_EXPORT XBOOL VxCreateFileTree(const char *file);
 
 //------ URL Download {secret}
 /// @brief Downloads a file from a URL and stores it in the browser's cache.
-VX_EXPORT XDWORD VxURLDownloadToCacheFile(char *File, char *CachedFile, int szCachedFile);
+VX_EXPORT XDWORD VxURLDownloadToCacheFile(const char *File, char *CachedFile, int szCachedFile);
 
 //------ Bitmap Functions
 /// @brief Creates a device-dependent bitmap from an image description.
@@ -181,7 +181,7 @@ typedef enum VXTEXT_ALIGNMENT {
  * @param underline Specifies if the font should be underlined.
  * @return A handle to the created font, or NULL on failure.
  */
-VX_EXPORT FONT_HANDLE VxCreateFont(char *FontName, int FontSize, int Weight, XBOOL italic, XBOOL underline);
+VX_EXPORT FONT_HANDLE VxCreateFont(const char *FontName, int FontSize, int Weight, XBOOL italic, XBOOL underline);
 
 /// @brief Retrieves information about a given font handle.
 VX_EXPORT XBOOL VxGetFontInfo(FONT_HANDLE Font, VXFONTINFO &desc);

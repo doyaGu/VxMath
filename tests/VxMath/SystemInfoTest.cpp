@@ -16,7 +16,7 @@ protected:
 
 // Test to ensure processor description is not empty.
 TEST_F(SystemInfoTest, GetProcessorDescription_ReturnsNonEmptyString) {
-    char *description = GetProcessorDescription();
+    const char *description = GetProcessorDescription();
     ASSERT_NE(description, nullptr);
     // The description string should not be empty.
     EXPECT_GT(strlen(description), 0);

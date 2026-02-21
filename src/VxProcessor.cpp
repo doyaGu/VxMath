@@ -446,7 +446,7 @@ void VxDetectProcessor() {
     ProcessorDetected = TRUE;
 }
 
-char *GetProcessorDescription() {
+const char *GetProcessorDescription() {
     return g_ProcDescription;
 }
 

@@ -39,7 +39,7 @@ public:
      * @brief Constructs the object and attempts to map the specified file into memory.
      * @param pszFileName The path to the file to be mapped.
      */
-    VX_EXPORT VxMemoryMappedFile(char *pszFileName);
+    VX_EXPORT VxMemoryMappedFile(const char *pszFileName);
 
     /**
      * @brief Destructor. Unmaps the file view and closes file handles.

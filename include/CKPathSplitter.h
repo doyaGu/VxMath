@@ -26,9 +26,9 @@
  * CKPathSplitter splitter(OldFilename);
  *
  * char* OldName = splitter.GetName();
- * char* newname = ChangeName(OldName); // A hypothetical function to change the name
+ * const char* newname = ChangeName(OldName); // A hypothetical function to change the name
  * CKPathMaker maker(splitter.GetDrive(), splitter.GetDir(), newname, splitter.GetExtension());
- * char* NewFilename = maker.GetFileName();
+ * const char* NewFilename = maker.GetFileName();
  * @endcode
  *
  * @see CKPathMaker
@@ -91,9 +91,9 @@ protected:
  * CKPathSplitter splitter(OldFilename);
  *
  * char* OldName = splitter.GetName();
- * char* newname = ChangeName(OldName); // A hypothetical function to change the name
+ * const char* newname = ChangeName(OldName); // A hypothetical function to change the name
  * CKPathMaker maker(splitter.GetDrive(), splitter.GetDir(), newname, splitter.GetExtension());
- * char* NewFilename = maker.GetFileName();
+ * const char* NewFilename = maker.GetFileName();
  * @endcode
  *
  * @see CKPathSplitter

@@ -42,7 +42,7 @@ static bool HasProtocol(const char *url) {
     return true;
 }
 
-XDWORD VxEscapeURL(char *InURL, XString &OutURL) {
+XDWORD VxEscapeURL(const char *InURL, XString &OutURL) {
     // Handle null input
     if (!InURL) {
         OutURL = "";
@@ -64,7 +64,7 @@ XDWORD VxEscapeURL(char *InURL, XString &OutURL) {
     }
 
     // Count special characters that need escaping
-    char *str = InURL;
+    const char *str = InURL;
     int specialCharCount = 0;
 
     // If it's a file protocol, start counting after "file://"
@@ -106,7 +106,7 @@ XDWORD VxEscapeURL(char *InURL, XString &OutURL) {
     }
 
     // Build the escaped URL
-    char *pi = InURL;
+    const char *pi = InURL;
     char *pb = buf;
 
     // Add file:// if no protocol exists

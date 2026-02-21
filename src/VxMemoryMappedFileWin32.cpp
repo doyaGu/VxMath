@@ -5,7 +5,7 @@
 #endif
 #include <Windows.h>
 
-VxMemoryMappedFile::VxMemoryMappedFile(char *pszFileName)
+VxMemoryMappedFile::VxMemoryMappedFile(const char *pszFileName)
     : m_hFile(INVALID_HANDLE_VALUE),
       m_hFileMapping(NULL),
       m_pMemoryMappedFileBase(NULL),

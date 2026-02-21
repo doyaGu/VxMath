@@ -5,7 +5,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
-VxMemoryMappedFile::VxMemoryMappedFile(char *pszFileName)
+VxMemoryMappedFile::VxMemoryMappedFile(const char *pszFileName)
     : m_hFile(NULL),
       m_hFileMapping(NULL),
       m_pMemoryMappedFileBase(NULL),

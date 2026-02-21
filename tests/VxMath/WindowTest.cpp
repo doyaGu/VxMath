@@ -132,25 +132,25 @@ TEST_F(VxWindowFunctionsTest, FilesystemOperations) {
 
     // Test MakeDirectory
     std::filesystem::path newDir = m_tempDir / "NewDirectory";
-    EXPECT_TRUE(VxMakeDirectory((char*)newDir.string().c_str()));
+    EXPECT_TRUE(VxMakeDirectory(newDir.string().c_str()));
     EXPECT_TRUE(std::filesystem::exists(newDir));
 
     // Test RemoveDirectory on an empty directory
-    EXPECT_TRUE(VxRemoveDirectory((char*)newDir.string().c_str()));
+    EXPECT_TRUE(VxRemoveDirectory(newDir.string().c_str()));
     EXPECT_FALSE(std::filesystem::exists(newDir));
 
     // Test DeleteDirectory on a non-empty directory
     std::filesystem::path parentDir = m_tempDir / "Parent";
     std::filesystem::path childFile = parentDir / "child.txt";
-    VxMakeDirectory((char *) parentDir.string().c_str());
+    VxMakeDirectory(parentDir.string().c_str());
     CreateTempFile("Parent/child.txt", "content");
     EXPECT_TRUE(std::filesystem::exists(childFile));
-    EXPECT_TRUE(VxDeleteDirectory((char*)parentDir.string().c_str()));
+    EXPECT_TRUE(VxDeleteDirectory(parentDir.string().c_str()));
     EXPECT_FALSE(std::filesystem::exists(parentDir));
 
     // Test CreateFileTree
     std::filesystem::path treePath = m_tempDir / "a" / "b" / "c.txt";
-    EXPECT_TRUE(VxCreateFileTree((char*)treePath.string().c_str()));
+    EXPECT_TRUE(VxCreateFileTree(treePath.string().c_str()));
     EXPECT_TRUE(std::filesystem::exists(treePath.parent_path()));
 }
 
@@ -159,7 +159,7 @@ TEST_F(VxWindowFunctionsTest, CurrentDirectory) {
     ASSERT_TRUE(VxGetCurrentDirectory(originalDir));
 
     // Set current directory to our temp path
-    ASSERT_TRUE(VxSetCurrentDirectory((char*)m_tempDir.string().c_str()));
+    ASSERT_TRUE(VxSetCurrentDirectory(m_tempDir.string().c_str()));
 
     // Verify it was set
     char newDir[MAX_PATH];
@@ -179,7 +179,7 @@ TEST_F(VxWindowFunctionsTest, MakePath) {
 #endif
     const char *file = "test.txt";
 
-    EXPECT_TRUE(VxMakePath(fullPath, (char*)path, (char*)file));
+    EXPECT_TRUE(VxMakePath(fullPath, path, file));
     std::filesystem::path expectedPath = std::filesystem::path(path) / file;
     EXPECT_EQ(std::filesystem::path(fullPath), expectedPath);
 }
@@ -201,15 +201,15 @@ TEST_F(VxWindowFunctionsTest, EnvironmentVariable) {
     XString readValue;
 
     // Test setting a variable
-    ASSERT_TRUE(VxSetEnvironmentVariable((char*)varName, (char*)varValue));
+    ASSERT_TRUE(VxSetEnvironmentVariable(varName, varValue));
 
     // Test getting the variable
-    ASSERT_TRUE(VxGetEnvironmentVariable((char*)varName, readValue));
+    ASSERT_TRUE(VxGetEnvironmentVariable(varName, readValue));
     EXPECT_STREQ(readValue.CStr(), varValue);
 
     // Clean up by unsetting the variable
-    ASSERT_TRUE(VxSetEnvironmentVariable((char*)varName, nullptr));
-    EXPECT_FALSE(VxGetEnvironmentVariable((char*)varName, readValue));
+    ASSERT_TRUE(VxSetEnvironmentVariable(varName, nullptr));
+    EXPECT_FALSE(VxGetEnvironmentVariable(varName, readValue));
 }
 
 TEST_F(VxWindowFunctionsTest, UrlEscaping) {
@@ -217,7 +217,7 @@ TEST_F(VxWindowFunctionsTest, UrlEscaping) {
     const char *originalUrl = "http://example.com/a path?q=a&b=c";
     const char *expectedEscaped = "http%3A%2F%2Fexample.com%2Fa%20path%3Fq%3Da%26b%3Dc";
 
-    VxEscapeURL((char *) originalUrl, escapedUrl);
+    VxEscapeURL(originalUrl, escapedUrl);
     EXPECT_STREQ(escapedUrl.CStr(), expectedEscaped);
 
     VxUnEscapeUrl(escapedUrl);

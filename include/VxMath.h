@@ -263,7 +263,7 @@ VX_EXPORT void SetQuantizationSamplingFactor(int sf);
  * @brief Gets a string describing the system's processor.
  * @return A string with the processor's description.
  */
-VX_EXPORT char *GetProcessorDescription();
+VX_EXPORT const char *GetProcessorDescription();
 
 /**
  * @brief Gets the frequency of the processor in MHz.

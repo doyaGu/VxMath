@@ -138,7 +138,7 @@ void VxSetBaseFPUControlWord() {
 #endif
 }
 
-void VxAddLibrarySearchPath(char *path) {
+void VxAddLibrarySearchPath(const char *path) {
     if (!path || !*path) {
         return;
     }
@@ -151,7 +151,7 @@ void VxAddLibrarySearchPath(char *path) {
     setenv("LD_LIBRARY_PATH", value.CStr(), 1);
 }
 
-XBOOL VxGetEnvironmentVariable(char *envName, XString &envValue) {
+XBOOL VxGetEnvironmentVariable(const char *envName, XString &envValue) {
     if (!envName) {
         envValue = "";
         return FALSE;
@@ -167,7 +167,7 @@ XBOOL VxGetEnvironmentVariable(char *envName, XString &envValue) {
     return TRUE;
 }
 
-XBOOL VxSetEnvironmentVariable(char *envName, char *envValue) {
+XBOOL VxSetEnvironmentVariable(const char *envName, const char *envValue) {
     if (!envName || !*envName) {
         return FALSE;
     }
@@ -237,7 +237,7 @@ XString VxGetTempPath() {
     return XString(tmp);
 }
 
-XBOOL VxMakeDirectory(char *path) {
+XBOOL VxMakeDirectory(const char *path) {
     if (!path || !*path) {
         return FALSE;
     }
@@ -257,14 +257,14 @@ XBOOL VxMakeDirectory(char *path) {
     return S_ISDIR(st.st_mode) ? TRUE : FALSE;
 }
 
-XBOOL VxRemoveDirectory(char *path) {
+XBOOL VxRemoveDirectory(const char *path) {
     if (!path || !*path) {
         return FALSE;
     }
     return rmdir(path) == 0;
 }
 
-XBOOL VxDeleteDirectory(char *path) {
+XBOOL VxDeleteDirectory(const char *path) {
     if (!path || !*path) {
         return FALSE;
     }
@@ -281,14 +281,14 @@ XBOOL VxGetCurrentDirectory(char *path) {
     return getcwd(path, MAX_PATH) != NULL;
 }
 
-XBOOL VxSetCurrentDirectory(char *path) {
+XBOOL VxSetCurrentDirectory(const char *path) {
     if (!path) {
         return FALSE;
     }
     return chdir(path) == 0;
 }
 
-XBOOL VxMakePath(char *fullpath, char *path, char *file) {
+XBOOL VxMakePath(char *fullpath, const char *path, const char *file) {
     if (!fullpath || !path || !file) {
         return FALSE;
     }
@@ -330,7 +330,7 @@ XBOOL VxTestDiskSpace(const char *dir, size_t size) {
     return available >= size;
 }
 
-int VxMessageBox(WIN_HANDLE hWnd, char *lpText, char *lpCaption, XDWORD uType) {
+int VxMessageBox(WIN_HANDLE hWnd, const char *lpText, const char *lpCaption, XDWORD uType) {
     (void) hWnd;
     (void) uType;
     fprintf(stderr, "%s: %s\n", lpCaption ? lpCaption : "VxMessage", lpText ? lpText : "");
@@ -389,7 +389,7 @@ INSTANCE_HANDLE VxGetModuleHandle(const char *filename) {
     return dlopen(filename, RTLD_NOW | RTLD_LOCAL);
 }
 
-XBOOL VxCreateFileTree(char *file) {
+XBOOL VxCreateFileTree(const char *file) {
     if (!file || !*file) {
         return FALSE;
     }
@@ -405,7 +405,7 @@ XBOOL VxCreateFileTree(char *file) {
     return !ec;
 }
 
-XDWORD VxURLDownloadToCacheFile(char *File, char *CachedFile, int szCachedFile) {
+XDWORD VxURLDownloadToCacheFile(const char *File, char *CachedFile, int szCachedFile) {
     (void) File;
     if (CachedFile && szCachedFile > 0) {
         CachedFile[0] = '\0';
@@ -458,7 +458,7 @@ VX_OSINFO VxGetOs() {
 #endif
 }
 
-FONT_HANDLE VxCreateFont(char *FontName, int FontSize, int Weight, XBOOL italic, XBOOL underline) {
+FONT_HANDLE VxCreateFont(const char *FontName, int FontSize, int Weight, XBOOL italic, XBOOL underline) {
     (void) FontName;
     (void) FontSize;
     (void) Weight;

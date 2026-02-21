@@ -11,7 +11,7 @@
 #define strnicmp strncasecmp
 #endif
 
-XDWORD VxEscapeURL(char *InURL, XString &OutURL) {
+XDWORD VxEscapeURL(const char *InURL, XString &OutURL) {
     if (!InURL) {
         OutURL = "";
         return -1;
@@ -24,10 +24,10 @@ XDWORD VxEscapeURL(char *InURL, XString &OutURL) {
     }
 
     // Count special characters that need escaping
-    char *str = InURL;
+    const char *str = InURL;
     int i = 0;
     while (true) {
-        char *s = strpbrk(str, " #$%&\\+,;=@[]^{}");
+        const char *s = strpbrk(str, " #$%&\\+,;=@[]^{}");
         if (!s)
             break;
         str = s + 1;
@@ -59,7 +59,7 @@ XDWORD VxEscapeURL(char *InURL, XString &OutURL) {
     }
 
     // Build the escaped URL
-    char *pi = InURL;
+    const char *pi = InURL;
     char *pb = buf;
 
     // Add file:// if needed
