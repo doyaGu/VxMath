@@ -188,7 +188,7 @@ private:
                     size_t marked = 0;
                     while (marked < m_BlockAvailables && freeb != INVALID_BLOCK_INDEX)
                     {
-                        freeBlocks.Set(freeb);
+                        freeBlocks.Set((int)freeb);
                         unsigned char *p = m_Data + freeb * iBlockSize;
                         freeb = ReadFreeListIndex(p);
                         ++marked;
@@ -200,7 +200,7 @@ private:
                     for (size_t i = 0; i < iBlockCount; ++i)
                     {
 
-                        if (freeBlocks.IsSet(i))
+                        if (freeBlocks.IsSet((int)i))
                             continue;
 
                         unsigned char *p = m_Data + i * iBlockSize;

@@ -498,7 +498,7 @@ public:
      */
     int GetPosition(const T &o) const {
         T *t = Find(o);
-        return (t == m_End) ? -1 : (t - m_Begin);
+        return (t == m_End) ? -1 : (int)(t - m_Begin);
     }
 
     /**
@@ -559,7 +559,7 @@ protected:
     void XInsert(T *i, const T &o) {
         // Test For Reallocation
         if (m_End == m_AllocatedEnd) {
-            int newsize = (m_AllocatedEnd - m_Begin) * 2; //+m_AllocationSize;
+            int newsize = (int)((m_AllocatedEnd - m_Begin) * 2); //+m_AllocationSize;
             if (!newsize)
                 newsize = 1;
             T *newdata = Allocate(newsize);

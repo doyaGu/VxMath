@@ -651,7 +651,7 @@ XBOOL VxConfiguration::ManageSection(const char *line, VxConfigurationSection **
     // Check for closing tag format </SectionName>
     size_t len = strlen(lineCopy);
     if (len > 3 && lineCopy[0] == '<' && lineCopy[1] == '/' && lineCopy[len - 1] == '>') {
-        XString tagName(line + 2, len - 3);
+        XString tagName(line + 2, (int)(len - 3));
         char *closingTag = Shrink(tagName.Str());
         if (!closingTag || !*closingTag) {
             error = "Invalid closing tag format: ";
@@ -700,7 +700,7 @@ XBOOL VxConfiguration::ManageSection(const char *line, VxConfigurationSection **
         return FALSE;
     }
 
-    XString sectionNameStr(line + 1, len - 2);  // Skip brackets, copy substring
+    XString sectionNameStr(line + 1, (int)(len - 2));  // Skip brackets, copy substring
     const char *sectionName = sectionNameStr.CStr();
 
     // Handle dot notation in sections
@@ -790,7 +790,7 @@ void VxConfigurationSection::Clear() {
     m_Entries.Clear();
 
     // Now safely delete all entries
-    for (size_t i = 0; i < entriesToDelete.Size(); i++) {
+    for (int i = 0; i < entriesToDelete.Size(); i++) {
         delete entriesToDelete[i];
     }
 
@@ -808,7 +808,7 @@ void VxConfigurationSection::Clear() {
     m_SubSections.Clear();
 
     // Now safely delete all sections
-    for (size_t i = 0; i < sectionsToDelete.Size(); i++) {
+    for (int i = 0; i < sectionsToDelete.Size(); i++) {
         delete sectionsToDelete[i];
     }
 }
@@ -1171,7 +1171,7 @@ char *Shrink(char *str) {
     if (!*str) return str;
 
     // Find end of string
-    char *end = str + strlen(str) - 1;
+    char *end = str + (int)strlen(str) - 1;
 
     // Remove trailing whitespace
     while (end > str && (*end == ' ' || *end == '\t')) *end-- = '\0';
@@ -1207,7 +1207,7 @@ void VxConfig::CloseSection(const char *iSection) {
 
 void VxConfig::WriteStringEntry(const char *iKey, const char *iValue) {
     if (m_CurrentSection && iKey && iValue)
-        ::RegSetValueExA(*(PHKEY) &m_CurrentSection, iKey, 0, REG_SZ, (LPBYTE) iValue, static_cast<DWORD>(strlen(iValue) + 1));
+        ::RegSetValueExA(*(PHKEY) &m_CurrentSection, iKey, 0, REG_SZ, (LPBYTE) iValue, static_cast<DWORD>((int)strlen(iValue) + 1));
 }
 
 XDWORD VxConfig::ReadStringEntry(const char *iKey, char *oData) {

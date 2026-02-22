@@ -81,7 +81,7 @@ XString &XString::operator=(const XString &iSrc) {
 // operator =
 XString &XString::operator=(const char *iSrc) {
     if (iSrc) {
-        Assign(iSrc, strlen(iSrc));
+        Assign(iSrc, (int)strlen(iSrc));
     } else {
         m_Length = 0;
         if (m_Buffer)
@@ -245,7 +245,7 @@ XWORD XString::Find(char iCar, XWORD iStart) const {
 
     char *str = strchr(&m_Buffer[iStart], iCar);
     if (str)
-        return str - m_Buffer;
+        return (XWORD)(str - m_Buffer);
     else
         return NOTFOUND;
 }
@@ -257,7 +257,7 @@ XWORD XString::Find(const XBaseString &iStr, XWORD iStart) const {
 
     char *str = strstr(&m_Buffer[iStart], iStr.m_Buffer);
     if (str)
-        return str - m_Buffer;
+        return (XWORD)(str - m_Buffer);
     else
         return NOTFOUND;
 }
