@@ -68,6 +68,47 @@ TEST(FixedSizeAllocatorTest, DoubleFreeDoesNotCorruptFreeList)
     alloc.Free(q);
 }
 
+TEST(FixedSizeAllocatorTest, PartialDoubleFreeDoesNotInjectDuplicateFreeBlock)
+{
+    XFixedSizeAllocator alloc(/*iBlockSize=*/32, /*iPageSize=*/128); // 4 blocks per chunk
+
+    void *a = alloc.Allocate();
+    void *b = alloc.Allocate();
+    ASSERT_NE(a, nullptr);
+    ASSERT_NE(b, nullptr);
+
+    alloc.Free(a);
+    alloc.Free(a); // Should be ignored.
+
+    void *c = alloc.Allocate();
+    void *d = alloc.Allocate();
+    void *e = alloc.Allocate();
+    void *f = alloc.Allocate(); // Requires a new chunk if double-free was ignored.
+
+    ASSERT_NE(c, nullptr);
+    ASSERT_NE(d, nullptr);
+    ASSERT_NE(e, nullptr);
+    ASSERT_NE(f, nullptr);
+    EXPECT_EQ(alloc.GetChunksCount(), static_cast<size_t>(2));
+
+    alloc.Free(b);
+    alloc.Free(c);
+    alloc.Free(d);
+    alloc.Free(e);
+    alloc.Free(f);
+}
+
+TEST(FixedSizeAllocatorTest, ChunkTotalSizeUsesActualChunkCapacity)
+{
+    XFixedSizeAllocator alloc(/*iBlockSize=*/128, /*iPageSize=*/64);
+
+    void *p = alloc.Allocate();
+    ASSERT_NE(p, nullptr);
+    EXPECT_EQ(alloc.GetChunksCount(), static_cast<size_t>(1));
+    EXPECT_EQ(alloc.GetChunksTotalSize(), static_cast<size_t>(128));
+    alloc.Free(p);
+}
+
 TEST(ObjectPoolTest, ClearCallsDtorsForStillAllocatedObjects)
 {
     CountingObject::s_ctorCount = 0;

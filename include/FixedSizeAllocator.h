@@ -1,8 +1,10 @@
 #ifndef FIXEDSIZEALLOCATOR_H
 #define FIXEDSIZEALLOCATOR_H
 
+#include <cstddef>
 #include <stddef.h>
 #include <string.h>
+#include <limits>
 #include <new>
 
 #include "XArray.h"
@@ -18,15 +20,30 @@ public:
           m_BlockSize(iBlockSize < sizeof(size_t) ? sizeof(size_t) : iBlockSize), // Ensure block size can store free-list link.
           m_AChunk(NULL), m_DChunk(NULL)
     {
-        // Align block size to allow safe reads/writes of the free-list link (stored as size_t).
-        const size_t align = sizeof(size_t);
-        m_BlockSize = (m_BlockSize + (align - 1)) & ~(align - 1);
+        if (m_PageSize == 0)
+            m_PageSize = DEFAULT_CHUNK_SIZE;
 
-        // Calculate how many blocks fit in a page
+        // Align block size to preserve alignment for placement-new objects.
+        const size_t align = alignof(std::max_align_t);
+        if (m_BlockSize % align)
+            m_BlockSize += (align - (m_BlockSize % align));
+
+        // Calculate how many blocks fit in a page.
         m_BlockCount = m_PageSize / m_BlockSize;
         if (m_BlockCount == 0)
-            m_BlockCount = 1; // At least one block per chunk
+            m_BlockCount = 1; // At least one block per chunk.
+
+        // Normalize page size to the actual chunk capacity.
+        if (m_BlockCount > (std::numeric_limits<size_t>::max() / m_BlockSize))
+            m_PageSize = m_BlockSize;
+        else
+            m_PageSize = m_BlockCount * m_BlockSize;
     }
+
+    XFixedSizeAllocator(const XFixedSizeAllocator &) = delete;
+    XFixedSizeAllocator &operator=(const XFixedSizeAllocator &) = delete;
+    XFixedSizeAllocator(XFixedSizeAllocator &&) = delete;
+    XFixedSizeAllocator &operator=(XFixedSizeAllocator &&) = delete;
 
     ~XFixedSizeAllocator()
     {
@@ -42,7 +59,7 @@ public:
     // return the total size of all chunks
     size_t GetChunksTotalSize()
     {
-        return m_Chunks.Size() * m_PageSize;
+        return m_Chunks.Size() * GetChunkCapacity();
     }
 
     // return the occupied memory in chunks
@@ -108,7 +125,11 @@ public:
 
         // No chunks with available blocks, create a new one
         Chunk *newChunk = new Chunk();
-        newChunk->Init(m_BlockSize, m_BlockCount);
+        if (!newChunk->Init(m_BlockSize, m_BlockCount))
+        {
+            delete newChunk;
+            return NULL;
+        }
         m_Chunks.PushBack(newChunk);
         m_AChunk = newChunk;
         return m_AChunk->Allocate(m_BlockSize);
@@ -139,8 +160,24 @@ private:
             Destroy();
         }
 
-        void Init(size_t iBlockSize, size_t iBlockCount)
+        bool Init(size_t iBlockSize, size_t iBlockCount)
         {
+            if (iBlockSize == 0 || iBlockCount == 0)
+            {
+                m_BlockCount = 0;
+                m_BlockAvailables = 0;
+                m_FirstAvailableBlock = INVALID_BLOCK_INDEX;
+                return false;
+            }
+
+            if (iBlockCount > (std::numeric_limits<size_t>::max() / iBlockSize))
+            {
+                m_BlockCount = 0;
+                m_BlockAvailables = 0;
+                m_FirstAvailableBlock = INVALID_BLOCK_INDEX;
+                return false;
+            }
+
             m_BlockCount = iBlockCount;
             m_BlockAvailables = iBlockCount;
             m_FirstAvailableBlock = 0;
@@ -155,6 +192,7 @@ private:
             }
             // Last block marks end of free list.
             WriteFreeListIndex(m_Data + (iBlockCount - 1) * iBlockSize, INVALID_BLOCK_INDEX);
+            return true;
         }
 
         template <class T>
@@ -188,6 +226,9 @@ private:
                     size_t marked = 0;
                     while (marked < m_BlockAvailables && freeb != INVALID_BLOCK_INDEX)
                     {
+                        if (freeb >= iBlockCount)
+                            break;
+
                         freeBlocks.Set((int)freeb);
                         unsigned char *p = m_Data + freeb * iBlockSize;
                         freeb = ReadFreeListIndex(p);
@@ -224,6 +265,11 @@ private:
             if (m_BlockAvailables == 0)
             {
                 return NULL; // No available blocks
+            }
+
+            if (m_FirstAvailableBlock == INVALID_BLOCK_INDEX || m_FirstAvailableBlock >= m_BlockCount)
+            {
+                return NULL; // Corrupted free-list head.
             }
 
             // Get the first available block
@@ -267,6 +313,11 @@ private:
                 return; // Likely double free or corruption.
             }
 
+            if (IsInFreeList(blockIndex, iBlockSize))
+            {
+                return; // Double free detected.
+            }
+
             // Add this block to the front of the free list.
             WriteFreeListIndex(static_cast<unsigned char *>(iP), m_FirstAvailableBlock);
             m_FirstAvailableBlock = blockIndex;
@@ -283,6 +334,25 @@ private:
             size_t index = INVALID_BLOCK_INDEX;
             memcpy(&index, iBlock, sizeof(size_t));
             return index;
+        }
+
+        bool IsInFreeList(size_t iBlockIndex, size_t iBlockSize) const
+        {
+            size_t freeIndex = m_FirstAvailableBlock;
+
+            for (size_t visited = 0; visited < m_BlockCount && freeIndex != INVALID_BLOCK_INDEX; ++visited)
+            {
+                if (freeIndex == iBlockIndex)
+                    return true;
+
+                if (freeIndex >= m_BlockCount)
+                    return true; // Corrupted free-list metadata.
+
+                freeIndex = ReadFreeListIndex(m_Data + freeIndex * iBlockSize);
+            }
+
+            // If we never reached INVALID_BLOCK_INDEX, the free list is cyclic/corrupted.
+            return freeIndex != INVALID_BLOCK_INDEX;
         }
 
         unsigned char *m_Data;
@@ -329,6 +399,11 @@ private:
         return NULL; // Not found
     }
 
+    size_t GetChunkCapacity() const
+    {
+        return m_BlockCount * m_BlockSize;
+    }
+
     // members
     size_t m_PageSize;
     // Block size
@@ -350,6 +425,10 @@ class XObjectPool
 {
 public:
     XObjectPool(XBOOL iCallDtor = TRUE) : m_Allocator(sizeof(T)), m_CallDtor(iCallDtor) {}
+    XObjectPool(const XObjectPool &) = delete;
+    XObjectPool &operator=(const XObjectPool &) = delete;
+    XObjectPool(XObjectPool &&) = delete;
+    XObjectPool &operator=(XObjectPool &&) = delete;
 
     T *Allocate()
     {
