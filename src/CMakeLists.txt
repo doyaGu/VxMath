@@ -120,12 +120,13 @@ function(vx_configure_target TARGET_NAME)
             $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
             PRIVATE
             ${CMAKE_CURRENT_SOURCE_DIR}
-            ${SIMDE_INCLUDE_DIR}
     )
 
-    if (DEFINED STB_INCLUDE_DIR AND EXISTS "${STB_INCLUDE_DIR}")
-        target_include_directories(${TARGET_NAME} PRIVATE ${STB_INCLUDE_DIR})
-    endif ()
+    target_link_libraries(${TARGET_NAME}
+            PRIVATE
+            simde
+            stb
+    )
 
     if (NOT WIN32)
         target_link_libraries(${TARGET_NAME} PRIVATE ${CMAKE_DL_LIBS} pthread)
@@ -179,7 +180,7 @@ if (VXMATH_BUILD_STATIC)
 endif ()
 
 # Export targets to parent scope
-set(VXMATH_EXPORTED_TARGETS ${VXMATH_TARGETS} PARENT_SCOPE)
+set(VXMATH_EXPORTED_TARGETS ${VXMATH_TARGETS} ${VXMATH_DEP_EXPORTED_TARGETS} PARENT_SCOPE)
 
 if (VXMATH_INSTALL)
     # Install libraries to Bin directory
