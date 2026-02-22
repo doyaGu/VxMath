@@ -106,24 +106,6 @@ if (MSVC)
             _CRT_SECURE_NO_DEPRECATE
             _CRT_NONSTDC_NO_DEPRECATE
     )
-    add_compile_options(
-            $<$<COMPILE_LANGUAGE:CXX>:/Zc:strictStrings->
-            $<$<COMPILE_LANGUAGE:CXX>:/Zc:char8_t->
-    )
-endif ()
-
-if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
-    add_compile_options(
-            $<$<COMPILE_LANGUAGE:CXX>:-fpermissive>
-            $<$<COMPILE_LANGUAGE:CXX>:-Wno-write-strings>
-            $<$<COMPILE_LANGUAGE:CXX>:-fno-char8_t>
-    )
-endif ()
-
-if (CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
-    add_compile_options(
-            $<$<COMPILE_LANGUAGE:CXX>:-fno-char8_t>
-    )
 endif ()
 
 # =============================================================================
