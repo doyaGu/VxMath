@@ -1,7 +1,7 @@
 #ifndef VXRAY_H
 #define VXRAY_H
 
-#include "VxVector.h"
+#include "VxMatrix.h"
 #include "XUtil.h"
 
 /**
@@ -48,7 +48,10 @@ public:
      * @param dest Output parameter for the transformed ray.
      * @param mat The transformation matrix to apply.
      */
-    VX_EXPORT void Transform(VxRay &dest, const VxMatrix &mat);
+    inline void Transform(VxRay &dest, const VxMatrix &mat) {
+        Vx3DMultiplyMatrixVector(&dest.m_Origin, mat, &m_Origin);
+        Vx3DRotateVector(&dest.m_Direction, mat, &m_Direction);
+    }
 
     /**
      * @brief Interpolates a point along the ray.

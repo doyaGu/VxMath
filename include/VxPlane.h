@@ -1,8 +1,9 @@
 #ifndef VXPLANE_H
 #define VXPLANE_H
 
-#include "VxMatrix.h"
 #include "VxVector.h"
+#include "VxBbox.h"
+#include "VxMatrix.h"
 
 /**
  * @brief Represents an infinite plane in 3D space.
@@ -179,10 +180,24 @@ public:
     const VxVector NearestPoint(const VxVector &p) const { return p + m_Normal * -Classify(p); }
 
     /// @brief Creates the plane from a normal and a point on the plane.
-    VX_EXPORT void Create(const VxVector &n, const VxVector &p);
+    inline void Create(const VxVector &n, const VxVector &p) {
+        m_Normal = n;
+        if (m_Normal.SquareMagnitude() > EPSILON)
+            m_Normal.Normalize();
+        m_D = -DotProduct(m_Normal, p);
+    }
 
     /// @brief Creates the plane from three coplanar points.
-    VX_EXPORT void Create(const VxVector &a, const VxVector &b, const VxVector &c);
+    inline void Create(const VxVector &a, const VxVector &b, const VxVector &c) {
+        VxVector edge1 = b - a;
+        VxVector edge2 = c - a;
+        m_Normal = CrossProduct(edge1, edge2);
+        if (m_Normal.SquareMagnitude() > EPSILON)
+            m_Normal.Normalize();
+        else
+            m_Normal = VxVector(0.0f, 0.0f, 1.0f);
+        m_D = -DotProduct(m_Normal, a);
+    }
 
     /// @brief Equality operator.
     bool operator==(const VxPlane &iPlane) const {

@@ -23,6 +23,7 @@
 #include "VxVector.h"
 #include "Vx2dVector.h"
 #include "VxMatrix.h"
+#include "VxBbox.h"
 #include "VxConfiguration.h"
 #include "VxQuaternion.h"
 #include "VxRect.h"

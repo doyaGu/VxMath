@@ -33,14 +33,14 @@ VX_EXPORT VxQuaternion Vx3DQuaternionSnuggle(VxQuaternion *Quat, VxVector *Scale
  * @param Mat The source rotation matrix.
  * @return The resulting quaternion.
  */
-VX_EXPORT VxQuaternion Vx3DQuaternionFromMatrix(const VxMatrix &Mat);
+inline VxQuaternion Vx3DQuaternionFromMatrix(const VxMatrix &Mat);
 
 /**
  * @brief Computes the conjugate of a quaternion.
  * @param Quat The quaternion to conjugate.
  * @return The conjugate of the input quaternion.
  */
-VX_EXPORT VxQuaternion Vx3DQuaternionConjugate(const VxQuaternion &Quat);
+inline VxQuaternion Vx3DQuaternionConjugate(const VxQuaternion &Quat);
 
 /**
  * @brief Multiplies two quaternions.
@@ -48,7 +48,7 @@ VX_EXPORT VxQuaternion Vx3DQuaternionConjugate(const VxQuaternion &Quat);
  * @param QuatR The right-hand side quaternion.
  * @return The result of the multiplication (QuatL * QuatR).
  */
-VX_EXPORT VxQuaternion Vx3DQuaternionMultiply(const VxQuaternion &QuatL, const VxQuaternion &QuatR);
+inline VxQuaternion Vx3DQuaternionMultiply(const VxQuaternion &QuatL, const VxQuaternion &QuatR);
 
 /**
  * @brief Divides one quaternion by another.
@@ -56,7 +56,7 @@ VX_EXPORT VxQuaternion Vx3DQuaternionMultiply(const VxQuaternion &QuatL, const V
  * @param Q The denominator quaternion.
  * @return The result of the division (P * Q^-1).
  */
-VX_EXPORT VxQuaternion Vx3DQuaternionDivide(const VxQuaternion &P, const VxQuaternion &Q);
+inline VxQuaternion Vx3DQuaternionDivide(const VxQuaternion &P, const VxQuaternion &Q);
 
 /**
  * @brief Performs spherical linear interpolation between two quaternions.
@@ -65,7 +65,7 @@ VX_EXPORT VxQuaternion Vx3DQuaternionDivide(const VxQuaternion &P, const VxQuate
  * @param Quat2 The ending quaternion.
  * @return The interpolated quaternion.
  */
-VX_EXPORT VxQuaternion Slerp(float Theta, const VxQuaternion &Quat1, const VxQuaternion &Quat2);
+inline VxQuaternion Slerp(float Theta, const VxQuaternion &Quat1, const VxQuaternion &Quat2);
 
 /**
  * @brief Performs spherical quadrangle interpolation.
@@ -76,7 +76,7 @@ VX_EXPORT VxQuaternion Slerp(float Theta, const VxQuaternion &Quat1, const VxQua
  * @param Quat2 The ending quaternion.
  * @return The interpolated quaternion.
  */
-VX_EXPORT VxQuaternion Squad(float Theta, const VxQuaternion &Quat1, const VxQuaternion &Quat1Out, const VxQuaternion &Quat2In, const VxQuaternion &Quat2);
+inline VxQuaternion Squad(float Theta, const VxQuaternion &Quat1, const VxQuaternion &Quat1Out, const VxQuaternion &Quat2In, const VxQuaternion &Quat2);
 
 /**
  * @brief Computes the logarithmic difference between two quaternions, equivalent to Ln(Q^-1 * P).
@@ -84,21 +84,21 @@ VX_EXPORT VxQuaternion Squad(float Theta, const VxQuaternion &Quat1, const VxQua
  * @param Q The second quaternion.
  * @return The quaternion representing the logarithmic difference.
  */
-VX_EXPORT VxQuaternion LnDif(const VxQuaternion &P, const VxQuaternion &Q);
+inline VxQuaternion LnDif(const VxQuaternion &P, const VxQuaternion &Q);
 
 /**
  * @brief Computes the natural logarithm of a quaternion.
  * @param Quat The input quaternion.
  * @return The natural logarithm of the quaternion.
  */
-VX_EXPORT VxQuaternion Ln(const VxQuaternion &Quat);
+inline VxQuaternion Ln(const VxQuaternion &Quat);
 
 /**
  * @brief Computes the exponential of a quaternion.
  * @param Quat The input quaternion.
  * @return The exponential of the quaternion.
  */
-VX_EXPORT VxQuaternion Exp(const VxQuaternion &Quat);
+inline VxQuaternion Exp(const VxQuaternion &Quat);
 ///@}
 
 /**
@@ -185,25 +185,25 @@ public:
      * @param MatIsUnit If TRUE, assumes the matrix has a unit scale, allowing for a faster conversion.
      * @param RestoreMat Hint to avoid modifying the source matrix if possible.
      */
-    VX_EXPORT void FromMatrix(const VxMatrix &Mat, XBOOL MatIsUnit = TRUE, XBOOL RestoreMat = TRUE);
+    inline void FromMatrix(const VxMatrix &Mat, XBOOL MatIsUnit = TRUE, XBOOL RestoreMat = TRUE);
 
     /// @brief Converts this quaternion to a rotation matrix.
-    VX_EXPORT void ToMatrix(VxMatrix &Mat) const;
+    inline void ToMatrix(VxMatrix &Mat) const;
 
     /// @brief Multiplies this quaternion by another in-place.
-    VX_EXPORT void Multiply(const VxQuaternion &Quat);
+    void Multiply(const VxQuaternion &Quat);
 
     /// @brief Sets this quaternion from an axis and an angle of rotation.
-    VX_EXPORT void FromRotation(const VxVector &Vector, float Angle);
+    inline void FromRotation(const VxVector &Vector, float Angle);
 
     /// @brief Sets this quaternion from a set of Euler angles.
-    VX_EXPORT void FromEulerAngles(float eax, float eay, float eaz);
+    inline void FromEulerAngles(float eax, float eay, float eaz);
 
     /// @brief Converts this quaternion to a set of Euler angles.
-    VX_EXPORT void ToEulerAngles(float *eax, float *eay, float *eaz) const;
+    inline void ToEulerAngles(float *eax, float *eay, float *eaz) const;
 
     /// @brief Normalizes this quaternion to unit length.
-    VX_EXPORT void Normalize();
+    void Normalize();
 
     /// @brief Provides const access to the components by index.
     const float &operator[](int i) const;
@@ -311,6 +311,128 @@ inline const float &VxQuaternion::operator[](int i) const {
 
 inline float &VxQuaternion::operator[](int i) {
     return *((&x) + i);
+}
+
+inline VxQuaternion Vx3DQuaternionConjugate(const VxQuaternion &Quat) {
+    return VxQuaternion(-Quat.x, -Quat.y, -Quat.z, Quat.w);
+}
+
+inline VxQuaternion Vx3DQuaternionMultiply(const VxQuaternion &QuatL, const VxQuaternion &QuatR) {
+    return VxQuaternion(
+        QuatL.w * QuatR.x + QuatL.x * QuatR.w + QuatL.y * QuatR.z - QuatL.z * QuatR.y,
+        QuatL.w * QuatR.y - QuatL.x * QuatR.z + QuatL.y * QuatR.w + QuatL.z * QuatR.x,
+        QuatL.w * QuatR.z + QuatL.x * QuatR.y - QuatL.y * QuatR.x + QuatL.z * QuatR.w,
+        QuatL.w * QuatR.w - QuatL.x * QuatR.x - QuatL.y * QuatR.y - QuatL.z * QuatR.z
+    );
+}
+
+inline VxQuaternion Vx3DQuaternionDivide(const VxQuaternion &P, const VxQuaternion &Q) {
+    float newX = -P.w * Q.x + P.x * Q.w - P.y * Q.z + P.z * Q.y;
+    float newY = -P.w * Q.y + P.x * Q.z + P.y * Q.w - P.z * Q.x;
+    float newZ = -P.w * Q.z - P.x * Q.y + P.y * Q.x + P.z * Q.w;
+    float newW = P.w * Q.w + P.x * Q.x + P.y * Q.y + P.z * Q.z;
+
+    return VxQuaternion(newX, newY, newZ, newW);
+}
+
+inline void VxQuaternion::Multiply(const VxQuaternion &Quat) {
+    float newX = w * Quat.x + x * Quat.w + y * Quat.z - z * Quat.y;
+    float newY = w * Quat.y - x * Quat.z + y * Quat.w + z * Quat.x;
+    float newZ = w * Quat.z + x * Quat.y - y * Quat.x + z * Quat.w;
+    float newW = w * Quat.w - x * Quat.x - y * Quat.y - z * Quat.z;
+
+    x = newX;
+    y = newY;
+    z = newZ;
+    w = newW;
+}
+
+inline void VxQuaternion::Normalize() {
+    float norm = sqrtf(x * x + y * y + z * z + w * w);
+    if (norm == 0.0f) {
+        x = 0.0f;
+        y = 0.0f;
+        z = 0.0f;
+        w = 1.0f;
+    } else {
+        float invNorm = 1.0f / norm;
+        x *= invNorm;
+        y *= invNorm;
+        z *= invNorm;
+        w *= invNorm;
+    }
+}
+
+inline VxQuaternion Slerp(float t, const VxQuaternion &Quat1, const VxQuaternion &Quat2) {
+    float cosOmega = Quat1.x * Quat2.x + Quat1.y * Quat2.y + Quat1.z * Quat2.z + Quat1.w * Quat2.w;
+
+    float k0, k1;
+
+    if (cosOmega >= 0.0f) {
+        float oneMinusCos = 1.0f - cosOmega;
+        if (oneMinusCos < 0.01f) {
+            k0 = 1.0f - t;
+            k1 = t;
+        } else {
+            float omega = acosf(cosOmega);
+            float invSinOmega = 1.0f / sinf(omega);
+            k0 = sinf((1.0f - t) * omega) * invSinOmega;
+            k1 = sinf(t * omega) * invSinOmega;
+        }
+    } else {
+        float oneMinusCosNeg = 1.0f - (-cosOmega);
+        if (oneMinusCosNeg < 0.01f) {
+            k0 = 1.0f - t;
+            k1 = -t;
+        } else {
+            float omega = acosf(-cosOmega);
+            float invSinOmega = 1.0f / sinf(omega);
+            k0 = sinf((1.0f - t) * omega) * invSinOmega;
+            k1 = -sinf(t * omega) * invSinOmega;
+        }
+    }
+
+    return VxQuaternion(
+        k0 * Quat1.x + k1 * Quat2.x,
+        k0 * Quat1.y + k1 * Quat2.y,
+        k0 * Quat1.z + k1 * Quat2.z,
+        k0 * Quat1.w + k1 * Quat2.w
+    );
+}
+
+inline VxQuaternion Squad(float t, const VxQuaternion &Quat1, const VxQuaternion &Quat1Out, const VxQuaternion &Quat2In,
+                          const VxQuaternion &Quat2) {
+    VxQuaternion slerpA = Slerp(t, Quat1Out, Quat2In);
+    VxQuaternion slerpB = Slerp(t, Quat1, Quat2);
+    float blendFactor = 2.0f * t * (1.0f - t);
+    return Slerp(blendFactor, slerpB, slerpA);
+}
+
+inline VxQuaternion LnDif(const VxQuaternion &P, const VxQuaternion &Q) {
+    VxQuaternion div = Vx3DQuaternionDivide(Q, P);
+    return Ln(div);
+}
+
+inline VxQuaternion Ln(const VxQuaternion &Quat) {
+    float magnitude = sqrtf(Quat.x * Quat.x + Quat.y * Quat.y + Quat.z * Quat.z);
+    float scale;
+    if (magnitude == 0.0f) {
+        scale = 0.0f;
+    } else {
+        scale = atan2f(magnitude, Quat.w) / magnitude;
+    }
+    return VxQuaternion(scale * Quat.x, scale * Quat.y, scale * Quat.z, 0.0f);
+}
+
+inline VxQuaternion Exp(const VxQuaternion &Quat) {
+    float magnitude = sqrtf(Quat.x * Quat.x + Quat.y * Quat.y + Quat.z * Quat.z);
+    float scale;
+    if (magnitude < EPSILON) {
+        scale = 1.0f;
+    } else {
+        scale = sinf(magnitude) / magnitude;
+    }
+    return VxQuaternion(scale * Quat.x, scale * Quat.y, scale * Quat.z, cosf(magnitude));
 }
 
 #endif // VXQUATERNION_H

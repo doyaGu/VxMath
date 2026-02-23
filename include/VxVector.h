@@ -212,21 +212,29 @@ struct VxVector {
      * @brief Normalizes the vector, making its length equal to 1.
      * @warning The result is undefined for a null vector (0,0,0).
      */
-    VX_EXPORT void Normalize();
+    inline void Normalize() {
+        const float magSq = SquareMagnitude();
+        if (magSq > EPSILON) {
+            const float invMag = 1.0f / sqrtf(magSq);
+            x *= invMag;
+            y *= invMag;
+            z *= invMag;
+        }
+    }
 
     /**
      * @brief Rotates the vector by applying a transformation matrix.
      * @param M The rotation matrix to apply.
      */
-    VX_EXPORT void Rotate(const VxMatrix &M);
+    void Rotate(const VxMatrix &M);
 
     /** @name Predefined Vectors */
     ///@{
-    VX_EXPORT const static VxVector &axisX(); ///< Returns a unit vector along the X-axis (1,0,0).
-    VX_EXPORT const static VxVector &axisY(); ///< Returns a unit vector along the Y-axis (0,1,0).
-    VX_EXPORT const static VxVector &axisZ(); ///< Returns a unit vector along the Z-axis (0,0,1).
-    VX_EXPORT const static VxVector &axis0(); ///< Returns a zero vector (0,0,0).
-    VX_EXPORT const static VxVector &axis1(); ///< Returns a unit vector (1,1,1).
+    VX_EXPORT static const VxVector &axisX(); ///< Returns a unit vector along the X-axis (1,0,0).
+    VX_EXPORT static const VxVector &axisY(); ///< Returns a unit vector along the Y-axis (0,1,0).
+    VX_EXPORT static const VxVector &axisZ(); ///< Returns a unit vector along the Z-axis (0,0,1).
+    VX_EXPORT static const VxVector &axis0(); ///< Returns a zero vector (0,0,0).
+    VX_EXPORT static const VxVector &axis1(); ///< Returns a unit vector (1,1,1).
     ///@}
 
 private:
@@ -326,11 +334,37 @@ inline const VxVector Reflect(const VxVector &v1, const VxVector &Norm) {
 }
 
 /// @brief Rotates a vector using a transformation matrix.
-VX_EXPORT const VxVector Rotate(const VxMatrix &mat, const VxVector &pt);
+inline const VxVector Rotate(const VxMatrix &mat, const VxVector &pt);
 /// @brief Rotates a vector around an axis by a specified angle.
-VX_EXPORT const VxVector Rotate(const VxVector &v1, const VxVector &v2, float angle);
+inline const VxVector Rotate(const VxVector &v1, const VxVector &v2, float angle) {
+    const float axisMagSq = v2.x * v2.x + v2.y * v2.y + v2.z * v2.z;
+    const float axisInvMag = 1.0f / sqrtf(axisMagSq);
+    const float nx = v2.x * axisInvMag;
+    const float ny = v2.y * axisInvMag;
+    const float nz = v2.z * axisInvMag;
+
+    const float sinAngle = sinf(angle);
+    const float cosAngle = cosf(angle);
+    const float oneMinusCos = 1.0f - cosAngle;
+
+    const float nx2 = nx * nx, ny2 = ny * ny, nz2 = nz * nz;
+    const float nx_ny_omc = nx * ny * oneMinusCos;
+    const float nx_nz_omc = nx * nz * oneMinusCos;
+    const float ny_nz_omc = ny * nz * oneMinusCos;
+    const float sin_nx = sinAngle * nx;
+    const float sin_ny = sinAngle * ny;
+    const float sin_nz = sinAngle * nz;
+
+    return VxVector(
+        v1.x * (cosAngle + oneMinusCos * nx2) + v1.y * (nx_ny_omc + sin_nz) + v1.z * (nx_nz_omc - sin_ny),
+        v1.x * (nx_ny_omc - sin_nz) + v1.y * (cosAngle + oneMinusCos * ny2) + v1.z * (ny_nz_omc + sin_nx),
+        v1.x * (nx_nz_omc + sin_ny) + v1.y * (ny_nz_omc - sin_nx) + v1.z * (cosAngle + oneMinusCos * nz2)
+    );
+}
 /// @brief Rotates a vector around an axis by a specified angle (pointer version).
-VX_EXPORT const VxVector Rotate(const VxVector *v1, const VxVector *v2, float angle);
+inline const VxVector Rotate(const VxVector *v1, const VxVector *v2, float angle) {
+    return Rotate(*v1, *v2, angle);
+}
 
 ///@}
 
@@ -503,236 +537,6 @@ public:
     friend int operator==(const VxVector4 &v1, const VxVector4 &v2);
     friend int operator!=(const VxVector4 &v1, const VxVector4 &v2);
 };
-
-/**
- * @struct VxBbox
- * @brief Represents an axis-aligned bounding box (AABB) in 3D space.
- *
- * @remarks
- * A VxBbox is defined by its minimum and maximum corner points. It provides
- * methods for merging, intersection, containment testing, and other spatial
- * operations commonly used in 3D graphics and physics.
- *
- * @see VxVector
- */
-typedef struct VxBbox {
-#if !defined(_MSC_VER)
-    VxVector Max; ///< The maximum corner of the box (highest x, y, and z coordinates).
-    VxVector Min; ///< The minimum corner of the box (lowest x, y, and z coordinates).
-#else
-    union {
-        struct {
-            VxVector Max; ///< The maximum corner of the box (highest x, y, and z coordinates).
-            VxVector Min; ///< The minimum corner of the box (lowest x, y, and z coordinates).
-        };
-        float v[6]; ///< Array access to components {Max.x, Max.y, Max.z, Min.x, Min.y, Min.z}.
-    };
-#endif
-
-    /**
-     * @brief Default constructor. Creates an invalid box ready for merging.
-     * @remarks The box is initialized with inverted bounds (Min > Max) so that the
-     * first call to `Merge` will correctly initialize its extents.
-     */
-    VxBbox() : Max(-1e6f, -1e6f, -1e6f), Min(1e6f, 1e6f, 1e6f) {}
-
-    /**
-     * @brief Constructs a box from minimum and maximum corner points.
-     * @param iMin The minimum corner point.
-     * @param iMax The maximum corner point.
-     */
-    VxBbox(VxVector iMin, VxVector iMax) : Max(iMax), Min(iMin) {}
-
-    /**
-     * @brief Constructs a box centered at the origin with a given radius.
-     * @param value The half-size of the box in all dimensions.
-     */
-    VxBbox(float value) {
-        Max.x = value; Max.y = value; Max.z = value;
-        Min.x = -value; Min.y = -value; Min.z = -value;
-    }
-
-    /**
-     * @brief Checks if the bounding box has valid extents.
-     * @return TRUE if Min.x <= Max.x, Min.y <= Max.y, and Min.z <= Max.z.
-     */
-    XBOOL IsValid() const {
-        if (Min.x > Max.x) return FALSE;
-        if (Min.y > Max.y) return FALSE;
-        if (Min.z > Max.z) return FALSE;
-        return TRUE;
-    }
-
-    /// @brief Returns the size of the box (width, height, depth).
-    VxVector GetSize() const { return Max - Min; }
-    /// @brief Returns the half-size of the box (half-width, half-height, half-depth).
-    VxVector GetHalfSize() const { return (Max - Min) * 0.5f; }
-    /// @brief Returns the center point of the box.
-    VxVector GetCenter() const { return (Max + Min) * 0.5f; }
-
-    /// @brief Sets the box's corners from min and max points.
-    void SetCorners(const VxVector &min, const VxVector &max) {
-        Min = min; Max = max;
-    }
-    /// @brief Sets the box from a position (min corner) and size.
-    void SetDimension(const VxVector &position, const VxVector &size) {
-        Min = position; Max = position + size;
-    }
-    /// @brief Sets the box from its center and half-size.
-    void SetCenter(const VxVector &center, const VxVector &halfsize) {
-        Min = center - halfsize; Max = center + halfsize;
-    }
-
-    /**
-     * @brief Resets the box to an invalid state, ready for merging.
-     * @remarks This sets Min to a large positive value and Max to a large negative
-     * value, ensuring any subsequent `Merge` operation will correctly define the box.
-     */
-    void Reset() {
-        Max.x = -1e6f; Max.y = -1e6f; Max.z = -1e6f;
-        Min.x = 1e6f; Min.y = 1e6f; Min.z = 1e6f;
-    }
-
-    /**
-     * @brief Expands this box to enclose another box.
-     * @param v The other VxBbox to merge with this one.
-     */
-    void Merge(const VxBbox &v) {
-        Max.x = XMax(v.Max.x, Max.x); Max.y = XMax(v.Max.y, Max.y); Max.z = XMax(v.Max.z, Max.z);
-        Min.x = XMin(v.Min.x, Min.x); Min.y = XMin(v.Min.y, Min.y); Min.z = XMin(v.Min.z, Min.z);
-    }
-
-    /**
-     * @brief Expands this box to enclose a point.
-     * @param v The VxVector point to merge with this one.
-     */
-    void Merge(const VxVector &v) {
-        if (v.x > Max.x) Max.x = v.x;
-        if (v.x < Min.x) Min.x = v.x;
-        if (v.y > Max.y) Max.y = v.y;
-        if (v.y < Min.y) Min.y = v.y;
-        if (v.z > Max.z) Max.z = v.z;
-        if (v.z < Min.z) Min.z = v.z;
-    }
-
-    /**
-     * @brief Classifies a point's position relative to the box's planes.
-     * @param iPoint The point to classify.
-     * @return A bitmask of `VXCLIP_FLAGS` indicating which planes the point is outside of.
-     */
-    XDWORD Classify(const VxVector &iPoint) const {
-        XDWORD flag = 0;
-        if (iPoint.x < Min.x) flag |= VXCLIP_LEFT;
-        else if (iPoint.x > Max.x) flag |= VXCLIP_RIGHT;
-        if (iPoint.y < Min.y) flag |= VXCLIP_BOTTOM;
-        else if (iPoint.y > Max.y) flag |= VXCLIP_TOP;
-        if (iPoint.z < Min.z) flag |= VXCLIP_BACK;
-        else if (iPoint.z > Max.z) flag |= VXCLIP_FRONT;
-        return flag;
-    }
-
-    /**
-     * @brief Classifies a box's position relative to this box.
-     * @param iBox The box to classify.
-     * @return A bitmask of `VXCLIP_FLAGS` indicating full exclusion on one or more axes.
-     */
-    XDWORD Classify(const VxBbox &iBox) const {
-        XDWORD flag = 0;
-        if (iBox.Max.z < Min.z) flag |= VXCLIP_BACK;
-        else if (iBox.Min.z > Max.z) flag |= VXCLIP_FRONT;
-        if (iBox.Max.x < Min.x) flag |= VXCLIP_LEFT;
-        else if (iBox.Min.x > Max.x) flag |= VXCLIP_RIGHT;
-        if (iBox.Max.y < Min.y) flag |= VXCLIP_BOTTOM;
-        else if (iBox.Min.y > Max.y) flag |= VXCLIP_TOP;
-        return flag;
-    }
-
-    /**
-     * @brief Classifies the relative position of two boxes from a viewpoint.
-     * @param box2 The other box.
-     * @param pt The viewpoint.
-     * @return 2 if `box2` is on the opposite side of this box from `pt`, 1 if `box2` is inside, 0 otherwise.
-     */
-    VX_EXPORT int Classify(const VxBbox &box2, const VxVector &pt) const;
-
-    /**
-     * @brief Classifies an array of vertices against the box planes.
-     * @param iVcount The number of vertices to classify.
-     * @param iVertices Pointer to the start of the vertex data.
-     * @param iStride The byte offset between consecutive vertices.
-     * @param oFlags An output array to be filled with `VXCLIP_FLAGS` for each vertex.
-     */
-    VX_EXPORT void ClassifyVertices(const int iVcount, XBYTE *iVertices, XDWORD iStride, XDWORD *oFlags) const;
-
-    /**
-     * @brief Classifies an array of vertices against a single axis of the box.
-     * @param iVcount The number of vertices.
-     * @param iVertices Pointer to the vertex data.
-     * @param iStride The byte offset between vertices.
-     * @param iAxis The axis to test against (0=x, 1=y, 2=z).
-     * @param oFlags An output array to be filled with flags (0x01 if < min, 0x10 if > max).
-     */
-    VX_EXPORT void ClassifyVerticesOneAxis(const int iVcount, XBYTE *iVertices, XDWORD iStride, const int iAxis, XDWORD *oFlags) const;
-
-    /**
-     * @brief Calculates the intersection of this box with another box.
-     * @param v The VxBbox to intersect with this one.
-     * @remarks The result modifies this box to become the intersection volume.
-     */
-    void Intersect(const VxBbox &v) {
-        Max.x = XMin(v.Max.x, Max.x); Max.y = XMin(v.Max.y, Max.y); Max.z = XMin(v.Max.z, Max.z);
-        Min.x = XMax(v.Min.x, Min.x); Min.y = XMax(v.Min.y, Min.y); Min.z = XMax(v.Min.z, Min.z);
-    }
-
-    /**
-     * @brief Tests if a point is inside the box.
-     * @param v The point to test.
-     * @return TRUE if the point is inside or on the boundary of this box, FALSE otherwise.
-     */
-    XBOOL VectorIn(const VxVector &v) const {
-        if (v.x < Min.x) return FALSE;
-        if (v.x > Max.x) return FALSE;
-        if (v.y < Min.y) return FALSE;
-        if (v.y > Max.y) return FALSE;
-        if (v.z < Min.z) return FALSE;
-        if (v.z > Max.z) return FALSE;
-        return TRUE;
-    }
-
-    /**
-     * @brief Tests if another box is totally inside this box.
-     * @param b The box to test.
-     * @return TRUE if box b is completely contained within this box, FALSE otherwise.
-     */
-    XBOOL IsBoxInside(const VxBbox &b) const {
-        if (b.Min.x < Min.x) return 0;
-        if (b.Min.y < Min.y) return 0;
-        if (b.Min.z < Min.z) return 0;
-        if (b.Max.x > Max.x) return 0;
-        if (b.Max.y > Max.y) return 0;
-        if (b.Max.z > Max.z) return 0;
-        return 1;
-    }
-
-    /// @brief Equality operator.
-    bool operator==(const VxBbox &iBox) const {
-        return (Max == iBox.Max) && (Min == iBox.Min);
-    }
-
-    /**
-     * @brief Transforms the eight corner points of this box by a matrix.
-     * @param pts A pointer to an array to store the eight resulting points.
-     * @param Mat The transformation matrix.
-     */
-    VX_EXPORT void TransformTo(VxVector *pts, const VxMatrix &Mat) const;
-
-    /**
-     * @brief Creates this box by transforming another box by a matrix.
-     * @param sbox The source box to transform.
-     * @param Mat The transformation matrix.
-     */
-    VX_EXPORT void TransformFrom(const VxBbox &sbox, const VxMatrix &Mat);
-} VxBbox;
 
 // =================================================================
 // VxVector Inline Implementations

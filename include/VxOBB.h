@@ -1,8 +1,9 @@
 #ifndef VXOBB_H
 #define VXOBB_H
 
-#include "VxMatrix.h"
 #include "VxVector.h"
+#include "VxBbox.h"
+#include "VxMatrix.h"
 
 /**
  * @brief Represents an Oriented Bounding Box (OBB).

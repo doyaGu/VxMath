@@ -2,6 +2,7 @@
 #define VXSPHERE_H
 
 #include "VxVector.h"
+#include "VxBbox.h"
 
 /**
  * @brief Represents a 3D sphere, defined by a center and a radius.

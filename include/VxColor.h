@@ -24,21 +24,9 @@ struct VxColor;
  * @param a Alpha component (0.0f to 1.0f).
  * @return A 32-bit XDWORD representing the color in ARGB format.
  */
-VX_EXPORT XDWORD RGBAFTOCOLOR(float r, float g, float b, float a);
-
-/**
- * @brief Converts a VxColor object to a 32-bit DWORD ARGB color.
- * @param col Pointer to the VxColor object to convert.
- * @return A 32-bit XDWORD representing the color in ARGB format.
- */
-VX_EXPORT XDWORD RGBAFTOCOLOR(const VxColor *col);
-
-/**
- * @brief Converts a VxColor object to a 32-bit DWORD BGRA color.
- * @param col Pointer to the VxColor object to convert.
- * @return A 32-bit XDWORD representing the color in BGRA format.
- */
-// VX_EXPORT XDWORD BGRAFTOCOLOR(const VxColor *col);
+inline XDWORD RGBAFTOCOLOR(float r, float g, float b, float a);
+inline XDWORD RGBAFTOCOLOR(const VxColor *col);
+inline XDWORD BGRAFTOCOLOR(const VxColor *col);
 
 /**
  * @def RGBAITOCOLOR(r, g, b, a)
@@ -375,6 +363,42 @@ inline int operator==(const VxColor &col1, const VxColor &col2) {
 
 inline int operator!=(const VxColor &col1, const VxColor &col2) {
     return (col1.r != col2.r || col1.g != col2.g || col1.b != col2.b || col1.a != col2.a);
+}
+
+inline XDWORD RGBAFTOCOLOR(float r, float g, float b, float a) {
+    unsigned int red   = static_cast<unsigned int>(r * 255.0f);
+    unsigned int green = static_cast<unsigned int>(g * 255.0f);
+    unsigned int blue  = static_cast<unsigned int>(b * 255.0f);
+    unsigned int alpha = static_cast<unsigned int>(a * 255.0f);
+    red   = (red   > 255) ? 255 : red;
+    green = (green > 255) ? 255 : green;
+    blue  = (blue  > 255) ? 255 : blue;
+    alpha = (alpha > 255) ? 255 : alpha;
+    return (alpha << 24) | (red << 16) | (green << 8) | blue;
+}
+
+inline XDWORD RGBAFTOCOLOR(const VxColor *col) {
+    unsigned int red   = static_cast<unsigned int>(col->r * 255.0f);
+    unsigned int green = static_cast<unsigned int>(col->g * 255.0f);
+    unsigned int blue  = static_cast<unsigned int>(col->b * 255.0f);
+    unsigned int alpha = static_cast<unsigned int>(col->a * 255.0f);
+    red   = (red   > 255) ? 255 : red;
+    green = (green > 255) ? 255 : green;
+    blue  = (blue  > 255) ? 255 : blue;
+    alpha = (alpha > 255) ? 255 : alpha;
+    return (alpha << 24) | (red << 16) | (green << 8) | blue;
+}
+
+inline XDWORD BGRAFTOCOLOR(const VxColor *col) {
+    unsigned int red   = static_cast<unsigned int>(col->r * 255.0f);
+    unsigned int green = static_cast<unsigned int>(col->g * 255.0f);
+    unsigned int blue  = static_cast<unsigned int>(col->b * 255.0f);
+    unsigned int alpha = static_cast<unsigned int>(col->a * 255.0f);
+    red   = (red   > 255) ? 255 : red;
+    green = (green > 255) ? 255 : green;
+    blue  = (blue  > 255) ? 255 : blue;
+    alpha = (alpha > 255) ? 255 : alpha;
+    return blue | (green << 8) | (red << 16) | (alpha << 24);
 }
 
 inline XDWORD VxColor::GetRGBA() const {

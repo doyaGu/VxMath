@@ -21,7 +21,7 @@ public:
     /**
      * @brief Default constructor.
      */
-    VX_EXPORT VxFrustum();
+    inline VxFrustum();
 
     /**
      * @brief Constructs a frustum from a set of parameters.
@@ -34,7 +34,7 @@ public:
      * @param fov The vertical field of view, in radians.
      * @param aspectratio The aspect ratio (width / height).
      */
-    VX_EXPORT VxFrustum(const VxVector &origin, const VxVector &right, const VxVector &up, const VxVector &dir, float nearplane, float farplane, float fov, float aspectratio);
+    inline VxFrustum(const VxVector &origin, const VxVector &right, const VxVector &up, const VxVector &dir, float nearplane, float farplane, float fov, float aspectratio);
 
     /// @brief Gets a mutable reference to the frustum's origin.
     VxVector &GetOrigin() { return m_Origin; }
@@ -187,18 +187,18 @@ public:
      * @brief Transforms the frustum by an inverse world matrix.
      * @param invworldmat The inverse of the world transformation matrix to apply.
      */
-    VX_EXPORT void Transform(const VxMatrix &invworldmat);
+    inline void Transform(const VxMatrix &invworldmat);
 
     /**
      * @brief Computes the 8 corner vertices of the frustum.
      * @param vertices An array of 8 VxVector to store the computed vertices.
      */
-    VX_EXPORT void ComputeVertices(VxVector vertices[8]) const;
+    inline void ComputeVertices(VxVector vertices[8]) const;
 
     /**
      * @brief Updates the frustum's derived properties (e.g., planes) after modification of its base parameters.
      */
-    VX_EXPORT void Update();
+    inline void Update();
 
     /**
      * @brief Compares this frustum with another for equality.
@@ -246,5 +246,126 @@ protected:
     VxPlane m_NearPlane;    ///< The near clipping plane.
     VxPlane m_FarPlane;     ///< The far clipping plane.
 };
+
+//////////////////////////////////////////////////////////////////////
+/////////////////////// VxFrustum inline bodies //////////////////////
+//////////////////////////////////////////////////////////////////////
+
+inline VxFrustum::VxFrustum()
+    : m_Origin(VxVector::axis0()),
+      m_Right(VxVector::axisX()),
+      m_Up(VxVector::axisY()),
+      m_Dir(VxVector::axisZ()),
+      m_RBound(1.0f),
+      m_UBound(1.0f),
+      m_DMin(1.0f),
+      m_DMax(2.0f),
+      m_DRatio(0.0f),
+      m_RF(0.0f),
+      m_UF(0.0f) { Update(); }
+
+inline VxFrustum::VxFrustum(const VxVector &origin, const VxVector &right, const VxVector &up, const VxVector &dir,
+                             float nearplane, float farplane, float fov, float aspectratio)
+    : m_Origin(origin),
+      m_Right(right),
+      m_Up(up),
+      m_Dir(dir),
+      m_RBound(tanf(fov * 0.5f) * nearplane),
+      m_UBound(tanf(fov * 0.5f) * nearplane * aspectratio),
+      m_DMin(nearplane),
+      m_DMax(farplane),
+      m_DRatio(0.0f),
+      m_RF(0.0f),
+      m_UF(0.0f) { Update(); }
+
+inline void VxFrustum::Update() {
+    m_DRatio = m_DMax / m_DMin;
+    m_RF = m_RBound * m_DMax * -2.0f;
+    m_UF = m_UBound * m_DMax * -2.0f;
+
+    VxVector nearDirVec = m_Dir * m_DMin;
+    VxVector upVec = m_Up * m_UBound;
+    VxVector rightVec = m_Right * m_RBound;
+
+    VxVector nbl_rel = nearDirVec - rightVec - upVec;
+    VxVector ntl_rel = nearDirVec - rightVec + upVec;
+    VxVector nbr_rel = nearDirVec + rightVec - upVec;
+    VxVector ntr_rel = nearDirVec + rightVec + upVec;
+
+    VxVector nbl = m_Origin + nbl_rel;
+    VxVector farVertex = m_Origin + ntr_rel * m_DRatio;
+
+    VxVector nearNormal = -m_Dir;
+    m_NearPlane.Create(nearNormal, nbl);
+    m_FarPlane.Create(m_Dir, farVertex);
+
+    VxVector leftNormal = CrossProduct(nbl_rel, ntl_rel);
+    leftNormal.Normalize();
+    m_LeftPlane.Create(leftNormal, m_Origin);
+
+    VxVector rightNormal = CrossProduct(ntr_rel, nbr_rel);
+    rightNormal.Normalize();
+    m_RightPlane.Create(rightNormal, m_Origin);
+
+    VxVector bottomNormal = CrossProduct(nbr_rel, nbl_rel);
+    bottomNormal.Normalize();
+    m_BottomPlane.Create(bottomNormal, m_Origin);
+
+    VxVector topNormal = CrossProduct(ntl_rel, ntr_rel);
+    topNormal.Normalize();
+    m_UpPlane.Create(topNormal, m_Origin);
+}
+
+inline void VxFrustum::ComputeVertices(VxVector vertices[8]) const {
+    VxVector nearDirVec = m_Dir * m_DMin;
+    VxVector rightVec = m_Right * m_RBound;
+    VxVector upVec = m_Up * m_UBound;
+
+    VxVector leftVec = nearDirVec - rightVec;
+    VxVector rightVec2 = nearDirVec + rightVec;
+
+    vertices[0] = leftVec - upVec;
+    vertices[1] = leftVec + upVec;
+    vertices[2] = rightVec2 + upVec;
+    vertices[3] = rightVec2 - upVec;
+
+    for (int i = 0; i < 4; i++) {
+        VxVector nearVec = vertices[i];
+        vertices[i + 4] = m_Origin + nearVec * m_DRatio;
+        vertices[i] += m_Origin;
+    }
+}
+
+inline void VxFrustum::Transform(const VxMatrix &invworldmat) {
+    m_Right *= m_RBound;
+    m_Up *= m_UBound;
+    m_Dir *= m_DMin;
+
+    VxVector newOrigin;
+    Vx3DMultiplyMatrixVector(&newOrigin, invworldmat, &m_Origin);
+    m_Origin = newOrigin;
+
+    VxVector resultVectors[3];
+    Vx3DRotateVectorMany(resultVectors, invworldmat, &m_Right, 3, sizeof(VxVector));
+
+    const float newRBound = Magnitude(resultVectors[0]);
+    const float newUBound = Magnitude(resultVectors[1]);
+    const float newDMin   = Magnitude(resultVectors[2]);
+
+    m_RBound = newRBound;
+    m_UBound = newUBound;
+    m_DMax   = newDMin * m_DRatio;
+    m_DMin   = newDMin;
+
+    if (newRBound > 0.0f) resultVectors[0] /= newRBound; else resultVectors[0] = VxVector::axis0();
+    if (newUBound > 0.0f) resultVectors[1] /= newUBound; else resultVectors[1] = VxVector::axis0();
+    if (newDMin   > 0.0f) resultVectors[2] /= newDMin;   else resultVectors[2] = VxVector::axis0();
+
+    m_Right = resultVectors[0];
+    m_Up    = resultVectors[1];
+    m_Dir   = resultVectors[2];
+
+    Update();
+}
 
 #endif // VXFRUSTUM_H

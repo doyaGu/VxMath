@@ -28,6 +28,7 @@ set(VXMATH_PUBLIC_HEADERS
         ${VX_INCLUDE_DIR}/VxVector.h
         ${VX_INCLUDE_DIR}/Vx2dVector.h
         ${VX_INCLUDE_DIR}/VxMatrix.h
+        ${VX_INCLUDE_DIR}/VxBbox.h
         ${VX_INCLUDE_DIR}/VxConfiguration.h
         ${VX_INCLUDE_DIR}/VxQuaternion.h
         ${VX_INCLUDE_DIR}/VxRect.h
@@ -60,22 +61,15 @@ set(VXMATH_COMMON_SOURCES
         VxProcessor.cpp
         CKPathSplitter.cpp
         CKDirectoryParser.cpp
-        VxColor.cpp
         VxVector.cpp
-        VxBbox.cpp
-        VxMatrix.cpp
         VxConfiguration.cpp
         VxQuaternion.cpp
-        VxRect.cpp
-        VxRay.cpp
-        VxPlane.cpp
         VxIntersect_BoxBox.cpp
         VxIntersect_Plane.cpp
         VxIntersect_FaceFace.cpp
         VxIntersect_Frustum.cpp
         VxIntersect_Sphere.cpp
         VxDistance.cpp
-        VxFrustum.cpp
         VxMemory.cpp
         XString.cpp
         EscapeURL.cpp

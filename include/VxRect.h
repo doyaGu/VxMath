@@ -551,27 +551,65 @@ public:
      * @param srcScreen A rectangle defining the source screen area.
      * @see TransformToHomogeneous
      */
-    VX_EXPORT void Transform(const VxRect &destScreen, const VxRect &srcScreen);
+    inline void Transform(const VxRect &destScreen, const VxRect &srcScreen) {
+        float srcInvW = 1.0f / (srcScreen.right - srcScreen.left);
+        float srcInvH = 1.0f / (srcScreen.bottom - srcScreen.top);
+        VxRect r((left   - srcScreen.left) * srcInvW,
+                 (top    - srcScreen.top)  * srcInvH,
+                 (right  - srcScreen.right)  * srcInvW,
+                 (bottom - srcScreen.bottom) * srcInvH);
+        float dstW = destScreen.right - destScreen.left;
+        float dstH = destScreen.bottom - destScreen.top;
+        left   = r.left   * dstW + destScreen.left;
+        top    = r.top    * dstH + destScreen.top;
+        right  = r.right  * dstW + destScreen.right;
+        bottom = r.bottom * dstH + destScreen.bottom;
+    }
     /**
      * @brief Transforms the rectangle's coordinates from a source screen size to a destination screen size.
      * @param destScreenSize A vector defining the destination screen size.
      * @param srcScreenSize A vector defining the source screen size.
      */
-    VX_EXPORT void Transform(const Vx2DVector &destScreenSize, const Vx2DVector &srcScreenSize);
+    inline void Transform(const Vx2DVector &destScreenSize, const Vx2DVector &srcScreenSize) {
+        float invW = 1.0f / srcScreenSize.x;
+        float invH = 1.0f / srcScreenSize.y;
+        left   *= invW * destScreenSize.x;
+        top    *= invH * destScreenSize.y;
+        right  *= invW * destScreenSize.x;
+        bottom *= invH * destScreenSize.y;
+    }
 
     /**
      * @brief Transforms a screen coordinate rectangle to a homogeneous rectangle [0,1].
      * @param screen A rectangle defining the screen space.
      * @see Transform, TransformFromHomogeneous
      */
-    VX_EXPORT void TransformToHomogeneous(const VxRect &screen);
+    inline void TransformToHomogeneous(const VxRect &screen) {
+        float invW = 1.0f / (screen.right - screen.left);
+        float invH = 1.0f / (screen.bottom - screen.top);
+        float w = right - left;
+        float h = bottom - top;
+        left   = (left - screen.left) * invW;
+        top    = (top  - screen.top)  * invH;
+        right  = left + w * invW;
+        bottom = top  + h * invH;
+    }
 
     /**
      * @brief Transforms a homogeneous rectangle [0,1] to a screen coordinate rectangle.
      * @param screen A rectangle defining the screen space.
      * @see Transform, TransformToHomogeneous
      */
-    VX_EXPORT void TransformFromHomogeneous(const VxRect &screen);
+    inline void TransformFromHomogeneous(const VxRect &screen) {
+        float sW = screen.right - screen.left;
+        float sH = screen.bottom - screen.top;
+        float w = right - left;
+        float h = bottom - top;
+        left   = screen.left + left * sW;
+        top    = screen.top  + top  * sH;
+        right  = left + w * sW;
+        bottom = top  + h * sH;
+    }
 
     /// @brief Translates the rectangle by adding a vector.
     VxRect &operator+=(const Vx2DVector &t) {
