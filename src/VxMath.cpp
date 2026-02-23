@@ -1,5 +1,3 @@
-#include "VxMath.h"
-
 #include <stdio.h>
 
 #if defined(_WIN32)
@@ -9,6 +7,7 @@
 #include <Windows.h>
 #endif
 
+#include "VxMath.h"
 #include "VxEigenMatrix.h"
 
 extern void InitializeTables();

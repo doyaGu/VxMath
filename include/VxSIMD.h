@@ -55,8 +55,16 @@
 /* x86/x64 SIMD feature detection */
 #if defined(VX_SIMD_X86) && !defined(VX_SIMD_FORCE_DISABLED)
 
-/* Use SIMDe for portable SIMD intrinsics */
+/*
+ * Use SIMDe for portable SIMD intrinsics.
+ *
+ * MinGW headers pull in GCC intrinsic declarations from WinSDK headers
+ * (for example through windows.h -> x86intrin.h). Enabling SIMDe native
+ * aliases there causes macro collisions with intrinsic function names.
+ */
+#if !defined(__MINGW32__) && !defined(__MINGW64__)
 #define SIMDE_ENABLE_NATIVE_ALIASES
+#endif
 
 /*
  * By default, prefer IEEE-ish behavior so SIMD matches scalar code

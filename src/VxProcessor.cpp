@@ -1,5 +1,3 @@
-#include "VxMath.h"
-
 #include <stdio.h>
 #include <string.h>
 
@@ -12,6 +10,8 @@
 #include <chrono>
 #include <thread>
 #endif
+
+#include "VxMath.h"
 
 #if defined(__i386__) || defined(__x86_64__) || defined(_M_IX86) || defined(_M_X64)
 #define VX_HAS_X86_CPUID 1

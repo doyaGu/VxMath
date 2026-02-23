@@ -1,5 +1,3 @@
-#include "VxMath.h"
-
 #include <limits>
 
 #if defined(_WIN32)
@@ -10,6 +8,7 @@
 extern CRITICAL_SECTION g_CriticalSection;
 #endif
 
+#include "VxMath.h"
 #include "VxSIMD.h"
 #include "VxBlitEngine.h"
 

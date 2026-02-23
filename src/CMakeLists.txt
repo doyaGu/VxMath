@@ -157,9 +157,14 @@ function(vx_apply_simd_flags TARGET_NAME)
 
     set(_level "${VXMATH_SIMD_LEVEL}")
 
-    # AUTO: pick a safe default - SSE2 (baseline for x86/x64)
+    # AUTO: pick a safe default.
+    # MinGW builds include source files using SSSE3/SSE4.1 intrinsics directly.
     if (_level STREQUAL "AUTO")
-        set(_level "SSE2")
+        if (MINGW)
+            set(_level "SSE4_1")
+        else ()
+            set(_level "SSE2")
+        endif ()
     endif ()
 
     # Map level -> MSVC /arch flag, GCC/Clang -m flag, compile definition
