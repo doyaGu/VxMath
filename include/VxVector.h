@@ -50,11 +50,6 @@ VX_EXPORT float Tcos(int angle);
  * @see VxVector4, VxCompressedVector
  */
 struct VxVector {
-#if !defined(_MSC_VER)
-    float x; ///< The x-component of the vector.
-    float y; ///< The y-component of the vector.
-    float z; ///< The z-component of the vector.
-#else
     union {
         struct {
             float x; ///< The x-component of the vector.
@@ -63,7 +58,6 @@ struct VxVector {
         };
         float v[3]; ///< Array access to components {x, y, z}.
     };
-#endif
 
     /** @name Constructors */
     ///@{
