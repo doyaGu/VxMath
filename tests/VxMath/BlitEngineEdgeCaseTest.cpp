@@ -5,7 +5,7 @@
  * Tests:
  * - Stride/padding: Non-contiguous rows with sentinel bytes
  * - Self-blit / overlap: Same buffer as source and destination
- * - Dimension edge cases: 1×1, 1×N, N×1, odd dimensions
+ * - Dimension edge cases: 1x1, 1xN, N x 1, odd dimensions
  * - Invalid/zero dimensions: Behavior with 0-width or 0-height
  * - Alignment variations: Misaligned buffers for SIMD edge paths
  */

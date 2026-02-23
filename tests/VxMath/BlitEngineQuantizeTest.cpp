@@ -97,8 +97,8 @@ TEST_F(QuantizeTest, SolidColor_SinglePaletteEntry) {
     PatternGenerator::FillSolid32(srcBuffer.Data(), width, height, 
                                    0x80, 0x40, 0xC0, 0xFF);
     
-    CKERROR result = blitter.QuantizeImage(src, dst);
-    EXPECT_EQ(CK_OK, result);
+    XBOOL result = blitter.QuantizeImage(src, dst);
+    EXPECT_TRUE(result);
 
     ImageWriter::SaveFromDesc("quantize_solidcolor", dst, "Quantize");
     
@@ -301,8 +301,8 @@ TEST_F(QuantizeTest, From24BitRGB) {
     PatternGenerator::FillSolid24(srcBuffer.Data(), width, height, 
                                    0xAA, 0x55, 0x77);
     
-    CKERROR result = blitter.QuantizeImage(src, dst);
-    EXPECT_EQ(CK_OK, result);
+    XBOOL result = blitter.QuantizeImage(src, dst);
+    EXPECT_TRUE(result);
     
     // All indices should be same
     std::set<XBYTE> usedIndices;
@@ -327,8 +327,8 @@ TEST_F(QuantizeTest, FromRGB32_NoAlpha) {
         pixels[i] = 0x00AABBCC;
     }
     
-    CKERROR result = blitter.QuantizeImage(src, dst);
-    EXPECT_EQ(CK_OK, result);
+    XBOOL result = blitter.QuantizeImage(src, dst);
+    EXPECT_TRUE(result);
 
     ImageWriter::SaveFromDesc("quantize_fromrgb32_noalpha", dst, "Quantize");
 }
@@ -421,8 +421,8 @@ TEST_F(QuantizeTest, SinglePixel) {
     
     *reinterpret_cast<XDWORD*>(srcBuffer.Data()) = 0xFFAABBCC;
     
-    CKERROR result = blitter.QuantizeImage(src, dst);
-    EXPECT_EQ(CK_OK, result);
+    XBOOL result = blitter.QuantizeImage(src, dst);
+    EXPECT_TRUE(result);
 
     ImageWriter::SaveFromDesc("quantize_singlepixel", dst, "Quantize");
     
@@ -444,8 +444,8 @@ TEST_F(QuantizeTest, LargeImage) {
     
     PatternGenerator::FillGradient32(srcBuffer.Data(), width, height);
     
-    CKERROR result = blitter.QuantizeImage(src, dst);
-    EXPECT_EQ(CK_OK, result);
+    XBOOL result = blitter.QuantizeImage(src, dst);
+    EXPECT_TRUE(result);
 
     ImageWriter::SaveFromDesc("quantize_largeimage", dst, "Quantize");
     

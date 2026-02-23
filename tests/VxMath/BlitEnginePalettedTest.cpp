@@ -263,13 +263,13 @@ TEST_F(PalettedBlitTest, ARGB32ToPaletted_WithExistingPalette) {
     PatternGenerator::FillSolid32(srcBuffer.Data(), width, height, 0, 0, 0, 255);
     
     // This should quantize to palette
-    CKERROR result = blitter.QuantizeImage(src, dst);
+    XBOOL result = blitter.QuantizeImage(src, dst);
 
-    if (result == CK_OK) {
+    if (result) {
         ImageWriter::SaveFromDesc("argb32_to_paletted_existingpalette", dst, "Paletted");
     }
     
-    if (result == CK_OK) {
+    if (result) {
         // Check that black maps to a black palette entry
         double maxDist = 0;
         for (int i = 0; i < width * height; ++i) {

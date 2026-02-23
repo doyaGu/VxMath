@@ -111,8 +111,8 @@ TEST_F(BlitEngineQuantizeContractTest, Quantize_32BitSource_Succeeds) {
     auto dstDesc = ImageDescFactory::Create8BitPaletted(width, height, dstBuf.Data(),
                                                          palette.Data(), 4);
 
-    CKERROR result = blitter.QuantizeImage(srcDesc, dstDesc);
-    EXPECT_EQ(CK_OK, result) << "Quantize from 32-bit should succeed";
+    XBOOL result = blitter.QuantizeImage(srcDesc, dstDesc);
+    EXPECT_TRUE(result) << "Quantize from 32-bit should succeed";
 }
 
 TEST_F(BlitEngineQuantizeContractTest, Quantize_24BitSource_Succeeds) {
@@ -128,8 +128,8 @@ TEST_F(BlitEngineQuantizeContractTest, Quantize_24BitSource_Succeeds) {
     auto dstDesc = ImageDescFactory::Create8BitPaletted(width, height, dstBuf.Data(),
                                                          palette.Data(), 4);
 
-    CKERROR result = blitter.QuantizeImage(srcDesc, dstDesc);
-    EXPECT_EQ(CK_OK, result) << "Quantize from 24-bit should succeed";
+    XBOOL result = blitter.QuantizeImage(srcDesc, dstDesc);
+    EXPECT_TRUE(result) << "Quantize from 24-bit should succeed";
 }
 
 TEST_F(BlitEngineQuantizeContractTest, Quantize_16BitSource_MayFail) {

@@ -63,9 +63,9 @@ TEST_F(ResizeTest, SameSize_CopiesExactly) {
     
     PatternGenerator::FillColorBars32(pair.srcBuffer.Data(), size, size);
     
-    CKERROR result = blitter.ResizeImage(pair.srcDesc, pair.dstDesc);
+    blitter.ResizeImage(pair.srcDesc, pair.dstDesc);
     ImageWriter::SaveFromDesc("resize_same_size", pair.dstDesc, "Resize");
-    EXPECT_EQ(CK_OK, result);
+
     
     EXPECT_EQ(0, memcmp(pair.srcBuffer.Data(), pair.dstBuffer.Data(), 
                         pair.srcBuffer.Size()));
@@ -96,9 +96,9 @@ TEST_F(ResizeTest, Upscale_2x_SolidColor) {
     PatternGenerator::FillSolid32(pair.srcBuffer.Data(), srcSize, srcSize,
                                    128, 64, 192, 255);
     
-    CKERROR result = blitter.ResizeImage(pair.srcDesc, pair.dstDesc);
+    blitter.ResizeImage(pair.srcDesc, pair.dstDesc);
     ImageWriter::SaveFromDesc("resize_up_2x_solid", pair.dstDesc, "Resize");
-    EXPECT_EQ(CK_OK, result);
+
     
     // Every pixel should match source color (ARGB: 0xFF8040C0)
     const XDWORD* dst = reinterpret_cast<const XDWORD*>(pair.dstBuffer.Data());
@@ -114,9 +114,9 @@ TEST_F(ResizeTest, Upscale_2x_Checkerboard) {
     
     PatternGenerator::FillCheckerboard32(pair.srcBuffer.Data(), srcSize, srcSize);
     
-    CKERROR result = blitter.ResizeImage(pair.srcDesc, pair.dstDesc);
+    blitter.ResizeImage(pair.srcDesc, pair.dstDesc);
     ImageWriter::SaveFromDesc("resize_up_2x_checker", pair.dstDesc, "Resize");
-    EXPECT_EQ(CK_OK, result);
+
     
     // Due to bilinear filtering, edges will be blended
     // Check corners - should match source corners
@@ -133,9 +133,9 @@ TEST_F(ResizeTest, Upscale_4x) {
     
     PatternGenerator::FillGradient32(pair.srcBuffer.Data(), srcSize, srcSize);
     
-    CKERROR result = blitter.ResizeImage(pair.srcDesc, pair.dstDesc);
+    blitter.ResizeImage(pair.srcDesc, pair.dstDesc);
     ImageWriter::SaveFromDesc("resize_up_4x", pair.dstDesc, "Resize");
-    EXPECT_EQ(CK_OK, result);
+
     
     // Gradient should still be present - check top-left is darker than bottom-right
     const XDWORD* dst = reinterpret_cast<const XDWORD*>(pair.dstBuffer.Data());
@@ -156,9 +156,9 @@ TEST_F(ResizeTest, Upscale_NonPowerOf2) {
     PatternGenerator::FillSolid32(pair.srcBuffer.Data(), srcW, srcH,
                                    200, 100, 50, 255);
     
-    CKERROR result = blitter.ResizeImage(pair.srcDesc, pair.dstDesc);
+    blitter.ResizeImage(pair.srcDesc, pair.dstDesc);
     ImageWriter::SaveFromDesc("resize_up_nonpow2", pair.dstDesc, "Resize");
-    EXPECT_EQ(CK_OK, result);
+
     
     // All pixels should be similar to source
     const XDWORD* dst = reinterpret_cast<const XDWORD*>(pair.dstBuffer.Data());
@@ -180,9 +180,9 @@ TEST_F(ResizeTest, Downscale_2x_SolidColor) {
     PatternGenerator::FillSolid32(pair.srcBuffer.Data(), srcSize, srcSize,
                                    100, 150, 200, 255);
     
-    CKERROR result = blitter.ResizeImage(pair.srcDesc, pair.dstDesc);
+    blitter.ResizeImage(pair.srcDesc, pair.dstDesc);
     ImageWriter::SaveFromDesc("resize_down_2x_solid", pair.dstDesc, "Resize");
-    EXPECT_EQ(CK_OK, result);
+
     
     const XDWORD* dst = reinterpret_cast<const XDWORD*>(pair.dstBuffer.Data());
     for (int i = 0; i < dstSize * dstSize; ++i) {
@@ -198,9 +198,9 @@ TEST_F(ResizeTest, Downscale_2x_Checkerboard) {
     // 2x2 checkerboard in source becomes 1x1 gray pixels when downscaled
     PatternGenerator::FillCheckerboard32(pair.srcBuffer.Data(), srcSize, srcSize);
     
-    CKERROR result = blitter.ResizeImage(pair.srcDesc, pair.dstDesc);
+    blitter.ResizeImage(pair.srcDesc, pair.dstDesc);
     ImageWriter::SaveFromDesc("resize_down_2x_checker", pair.dstDesc, "Resize");
-    EXPECT_EQ(CK_OK, result);
+
     
     // After downscaling, checkerboard should produce some blending
     // The exact result depends on filtering algorithm - allow wide tolerance
@@ -216,9 +216,9 @@ TEST_F(ResizeTest, Downscale_4x) {
     
     PatternGenerator::FillGradient32(pair.srcBuffer.Data(), srcSize, srcSize);
     
-    CKERROR result = blitter.ResizeImage(pair.srcDesc, pair.dstDesc);
+    blitter.ResizeImage(pair.srcDesc, pair.dstDesc);
     ImageWriter::SaveFromDesc("resize_down_4x", pair.dstDesc, "Resize");
-    EXPECT_EQ(CK_OK, result);
+
     
     // Gradient should be preserved
     const XDWORD* dst = reinterpret_cast<const XDWORD*>(pair.dstBuffer.Data());
@@ -239,9 +239,9 @@ TEST_F(ResizeTest, Downscale_NonPowerOf2) {
     PatternGenerator::FillSolid32(pair.srcBuffer.Data(), srcW, srcH,
                                    80, 160, 240, 255);
     
-    CKERROR result = blitter.ResizeImage(pair.srcDesc, pair.dstDesc);
+    blitter.ResizeImage(pair.srcDesc, pair.dstDesc);
     ImageWriter::SaveFromDesc("resize_down_nonpow2", pair.dstDesc, "Resize");
-    EXPECT_EQ(CK_OK, result);
+
     
     const XDWORD* dst = reinterpret_cast<const XDWORD*>(pair.dstBuffer.Data());
     // Check all pixels match
@@ -263,9 +263,9 @@ TEST_F(ResizeTest, NonSquare_Wide_Upscale) {
     PatternGenerator::FillSolid32(pair.srcBuffer.Data(), srcW, srcH,
                                    50, 100, 150, 255);
     
-    CKERROR result = blitter.ResizeImage(pair.srcDesc, pair.dstDesc);
+    blitter.ResizeImage(pair.srcDesc, pair.dstDesc);
     ImageWriter::SaveFromDesc("resize_nonsquare_wide_up", pair.dstDesc, "Resize");
-    EXPECT_EQ(CK_OK, result);
+
     
     EXPECT_TRUE(CheckPixelApprox(pair.dstBuffer.Data(), dstW, dstH,
                                   dstW/2, dstH/2, 50, 100, 150, 2));
@@ -279,9 +279,9 @@ TEST_F(ResizeTest, NonSquare_Tall_Downscale) {
     PatternGenerator::FillSolid32(pair.srcBuffer.Data(), srcW, srcH,
                                    200, 150, 100, 255);
     
-    CKERROR result = blitter.ResizeImage(pair.srcDesc, pair.dstDesc);
+    blitter.ResizeImage(pair.srcDesc, pair.dstDesc);
     ImageWriter::SaveFromDesc("resize_nonsquare_tall_down", pair.dstDesc, "Resize");
-    EXPECT_EQ(CK_OK, result);
+
     
     EXPECT_TRUE(CheckPixelApprox(pair.dstBuffer.Data(), dstW, dstH,
                                   dstW/2, dstH/2, 200, 150, 100, 5));
@@ -295,9 +295,9 @@ TEST_F(ResizeTest, NonSquare_DifferentRatios) {
     
     PatternGenerator::FillColorBars32(pair.srcBuffer.Data(), srcW, srcH);
     
-    CKERROR result = blitter.ResizeImage(pair.srcDesc, pair.dstDesc);
+    blitter.ResizeImage(pair.srcDesc, pair.dstDesc);
     ImageWriter::SaveFromDesc("resize_nonsquare_diff_ratio", pair.dstDesc, "Resize");
-    EXPECT_EQ(CK_OK, result);
+
     
     // Just check it completes without error
     EXPECT_NE(nullptr, pair.dstBuffer.Data());
@@ -313,9 +313,9 @@ TEST_F(ResizeTest, Extreme_UpscaleFrom1x1) {
     XDWORD* src = reinterpret_cast<XDWORD*>(pair.srcBuffer.Data());
     *src = 0xFF112233;
     
-    CKERROR result = blitter.ResizeImage(pair.srcDesc, pair.dstDesc);
+    blitter.ResizeImage(pair.srcDesc, pair.dstDesc);
     ImageWriter::SaveFromDesc("resize_extreme_up_from1x1", pair.dstDesc, "Resize");
-    EXPECT_EQ(CK_OK, result);
+
     
     // All destination pixels should be the same color
     const XDWORD* dst = reinterpret_cast<const XDWORD*>(pair.dstBuffer.Data());
@@ -333,9 +333,9 @@ TEST_F(ResizeTest, Extreme_DownscaleTo1x1) {
     PatternGenerator::FillSolid32(pair.srcBuffer.Data(), srcSize, srcSize,
                                    0x44, 0x88, 0xCC, 0xFF);
     
-    CKERROR result = blitter.ResizeImage(pair.srcDesc, pair.dstDesc);
+    blitter.ResizeImage(pair.srcDesc, pair.dstDesc);
     ImageWriter::SaveFromDesc("resize_extreme_down_to1x1", pair.dstDesc, "Resize");
-    EXPECT_EQ(CK_OK, result);
+
     
     XDWORD* dst = reinterpret_cast<XDWORD*>(pair.dstBuffer.Data());
     EXPECT_TRUE(CheckPixelApprox(pair.dstBuffer.Data(), 1, 1, 0, 0,
@@ -349,9 +349,9 @@ TEST_F(ResizeTest, Extreme_LargeImage) {
     PatternGenerator::FillSolid32(pair.srcBuffer.Data(), srcSize, srcSize,
                                    0x80, 0x40, 0xC0, 0xFF);
     
-    CKERROR result = blitter.ResizeImage(pair.srcDesc, pair.dstDesc);
+    blitter.ResizeImage(pair.srcDesc, pair.dstDesc);
     ImageWriter::SaveFromDesc("resize_extreme_large", pair.dstDesc, "Resize");
-    EXPECT_EQ(CK_OK, result);
+
     
     // Sample check
     EXPECT_TRUE(CheckPixelApprox(pair.dstBuffer.Data(), dstSize, dstSize,
