@@ -39,6 +39,8 @@ set(VXMATH_PUBLIC_HEADERS
         ${VX_INCLUDE_DIR}/VxIntersect.h
         ${VX_INCLUDE_DIR}/VxDistance.h
         ${VX_INCLUDE_DIR}/VxFrustum.h
+        ${VX_INCLUDE_DIR}/VxSIMD.h
+        ${VX_INCLUDE_DIR}/VxSIMD.inl
         ${VX_INCLUDE_DIR}/VxColor.h
         ${VX_INCLUDE_DIR}/VxTimeProfiler.h
         ${VX_INCLUDE_DIR}/VxImageDescEx.h
@@ -49,8 +51,6 @@ set(VXMATH_PUBLIC_HEADERS
 set(VXMATH_PRIVATE_HEADERS
         VxEigenMatrix.h
         VxBlitEngine.h
-        VxSIMD.h
-        VxSIMD.inl
         NeuQuant.h
 )
 

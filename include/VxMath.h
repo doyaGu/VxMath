@@ -34,6 +34,7 @@
 #include "VxIntersect.h"
 #include "VxDistance.h"
 #include "VxFrustum.h"
+#include "VxSIMD.h"
 #include "VxColor.h"
 #include "VxMemoryPool.h"
 #include "VxTimeProfiler.h"

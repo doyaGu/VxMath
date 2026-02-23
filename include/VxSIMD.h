@@ -1,18 +1,20 @@
-//-------------------------------------------------------------------------------------
-// VxSIMD.h -- SIMD Math Library
-//
-// Following DirectXMath patterns for portable, high-performance SIMD math.
-// Header-only inline implementation for maximum performance.
-//-------------------------------------------------------------------------------------
+/**
+ * @file VxSIMD.h
+ * @brief Public SIMD helpers and high-level vector/matrix utility wrappers for VxMath.
+ *
+ * @remarks
+ * This header follows a DirectXMath-like API style and provides:
+ * - compile-time SIMD capability macros
+ * - runtime SIMD feature detection helpers
+ * - inline SIMD-accelerated math helpers implemented in `VxSIMD.inl`
+ */
 
 #ifndef VXSIMD_H
 #define VXSIMD_H
 
 #include "VxMathDefines.h"
 
-// ============================================================================
-// SIMD Configuration and CPU Feature Detection
-// ============================================================================
+// SIMD configuration and CPU feature detection
 
 #include <cstdlib>
 #include <cstdint>

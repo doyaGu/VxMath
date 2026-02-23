@@ -1,9 +1,7 @@
-//-------------------------------------------------------------------------------------
-// VxSIMD.inl -- SIMD Inline Implementations
-//
-// All SIMD implementations as inline functions following DirectXMath patterns.
-// This file is included at the end of VxSIMD.h
-//-------------------------------------------------------------------------------------
+/**
+ * @file VxSIMD.inl
+ * @brief Inline SIMD implementations backing the public `VxSIMD.h` API.
+ */
 
 #pragma once
 
