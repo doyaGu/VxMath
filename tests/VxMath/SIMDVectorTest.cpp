@@ -229,7 +229,7 @@ TEST_F(SIMDVectorTest, Cross_UnitVectors) {
 
     VxSIMDCrossVector(&result, &x, &y);
 
-    // X × Y = Z
+    // X * Y = Z
     EXPECT_NEAR(result.x, 0.0f, SIMD_EXACT_TOL);
     EXPECT_NEAR(result.y, 0.0f, SIMD_EXACT_TOL);
     EXPECT_NEAR(result.z, 1.0f, SIMD_EXACT_TOL);
@@ -243,7 +243,7 @@ TEST_F(SIMDVectorTest, Cross_AntiCommutative) {
     VxSIMDCrossVector(&ab, &a, &b);
     VxSIMDCrossVector(&ba, &b, &a);
 
-    // a × b = -(b × a)
+    // a * b = -(b * a)
     EXPECT_SIMD_NEAR(ab.x, -ba.x, SIMD_SCALAR_TOL);
     EXPECT_SIMD_NEAR(ab.y, -ba.y, SIMD_SCALAR_TOL);
     EXPECT_SIMD_NEAR(ab.z, -ba.z, SIMD_SCALAR_TOL);

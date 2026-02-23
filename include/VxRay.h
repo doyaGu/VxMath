@@ -2,7 +2,7 @@
 #define VXRAY_H
 
 #include "VxMatrix.h"
-#include "XUtil.h"
+#include "VxSIMD.h"
 
 /**
  * @brief Represents a ray in 3D space, defined by an origin and a direction.
@@ -26,14 +26,14 @@
 class VxRay {
 public:
     /// @brief Default constructor.
-    VxRay() {}
+    VxRay();
 
     /**
      * @brief Constructs a ray from a start point and an end point.
      * @param start The origin of the ray.
      * @param end The point that defines the direction from the origin.
      */
-    VxRay(const VxVector &start, const VxVector &end) : m_Origin(start), m_Direction(end - start) {}
+    VxRay(const VxVector &start, const VxVector &end);
 
     /**
      * @brief Constructs a ray from a starting point and a direction vector.
@@ -41,65 +41,53 @@ public:
      * @param dir The direction vector of the ray.
      * @param dummy A dummy parameter to differentiate this constructor.
      */
-    VxRay(const VxVector &start, const VxVector &dir, int *dummy) : m_Origin(start), m_Direction(dir) {}
+    VxRay(const VxVector &start, const VxVector &dir, int *dummy);
 
     /**
      * @brief Transforms the ray by a matrix.
      * @param dest Output parameter for the transformed ray.
      * @param mat The transformation matrix to apply.
      */
-    inline void Transform(VxRay &dest, const VxMatrix &mat) {
-        Vx3DMultiplyMatrixVector(&dest.m_Origin, mat, &m_Origin);
-        Vx3DRotateVector(&dest.m_Direction, mat, &m_Direction);
-    }
+    inline void Transform(VxRay &dest, const VxMatrix &mat);
 
     /**
      * @brief Interpolates a point along the ray.
      * @param p Output parameter for the interpolated point (m_Origin + t * m_Direction).
      * @param t The interpolation parameter.
      */
-    void Interpolate(VxVector &p, float t) const {
-        p = m_Origin + m_Direction * t;
-    }
+    void Interpolate(VxVector &p, float t) const;
 
     /**
      * @brief Returns the squared distance from a point to the infinite line defined by this ray.
      * @param p A point in space.
      * @return The squared distance from the point to the line.
      */
-    float SquareDistance(const VxVector &p) const {
-        VxVector v = p - m_Origin;
-        float a = SquareMagnitude(v);
-        float ps = DotProduct(v, m_Direction);
-        return a - ps * ps;
-    }
+    float SquareDistance(const VxVector &p) const;
 
     /**
      * @brief Returns the distance from a point to the infinite line defined by this ray.
      * @param p A point in space.
      * @return The minimum distance between the point and the line.
      */
-    float Distance(const VxVector &p) const {
-        return sqrtf(SquareDistance(p));
-    }
+    float Distance(const VxVector &p) const;
 
     /// @brief Equality operator.
-    bool operator==(const VxRay &iRay) const {
-        return (m_Origin == iRay.m_Origin) && (m_Direction == iRay.m_Direction);
-    }
+    bool operator==(const VxRay &iRay) const;
 
     /// @brief Gets a const reference to the ray's origin.
-    const VxVector &GetOrigin() const { return m_Origin; }
+    const VxVector &GetOrigin() const;
     /// @brief Gets a mutable reference to the ray's origin.
-    VxVector &GetOrigin() { return m_Origin; }
+    VxVector &GetOrigin();
 
     /// @brief Gets a const reference to the ray's direction vector.
-    const VxVector &GetDirection() const { return m_Direction; }
+    const VxVector &GetDirection() const;
     /// @brief Gets a mutable reference to the ray's direction vector.
-    VxVector &GetDirection() { return m_Direction; }
+    VxVector &GetDirection();
 
     VxVector m_Origin; ///< The origin point of the ray.
     VxVector m_Direction; ///< The direction vector of the ray (not necessarily normalized).
 };
+
+#include "VxRay.inl"
 
 #endif // VXRAY_H

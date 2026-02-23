@@ -6,7 +6,7 @@
  * This header follows a DirectXMath-like API style and provides:
  * - compile-time SIMD capability macros
  * - runtime SIMD feature detection helpers
- * - inline SIMD-accelerated math helpers implemented in `VxSIMD.inl`
+ * - inline SIMD primitives implemented in `VxSIMD.inl` and higher-level typed wrappers in per-type `.inl` files
  */
 
 #ifndef VXSIMD_H
@@ -21,6 +21,15 @@
 #include <cfloat>
 #include <cmath>
 #include <cstring>
+
+/*
+ * Build-system kill switch.
+ * When VX_SIMD_NONE is defined we keep this header usable, but force-disable
+ * all compile-time SIMD paths (VX_SIMD_SSE / VX_SIMD_SSE2 / ...).
+ */
+#if defined(VX_SIMD_NONE)
+#define VX_SIMD_FORCE_DISABLED 1
+#endif
 
 // Platform detection
 #if defined(_MSC_VER)
@@ -44,7 +53,7 @@
 #endif
 
 /* x86/x64 SIMD feature detection */
-#if defined(VX_SIMD_X86)
+#if defined(VX_SIMD_X86) && !defined(VX_SIMD_FORCE_DISABLED)
 
 /* Use SIMDe for portable SIMD intrinsics */
 #define SIMDE_ENABLE_NATIVE_ALIASES
@@ -123,7 +132,7 @@
 #include <simde/x86/fma.h>
 #endif
 
-#endif // VX_SIMD_X86
+#endif // VX_SIMD_X86 && !VX_SIMD_FORCE_DISABLED
 
 // ============================================================================
 // FMA Macros (like DirectXMath XM_FMADD_PS)

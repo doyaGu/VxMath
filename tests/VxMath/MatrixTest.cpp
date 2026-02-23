@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 #include <cmath>
+#include <random>
 #include <vector>
 #include <memory>
 #include "VxMatrix.h"
@@ -8,6 +9,53 @@
 #include "VxMathTestHelpers.h"
 
 using namespace VxMathTest;
+
+namespace {
+
+float Determinant3x3Ref(const VxMatrix& m) {
+    const float a00 = m[0][0], a01 = m[0][1], a02 = m[0][2];
+    const float a10 = m[1][0], a11 = m[1][1], a12 = m[1][2];
+    const float a20 = m[2][0], a21 = m[2][1], a22 = m[2][2];
+    return a00 * (a11 * a22 - a12 * a21) +
+           a01 * (a12 * a20 - a10 * a22) +
+           a02 * (a10 * a21 - a11 * a20);
+}
+
+void InverseAffineRef(VxMatrix& out, const VxMatrix& m) {
+    const float a00 = m[0][0], a01 = m[0][1], a02 = m[0][2];
+    const float a10 = m[1][0], a11 = m[1][1], a12 = m[1][2];
+    const float a20 = m[2][0], a21 = m[2][1], a22 = m[2][2];
+    const float minor1 = a11 * a22 - a12 * a21;
+    const float minor2 = a12 * a20 - a10 * a22;
+    const float minor3 = a10 * a21 - a11 * a20;
+    const double det = a00 * minor1 + a01 * minor2 + a02 * minor3;
+    if (std::fabs(det) < EPSILON) {
+        out.SetIdentity();
+        return;
+    }
+
+    const double id = 1.0 / det;
+    out[0][0] = static_cast<float>((a11 * a22 - a12 * a21) * id);
+    out[0][1] = static_cast<float>((a02 * a21 - a01 * a22) * id);
+    out[0][2] = static_cast<float>((a01 * a12 - a02 * a11) * id);
+    out[0][3] = 0.0f;
+    out[1][0] = static_cast<float>((a12 * a20 - a10 * a22) * id);
+    out[1][1] = static_cast<float>((a00 * a22 - a02 * a20) * id);
+    out[1][2] = static_cast<float>((a02 * a10 - a00 * a12) * id);
+    out[1][3] = 0.0f;
+    out[2][0] = static_cast<float>((a10 * a21 - a11 * a20) * id);
+    out[2][1] = static_cast<float>((a01 * a20 - a00 * a21) * id);
+    out[2][2] = static_cast<float>((a00 * a11 - a01 * a10) * id);
+    out[2][3] = 0.0f;
+
+    const float tx = m[3][0], ty = m[3][1], tz = m[3][2];
+    out[3][0] = -(out[0][0] * tx + out[1][0] * ty + out[2][0] * tz);
+    out[3][1] = -(out[0][1] * tx + out[1][1] * ty + out[2][1] * tz);
+    out[3][2] = -(out[0][2] * tx + out[1][2] * ty + out[2][2] * tz);
+    out[3][3] = 1.0f;
+}
+
+} // namespace
 
 class VxMatrixTest : public ::testing::Test {
 protected:
@@ -177,6 +225,55 @@ TEST_F(VxMatrixTest, MatrixMultiplicationAssignment) {
 
     EXPECT_FLOAT_EQ(mat1[3][0], 1.0f);
     EXPECT_FLOAT_EQ(mat1[3][1], 2.0f);
+}
+
+TEST_F(VxMatrixTest, MatrixMultiplicationAssignment_MatchesVx3DMultiplyMatrix) {
+    std::mt19937 rng(777u);
+    std::uniform_real_distribution<float> dist(-4.0f, 4.0f);
+
+    for (int i = 0; i < 200; ++i) {
+        VxMatrix a;
+        VxMatrix b;
+        for (int r = 0; r < 4; ++r) {
+            for (int c = 0; c < 4; ++c) {
+                a[r][c] = dist(rng);
+                b[r][c] = dist(rng);
+            }
+        }
+
+        a[0][3] = 0.0f; a[1][3] = 0.0f; a[2][3] = 0.0f; a[3][3] = 1.0f;
+        b[0][3] = 0.0f; b[1][3] = 0.0f; b[2][3] = 0.0f; b[3][3] = 1.0f;
+
+        VxMatrix expected;
+        Vx3DMultiplyMatrix(expected, a, b);
+
+        VxMatrix lhs = a;
+        lhs *= b;
+
+        for (int r = 0; r < 4; ++r) {
+            for (int c = 0; c < 4; ++c) {
+                EXPECT_TRUE(ScaleRelativeNear(lhs[r][c], expected[r][c], ACCUMULATION_TOL));
+            }
+        }
+    }
+}
+
+TEST_F(VxMatrixTest, MatrixMultiplicationAssignment_SelfTranslation) {
+    VxMatrix t;
+    t.SetIdentity();
+    t[3][0] = 3.0f;
+    t[3][1] = -2.0f;
+    t[3][2] = 5.0f;
+
+    VxMatrix expected;
+    Vx3DMultiplyMatrix(expected, t, t);
+
+    t *= t;
+
+    EXPECT_TRUE(ScaleRelativeNear(t[3][0], expected[3][0], STANDARD_TOL));
+    EXPECT_TRUE(ScaleRelativeNear(t[3][1], expected[3][1], STANDARD_TOL));
+    EXPECT_TRUE(ScaleRelativeNear(t[3][2], expected[3][2], STANDARD_TOL));
+    EXPECT_TRUE(ScaleRelativeNear(t[3][3], 1.0f, STANDARD_TOL));
 }
 
 TEST_F(VxMatrixTest, VectorTransformation) {
@@ -359,6 +456,74 @@ TEST_F(VxMatrixUtilityTest, Vx3DMultiplyMatrix4) {
     EXPECT_FLOAT_EQ(result[2][2], 1.0f);
 }
 
+TEST_F(VxMatrixUtilityTest, Vx3DMultiplyMatrix_AliasingSafety) {
+    std::mt19937 rng(424242u);
+    std::uniform_real_distribution<float> dist(-3.0f, 3.0f);
+
+    for (int i = 0; i < 200; ++i) {
+        VxMatrix a;
+        VxMatrix b;
+        for (int r = 0; r < 4; ++r) {
+            for (int c = 0; c < 4; ++c) {
+                a[r][c] = dist(rng);
+                b[r][c] = dist(rng);
+            }
+        }
+
+        // Affine shape expected by Vx3DMultiplyMatrix
+        a[0][3] = 0.0f; a[1][3] = 0.0f; a[2][3] = 0.0f; a[3][3] = 1.0f;
+        b[0][3] = 0.0f; b[1][3] = 0.0f; b[2][3] = 0.0f; b[3][3] = 1.0f;
+
+        VxMatrix expected;
+        Vx3DMultiplyMatrix(expected, a, b);
+
+        VxMatrix aliasLeft = a;
+        Vx3DMultiplyMatrix(aliasLeft, aliasLeft, b);
+
+        VxMatrix aliasRight = b;
+        Vx3DMultiplyMatrix(aliasRight, a, aliasRight);
+
+        for (int r = 0; r < 4; ++r) {
+            for (int c = 0; c < 4; ++c) {
+                EXPECT_TRUE(ScaleRelativeNear(aliasLeft[r][c], expected[r][c], ACCUMULATION_TOL));
+                EXPECT_TRUE(ScaleRelativeNear(aliasRight[r][c], expected[r][c], ACCUMULATION_TOL));
+            }
+        }
+    }
+}
+
+TEST_F(VxMatrixUtilityTest, Vx3DMultiplyMatrix4_AliasingSafety) {
+    std::mt19937 rng(131313u);
+    std::uniform_real_distribution<float> dist(-2.0f, 2.0f);
+
+    for (int i = 0; i < 200; ++i) {
+        VxMatrix a;
+        VxMatrix b;
+        for (int r = 0; r < 4; ++r) {
+            for (int c = 0; c < 4; ++c) {
+                a[r][c] = dist(rng);
+                b[r][c] = dist(rng);
+            }
+        }
+
+        VxMatrix expected;
+        Vx3DMultiplyMatrix4(expected, a, b);
+
+        VxMatrix aliasLeft = a;
+        Vx3DMultiplyMatrix4(aliasLeft, aliasLeft, b);
+
+        VxMatrix aliasRight = b;
+        Vx3DMultiplyMatrix4(aliasRight, a, aliasRight);
+
+        for (int r = 0; r < 4; ++r) {
+            for (int c = 0; c < 4; ++c) {
+                EXPECT_TRUE(ScaleRelativeNear(aliasLeft[r][c], expected[r][c], ACCUMULATION_TOL));
+                EXPECT_TRUE(ScaleRelativeNear(aliasRight[r][c], expected[r][c], ACCUMULATION_TOL));
+            }
+        }
+    }
+}
+
 TEST_F(VxMatrixUtilityTest, Vx3DMultiplyMatrixVector) {
     VxVector input(1.0f, 2.0f, 3.0f);
     VxVector output;
@@ -388,6 +553,27 @@ TEST_F(VxMatrixUtilityTest, Vx3DMultiplyMatrixVectorMany) {
     EXPECT_FLOAT_EQ(outputs[1].x, 5.0f);  // 0 + 5
     EXPECT_FLOAT_EQ(outputs[1].y, 11.0f); // 1 + 10
     EXPECT_FLOAT_EQ(outputs[1].z, 15.0f); // 0 + 15
+}
+
+TEST_F(VxMatrixUtilityTest, Vx3DMultiplyMatrixVectorMany_InPlace) {
+    const int count = 16;
+    VxVector baseline[count];
+    VxVector inPlace[count];
+    VxVector outRef[count];
+
+    for (int i = 0; i < count; ++i) {
+        baseline[i] = VxVector(static_cast<float>(i), static_cast<float>(i * 2), static_cast<float>(i * 3));
+        inPlace[i] = baseline[i];
+    }
+
+    Vx3DMultiplyMatrixVectorMany(outRef, translation, baseline, count, sizeof(VxVector));
+    Vx3DMultiplyMatrixVectorMany(inPlace, translation, inPlace, count, sizeof(VxVector));
+
+    for (int i = 0; i < count; ++i) {
+        EXPECT_TRUE(ScaleRelativeNear(inPlace[i].x, outRef[i].x, STANDARD_TOL));
+        EXPECT_TRUE(ScaleRelativeNear(inPlace[i].y, outRef[i].y, STANDARD_TOL));
+        EXPECT_TRUE(ScaleRelativeNear(inPlace[i].z, outRef[i].z, STANDARD_TOL));
+    }
 }
 
 TEST_F(VxMatrixUtilityTest, Vx3DMultiplyMatrixVector4) {
@@ -448,6 +634,27 @@ TEST_F(VxMatrixUtilityTest, Vx3DRotateVectorMany) {
     EXPECT_FLOAT_EQ(outputs[1].y, 1.0f);
 }
 
+TEST_F(VxMatrixUtilityTest, Vx3DRotateVectorMany_InPlace) {
+    const int count = 16;
+    VxVector baseline[count];
+    VxVector inPlace[count];
+    VxVector outRef[count];
+
+    for (int i = 0; i < count; ++i) {
+        baseline[i] = VxVector(static_cast<float>(i), static_cast<float>(i * 2), static_cast<float>(i * 3));
+        inPlace[i] = baseline[i];
+    }
+
+    Vx3DRotateVectorMany(outRef, translation, baseline, count, sizeof(VxVector));
+    Vx3DRotateVectorMany(inPlace, translation, inPlace, count, sizeof(VxVector));
+
+    for (int i = 0; i < count; ++i) {
+        EXPECT_TRUE(ScaleRelativeNear(inPlace[i].x, outRef[i].x, STANDARD_TOL));
+        EXPECT_TRUE(ScaleRelativeNear(inPlace[i].y, outRef[i].y, STANDARD_TOL));
+        EXPECT_TRUE(ScaleRelativeNear(inPlace[i].z, outRef[i].z, STANDARD_TOL));
+    }
+}
+
 TEST_F(VxMatrixUtilityTest, Vx3DInverseMatrix) {
     VxMatrix inverse;
     Vx3DInverseMatrix(inverse, identity);
@@ -503,6 +710,48 @@ TEST_F(VxMatrixUtilityTest, Vx3DMatrixDeterminant) {
 
     det = Vx3DMatrixDeterminant(scale_matrix);
     EXPECT_NEAR(det, 24.0f, STANDARD_TOL); // 2 * 3 * 4 = 24
+}
+
+TEST_F(VxMatrixUtilityTest, SIMDConsistency_DeterminantAndInverse_AffineRandomized) {
+    std::mt19937 rng(20260223u);
+    std::uniform_real_distribution<float> angleDist(-PI, PI);
+    std::uniform_real_distribution<float> scaleDist(-3.0f, 3.0f);
+    std::uniform_real_distribution<float> transDist(-80.0f, 80.0f);
+
+    for (int i = 0; i < 500; ++i) {
+        VxMatrix m;
+        Vx3DMatrixFromEulerAngles(m, angleDist(rng), angleDist(rng), angleDist(rng));
+
+        float sx = scaleDist(rng);
+        float sy = scaleDist(rng);
+        float sz = scaleDist(rng);
+        if (std::fabs(sx) < 0.2f) sx = (sx < 0.0f) ? -0.2f : 0.2f;
+        if (std::fabs(sy) < 0.2f) sy = (sy < 0.0f) ? -0.2f : 0.2f;
+        if (std::fabs(sz) < 0.2f) sz = (sz < 0.0f) ? -0.2f : 0.2f;
+
+        m[0] *= sx;
+        m[1] *= sy;
+        m[2] *= sz;
+        m[3][0] = transDist(rng);
+        m[3][1] = transDist(rng);
+        m[3][2] = transDist(rng);
+        m[3][3] = 1.0f;
+
+        const float detActual = Vx3DMatrixDeterminant(m);
+        const float detRef = Determinant3x3Ref(m);
+        EXPECT_TRUE(ScaleRelativeNear(detActual, detRef, ACCUMULATION_TOL));
+
+        VxMatrix invActual;
+        VxMatrix invRef;
+        Vx3DInverseMatrix(invActual, m);
+        InverseAffineRef(invRef, m);
+
+        for (int r = 0; r < 4; ++r) {
+            for (int c = 0; c < 4; ++c) {
+                EXPECT_TRUE(ScaleRelativeNear(invActual[r][c], invRef[r][c], ACCUMULATION_TOL));
+            }
+        }
+    }
 }
 
 TEST_F(VxMatrixUtilityTest, Vx3DTransposeMatrix) {
@@ -597,7 +846,7 @@ TEST_F(VxMatrixUtilityTest, Vx3DMatrixFromEulerAngles) {
 
     // The matrix should be valid (non-zero determinant)
     float det = Vx3DMatrixDeterminant(euler_matrix);
-    EXPECT_NEAR(fabs(det), 1.0f, STANDARD_TOL); // Rotation matrices have determinant ±1
+    EXPECT_NEAR(fabs(det), 1.0f, STANDARD_TOL); // Rotation matrices have determinant +/-1
 }
 
 TEST_F(VxMatrixUtilityTest, Vx3DMatrixToEulerAngles) {
@@ -793,6 +1042,27 @@ TEST_F(VxMatrixStridedTest, Vx3DMultiplyMatrixVectorStrided) {
         EXPECT_NEAR(result_vectors[i].x, expected.x, STANDARD_TOL);
         EXPECT_NEAR(result_vectors[i].y, expected.y, STANDARD_TOL);
         EXPECT_NEAR(result_vectors[i].z, expected.z, STANDARD_TOL);
+    }
+}
+
+TEST_F(VxMatrixStridedTest, Vx3DMultiplyMatrixVectorStrided_InPlace) {
+    VxVector baseline[test_count];
+    VxVector outRef[test_count];
+    for (int i = 0; i < test_count; ++i) {
+        baseline[i] = test_vectors[i];
+    }
+
+    VxStridedData srcRef(baseline, sizeof(VxVector));
+    VxStridedData dstRef(outRef, sizeof(VxVector));
+    Vx3DMultiplyMatrixVectorStrided(&dstRef, &srcRef, transform, test_count);
+
+    VxStridedData inout(test_vectors, sizeof(VxVector));
+    Vx3DMultiplyMatrixVectorStrided(&inout, &inout, transform, test_count);
+
+    for (int i = 0; i < test_count; ++i) {
+        EXPECT_TRUE(ScaleRelativeNear(test_vectors[i].x, outRef[i].x, STANDARD_TOL));
+        EXPECT_TRUE(ScaleRelativeNear(test_vectors[i].y, outRef[i].y, STANDARD_TOL));
+        EXPECT_TRUE(ScaleRelativeNear(test_vectors[i].z, outRef[i].z, STANDARD_TOL));
     }
 }
 
@@ -1052,6 +1322,12 @@ protected:
                 static_cast<float>((i * 2) % 100),
                 static_cast<float>((i * 3) % 100)
             );
+            large_vector4_array[i] = VxVector4(
+                static_cast<float>(i % 100),
+                static_cast<float>((i * 2) % 100),
+                static_cast<float>((i * 3) % 100),
+                1.0f
+            );
         }
 
         transform.SetIdentity();
@@ -1062,7 +1338,9 @@ protected:
 
     static const int large_count = 1000;
     VxVector large_vector_array[large_count];
+    VxVector4 large_vector4_array[large_count];
     VxVector result_array[large_count];
+    VxVector4 result4_array[large_count];
     VxMatrix transform;
 };
 
@@ -1095,6 +1373,50 @@ TEST_F(VxMatrixPerformanceTest, MatrixChainMultiplication) {
 
     // Final translation should be sum of all translations (0+1+2+...+9 = 45)
     EXPECT_FLOAT_EQ(result[3][0], 45.0f);
+}
+
+TEST_F(VxMatrixPerformanceTest, LargeVectorArrayRotation) {
+    // Test rotating a large number of vectors (translation ignored)
+    Vx3DRotateVectorMany(result_array, transform, large_vector_array, large_count, sizeof(VxVector));
+
+    VxVector expected_0;
+    VxVector expected_mid;
+    VxVector expected_last;
+    Vx3DRotateVector(&expected_0, transform, &large_vector_array[0]);
+    Vx3DRotateVector(&expected_mid, transform, &large_vector_array[large_count / 2]);
+    Vx3DRotateVector(&expected_last, transform, &large_vector_array[large_count - 1]);
+
+    EXPECT_NEAR(result_array[0].x, expected_0.x, EPSILON);
+    EXPECT_NEAR(result_array[large_count / 2].x, expected_mid.x, EPSILON);
+    EXPECT_NEAR(result_array[large_count - 1].x, expected_last.x, EPSILON);
+}
+
+TEST_F(VxMatrixPerformanceTest, LargeVectorArrayTransformationStrided) {
+    VxStridedData src(large_vector_array, sizeof(VxVector));
+    VxStridedData dst(result_array, sizeof(VxVector));
+    Vx3DMultiplyMatrixVectorStrided(&dst, &src, transform, large_count);
+
+    VxVector expected_0 = transform * large_vector_array[0];
+    VxVector expected_mid = transform * large_vector_array[large_count / 2];
+    VxVector expected_last = transform * large_vector_array[large_count - 1];
+
+    EXPECT_NEAR(result_array[0].x, expected_0.x, EPSILON);
+    EXPECT_NEAR(result_array[large_count / 2].x, expected_mid.x, EPSILON);
+    EXPECT_NEAR(result_array[large_count - 1].x, expected_last.x, EPSILON);
+}
+
+TEST_F(VxMatrixPerformanceTest, LargeVector4ArrayTransformationStrided) {
+    VxStridedData src(large_vector4_array, sizeof(VxVector4));
+    VxStridedData dst(result4_array, sizeof(VxVector4));
+    Vx3DMultiplyMatrixVector4Strided(&dst, &src, transform, large_count);
+
+    VxVector4 expected_0 = transform * large_vector4_array[0];
+    VxVector4 expected_mid = transform * large_vector4_array[large_count / 2];
+    VxVector4 expected_last = transform * large_vector4_array[large_count - 1];
+
+    EXPECT_NEAR(result4_array[0].x, expected_0.x, EPSILON);
+    EXPECT_NEAR(result4_array[large_count / 2].x, expected_mid.x, EPSILON);
+    EXPECT_NEAR(result4_array[large_count - 1].x, expected_last.x, EPSILON);
 }
 
 // Integration Tests

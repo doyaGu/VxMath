@@ -61,6 +61,13 @@ option(VXMATH_BUILD_SHARED "Build shared library" ON)
 option(VXMATH_BUILD_STATIC "Build static library" OFF)
 option(VXMATH_INSTALL "Generate install target" ${VXMATH_IS_TOP_LEVEL})
 
+# =============================================================================
+# SIMD options
+# =============================================================================
+option(VXMATH_ENABLE_SIMD "Enable SIMD optimizations" ON)
+set(VXMATH_SIMD_LEVEL "AUTO" CACHE STRING "SIMD instruction set level")
+set_property(CACHE VXMATH_SIMD_LEVEL PROPERTY STRINGS AUTO NONE SSE2 SSE4_1 AVX AVX2)
+
 if (NOT VXMATH_BUILD_SHARED AND NOT VXMATH_BUILD_STATIC)
     message(FATAL_ERROR "At least one of VXMATH_BUILD_SHARED or VXMATH_BUILD_STATIC must be enabled")
 endif ()
@@ -181,6 +188,8 @@ if (VXMATH_IS_TOP_LEVEL)
     message(STATUS "  Build Shared:         ${VXMATH_BUILD_SHARED}")
     message(STATUS "  Build Static:         ${VXMATH_BUILD_STATIC}")
     message(STATUS "  Build Tests:          ${VXMATH_BUILD_TESTS}")
+    message(STATUS "  SIMD Enabled:         ${VXMATH_ENABLE_SIMD}")
+    message(STATUS "  SIMD Level:           ${VXMATH_SIMD_LEVEL}")
     message(STATUS "  Platform:             ${VXMATH_PLATFORM}")
     message(STATUS "  Install:              ${VXMATH_INSTALL}")
     message(STATUS "  Install Prefix:       ${CMAKE_INSTALL_PREFIX}")

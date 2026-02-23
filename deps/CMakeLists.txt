@@ -11,12 +11,6 @@ target_include_directories(stb INTERFACE
         $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/stb>
 )
 
-# SIMDE
-add_subdirectory(simde EXCLUDE_FROM_ALL)
-
-# Export dep targets to parent scope so the top-level CMakeLists.txt can include them in the export set
-set(VXMATH_DEP_EXPORTED_TARGETS stb simde PARENT_SCOPE)
-
 # Installation
 if (VXMATH_INSTALL)
     include(GNUInstallDirs)
@@ -25,7 +19,15 @@ if (VXMATH_INSTALL)
     install(FILES ${_stb_headers}
             DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/stb"
     )
-    install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/simde/simde"
-            DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}"
-    )
 endif ()
+
+# SIMDE (only needed when SIMD is enabled)
+set(VXMATH_DEP_EXPORTED_TARGETS stb)
+if (VXMATH_ENABLE_SIMD AND NOT VXMATH_SIMD_LEVEL STREQUAL "NONE")
+    add_subdirectory(simde EXCLUDE_FROM_ALL)
+    list(APPEND VXMATH_DEP_EXPORTED_TARGETS simde)
+endif ()
+
+# Export dep targets to parent scope so the top-level CMakeLists.txt can include
+# them in the export set.
+set(VXMATH_DEP_EXPORTED_TARGETS ${VXMATH_DEP_EXPORTED_TARGETS} PARENT_SCOPE)

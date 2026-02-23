@@ -153,17 +153,14 @@ typedef struct VxQuaternion {
 
 public:
     /// @brief Default constructor. Initializes to an identity quaternion (0, 0, 0, 1).
-    VxQuaternion() {
-        x = y = z = 0;
-        w = 1.0f;
-    }
+    VxQuaternion();
 
     /**
      * @brief Constructs a quaternion from an axis and an angle.
      * @param Vector The axis of rotation.
      * @param Angle The angle of rotation in radians.
      */
-    VxQuaternion(const VxVector &Vector, float Angle) { FromRotation(Vector, Angle); }
+    VxQuaternion(const VxVector &Vector, float Angle);
 
     /**
      * @brief Constructs a quaternion from four float components.
@@ -172,12 +169,7 @@ public:
      * @param Z The z component.
      * @param W The w component.
      */
-    VxQuaternion(float X, float Y, float Z, float W) {
-        x = X;
-        y = Y;
-        z = Z;
-        w = W;
-    }
+    VxQuaternion(float X, float Y, float Z, float W);
 
     /**
      * @brief Creates a quaternion from a matrix.
@@ -211,13 +203,13 @@ public:
     float &operator[](int i);
 
     /// @brief Component-wise addition of two quaternions.
-    VxQuaternion operator+(const VxQuaternion &q) const { return VxQuaternion(x + q.x, y + q.y, z + q.z, w + q.w); }
+    VxQuaternion operator+(const VxQuaternion &q) const;
     /// @brief Component-wise subtraction of two quaternions.
-    VxQuaternion operator-(const VxQuaternion &q) const { return VxQuaternion(x - q.x, y - q.y, z - q.z, w - q.w); }
+    VxQuaternion operator-(const VxQuaternion &q) const;
     /// @brief Multiplies two quaternions.
-    VxQuaternion operator*(const VxQuaternion &q) const { return Vx3DQuaternionMultiply(*this, q); }
+    VxQuaternion operator*(const VxQuaternion &q) const;
     /// @brief Divides one quaternion by another.
-    VxQuaternion operator/(const VxQuaternion &q) const { return Vx3DQuaternionDivide(*this, q); }
+    VxQuaternion operator/(const VxQuaternion &q) const;
 
     /// @brief Multiplies a quaternion by a scalar.
     friend VxQuaternion operator*(float, const VxQuaternion &);
@@ -225,15 +217,12 @@ public:
     friend VxQuaternion operator*(const VxQuaternion &, float);
 
     /// @brief Multiplies this quaternion by a scalar and assigns the result.
-    VxQuaternion &operator*=(float s) {
-        x *= s; y *= s; z *= s; w *= s;
-        return *this;
-    }
+    VxQuaternion &operator*=(float s);
 
     /// @brief Returns the negation of the quaternion.
-    VxQuaternion operator-() const { return (VxQuaternion(-x, -y, -z, -w)); }
+    VxQuaternion operator-() const;
     /// @brief Unary plus operator, returns a copy of the quaternion.
-    VxQuaternion operator+() const { return *this; }
+    VxQuaternion operator+() const;
 
     /// @brief Checks for bitwise equality.
     friend int operator==(const VxQuaternion &q1, const VxQuaternion &q2);
@@ -246,193 +235,6 @@ public:
     friend float DotProduct(const VxQuaternion &p, const VxQuaternion &q);
 } VxQuaternion;
 
-/**
- * @brief Checks if two quaternions are bitwise equal.
- * @param q1 The first quaternion.
- * @param q2 The second quaternion.
- * @return Non-zero if equal, zero otherwise.
- */
-inline int operator==(const VxQuaternion &q1, const VxQuaternion &q2) {
-    return (q1.x == q2.x && q1.y == q2.y && q1.z == q2.z && q1.w == q2.w);
-}
-
-/**
- * @brief Checks if two quaternions are bitwise not equal.
- * @param q1 The first quaternion.
- * @param q2 The second quaternion.
- * @return Non-zero if not equal, zero otherwise.
- */
-inline int operator!=(const VxQuaternion &q1, const VxQuaternion &q2) {
-    return (q1.x != q2.x || q1.y != q2.y || q1.z != q2.z || q1.w != q2.w);
-}
-
-/**
- * @brief Multiplies a quaternion by a scalar.
- * @param s The scalar value.
- * @param q The quaternion.
- * @return The resulting scaled quaternion.
- */
-inline VxQuaternion operator*(float s, const VxQuaternion &q) {
-    return VxQuaternion(q.x * s, q.y * s, q.z * s, q.w * s);
-}
-
-/**
- * @brief Multiplies a quaternion by a scalar.
- * @param q The quaternion.
- * @param s The scalar value.
- * @return The resulting scaled quaternion.
- */
-inline VxQuaternion operator*(const VxQuaternion &q, float s) {
-    return VxQuaternion(q.x * s, q.y * s, q.z * s, q.w * s);
-}
-
-/**
- * @brief Calculates the squared magnitude of a quaternion.
- * @param q The quaternion.
- * @return The squared magnitude.
- */
-inline float Magnitude(const VxQuaternion &q) {
-    return (q.x * q.x + q.y * q.y + q.z * q.z + q.w * q.w);
-}
-
-/**
- * @brief Calculates the dot product of two quaternions.
- * @param q1 The first quaternion.
- * @param q2 The second quaternion.
- * @return The dot product.
- */
-inline float DotProduct(const VxQuaternion &q1, const VxQuaternion &q2) {
-    return (q1.x * q2.x + q1.y * q2.y + q1.z * q2.z + q1.w * q2.w);
-}
-
-inline const float &VxQuaternion::operator[](int i) const {
-    return *((&x) + i);
-}
-
-inline float &VxQuaternion::operator[](int i) {
-    return *((&x) + i);
-}
-
-inline VxQuaternion Vx3DQuaternionConjugate(const VxQuaternion &Quat) {
-    return VxQuaternion(-Quat.x, -Quat.y, -Quat.z, Quat.w);
-}
-
-inline VxQuaternion Vx3DQuaternionMultiply(const VxQuaternion &QuatL, const VxQuaternion &QuatR) {
-    return VxQuaternion(
-        QuatL.w * QuatR.x + QuatL.x * QuatR.w + QuatL.y * QuatR.z - QuatL.z * QuatR.y,
-        QuatL.w * QuatR.y - QuatL.x * QuatR.z + QuatL.y * QuatR.w + QuatL.z * QuatR.x,
-        QuatL.w * QuatR.z + QuatL.x * QuatR.y - QuatL.y * QuatR.x + QuatL.z * QuatR.w,
-        QuatL.w * QuatR.w - QuatL.x * QuatR.x - QuatL.y * QuatR.y - QuatL.z * QuatR.z
-    );
-}
-
-inline VxQuaternion Vx3DQuaternionDivide(const VxQuaternion &P, const VxQuaternion &Q) {
-    float newX = -P.w * Q.x + P.x * Q.w - P.y * Q.z + P.z * Q.y;
-    float newY = -P.w * Q.y + P.x * Q.z + P.y * Q.w - P.z * Q.x;
-    float newZ = -P.w * Q.z - P.x * Q.y + P.y * Q.x + P.z * Q.w;
-    float newW = P.w * Q.w + P.x * Q.x + P.y * Q.y + P.z * Q.z;
-
-    return VxQuaternion(newX, newY, newZ, newW);
-}
-
-inline void VxQuaternion::Multiply(const VxQuaternion &Quat) {
-    float newX = w * Quat.x + x * Quat.w + y * Quat.z - z * Quat.y;
-    float newY = w * Quat.y - x * Quat.z + y * Quat.w + z * Quat.x;
-    float newZ = w * Quat.z + x * Quat.y - y * Quat.x + z * Quat.w;
-    float newW = w * Quat.w - x * Quat.x - y * Quat.y - z * Quat.z;
-
-    x = newX;
-    y = newY;
-    z = newZ;
-    w = newW;
-}
-
-inline void VxQuaternion::Normalize() {
-    float norm = sqrtf(x * x + y * y + z * z + w * w);
-    if (norm == 0.0f) {
-        x = 0.0f;
-        y = 0.0f;
-        z = 0.0f;
-        w = 1.0f;
-    } else {
-        float invNorm = 1.0f / norm;
-        x *= invNorm;
-        y *= invNorm;
-        z *= invNorm;
-        w *= invNorm;
-    }
-}
-
-inline VxQuaternion Slerp(float t, const VxQuaternion &Quat1, const VxQuaternion &Quat2) {
-    float cosOmega = Quat1.x * Quat2.x + Quat1.y * Quat2.y + Quat1.z * Quat2.z + Quat1.w * Quat2.w;
-
-    float k0, k1;
-
-    if (cosOmega >= 0.0f) {
-        float oneMinusCos = 1.0f - cosOmega;
-        if (oneMinusCos < 0.01f) {
-            k0 = 1.0f - t;
-            k1 = t;
-        } else {
-            float omega = acosf(cosOmega);
-            float invSinOmega = 1.0f / sinf(omega);
-            k0 = sinf((1.0f - t) * omega) * invSinOmega;
-            k1 = sinf(t * omega) * invSinOmega;
-        }
-    } else {
-        float oneMinusCosNeg = 1.0f - (-cosOmega);
-        if (oneMinusCosNeg < 0.01f) {
-            k0 = 1.0f - t;
-            k1 = -t;
-        } else {
-            float omega = acosf(-cosOmega);
-            float invSinOmega = 1.0f / sinf(omega);
-            k0 = sinf((1.0f - t) * omega) * invSinOmega;
-            k1 = -sinf(t * omega) * invSinOmega;
-        }
-    }
-
-    return VxQuaternion(
-        k0 * Quat1.x + k1 * Quat2.x,
-        k0 * Quat1.y + k1 * Quat2.y,
-        k0 * Quat1.z + k1 * Quat2.z,
-        k0 * Quat1.w + k1 * Quat2.w
-    );
-}
-
-inline VxQuaternion Squad(float t, const VxQuaternion &Quat1, const VxQuaternion &Quat1Out, const VxQuaternion &Quat2In,
-                          const VxQuaternion &Quat2) {
-    VxQuaternion slerpA = Slerp(t, Quat1Out, Quat2In);
-    VxQuaternion slerpB = Slerp(t, Quat1, Quat2);
-    float blendFactor = 2.0f * t * (1.0f - t);
-    return Slerp(blendFactor, slerpB, slerpA);
-}
-
-inline VxQuaternion LnDif(const VxQuaternion &P, const VxQuaternion &Q) {
-    VxQuaternion div = Vx3DQuaternionDivide(Q, P);
-    return Ln(div);
-}
-
-inline VxQuaternion Ln(const VxQuaternion &Quat) {
-    float magnitude = sqrtf(Quat.x * Quat.x + Quat.y * Quat.y + Quat.z * Quat.z);
-    float scale;
-    if (magnitude == 0.0f) {
-        scale = 0.0f;
-    } else {
-        scale = atan2f(magnitude, Quat.w) / magnitude;
-    }
-    return VxQuaternion(scale * Quat.x, scale * Quat.y, scale * Quat.z, 0.0f);
-}
-
-inline VxQuaternion Exp(const VxQuaternion &Quat) {
-    float magnitude = sqrtf(Quat.x * Quat.x + Quat.y * Quat.y + Quat.z * Quat.z);
-    float scale;
-    if (magnitude < EPSILON) {
-        scale = 1.0f;
-    } else {
-        scale = sinf(magnitude) / magnitude;
-    }
-    return VxQuaternion(scale * Quat.x, scale * Quat.y, scale * Quat.z, cosf(magnitude));
-}
+#include "VxQuaternion.inl"
 
 #endif // VXQUATERNION_H

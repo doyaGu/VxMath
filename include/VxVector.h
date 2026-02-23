@@ -1,4 +1,4 @@
-#ifndef VXVECTOR_H
+﻿#ifndef VXVECTOR_H
 #define VXVECTOR_H
 
 #include "VxMathDefines.h"
@@ -101,7 +101,7 @@ struct VxVector {
      * @remarks This is more efficient than Magnitude() as it avoids a square root operation.
      * @see Magnitude()
      */
-    float SquareMagnitude() const { return x * x + y * y + z * z; }
+    float SquareMagnitude() const;
 
     /**
      * @brief Returns the magnitude (length) of the vector.
@@ -109,7 +109,7 @@ struct VxVector {
      * @warning Calling this on a null vector (0,0,0) will result in NaN (Not aNumber).
      * @see SquareMagnitude()
      */
-    float Magnitude() const { return sqrtf(SquareMagnitude()); }
+    float Magnitude() const;
 
     /** @name Element Access */
     ///@{
@@ -166,21 +166,21 @@ struct VxVector {
      * @param iV The other vector.
      * @return The scalar dot product.
      */
-    float Dot(const VxVector &iV) const { return x * iV.x + y * iV.y + z * iV.z; }
+    float Dot(const VxVector &iV) const;
 
     /**
      * @brief Adds a scalar value to all components.
      * @param s The scalar value to add.
      * @return A new vector with the result.
      */
-    VxVector operator+(float s) const { return VxVector(x + s, y + s, z + s); }
+    VxVector operator+(float s) const;
 
     /**
      * @brief Subtracts a scalar value from all components.
      * @param s The scalar value to subtract.
      * @return A new vector with the result.
      */
-    VxVector operator-(float s) const { return VxVector(x - s, y - s, z - s); }
+    VxVector operator-(float s) const;
 
     /** @name Unary Operators */
     ///@{
@@ -212,15 +212,7 @@ struct VxVector {
      * @brief Normalizes the vector, making its length equal to 1.
      * @warning The result is undefined for a null vector (0,0,0).
      */
-    inline void Normalize() {
-        const float magSq = SquareMagnitude();
-        if (magSq > EPSILON) {
-            const float invMag = 1.0f / sqrtf(magSq);
-            x *= invMag;
-            y *= invMag;
-            z *= invMag;
-        }
-    }
+    inline void Normalize();
 
     /**
      * @brief Rotates the vector by applying a transformation matrix.
@@ -258,7 +250,7 @@ private:
  * @remarks This is more efficient than Magnitude() as it avoids a square root operation.
  * @see Magnitude()
  */
-inline float SquareMagnitude(const VxVector &v) { return v.x * v.x + v.y * v.y + v.z * v.z; }
+inline float SquareMagnitude(const VxVector &v);
 
 /**
  * @brief Returns the magnitude (length) of a vector.
@@ -267,7 +259,7 @@ inline float SquareMagnitude(const VxVector &v) { return v.x * v.x + v.y * v.y +
  * @warning Calling this on a null vector (0,0,0) will result in NaN (Not aNumber).
  * @see SquareMagnitude()
  */
-inline float Magnitude(const VxVector &v) { return sqrtf(SquareMagnitude(v)); }
+inline float Magnitude(const VxVector &v);
 
 /**
  * @brief Returns the inverse of the squared magnitude of a vector.
@@ -276,7 +268,7 @@ inline float Magnitude(const VxVector &v) { return sqrtf(SquareMagnitude(v)); }
  * @warning The result is undefined for a null vector (0,0,0).
  * @see SquareMagnitude()
  */
-inline float InvSquareMagnitude(const VxVector &v) { return 1.0f / SquareMagnitude(v); }
+inline float InvSquareMagnitude(const VxVector &v);
 
 /**
  * @brief Returns the inverse of the magnitude of a vector.
@@ -285,7 +277,7 @@ inline float InvSquareMagnitude(const VxVector &v) { return 1.0f / SquareMagnitu
  * @warning Calling this on a null vector (0,0,0) will result in NaN (Not aNumber).
  * @see Magnitude()
  */
-inline float InvMagnitude(const VxVector &v) { return 1.0f / Magnitude(v); }
+inline float InvMagnitude(const VxVector &v);
 
 /**
  * @brief Returns a normalized copy of a vector.
@@ -295,8 +287,8 @@ inline float InvMagnitude(const VxVector &v) { return 1.0f / Magnitude(v); }
  * @remarks This free function may be more precise than the member function `VxVector::Normalize()`.
  * @see VxVector::Normalize(), Magnitude()
  */
-inline const VxVector Normalize(const VxVector &v) { return v * InvMagnitude(v); }
-inline const VxVector Normalize(const VxVector *vect) { return Normalize(*vect); }
+inline const VxVector Normalize(const VxVector &v);
+inline const VxVector Normalize(const VxVector *vect);
 
 /**
  * @brief Calculates the dot product of two vectors.
@@ -305,9 +297,7 @@ inline const VxVector Normalize(const VxVector *vect) { return Normalize(*vect);
  * @return The scalar dot product.
  * @see VxVector::Dot()
  */
-inline float DotProduct(const VxVector &v1, const VxVector &v2) {
-    return v1.x * v2.x + v1.y * v2.y + v1.z * v2.z;
-}
+inline float DotProduct(const VxVector &v1, const VxVector &v2);
 
 /**
  * @brief Calculates the cross product of two vectors.
@@ -315,10 +305,7 @@ inline float DotProduct(const VxVector &v1, const VxVector &v2) {
  * @param Vect2 The second vector.
  * @return A new vector perpendicular to both input vectors (Vect1 x Vect2).
  */
-inline const VxVector CrossProduct(const VxVector &Vect1, const VxVector &Vect2) {
-    return VxVector(Vect1.y * Vect2.z - Vect1.z * Vect2.y,
-                    Vect1.z * Vect2.x - Vect1.x * Vect2.z, Vect1.x * Vect2.y - Vect1.y * Vect2.x);
-}
+inline const VxVector CrossProduct(const VxVector &Vect1, const VxVector &Vect2);
 
 /**
  * @brief Reflects an incident vector about a surface normal.
@@ -328,43 +315,14 @@ inline const VxVector CrossProduct(const VxVector &Vect1, const VxVector &Vect2)
  * @remarks For a correct reflection, the incident vector should point towards the surface.
  * @see DotProduct()
  */
-inline const VxVector Reflect(const VxVector &v1, const VxVector &Norm) {
-    float dp2 = 2.0f * (DotProduct(v1, Norm));
-    return VxVector(v1.x - dp2 * Norm.x, v1.y - dp2 * Norm.y, v1.z - dp2 * Norm.z);
-}
+inline const VxVector Reflect(const VxVector &v1, const VxVector &Norm);
 
 /// @brief Rotates a vector using a transformation matrix.
 inline const VxVector Rotate(const VxMatrix &mat, const VxVector &pt);
 /// @brief Rotates a vector around an axis by a specified angle.
-inline const VxVector Rotate(const VxVector &v1, const VxVector &v2, float angle) {
-    const float axisMagSq = v2.x * v2.x + v2.y * v2.y + v2.z * v2.z;
-    const float axisInvMag = 1.0f / sqrtf(axisMagSq);
-    const float nx = v2.x * axisInvMag;
-    const float ny = v2.y * axisInvMag;
-    const float nz = v2.z * axisInvMag;
-
-    const float sinAngle = sinf(angle);
-    const float cosAngle = cosf(angle);
-    const float oneMinusCos = 1.0f - cosAngle;
-
-    const float nx2 = nx * nx, ny2 = ny * ny, nz2 = nz * nz;
-    const float nx_ny_omc = nx * ny * oneMinusCos;
-    const float nx_nz_omc = nx * nz * oneMinusCos;
-    const float ny_nz_omc = ny * nz * oneMinusCos;
-    const float sin_nx = sinAngle * nx;
-    const float sin_ny = sinAngle * ny;
-    const float sin_nz = sinAngle * nz;
-
-    return VxVector(
-        v1.x * (cosAngle + oneMinusCos * nx2) + v1.y * (nx_ny_omc + sin_nz) + v1.z * (nx_nz_omc - sin_ny),
-        v1.x * (nx_ny_omc - sin_nz) + v1.y * (cosAngle + oneMinusCos * ny2) + v1.z * (ny_nz_omc + sin_nx),
-        v1.x * (nx_nz_omc + sin_ny) + v1.y * (ny_nz_omc - sin_nx) + v1.z * (cosAngle + oneMinusCos * nz2)
-    );
-}
+inline const VxVector Rotate(const VxVector &v1, const VxVector &v2, float angle);
 /// @brief Rotates a vector around an axis by a specified angle (pointer version).
-inline const VxVector Rotate(const VxVector *v1, const VxVector *v2, float angle) {
-    return Rotate(*v1, *v2, angle);
-}
+inline const VxVector Rotate(const VxVector *v1, const VxVector *v2, float angle);
 
 ///@}
 
@@ -384,9 +342,9 @@ typedef struct VxCompressedVector {
     short int ya; ///< The polar angle for the y-axis rotation.
 
     /// @brief Default constructor. Initializes angles to 0.
-    VxCompressedVector() { xa = ya = 0; }
+    VxCompressedVector();
     /// @brief Constructs and sets the compressed vector from three float components.
-    VxCompressedVector(float _x, float _y, float _z) { Set(_x, _y, _z); }
+    VxCompressedVector(float _x, float _y, float _z);
 
     /// @brief Sets the compressed vector from a 3D vector's components.
     void Set(float X, float Y, float Z);
@@ -410,9 +368,9 @@ typedef struct VxCompressedVectorOld {
     int ya; ///< The polar angle for the y-axis rotation.
 
     /// @brief Default constructor. Initializes angles to 0.
-    VxCompressedVectorOld() { xa = ya = 0; }
+    VxCompressedVectorOld();
     /// @brief Constructs and sets the compressed vector from three float components.
-    VxCompressedVectorOld(float _x, float _y, float _z) { Set(_x, _y, _z); }
+    VxCompressedVectorOld(float _x, float _y, float _z);
 
     /// @brief Sets the compressed vector from a 3D vector's components.
     void Set(float X, float Y, float Z);
@@ -441,27 +399,20 @@ public:
     float w; ///< The w-component of the vector.
 
     /// @brief Default constructor. Initializes to (0,0,0,0).
-    VxVector4() { x = y = z = w = 0.0f; }
+    VxVector4();
     /// @brief Uniform constructor. Initializes all four components to the same value.
-    VxVector4(float f) { x = y = z = w = f; }
+    VxVector4(float f);
     /// @brief Component-wise constructor.
-    VxVector4(float _x, float _y, float _z, float _w) {
-        x = _x; y = _y; z = _z; w = _w;
-    }
+    VxVector4(float _x, float _y, float _z, float _w);
     /// @brief Array constructor.
-    VxVector4(const float f[4]) {
-        x = f[0]; y = f[1]; z = f[2]; w = f[3];
-    }
+    VxVector4(const float f[4]);
 
     /**
      * @brief Assignment from a 3D vector. The 'w' component is not modified.
      * @param v The 3D vector to assign from.
      * @return A reference to this modified vector.
      */
-    VxVector4 &operator=(const VxVector &v) {
-        x = v.x; y = v.y; z = v.z;
-        return *this;
-    }
+    VxVector4 &operator=(const VxVector &v);
 
     // =====================================
     // Access grants
@@ -476,9 +427,9 @@ public:
      * @return A pointer to the first component (x).
      */
 #if !defined(_MSC_VER)
-    operator float *() const { return (float *)&x; }
+    operator float *() const;
 #else
-    operator float *() const { return (float *) &v[0]; }
+    operator float *() const;
 #endif
 
     // Initialization
@@ -487,7 +438,7 @@ public:
     /// @brief Sets the x, y, and z components, leaving w unmodified.
     void Set(float X, float Y, float Z);
     /// @brief Computes the 3D dot product (ignoring the w component).
-    float Dot(const VxVector4 &iV) const { return x * iV.x + y * iV.y + z * iV.z; }
+    float Dot(const VxVector4 &iV) const;
 
     /// @brief Component-wise addition and assignment.
     VxVector4 &operator+=(const VxVector4 &v);
@@ -512,9 +463,9 @@ public:
     /// @brief Scalar division and assignment.
     VxVector4 &operator/=(float s);
     /// @brief Adds a scalar to all components.
-    VxVector4 operator+(float s) const { return VxVector4(x + s, y + s, z + s, w + s); }
+    VxVector4 operator+(float s) const;
     /// @brief Subtracts a scalar from all components.
-    VxVector4 operator-(float s) const { return VxVector4(x - s, y - s, z - s, w - s); }
+    VxVector4 operator-(float s) const;
 
     // =====================================
     // Unary operators
@@ -538,195 +489,6 @@ public:
     friend int operator!=(const VxVector4 &v1, const VxVector4 &v2);
 };
 
-// =================================================================
-// VxVector Inline Implementations
-// =================================================================
-
-inline VxVector::VxVector() : x(0), y(0), z(0) {}
-inline VxVector::VxVector(float f) : x(f), y(f), z(f) {}
-inline VxVector::VxVector(float _x, float _y, float _z) : x(_x), y(_y), z(_z) {}
-inline VxVector::VxVector(const float f[3]) : x(f[0]), y(f[1]), z(f[2]) {}
-inline void VxVector::Set(float _x, float _y, float _z) { x = _x; y = _y; z = _z; }
-inline const float &VxVector::operator[](int i) const { return *((&x) + i); }
-inline float &VxVector::operator[](int i) { return *((&x) + i); }
-inline VxVector &VxVector::operator+=(const VxVector &v) { x += v.x; y += v.y; z += v.z; return *this; }
-inline VxVector &VxVector::operator-=(const VxVector &v) { x -= v.x; y -= v.y; z -= v.z; return *this; }
-inline VxVector &VxVector::operator*=(const VxVector &v) { x *= v.x; y *= v.y; z *= v.z; return *this; }
-inline VxVector &VxVector::operator/=(const VxVector &v) { x /= v.x; y /= v.y; z /= v.z; return *this; }
-inline VxVector &VxVector::operator*=(float s) { x *= s; y *= s; z *= s; return *this; }
-inline VxVector &VxVector::operator/=(float s) { float temp = 1.0f / s; x *= temp; y *= temp; z *= temp; return *this; }
-
-inline const VxVector operator+(const VxVector &v) { return v; }
-inline const VxVector operator-(const VxVector &v) { return VxVector(-v.x, -v.y, -v.z); }
-inline const VxVector operator+(const VxVector &v1, const VxVector &v2) { return VxVector(v1.x + v2.x, v1.y + v2.y, v1.z + v2.z); }
-inline const VxVector operator-(const VxVector &v1, const VxVector &v2) { return VxVector(v1.x - v2.x, v1.y - v2.y, v1.z - v2.z); }
-inline const VxVector operator*(const VxVector &v1, const VxVector &v2) { return VxVector(v1.x * v2.x, v1.y * v2.y, v1.z * v2.z); }
-inline const VxVector operator/(const VxVector &v1, const VxVector &v2) { return VxVector(v1.x / v2.x, v1.y / v2.y, v1.z / v2.z); }
-inline int operator<(const VxVector &v1, const VxVector &v2) { return v1[0] < v2[0] && v1[1] < v2[1] && v1[2] < v2[2]; }
-inline int operator<=(const VxVector &v1, const VxVector &v2) { return v1[0] <= v2[0] && v1[1] <= v2[1] && v1[2] <= v2[2]; }
-inline const VxVector operator*(const VxVector &v, float s) { return VxVector(s * v.x, s * v.y, s * v.z); }
-inline const VxVector operator*(float s, const VxVector &v) { return VxVector(s * v.x, s * v.y, s * v.z); }
-inline const VxVector operator/(const VxVector &v, float s) { float temp = 1.0f / s; return VxVector(v.x * temp, v.y * temp, v.z * temp); }
-inline int operator==(const VxVector &v1, const VxVector &v2) { return ((v1.x == v2.x) && (v1.y == v2.y) && (v1.z == v2.z)); }
-inline int operator!=(const VxVector &v1, const VxVector &v2) { return !(v1 == v2); }
-
-/**
- * @brief Returns a vector with each component set to its absolute value.
- * @param v The input vector.
- * @return A new vector with absolute values of the components of v.
- */
-inline const VxVector Absolute(const VxVector &v) { return VxVector(XAbs(v.x), XAbs(v.y), XAbs(v.z)); }
-inline void VxVector::Absolute() { x = XAbs(x); y = XAbs(y); z = XAbs(z); }
-
-/**
- * @brief Calculates the minimum value among the components of a vector.
- * @param v The vector.
- * @return The minimum component value of v.
- */
-inline float Min(const VxVector &v) { return XMin(v.x, v.y, v.z); }
-
-/**
- * @brief Calculates the maximum value among the components of a vector.
- * @param v The vector.
- * @return The maximum component value of v.
- */
-inline float Max(const VxVector &v) {
-    float ret = v.x;
-    if (ret < v.y) ret = v.y;
-    if (ret < v.z) ret = v.z;
-    return ret;
-}
-
-/**
- * @brief Constructs a vector from the component-wise minimum of two vectors.
- * @param v1 The first vector.
- * @param v2 The second vector.
- * @return A vector where each component is the minimum of the corresponding components of v1 and v2.
- */
-inline const VxVector Minimize(const VxVector &v1, const VxVector &v2) {
-    return VxVector(XMin(v1[0], v2[0]), XMin(v1[1], v2[1]), XMin(v1[2], v2[2]));
-}
-
-/**
- * @brief Constructs a vector from the component-wise maximum of two vectors.
- * @param v1 The first vector.
- * @param v2 The second vector.
- * @return A vector where each component is the maximum of the corresponding components of v1 and v2.
- */
-inline const VxVector Maximize(const VxVector &v1, const VxVector &v2) {
-    return VxVector(XMax(v1[0], v2[0]), XMax(v1[1], v2[1]), XMax(v1[2], v2[2]));
-}
-
-/**
- * @brief Performs a linear interpolation between two vectors.
- * @param step The interpolation factor, clamped between 0.0 (v1) and 1.0 (v2).
- * @param v1 The starting vector.
- * @param v2 The ending vector.
- * @return The interpolated vector.
- */
-inline const VxVector Interpolate(float step, const VxVector &v1, const VxVector &v2) {
-    return VxVector(v1.x + (v2.x - v1.x) * step,
-                    v1.y + (v2.y - v1.y) * step,
-                    v1.z + (v2.z - v1.z) * step);
-}
-
-// =================================================================
-// VxVector4 Inline Implementations
-// =================================================================
-
-inline VxVector4 &VxVector4::operator+=(const VxVector4 &v) { x += v.x; y += v.y; z += v.z; w += v.w; return *this; }
-inline VxVector4 &VxVector4::operator-=(const VxVector4 &v) { x -= v.x; y -= v.y; z -= v.z; w -= v.w; return *this; }
-inline VxVector4 &VxVector4::operator*=(const VxVector4 &v) { x *= v.x; y *= v.y; z *= v.z; w *= v.w; return *this; }
-inline VxVector4 &VxVector4::operator/=(const VxVector4 &v) { x /= v.x; y /= v.y; z /= v.z; w /= v.w; return *this; }
-inline VxVector4 &VxVector4::operator+=(const VxVector &v) { x += v.x; y += v.y; z += v.z; return *this; }
-inline VxVector4 &VxVector4::operator-=(const VxVector &v) { x -= v.x; y -= v.y; z -= v.z; return *this; }
-inline VxVector4 &VxVector4::operator*=(const VxVector &v) { x *= v.x; y *= v.y; z *= v.z; return *this; }
-inline VxVector4 &VxVector4::operator/=(const VxVector &v) { x /= v.x; y /= v.y; z /= v.z; return *this; }
-inline VxVector4 &VxVector4::operator*=(float s) { x *= s; y *= s; z *= s; w *= s; return *this; }
-inline VxVector4 &VxVector4::operator/=(float s) { float temp = 1.0f / s; x *= temp; y *= temp; z *= temp; w *= temp; return *this; }
-inline const VxVector4 operator+(const VxVector4 &v) { return v; }
-inline const VxVector4 operator-(const VxVector4 &v) { return VxVector4(-v.x, -v.y, -v.z, -v.w); }
-inline const VxVector4 operator+(const VxVector4 &v1, const VxVector4 &v2) { return VxVector4(v1.x + v2.x, v1.y + v2.y, v1.z + v2.z, v1.w + v2.w); }
-inline const VxVector4 operator-(const VxVector4 &v1, const VxVector4 &v2) { return VxVector4(v1.x - v2.x, v1.y - v2.y, v1.z - v2.z, v1.w - v2.w); }
-inline const VxVector4 operator*(const VxVector4 &v1, const VxVector4 &v2) { return VxVector4(v1.x * v2.x, v1.y * v2.y, v1.z * v2.z, v1.w * v2.w); }
-inline const VxVector4 operator/(const VxVector4 &v1, const VxVector4 &v2) { return VxVector4(v1.x / v2.x, v1.y / v2.y, v1.z / v2.z, v1.w / v2.w); }
-inline const VxVector4 operator*(const VxVector4 &v, float s) { return VxVector4(s * v.x, s * v.y, s * v.z, s * v.w); }
-inline const VxVector4 operator*(float s, const VxVector4 &v) { return VxVector4(s * v.x, s * v.y, s * v.z, s * v.w); }
-inline const VxVector4 operator/(const VxVector4 &v, float s) { float invs = 1.0f / s; return VxVector4(invs * v.x, invs * v.y, invs * v.z, invs * v.w); }
-inline int operator==(const VxVector4 &v1, const VxVector4 &v2) { return ((v1.x == v2.x) && (v1.y == v2.y) && (v1.z == v2.z) && (v1.w == v2.w)); }
-inline int operator!=(const VxVector4 &v1, const VxVector4 &v2) { return !(v1 == v2); }
-inline void VxVector4::Set(float _x, float _y, float _z, float _w) { x = _x; y = _y; z = _z; w = _w; }
-inline void VxVector4::Set(float _x, float _y, float _z) { x = _x; y = _y; z = _z; }
-inline const float &VxVector4::operator[](int i) const { return *((&x) + i); }
-inline float &VxVector4::operator[](int i) { return *((&x) + i); }
-
-// =================================================================
-// VxCompressedVector Inline Implementations
-// =================================================================
-
-/**
- * @brief Performs spherical linear interpolation between two compressed vectors.
- * @param step The interpolation factor (0 for v1, 1 for v2).
- * @param v1 The starting vector.
- * @param v2 The ending vector.
- */
-inline void VxCompressedVectorOld::Slerp(float step, VxCompressedVectorOld &v1, VxCompressedVectorOld &v2) {
-    int v1y = ((int) v1.ya + 16384) & 16383;
-    int v2y = ((int) v2.ya + 16384) & 16383;
-    v2y = (v2y - v1y);
-    if (v2y > 8192) v2y = 16384 - v2y;
-    else if (v2y < -8192) v2y = 16384 + v2y;
-    xa = (int) ((float) v1.xa + (float) (v2.xa - v1.xa) * step);
-    ya = (int) ((float) v1y + (float) v2y * step);
-}
-
-inline VxCompressedVectorOld &VxCompressedVectorOld::operator=(const VxVector &v) {
-    Set(v.x, v.y, v.z);
-    return *this;
-}
-
-/**
- * @brief Sets the compressed vector from 3 float components.
- * @param X The x-component.
- * @param Y The y-component.
- * @param Z The z-component.
- */
-inline void VxCompressedVectorOld::Set(float X, float Y, float Z) {
-    xa = -radToAngle((float) asin(Y));
-    ya = radToAngle((float) atan2(X, Z));
-}
-
-inline void VxCompressedVector::Slerp(float step, VxCompressedVector &v1, VxCompressedVector &v2) {
-    int coef = (int) (65536.0f * step);
-    int v1y = ((int) v1.ya + 16384) & 16383;
-    int v2y = ((int) v2.ya + 16384) & 16383;
-    v2y = (v2y - v1y);
-    if (v2y > 8192) v2y = 16384 - v2y;
-    else if (v2y < -8192) v2y = 16384 + v2y;
-    xa = (short int) ((int) v1.xa + (((v2.xa - v1.xa) * coef) >> 16));
-    ya = (short int) (v1y + ((v2y * coef) >> 16));
-}
-
-inline VxCompressedVector &VxCompressedVector::operator=(const VxVector &v) {
-    Set(v.x, v.y, v.z);
-    return *this;
-}
-
-inline void VxCompressedVector::Set(float X, float Y, float Z) {
-    xa = (short int) -radToAngle((float) asin(Y));
-    ya = (short int) radToAngle((float) atan2(X, Z));
-}
-
-inline VxCompressedVectorOld &VxCompressedVectorOld::operator=(const VxCompressedVector &v) {
-    xa = (int) v.xa;
-    ya = (int) v.ya;
-    return *this;
-}
-
-inline VxCompressedVector &VxCompressedVector::operator=(const VxCompressedVectorOld &v) {
-    xa = (short int) v.xa;
-    ya = (short int) v.ya;
-    return *this;
-}
+#include "VxVector.inl"
 
 #endif // VXVECTOR_H

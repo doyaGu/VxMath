@@ -1,5 +1,6 @@
 #include "gtest/gtest.h"
 #include "VxMath.h"
+#include <cmath>
 
 // Test fixture for VxPlane tests
 class VxPlaneTest : public ::testing::Test {
@@ -166,4 +167,35 @@ TEST_F(VxPlaneTest, Equality) {
     EXPECT_TRUE(plane1 == plane2);
     EXPECT_FALSE(plane1 == plane3);
     EXPECT_FALSE(plane1 == plane4);
+}
+
+TEST_F(VxPlaneTest, DegenerateTriangleCreateFallbackAndFinite) {
+    // Collinear points: cross product is zero, Create should keep a sane normal.
+    VxVector a(0.0f, 0.0f, 0.0f);
+    VxVector b(1.0f, 1.0f, 1.0f);
+    VxVector c(2.0f, 2.0f, 2.0f);
+    VxPlane p(a, b, c);
+
+    EXPECT_NEAR(p.m_Normal.x, 0.0f, EPSILON);
+    EXPECT_NEAR(p.m_Normal.y, 0.0f, EPSILON);
+    EXPECT_NEAR(p.m_Normal.z, 1.0f, EPSILON);
+    EXPECT_TRUE(std::isfinite(p.m_D));
+
+    const float classify = p.Classify(VxVector(0.0f, 0.0f, 5.0f));
+    EXPECT_TRUE(std::isfinite(classify));
+}
+
+TEST_F(VxPlaneTest, ClassifyDistanceNearestPointMatchScalarFormula) {
+    VxPlane p(VxVector(2.0f, -3.0f, 4.0f), VxVector(1.0f, 2.0f, 3.0f));
+    const VxVector testPoint(4.0f, -1.5f, 9.0f);
+
+    const float expectedClassify = DotProduct(p.m_Normal, testPoint) + p.m_D;
+    EXPECT_NEAR(p.Classify(testPoint), expectedClassify, 1.0e-5f);
+    EXPECT_NEAR(p.Distance(testPoint), std::fabs(expectedClassify), 1.0e-5f);
+
+    const VxVector expectedNearest = testPoint - p.m_Normal * expectedClassify;
+    const VxVector nearest = p.NearestPoint(testPoint);
+    EXPECT_NEAR(nearest.x, expectedNearest.x, 1.0e-5f);
+    EXPECT_NEAR(nearest.y, expectedNearest.y, 1.0e-5f);
+    EXPECT_NEAR(nearest.z, expectedNearest.z, 1.0e-5f);
 }

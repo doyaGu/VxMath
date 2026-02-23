@@ -716,7 +716,7 @@ TEST_F(VxQuaternionUtilityTest, Vx3DQuaternionConjugate) {
     EXPECT_NEAR(double_conj.z, q45.z, SIMD_TOL);
     EXPECT_NEAR(double_conj.w, q45.w, SIMD_TOL);
     
-    // Test that q * q_conj = |q|² for unit quaternions
+    // Test that q * q_conj = |q|^2 for unit quaternions
     VxQuaternion unit_q = q45;
     unit_q.Normalize();
     VxQuaternion unit_conj = Vx3DQuaternionConjugate(unit_q);

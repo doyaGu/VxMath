@@ -176,31 +176,31 @@ TEST(SIMDUtility, DotProduct4_VariousVectors) {
 //=============================================================================
 
 TEST(SIMDUtility, CrossProduct3_UnitVectors) {
-    // X × Y = Z
+    // X * Y = Z
     __m128 x = _mm_set_ps(0.0f, 0.0f, 0.0f, 1.0f);
     __m128 y = _mm_set_ps(0.0f, 0.0f, 1.0f, 0.0f);
     __m128 crossXY = VxSIMDCrossProduct3(x, y);
 
     float result[4];
     _mm_storeu_ps(result, crossXY);
-    EXPECT_NEAR(result[0], 0.0f, 1e-6f) << "X × Y should have X=0";
-    EXPECT_NEAR(result[1], 0.0f, 1e-6f) << "X × Y should have Y=0";
-    EXPECT_NEAR(result[2], 1.0f, 1e-6f) << "X × Y should have Z=1";
+    EXPECT_NEAR(result[0], 0.0f, 1e-6f) << "X * Y should have X=0";
+    EXPECT_NEAR(result[1], 0.0f, 1e-6f) << "X * Y should have Y=0";
+    EXPECT_NEAR(result[2], 1.0f, 1e-6f) << "X * Y should have Z=1";
 
-    // Y × X = -Z
+    // Y * X = -Z
     __m128 crossYX = VxSIMDCrossProduct3(y, x);
     _mm_storeu_ps(result, crossYX);
-    EXPECT_NEAR(result[0], 0.0f, 1e-6f) << "Y × X should have X=0";
-    EXPECT_NEAR(result[1], 0.0f, 1e-6f) << "Y × X should have Y=0";
-    EXPECT_NEAR(result[2], -1.0f, 1e-6f) << "Y × X should have Z=-1";
+    EXPECT_NEAR(result[0], 0.0f, 1e-6f) << "Y * X should have X=0";
+    EXPECT_NEAR(result[1], 0.0f, 1e-6f) << "Y * X should have Y=0";
+    EXPECT_NEAR(result[2], -1.0f, 1e-6f) << "Y * X should have Z=-1";
 
-    // Y × Z = X
+    // Y * Z = X
     __m128 z = _mm_set_ps(0.0f, 1.0f, 0.0f, 0.0f);
     __m128 crossYZ = VxSIMDCrossProduct3(y, z);
     _mm_storeu_ps(result, crossYZ);
-    EXPECT_NEAR(result[0], 1.0f, 1e-6f) << "Y × Z should have X=1";
-    EXPECT_NEAR(result[1], 0.0f, 1e-6f) << "Y × Z should have Y=0";
-    EXPECT_NEAR(result[2], 0.0f, 1e-6f) << "Y × Z should have Z=0";
+    EXPECT_NEAR(result[0], 1.0f, 1e-6f) << "Y * Z should have X=1";
+    EXPECT_NEAR(result[1], 0.0f, 1e-6f) << "Y * Z should have Y=0";
+    EXPECT_NEAR(result[2], 0.0f, 1e-6f) << "Y * Z should have Z=0";
 }
 
 TEST(SIMDUtility, CrossProduct3_VariousVectors) {
@@ -238,12 +238,12 @@ TEST(SIMDUtility, CrossProduct3_Perpendicular) {
         __m128 vb = VxSIMDLoadFloat3(&b.x);
         __m128 cross = VxSIMDCrossProduct3(va, vb);
 
-        // cross · a should be ~0
+        // cross . a should be ~0
         __m128 dotA = VxSIMDDotProduct3(cross, va);
         float resultA;
         _mm_store_ss(&resultA, dotA);
 
-        // cross · b should be ~0
+        // cross . b should be ~0
         __m128 dotB = VxSIMDDotProduct3(cross, vb);
         float resultB;
         _mm_store_ss(&resultB, dotB);

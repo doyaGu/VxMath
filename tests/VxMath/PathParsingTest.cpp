@@ -20,13 +20,13 @@ protected:
     void SetUp() override {
         // Create a temporary directory structure for testing
         // test_root/
-        // ├── file1.txt
-        // ├── file2.log
-        // ├── image.JPG
-        // ├── sub/
-        // │   ├── subfile.txt
-        // │   └── another.log
-        // └── empty_sub/
+        //   file1.txt
+        //   file2.log
+        //   image.JPG
+        //   sub/
+        //     subfile.txt
+        //     another.log
+        //   empty_sub/
         // Use a unique temp directory per test to avoid cross-test coupling
         // if Windows keeps a handle open briefly.
         const auto *info = ::testing::UnitTest::GetInstance()->current_test_info();

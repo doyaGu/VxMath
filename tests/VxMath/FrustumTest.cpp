@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 #include <gmock/gmock.h>
 
+#include <cmath>
 #include <random>
 
 #include "VxFrustum.h"
@@ -144,7 +145,7 @@ TEST_F(VxFrustumTest, ClassifyPoint) {
     EXPECT_FALSE(perspectiveFrustum.IsInside(pointBehind));
 
     // A point to the left of the frustum
-    // At z=50 with 90° FOV, frustum extends to x=±50, so x=-60 is outside
+    // At z=50 with 90 deg FOV, frustum extends to x=+/-50, so x=-60 is outside
     VxVector pointLeft(-60, 0, 50.0f);
     EXPECT_EQ(perspectiveFrustum.Classify(pointLeft), VXCLIP_LEFT) << "Point left of frustum should be clipped.";
     EXPECT_FALSE(perspectiveFrustum.IsInside(pointLeft));
@@ -221,7 +222,7 @@ TEST_F(VxFrustumTest, ClassifyOBB) {
     EXPECT_FALSE(VxIntersect::FrustumBox(perspectiveFrustum, baseBox, translation)) << "FrustumBox should return FALSE for outside box.";
 
     // Case 3: Box at the edge (intersecting)
-    // At z=15-25, frustum extends to approximately x=±15 to x=±25
+    // At z=15-25, frustum extends to approximately x=+/-15 to x=+/-25
     VxBbox edgeBox(VxVector(10, -1, 15), VxVector(20, 1, 25)); // Straddles the right edge
     EXPECT_TRUE(VxIntersect::FrustumBox(perspectiveFrustum, edgeBox, identity)) << "FrustumBox should return TRUE for intersecting box.";
 }
@@ -248,6 +249,56 @@ TEST_F(VxFrustumTest, VxIntersect_FrustumFace) {
     VxVector e1(110, -1, 90);
     VxVector e2(100, 1, 90);
     EXPECT_TRUE(VxIntersect::FrustumFace(perspectiveFrustum, e0, e1, e2));
+}
+
+TEST_F(VxFrustumTest, VxIntersect_FrustumFace_RandomizedMatchesScalarReference) {
+    auto classifyFaceScalar = [](const VxPlane &plane, const VxVector &pt0, const VxVector &pt1, const VxVector &pt2) -> float {
+        const float c0 = DotProduct(plane.m_Normal, pt0) + plane.m_D;
+        const float c1 = DotProduct(plane.m_Normal, pt1) + plane.m_D;
+        const float c2 = DotProduct(plane.m_Normal, pt2) + plane.m_D;
+
+        const bool positive = (c0 > 0.0f) && (c1 > 0.0f) && (c2 > 0.0f);
+        if (positive) {
+            return XMin(c0, XMin(c1, c2));
+        }
+
+        const bool negative = (c0 < 0.0f) && (c1 < 0.0f) && (c2 < 0.0f);
+        if (negative) {
+            return XMax(c0, XMax(c1, c2));
+        }
+
+        return 0.0f;
+    };
+
+    auto frustumFaceRef = [&](const VxVector &pt0, const VxVector &pt1, const VxVector &pt2) -> XBOOL {
+        if (classifyFaceScalar(perspectiveFrustum.GetNearPlane(), pt0, pt1, pt2) > 0.0f)
+            return FALSE;
+        if (classifyFaceScalar(perspectiveFrustum.GetFarPlane(), pt0, pt1, pt2) > 0.0f)
+            return FALSE;
+        if (classifyFaceScalar(perspectiveFrustum.GetLeftPlane(), pt0, pt1, pt2) > 0.0f)
+            return FALSE;
+        if (classifyFaceScalar(perspectiveFrustum.GetRightPlane(), pt0, pt1, pt2) > 0.0f)
+            return FALSE;
+        if (classifyFaceScalar(perspectiveFrustum.GetBottomPlane(), pt0, pt1, pt2) > 0.0f)
+            return FALSE;
+        if (classifyFaceScalar(perspectiveFrustum.GetUpPlane(), pt0, pt1, pt2) > 0.0f)
+            return FALSE;
+        return TRUE;
+    };
+
+    std::mt19937 rng(20260223u);
+    std::uniform_real_distribution<float> dxy(-180.0f, 180.0f);
+    std::uniform_real_distribution<float> dz(-20.0f, 160.0f);
+
+    for (int i = 0; i < 500; ++i) {
+        const VxVector p0(dxy(rng), dxy(rng), dz(rng));
+        const VxVector p1(dxy(rng), dxy(rng), dz(rng));
+        const VxVector p2(dxy(rng), dxy(rng), dz(rng));
+
+        const XBOOL ref = frustumFaceRef(p0, p1, p2);
+        const XBOOL simd = VxIntersect::FrustumFace(perspectiveFrustum, p0, p1, p2);
+        EXPECT_EQ(simd, ref) << "Mismatch at iteration " << i;
+    }
 }
 
 TEST_F(VxFrustumTest, VxIntersect_FrustumAABB) {
@@ -284,6 +335,95 @@ TEST_F(VxFrustumTest, VxIntersect_FrustumOBB) {
     Vx3DMatrixFromEulerAngles(matRot, 0.0f, 0.0f, PI / 4.0f);
     matRot[3][2] = 10.0f;
     EXPECT_TRUE(VxIntersect::FrustumOBB(perspectiveFrustum, localBox, matRot));
+}
+
+TEST_F(VxFrustumTest, VxIntersect_FrustumOBB_RandomizedMatchesScalarReference) {
+    auto frustumOBBRef = [&](const VxBbox &box, const VxMatrix &mat) -> XBOOL {
+        VxVector halfSize = (box.Max - box.Min) * 0.5f;
+
+        VxVector localCenter = (box.Max + box.Min) * 0.5f;
+        VxVector worldCenter;
+        Vx3DMultiplyMatrixVector(&worldCenter, mat, &localCenter);
+        VxVector relCenter = worldCenter - perspectiveFrustum.GetOrigin();
+
+        VxVector axis0(mat[0].x, mat[0].y, mat[0].z);
+        VxVector axis1(mat[1].x, mat[1].y, mat[1].z);
+        VxVector axis2(mat[2].x, mat[2].y, mat[2].z);
+
+        float len0 = sqrtf(SquareMagnitude(axis0));
+        float len1 = sqrtf(SquareMagnitude(axis1));
+        float len2 = sqrtf(SquareMagnitude(axis2));
+
+        if (len0 != 0.0f) axis0 *= (1.0f / len0);
+        if (len1 != 0.0f) axis1 *= (1.0f / len1);
+        if (len2 != 0.0f) axis2 *= (1.0f / len2);
+
+        halfSize.x *= len0;
+        halfSize.y *= len1;
+        halfSize.z *= len2;
+
+        const VxVector &frDir = perspectiveFrustum.GetDir();
+        const VxVector &frUp = perspectiveFrustum.GetUp();
+        const VxVector &frRight = perspectiveFrustum.GetRight();
+        const float rBound = perspectiveFrustum.GetRBound();
+        const float uBound = perspectiveFrustum.GetUBound();
+        const float dMin = perspectiveFrustum.GetDMin();
+        const float dRatio = perspectiveFrustum.GetDRatio();
+
+        auto axisTest = [&](const VxVector &axis) -> XBOOL {
+            const float c = DotProduct(relCenter, axis);
+            const float r = XAbs(DotProduct(axis, axis0)) * halfSize.x +
+                XAbs(DotProduct(axis, axis1)) * halfSize.y +
+                XAbs(DotProduct(axis, axis2)) * halfSize.z;
+
+            const float frBound = XAbs(DotProduct(axis, frUp)) * uBound + XAbs(DotProduct(axis, frRight)) * rBound;
+            const float d = DotProduct(axis, frDir) * dMin;
+
+            float frMin = d - frBound;
+            if (frMin < 0.0f) frMin *= dRatio;
+            float frMax = d + frBound;
+            if (frMax > 0.0f) frMax *= dRatio;
+
+            if (c + r < frMin) return FALSE;
+            if (c - r > frMax) return FALSE;
+            return TRUE;
+        };
+
+        if (!axisTest(axis0)) return FALSE;
+        if (!axisTest(axis1)) return FALSE;
+        if (!axisTest(axis2)) return FALSE;
+
+        if (!axisTest(perspectiveFrustum.GetFarPlane().GetNormal())) return FALSE;
+        if (!axisTest(perspectiveFrustum.GetBottomPlane().GetNormal())) return FALSE;
+        if (!axisTest(perspectiveFrustum.GetUpPlane().GetNormal())) return FALSE;
+        if (!axisTest(perspectiveFrustum.GetLeftPlane().GetNormal())) return FALSE;
+        if (!axisTest(perspectiveFrustum.GetRightPlane().GetNormal())) return FALSE;
+
+        return TRUE;
+    };
+
+    std::mt19937 rng(20260223u);
+    std::uniform_real_distribution<float> posXY(-140.0f, 140.0f);
+    std::uniform_real_distribution<float> posZ(0.5f, 130.0f);
+    std::uniform_real_distribution<float> angle(-PI, PI);
+    std::uniform_real_distribution<float> scale(0.25f, 3.0f);
+
+    const VxBbox localBox(VxVector(-1, -1, -1), VxVector(1, 1, 1));
+    for (int i = 0; i < 400; ++i) {
+        VxMatrix mat;
+        Vx3DMatrixFromEulerAngles(mat, angle(rng), angle(rng), angle(rng));
+        mat[0] *= scale(rng);
+        mat[1] *= scale(rng);
+        mat[2] *= scale(rng);
+        mat[3][0] = posXY(rng);
+        mat[3][1] = posXY(rng);
+        mat[3][2] = posZ(rng);
+        mat[3][3] = 1.0f;
+
+        const XBOOL ref = frustumOBBRef(localBox, mat);
+        const XBOOL simd = VxIntersect::FrustumOBB(perspectiveFrustum, localBox, mat);
+        EXPECT_EQ(simd, ref) << "Mismatch at iteration " << i;
+    }
 }
 
 TEST_F(VxFrustumTest, VxIntersect_FrustumBox_MatchesPlaneClassify) {
@@ -328,6 +468,25 @@ TEST_F(VxFrustumTest, VxIntersect_FrustumBox_MatchesPlaneClassify) {
     scaled[2] *= 3.0f;
     scaled[3][2] = 10.0f;
     expectMatches(scaled);
+
+    std::mt19937 rng(20260223u);
+    std::uniform_real_distribution<float> posXY(-140.0f, 140.0f);
+    std::uniform_real_distribution<float> posZ(0.5f, 130.0f);
+    std::uniform_real_distribution<float> angle(-PI, PI);
+    std::uniform_real_distribution<float> scale(0.25f, 3.0f);
+
+    for (int i = 0; i < 400; ++i) {
+        VxMatrix matRnd;
+        Vx3DMatrixFromEulerAngles(matRnd, angle(rng), angle(rng), angle(rng));
+        matRnd[0] *= scale(rng);
+        matRnd[1] *= scale(rng);
+        matRnd[2] *= scale(rng);
+        matRnd[3][0] = posXY(rng);
+        matRnd[3][1] = posXY(rng);
+        matRnd[3][2] = posZ(rng);
+        matRnd[3][3] = 1.0f;
+        expectMatches(matRnd);
+    }
 }
 
 // Test orthographic frustum classification specifically.

@@ -18,6 +18,23 @@ HINSTANCE g_hinstDLL;
 CRITICAL_SECTION g_CriticalSection;
 #endif
 
+#if defined(VX_SIMD_SSE)
+static inline void VxSIMDProjectPointToAxes3(
+    const float *point,
+    __m128 axisX,
+    __m128 axisY,
+    __m128 axisZ,
+    float &outX,
+    float &outY,
+    float &outZ
+) {
+    const __m128 v = VxSIMDLoadFloat3(point);
+    outX = _mm_cvtss_f32(VxSIMDDotProduct3(v, axisX));
+    outY = _mm_cvtss_f32(VxSIMDDotProduct3(v, axisY));
+    outZ = _mm_cvtss_f32(VxSIMDDotProduct3(v, axisZ));
+}
+#endif
+
 void InitVxMath() {
     VxDetectProcessor();
     InitializeTables();
@@ -29,6 +46,17 @@ void InitVxMath() {
 void InterpolateFloatArray(void *Res, void *array1, void *array2, float factor, int count) {
     if (!Res || !array1 || !array2 || count == 0)
         return;
+
+#if defined(VX_SIMD_SSE)
+    VxSIMDInterpolateFloatArray(
+        static_cast<float *>(Res),
+        static_cast<const float *>(array1),
+        static_cast<const float *>(array2),
+        factor,
+        count
+    );
+    return;
+#endif
 
     float *pRes = static_cast<float *>(Res);
     float *pArray1 = static_cast<float *>(array1);
@@ -46,6 +74,11 @@ void InterpolateFloatArray(void *Res, void *array1, void *array2, float factor, 
 void InterpolateVectorArray(void *Res, void *Inarray1, void *Inarray2, float factor, int count, XDWORD StrideRes, XDWORD StrideIn) {
     if (!Res || !Inarray1 || !Inarray2 || count == 0)
         return;
+
+#if defined(VX_SIMD_SSE)
+    VxSIMDInterpolateVectorArray(Res, Inarray1, Inarray2, factor, count, StrideRes, StrideIn);
+    return;
+#endif
 
     VxVector *pRes = static_cast<VxVector *>(Res);
     VxVector *pArray1 = static_cast<VxVector *>(Inarray1);
@@ -77,6 +110,17 @@ XBOOL VxTransformBox2D(const VxMatrix &World_ProjectionMat, const VxBbox &box, V
         Extents->right = 0.0f;
         Extents->bottom = 0.0f;
     }
+
+#if defined(VX_SIMD_SSE)
+    return VxSIMDTransformBox2D(
+        &World_ProjectionMat,
+        &box,
+        Extents,
+        ScreenSize,
+        &OrClipFlags,
+        &AndClipFlags
+    );
+#endif
 
     // Use local variables for thread safety
     VxVector4 transformedVertices[8];
@@ -214,10 +258,19 @@ void VxProjectBoxZExtents(const VxMatrix &World_ProjectionMat, const VxBbox &box
     ZhMin = 1.0e10f;
     ZhMax = -1.0e10f;
 
-    // Validate input
+    // Validate input (keep legacy behavior for invalid boxes)
     if (!box.IsValid()) {
         return;
     }
+
+#if defined(VX_SIMD_SSE)
+    VxSIMDProjectBoxZExtents(&World_ProjectionMat, &box, &ZhMin, &ZhMax);
+    if (ZhMin > ZhMax) {
+        ZhMin = 0.0f;
+        ZhMax = 1.0f;
+    }
+    return;
+#endif
 
     VxVector4 transformedVertex;
 
@@ -297,6 +350,10 @@ void VxProjectBoxZExtents(const VxMatrix &World_ProjectionMat, const VxBbox &box
  * Fills an array with copies of a structure
  */
 XBOOL VxFillStructure(int Count, void *Dst, XDWORD Stride, XDWORD SizeSrc, const void *Src) {
+#if defined(VX_SIMD_SSE)
+    return VxSIMDFillStructure(Count, Dst, Stride, SizeSrc, Src);
+#endif
+
     if (!Src || !Dst || !Count || !SizeSrc || !Stride || (SizeSrc & 3) != 0)
         return FALSE;
 
@@ -379,6 +436,10 @@ XBOOL VxFillStructure(int Count, void *Dst, XDWORD Stride, XDWORD SizeSrc, const
  * Copies structures from one array to another
  */
 XBOOL VxCopyStructure(int Count, void *Dst, XDWORD OutStride, XDWORD SizeSrc, const void *Src, XDWORD InStride) {
+#if defined(VX_SIMD_SSE)
+    return VxSIMDCopyStructure(Count, Dst, OutStride, SizeSrc, Src, InStride);
+#endif
+
     if (!Src || !Dst || !Count || !SizeSrc || !OutStride || !InStride || (SizeSrc & 3) != 0)
         return FALSE;
 
@@ -461,6 +522,10 @@ XBOOL VxCopyStructure(int Count, void *Dst, XDWORD OutStride, XDWORD SizeSrc, co
  * Copies structures from an array to another using an index array
  */
 XBOOL VxIndexedCopy(const VxStridedData &Dst, const VxStridedData &Src, XDWORD SizeSrc, const int *Indices, int IndexCount) {
+#if defined(VX_SIMD_SSE)
+    return VxSIMDIndexedCopy(Dst, Src, SizeSrc, Indices, IndexCount);
+#endif
+
     // Validate parameters
     if (IndexCount == 0)
         return FALSE;
@@ -598,6 +663,10 @@ XBOOL VxIndexedCopy(const VxStridedData &Dst, const VxStridedData &Src, XDWORD S
 }
 
 XBOOL VxPtInRect(CKRECT *rect, CKPOINT *pt) {
+#if defined(VX_SIMD_SSE)
+    return VxSIMDPtInRect(rect, pt);
+#endif
+
     if (pt->x < rect->left)
         return FALSE;
     if (pt->x > rect->right)
@@ -640,22 +709,60 @@ XBOOL VxComputeBestFitBBox(const XBYTE *Points, XDWORD Stride, int Count, VxMatr
         BBoxMatrix[2][2] = mz;
         BBoxMatrix[2][3] = 0.0f;
 
+        float minX, maxX, minY, maxY, minZ, maxZ;
+#if defined(VX_SIMD_SSE)
+        const __m128 axisX = VxSIMDLoadFloat3(&BBoxMatrix[0][0]);
+        const __m128 axisY = VxSIMDLoadFloat3(&BBoxMatrix[1][0]);
+        const __m128 axisZ = VxSIMDLoadFloat3(&BBoxMatrix[2][0]);
+
+        const float *firstPoint = reinterpret_cast<const float *>(Points);
+        float projX;
+        float projY;
+        float projZ;
+        VxSIMDProjectPointToAxes3(firstPoint, axisX, axisY, axisZ, projX, projY, projZ);
+
+        minX = maxX = projX;
+        minY = maxY = projY;
+        minZ = maxZ = projZ;
+
+        // Keep scalar-style comparisons so NaN handling stays consistent with legacy code.
+        for (int i = 0; i < Count; ++i) {
+            const float *p = reinterpret_cast<const float *>(Points + i * Stride);
+            float x, y, z;
+            VxSIMDProjectPointToAxes3(p, axisX, axisY, axisZ, x, y, z);
+
+            if (x >= maxX)
+                maxX = x;
+            else if (x < minX)
+                minX = x;
+
+            if (y >= maxY)
+                maxY = y;
+            else if (y < minY)
+                minY = y;
+
+            if (z >= maxZ)
+                maxZ = z;
+            else if (z < minZ)
+                minZ = z;
+        }
+#else
         // Project all points onto the principal axes to find min/max extents
-        const float *pPoint = (const float *) Points;
+        const float *pPoint = reinterpret_cast<const float *>(Points);
 
         // Initialize min/max with the first point projection
         float projX = pPoint[0] * BBoxMatrix[0][0] + pPoint[1] * BBoxMatrix[0][1] + pPoint[2] * BBoxMatrix[0][2];
-        float minX = projX, maxX = projX;
+        minX = maxX = projX;
 
         float projY = pPoint[0] * BBoxMatrix[1][0] + pPoint[1] * BBoxMatrix[1][1] + pPoint[2] * BBoxMatrix[1][2];
-        float minY = projY, maxY = projY;
+        minY = maxY = projY;
 
         float projZ = pPoint[0] * BBoxMatrix[2][0] + pPoint[1] * BBoxMatrix[2][1] + pPoint[2] * BBoxMatrix[2][2];
-        float minZ = projZ, maxZ = projZ;
+        minZ = maxZ = projZ;
 
         // Find min/max extents for all points
         for (int i = 0; i < Count; ++i) {
-            const float *p = (const float *)(Points + i * Stride);
+            const float *p = reinterpret_cast<const float *>(Points + i * Stride);
 
             float x = p[0] * BBoxMatrix[0][0] + p[1] * BBoxMatrix[0][1] + p[2] * BBoxMatrix[0][2];
             if (x >= maxX)
@@ -675,6 +782,7 @@ XBOOL VxComputeBestFitBBox(const XBYTE *Points, XDWORD Stride, int Count, VxMatr
             else if (z < minZ)
                 minZ = z;
         }
+#endif
 
         // Calculate center point in principal axis space
         float centerX = (minX + maxX) * 0.5f;

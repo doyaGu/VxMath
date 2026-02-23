@@ -801,15 +801,15 @@ TEST_F(VxTrigFunctionsTest, TsinTcosSpecialAngles) {
     EXPECT_NEAR(Tsin(angle_0_int), 0.0f, 0.01f);
     EXPECT_NEAR(Tcos(angle_0_int), 1.0f, 0.01f);
 
-    // sin(90°) = 1, cos(90°) = 0
+    // sin(90 deg) = 1, cos(90 deg) = 0
     EXPECT_NEAR(Tsin(angle_90_int), 1.0f, 0.01f);
     EXPECT_NEAR(Tcos(angle_90_int), 0.0f, 0.01f);
 
-    // sin(180°) = 0, cos(180°) = -1
+    // sin(180 deg) = 0, cos(180 deg) = -1
     EXPECT_NEAR(Tsin(angle_180_int), 0.0f, 0.01f);
     EXPECT_NEAR(Tcos(angle_180_int), -1.0f, 0.01f);
 
-    // sin(270°) = -1, cos(270°) = 0
+    // sin(270 deg) = -1, cos(270 deg) = 0
     EXPECT_NEAR(Tsin(angle_270_int), -1.0f, 0.01f);
     EXPECT_NEAR(Tcos(angle_270_int), 0.0f, 0.01f);
 }

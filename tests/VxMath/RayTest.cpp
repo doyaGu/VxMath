@@ -1,5 +1,6 @@
 #include "gtest/gtest.h"
 #include "VxMath.h"
+#include <cmath>
 
 // Test fixture for VxRay tests
 class VxRayTest : public ::testing::Test {
@@ -222,4 +223,16 @@ TEST_F(VxRayTest, Transform) {
     EXPECT_NEAR(dest_ray.GetDirection().x, expected_new_dir.x, 1e-5);
     EXPECT_NEAR(dest_ray.GetDirection().y, expected_new_dir.y, 1e-5);
     EXPECT_NEAR(dest_ray.GetDirection().z, expected_new_dir.z, 1e-5);
+}
+
+TEST_F(VxRayTest, DistanceConsistencyWithSquareDistanceAndFiniteValues) {
+    VxRay ray(VxVector(10000.0f, -20000.0f, 30000.0f), VxVector(1.0f, 0.0f, 0.0f), nullptr);
+    const VxVector p(12000.0f, -21000.0f, 33000.0f);
+
+    const float sq = ray.SquareDistance(p);
+    const float dist = ray.Distance(p);
+
+    EXPECT_TRUE(std::isfinite(sq));
+    EXPECT_TRUE(std::isfinite(dist));
+    EXPECT_NEAR(dist * dist, sq, 1.0e-3f);
 }

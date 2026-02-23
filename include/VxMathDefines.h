@@ -65,12 +65,12 @@
 #endif
 
 #ifndef PI
-/// @brief The mathematical constant Pi (π).
+/// @brief The mathematical constant Pi.
 #define PI 3.1415926535f
 #endif
 
 #ifndef HALFPI
-/// @brief Half of the mathematical constant Pi (π/2).
+/// @brief Half of the mathematical constant Pi.
 #define HALFPI 1.5707963267f
 #endif
 

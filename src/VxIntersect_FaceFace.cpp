@@ -3,6 +3,63 @@
 #include "VxVector.h"
 #include "VxMatrix.h"
 #include "VxPlane.h"
+#include "VxSIMD.h"
+
+#if defined(VX_SIMD_SSE)
+static inline __m128 VxSIMDLoadVector3(const VxVector &v) {
+    return VxSIMDLoadFloat3(&v.x);
+}
+
+static inline float VxSIMDDot3Scalar(__m128 a, __m128 b) {
+    return _mm_cvtss_f32(VxSIMDDotProduct3(a, b));
+}
+
+static inline void VxSIMDComputePlaneDistances(
+    const VxVector &normal,
+    float planeD,
+    const VxVector &p0,
+    const VxVector &p1,
+    const VxVector &p2,
+    float outDist[3]
+) {
+    const __m128 n = VxSIMDLoadVector3(normal);
+    outDist[0] = VxSIMDDot3Scalar(n, VxSIMDLoadVector3(p0)) + planeD;
+    outDist[1] = VxSIMDDot3Scalar(n, VxSIMDLoadVector3(p1)) + planeD;
+    outDist[2] = VxSIMDDot3Scalar(n, VxSIMDLoadVector3(p2)) + planeD;
+}
+
+static inline XBOOL VxSIMDPointInFace3D(
+    const VxVector &point,
+    const VxVector &pt0,
+    const VxVector &pt1,
+    const VxVector &pt2,
+    const VxVector &norm
+) {
+    const __m128 p = VxSIMDLoadVector3(point);
+    const __m128 a0 = VxSIMDLoadVector3(pt0);
+    const __m128 a1 = VxSIMDLoadVector3(pt1);
+    const __m128 a2 = VxSIMDLoadVector3(pt2);
+    const __m128 n = VxSIMDLoadVector3(norm);
+
+    const float c0 = VxSIMDDot3Scalar(VxSIMDCrossProduct3(_mm_sub_ps(p, a1), _mm_sub_ps(a2, a1)), n);
+    const float c1 = VxSIMDDot3Scalar(VxSIMDCrossProduct3(_mm_sub_ps(p, a2), _mm_sub_ps(a0, a2)), n);
+    const float c2 = VxSIMDDot3Scalar(VxSIMDCrossProduct3(_mm_sub_ps(p, a0), _mm_sub_ps(a1, a0)), n);
+
+    const bool nonNegative = (c0 >= 0.0f) && (c1 >= 0.0f) && (c2 >= 0.0f);
+    const bool negative = (c0 < 0.0f) && (c1 < 0.0f) && (c2 < 0.0f);
+    return (nonNegative || negative) ? TRUE : FALSE;
+}
+
+static inline __m128 VxSIMDLoadProjected2(const VxVector &v, int i1, int i2) {
+    return _mm_setr_ps(v[i1], v[i2], 0.0f, 0.0f);
+}
+
+static inline float VxSIMDCross2Scalar(__m128 a, __m128 b) {
+    const __m128 ay = _mm_shuffle_ps(a, a, _MM_SHUFFLE(1, 1, 1, 1));
+    const __m128 by = _mm_shuffle_ps(b, b, _MM_SHUFFLE(1, 1, 1, 1));
+    return _mm_cvtss_f32(_mm_sub_ss(_mm_mul_ss(a, by), _mm_mul_ss(ay, b)));
+}
+#endif
 
 //---------- Faces
 
@@ -25,6 +82,9 @@ XBOOL VxIntersect::PointInFace(const VxVector &point, const VxVector &pt0, const
         i2 = 1; // Y
     }
 
+#if defined(VX_SIMD_SSE)
+    return VxSIMDPointInFace3D(point, pt0, pt1, pt2, norm);
+#else
     // Perform three edge tests using 2D cross products
     // Test: (point - pt1) x (pt2 - pt1)
     char flags = 1;
@@ -47,6 +107,7 @@ XBOOL VxIntersect::PointInFace(const VxVector &point, const VxVector &pt0, const
     }
 
     return (flags & 1) != 0;
+#endif
 }
 
 // Intersection Ray - Face
@@ -183,6 +244,34 @@ XBOOL VxIntersect::LineFace(const VxRay &ray, const VxVector &pt0, const VxVecto
 // Calculate barycentric coordinates for point in face
 void VxIntersect::GetPointCoefficients(const VxVector &pt, const VxVector &pt0, const VxVector &pt1, const VxVector &pt2,
                                        const int &i1, const int &i2, float &V0Coef, float &V1Coef, float &V2Coef) {
+#if defined(VX_SIMD_SSE)
+    const __m128 p0 = VxSIMDLoadProjected2(pt0, i1, i2);
+    const __m128 p1 = VxSIMDLoadProjected2(pt1, i1, i2);
+    const __m128 p2 = VxSIMDLoadProjected2(pt2, i1, i2);
+    const __m128 p = VxSIMDLoadProjected2(pt, i1, i2);
+
+    const __m128 v1 = _mm_sub_ps(p, p0);
+    const __m128 v2 = _mm_sub_ps(p1, p0);
+    const __m128 v3 = _mm_sub_ps(p2, p0);
+
+    const float v1_i1 = _mm_cvtss_f32(v1);
+    const float v1_i2 = _mm_cvtss_f32(_mm_shuffle_ps(v1, v1, _MM_SHUFFLE(1, 1, 1, 1)));
+    const float v2_i1 = _mm_cvtss_f32(v2);
+    const float v2_i2 = _mm_cvtss_f32(_mm_shuffle_ps(v2, v2, _MM_SHUFFLE(1, 1, 1, 1)));
+    const float v3_i1 = _mm_cvtss_f32(v3);
+    const float v3_i2 = _mm_cvtss_f32(_mm_shuffle_ps(v3, v3, _MM_SHUFFLE(1, 1, 1, 1)));
+
+    if (v2_i1 == 0.0f) {
+        V2Coef = v1_i1 / v3_i1;
+        V1Coef = (v1_i2 - V2Coef * v3_i2) / v2_i2;
+    } else {
+        const float denom = VxSIMDCross2Scalar(v2, v3);
+        V2Coef = VxSIMDCross2Scalar(v2, v1) / denom;
+        V1Coef = (v1_i1 - V2Coef * v3_i1) / v2_i1;
+    }
+
+    V0Coef = 1.0f - (V1Coef + V2Coef);
+#else
     // Get 2D coordinates for the calculation
     float p0_i1 = pt0[i1], p0_i2 = pt0[i2];
     float p1_i1 = pt1[i1], p1_i2 = pt1[i2];
@@ -208,6 +297,7 @@ void VxIntersect::GetPointCoefficients(const VxVector &pt, const VxVector &pt0, 
     }
 
     V0Coef = 1.0f - (V1Coef + V2Coef);
+#endif
 }
 
 int coplanar_tri_tri(const VxVector &N, const VxVector &V0, const VxVector &V1, const VxVector &V2,
@@ -216,6 +306,14 @@ int coplanar_tri_tri(const VxVector &N, const VxVector &V0, const VxVector &V1, 
 // Intersection Face - Face
 XBOOL VxIntersect::FaceFace(const VxVector &A0, const VxVector &A1, const VxVector &A2, const VxVector &N0,
                             const VxVector &B0, const VxVector &B1, const VxVector &B2, const VxVector &N1) {
+#if defined(VX_SIMD_SSE)
+    const __m128 n0V = VxSIMDLoadVector3(N0);
+    const __m128 n1V = VxSIMDLoadVector3(N1);
+
+    const float planeA_d = -VxSIMDDot3Scalar(n0V, VxSIMDLoadVector3(A0));
+    float distB[3];
+    VxSIMDComputePlaneDistances(N0, planeA_d, B0, B1, B2, distB);
+#else
     // Signed distances of B vertices to plane of A
     const float planeA_d = -DotProduct(N0, A0);
     float distB[3] = {
@@ -223,11 +321,17 @@ XBOOL VxIntersect::FaceFace(const VxVector &A0, const VxVector &A1, const VxVect
         DotProduct(N0, B1) + planeA_d,
         DotProduct(N0, B2) + planeA_d,
     };
+#endif
     if (XAbs(distB[0]) < EPSILON) distB[0] = 0.0f;
     if (XAbs(distB[1]) < EPSILON) distB[1] = 0.0f;
     if (XAbs(distB[2]) < EPSILON) distB[2] = 0.0f;
     if (distB[0] * distB[1] > 0.0f && distB[0] * distB[2] > 0.0f) return FALSE;
 
+#if defined(VX_SIMD_SSE)
+    const float planeB_d = -VxSIMDDot3Scalar(n1V, VxSIMDLoadVector3(B0));
+    float distA[3];
+    VxSIMDComputePlaneDistances(N1, planeB_d, A0, A1, A2, distA);
+#else
     // Signed distances of A vertices to plane of B
     const float planeB_d = -DotProduct(N1, B0);
     float distA[3] = {
@@ -235,6 +339,7 @@ XBOOL VxIntersect::FaceFace(const VxVector &A0, const VxVector &A1, const VxVect
         DotProduct(N1, A1) + planeB_d,
         DotProduct(N1, A2) + planeB_d,
     };
+#endif
     if (XAbs(distA[0]) < EPSILON) distA[0] = 0.0f;
     if (XAbs(distA[1]) < EPSILON) distA[1] = 0.0f;
     if (XAbs(distA[2]) < EPSILON) distA[2] = 0.0f;
@@ -243,7 +348,12 @@ XBOOL VxIntersect::FaceFace(const VxVector &A0, const VxVector &A1, const VxVect
     if (distA01 > 0.0f && distA02 > 0.0f) return FALSE;
 
     // Direction of intersection line between the two planes
+#if defined(VX_SIMD_SSE)
+    VxVector D;
+    VxSIMDStoreFloat3(&D.x, VxSIMDCrossProduct3(n0V, n1V));
+#else
     const VxVector D = CrossProduct(N0, N1);
+#endif
     const VxVector absD = Absolute(D);
 
     int maxc = 0;
@@ -261,7 +371,7 @@ XBOOL VxIntersect::FaceFace(const VxVector &A0, const VxVector &A1, const VxVect
     const float vB[3] = {B0[maxc], B1[maxc], B2[maxc]};
 
     // Compute the interval of intersection on the line for each triangle.
-    // This matches the original Möller-style branch structure, but keeps it readable.
+    // This matches the original Moller-style branch structure, but keeps it readable.
     float aBase;
     float aNum0;
     float aNum1;

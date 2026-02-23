@@ -7,6 +7,91 @@
 
 using namespace VxMathTest;
 
+namespace {
+
+inline float Dot3Scalar(const VxVector& a, const VxVector& b) {
+    return a.x * b.x + a.y * b.y + a.z * b.z;
+}
+
+inline float SquareMagnitudeScalar(const VxVector& v) {
+    return Dot3Scalar(v, v);
+}
+
+inline VxVector SubtractScalar(const VxVector& a, const VxVector& b) {
+    return VxVector(a.x - b.x, a.y - b.y, a.z - b.z);
+}
+
+inline VxVector SubtractScaled(const VxVector& a, const VxVector& b, float s) {
+    return VxVector(a.x - b.x * s, a.y - b.y * s, a.z - b.z * s);
+}
+
+float PointLineSquareDistanceScalarRef(const VxVector& point, const VxRay& line, float* t0) {
+    const VxVector diff = SubtractScalar(point, line.m_Origin);
+    const float t = Dot3Scalar(diff, line.m_Direction) / SquareMagnitudeScalar(line.m_Direction);
+
+    if (t0) *t0 = t;
+
+    const VxVector d = SubtractScaled(diff, line.m_Direction, t);
+    return SquareMagnitudeScalar(d);
+}
+
+float PointRaySquareDistanceScalarRef(const VxVector& point, const VxRay& ray, float* t0) {
+    VxVector diff = SubtractScalar(point, ray.m_Origin);
+    const float dotDiffDir = Dot3Scalar(diff, ray.m_Direction);
+
+    float t;
+    if (dotDiffDir > 0.0f) {
+        t = dotDiffDir / SquareMagnitudeScalar(ray.m_Direction);
+        diff = SubtractScaled(diff, ray.m_Direction, t);
+    } else {
+        t = 0.0f;
+    }
+
+    if (t0) *t0 = t;
+
+    return SquareMagnitudeScalar(diff);
+}
+
+float PointSegmentSquareDistanceScalarRef(const VxVector& point, const VxRay& segment, float* t0) {
+    VxVector diff = SubtractScalar(point, segment.m_Origin);
+    const float dotDiffDir = Dot3Scalar(diff, segment.m_Direction);
+
+    float t;
+    if (dotDiffDir > 0.0f) {
+        const float dotDirDir = SquareMagnitudeScalar(segment.m_Direction);
+        if (dotDiffDir < dotDirDir) {
+            t = dotDiffDir / dotDirDir;
+            diff = SubtractScaled(diff, segment.m_Direction, t);
+        } else {
+            t = 1.0f;
+            diff = SubtractScalar(diff, segment.m_Direction);
+        }
+    } else {
+        t = 0.0f;
+    }
+
+    if (t0) *t0 = t;
+
+    return SquareMagnitudeScalar(diff);
+}
+
+void ExpectDistanceOrClassifyEqual(float actual, float expected, float tol) {
+    if (std::isnan(expected)) {
+        EXPECT_TRUE(std::isnan(actual));
+        return;
+    }
+
+    if (std::isinf(expected)) {
+        EXPECT_TRUE(std::isinf(actual));
+        EXPECT_EQ(std::signbit(actual), std::signbit(expected));
+        return;
+    }
+
+    EXPECT_TRUE(ScaleRelativeNear(actual, expected, tol)) << "actual=" << actual << " expected=" << expected;
+}
+
+} // namespace
+
 // Test fixture for VxDistance tests
 class VxDistanceTest : public ::testing::Test {
 protected:
@@ -156,6 +241,47 @@ TEST_F(VxDistanceTest, PointSegmentSquareDistance_PointOffSegment) {
     
     EXPECT_NEAR(dist, 25.0f, BINARY_TOL);  // Distance^2 = 3^2 + 4^2
     EXPECT_NEAR(t, 0.5f, BINARY_TOL);
+}
+
+TEST_F(VxDistanceTest, PointDistanceVariants_MatchScalarReferenceAcrossEdgeInputs) {
+    struct PointDistanceCase {
+        VxVector point;
+        VxVector origin;
+        VxVector direction;
+    };
+
+    const PointDistanceCase cases[] = {
+        {VxVector(2.0f, 3.0f, 4.0f), VxVector(0.0f, 0.0f, 0.0f), VxVector(1.0f, 0.0f, 0.0f)},
+        {VxVector(-2.5f, 7.0f, -1.5f), VxVector(1.0f, -3.0f, 2.0f), VxVector(-2.0f, 0.5f, 1.0f)},
+        {VxVector(1.0e6f + 3.0f, 1.0e6f + 4.0f, 1.0e6f - 2.0f), VxVector(1.0e6f, 1.0e6f, 1.0e6f), VxVector(4.0f, -2.0f, 1.0f)},
+        {VxVector(4.0e-6f, -8.0e-6f, 9.0e-6f), VxVector(-1.0e-6f, 2.0e-6f, -3.0e-6f), VxVector(7.0e-4f, -6.0e-4f, 2.0e-4f)},
+        {VxVector(3.0f, -9.0f, 6.0f), VxVector(-4.0f, 5.0f, -2.0f), VxVector(2.0f, 3.0f, -1.0f)},
+    };
+
+    for (const auto& c : cases) {
+        VxRay primitive(c.origin, c.direction, nullptr);
+
+        float tLineActual = 0.0f;
+        float tLineRef = 0.0f;
+        const float lineActual = VxDistance::PointLineSquareDistance(c.point, primitive, &tLineActual);
+        const float lineRef = PointLineSquareDistanceScalarRef(c.point, primitive, &tLineRef);
+        ExpectDistanceOrClassifyEqual(lineActual, lineRef, BINARY_TOL);
+        ExpectDistanceOrClassifyEqual(tLineActual, tLineRef, BINARY_TOL);
+
+        float tRayActual = 0.0f;
+        float tRayRef = 0.0f;
+        const float rayActual = VxDistance::PointRaySquareDistance(c.point, primitive, &tRayActual);
+        const float rayRef = PointRaySquareDistanceScalarRef(c.point, primitive, &tRayRef);
+        ExpectDistanceOrClassifyEqual(rayActual, rayRef, BINARY_TOL);
+        ExpectDistanceOrClassifyEqual(tRayActual, tRayRef, BINARY_TOL);
+
+        float tSegActual = 0.0f;
+        float tSegRef = 0.0f;
+        const float segActual = VxDistance::PointSegmentSquareDistance(c.point, primitive, &tSegActual);
+        const float segRef = PointSegmentSquareDistanceScalarRef(c.point, primitive, &tSegRef);
+        ExpectDistanceOrClassifyEqual(segActual, segRef, BINARY_TOL);
+        ExpectDistanceOrClassifyEqual(tSegActual, tSegRef, BINARY_TOL);
+    }
 }
 
 // ============================================================================
