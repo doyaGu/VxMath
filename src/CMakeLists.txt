@@ -117,7 +117,7 @@ function(vx_configure_target TARGET_NAME)
     )
 
     target_link_libraries(${TARGET_NAME}
-            PRIVATE
+            PUBLIC
             simde
             stb
     )
@@ -173,12 +173,15 @@ if (VXMATH_BUILD_STATIC)
     list(APPEND VXMATH_TARGETS VxMathStatic)
 endif ()
 
-# Export targets to parent scope
-set(VXMATH_EXPORTED_TARGETS ${VXMATH_TARGETS} ${VXMATH_DEP_EXPORTED_TARGETS} PARENT_SCOPE)
+# Build the exported-targets list locally *and* propagate to the parent scope.
+# The local copy is needed for the install() call below; PARENT_SCOPE alone
+# does not set the variable in the current scope.
+set(VXMATH_EXPORTED_TARGETS ${VXMATH_TARGETS} ${VXMATH_DEP_EXPORTED_TARGETS})
+set(VXMATH_EXPORTED_TARGETS ${VXMATH_EXPORTED_TARGETS} PARENT_SCOPE)
 
 if (VXMATH_INSTALL)
     # Install libraries to Bin directory
-    install(TARGETS ${VXMATH_TARGETS}
+    install(TARGETS ${VXMATH_EXPORTED_TARGETS}
             EXPORT VxMathTargets
             RUNTIME DESTINATION Bin
             LIBRARY DESTINATION Bin

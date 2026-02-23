@@ -1,5 +1,3 @@
-include(GNUInstallDirs)
-
 # STB
 set(STB_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/stb" CACHE INTERNAL "STB include directory")
 if(NOT EXISTS "${STB_INCLUDE_DIR}")
@@ -21,9 +19,8 @@ set(VXMATH_DEP_EXPORTED_TARGETS stb simde PARENT_SCOPE)
 
 # Installation
 if (VXMATH_INSTALL)
-    install(TARGETS stb simde
-            EXPORT VxMathTargets
-    )
+    include(GNUInstallDirs)
+
     file(GLOB _stb_headers "${CMAKE_CURRENT_SOURCE_DIR}/stb/*.h")
     install(FILES ${_stb_headers}
             DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/stb"
