@@ -355,6 +355,7 @@ void VxDetectProcessor() {
     int priority = ::GetThreadPriority(hThread);
     ::SetThreadPriority(hThread, THREAD_PRIORITY_IDLE);
     ::Sleep(10);
+#if VX_HAS_X86_CPUID
     static LARGE_INTEGER freq;
     ::QueryPerformanceFrequency(&freq);
     DWORD64 timeStamp1 = __rdtsc();
@@ -376,6 +377,12 @@ void VxDetectProcessor() {
     double t2 = (double) (timeStamp3 - timeStamp2);
     g_MSecondsPerCycle = (float) (1000.0 * t1 / t2);
     g_ProcessorFrequency = (int) (t2 / t1 / 1000000.0);
+#else
+    LARGE_INTEGER freq;
+    ::QueryPerformanceFrequency(&freq);
+    g_MSecondsPerCycle = (float) (1000.0 / (double) freq.QuadPart);
+    g_ProcessorFrequency = (int) ((double) freq.QuadPart / 1000000.0);
+#endif
     ::SetThreadPriority(hThread, priority);
 #else
     fprintf(stderr, "VxMath: Detecting processor------------------------\n");
