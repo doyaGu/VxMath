@@ -107,37 +107,62 @@
 #error "VxMath requires SSE2 on x86/x64 builds."
 #endif
 
+/*
+ * Fine-grained feature blocks.
+ *
+ * Each block accepts both compiler-predefined macros (e.g. __SSE4_1__, set
+ * by GCC/Clang -msse4.1) and macros injected by the build system
+ * (VX_SIMD_SSE4_1=1, set by vx_apply_simd_flags for compilers like MSVC
+ * that do not predefine __SSEx__ even when the corresponding ISA is active).
+ *
+ * SIMDe headers carry their own include guards, so including them more than
+ * once is always safe.
+ */
+
 /* SSE3 */
-#if defined(__SSE3__)
-#define VX_SIMD_SSE3 1
-#include <simde/x86/sse3.h>
+#if defined(__SSE3__) || defined(VX_SIMD_SSE3)
+#  ifndef VX_SIMD_SSE3
+#    define VX_SIMD_SSE3 1
+#  endif
+#  include <simde/x86/sse3.h>
 #endif
 
 /* SSSE3 */
-#if defined(__SSSE3__)
-#define VX_SIMD_SSSE3 1
-#include <simde/x86/ssse3.h>
+#if defined(__SSSE3__) || defined(VX_SIMD_SSSE3)
+#  ifndef VX_SIMD_SSSE3
+#    define VX_SIMD_SSSE3 1
+#  endif
+#  include <simde/x86/ssse3.h>
 #elif defined(VX_SIMD_SSE2)
-/* Provide SSSE3 intrinsics via SIMDe emulation when the compiler target is below SSSE3. */
-#include <simde/x86/ssse3.h>
+/* Always pull in ssse3.h via SIMDe emulation: blit kernels use
+ * _mm_shuffle_epi8 at SSE2 baseline and rely on SIMDe to emulate it
+ * on CPUs that do not have native SSSE3.  The runtime dispatcher
+ * (VxBlitEngineClass.cpp) gates the SSSE3 kernels behind hasSSSE3. */
+#  include <simde/x86/ssse3.h>
 #endif
 
 /* SSE4.1 */
-#if defined(__SSE4_1__)
-#define VX_SIMD_SSE4_1 1
-#include <simde/x86/sse4.1.h>
+#if defined(__SSE4_1__) || defined(VX_SIMD_SSE4_1)
+#  ifndef VX_SIMD_SSE4_1
+#    define VX_SIMD_SSE4_1 1
+#  endif
+#  include <simde/x86/sse4.1.h>
 #endif
 
 /* SSE4.2 */
-#if defined(__SSE4_2__)
-#define VX_SIMD_SSE4_2 1
-#include <simde/x86/sse4.2.h>
+#if defined(__SSE4_2__) || defined(VX_SIMD_SSE4_2)
+#  ifndef VX_SIMD_SSE4_2
+#    define VX_SIMD_SSE4_2 1
+#  endif
+#  include <simde/x86/sse4.2.h>
 #endif
 
-/* FMA - only used for the macro fallbacks */
-#if defined(__FMA__)
-#define VX_SIMD_FMA 1
-#include <simde/x86/fma.h>
+/* FMA (used for the VX_FMADD_PS / VX_FNMADD_PS macro fallbacks) */
+#if defined(__FMA__) || defined(VX_SIMD_FMA)
+#  ifndef VX_SIMD_FMA
+#    define VX_SIMD_FMA 1
+#  endif
+#  include <simde/x86/fma.h>
 #endif
 
 #endif // VX_SIMD_X86 && !VX_SIMD_FORCE_DISABLED
@@ -367,6 +392,19 @@ VX_SIMD_INLINE const VxSIMDFeatures &VxGetSIMDFeatures() {
     static VxSIMDFeatures features = VxDetectSIMDFeatures();
     return features;
 }
+
+// ============================================================================
+// Runtime SIMD Backend Selection
+// ============================================================================
+
+enum class VxSIMDBackend : int {
+    Scalar = 0,
+    SSE2 = 1,
+    AVX2 = 2
+};
+
+// Public diagnostic API used by performance tools and tests.
+VX_EXPORT VxSIMDBackend VxGetActiveSIMDBackend();
 
 // ============================================================================
 // Forward Declarations for Types

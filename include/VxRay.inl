@@ -54,9 +54,14 @@ inline float VxRay::SquareDistance(const VxVector &p) const {
     return VxSIMDRaySquareDistance(this, &p);
 #else
     VxVector v = p - m_Origin;
-    float a = SquareMagnitude(v);
-    float ps = DotProduct(v, m_Direction);
-    return a - ps * ps;
+    const float a = SquareMagnitude(v);
+    const float dirSq = SquareMagnitude(m_Direction);
+    if (dirSq <= EPSILON) {
+        return a;
+    }
+    const float ps = DotProduct(v, m_Direction);
+    const float sq = a - (ps * ps) / dirSq;
+    return (sq > 0.0f) ? sq : 0.0f;
 #endif
 }
 
@@ -110,10 +115,20 @@ VX_SIMD_INLINE float VxSIMDRaySquareDistance(const VxRay *ray, const VxVector *p
     __m128 v = _mm_sub_ps(p, o);
     __m128 aa = VxSIMDDotProduct3(v, v);
     __m128 ps = VxSIMDDotProduct3(v, d);
-    __m128 result = VX_FNMADD_PS(ps, ps, aa);
-    float out;
-    _mm_store_ss(&out, result);
-    return out;
+    __m128 dd = VxSIMDDotProduct3(d, d);
+    float aaScalar;
+    float psScalar;
+    float ddScalar;
+    _mm_store_ss(&aaScalar, aa);
+    _mm_store_ss(&psScalar, ps);
+    _mm_store_ss(&ddScalar, dd);
+
+    if (ddScalar <= EPSILON) {
+        return aaScalar;
+    }
+
+    const float sq = aaScalar - (psScalar * psScalar) / ddScalar;
+    return (sq > 0.0f) ? sq : 0.0f;
 }
 
 #endif // VX_SIMD_SSE

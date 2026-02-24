@@ -204,6 +204,9 @@ inline const VxVector Reflect(const VxVector &v1, const VxVector &Norm) {
 }
 inline const VxVector Rotate(const VxVector &v1, const VxVector &v2, float angle) {
     const float axisMagSq = v2.x * v2.x + v2.y * v2.y + v2.z * v2.z;
+    if (axisMagSq <= EPSILON) {
+        return v1;
+    }
     const float axisInvMag = 1.0f / sqrtf(axisMagSq);
     const float nx = v2.x * axisInvMag;
     const float ny = v2.y * axisInvMag;
@@ -589,16 +592,7 @@ VX_SIMD_INLINE void VxSIMDScaleVector(VxVector *result, const VxVector *v, float
 VX_SIMD_INLINE float VxSIMDDotVector(const VxVector *a, const VxVector *b) noexcept {
     const __m128 aVec = VxSIMDLoadFloat3(&a->x);
     const __m128 bVec = VxSIMDLoadFloat3(&b->x);
-    const __m128 mul = _mm_mul_ps(aVec, bVec);
-
-    __m128 y = _mm_shuffle_ps(mul, mul, _MM_SHUFFLE(1, 1, 1, 1));
-    __m128 sum = _mm_add_ss(mul, y);
-    __m128 z = _mm_shuffle_ps(mul, mul, _MM_SHUFFLE(2, 2, 2, 2));
-    sum = _mm_add_ss(sum, z);
-
-    float result;
-    _mm_store_ss(&result, sum);
-    return result;
+    return _mm_cvtss_f32(VxSIMDDotProduct3(aVec, bVec));
 }
 
 VX_SIMD_INLINE void VxSIMDCrossVector(VxVector *result, const VxVector *a, const VxVector *b) noexcept {
@@ -609,31 +603,13 @@ VX_SIMD_INLINE void VxSIMDCrossVector(VxVector *result, const VxVector *a, const
 }
 
 VX_SIMD_INLINE float VxSIMDLengthVector(const VxVector *v) noexcept {
-    __m128 vec = VxSIMDLoadFloat3(&v->x);
-    __m128 sq = _mm_mul_ps(vec, vec);
-
-    __m128 y = _mm_shuffle_ps(sq, sq, _MM_SHUFFLE(1, 1, 1, 1));
-    __m128 sum = _mm_add_ss(sq, y);
-    __m128 z = _mm_shuffle_ps(sq, sq, _MM_SHUFFLE(2, 2, 2, 2));
-    sum = _mm_add_ss(sum, z);
-
-    float lengthSq;
-    _mm_store_ss(&lengthSq, sum);
-    return sqrtf(lengthSq);
+    const __m128 vec = VxSIMDLoadFloat3(&v->x);
+    return _mm_cvtss_f32(_mm_sqrt_ss(VxSIMDDotProduct3(vec, vec)));
 }
 
 VX_SIMD_INLINE float VxSIMDLengthSquaredVector(const VxVector *v) noexcept {
-    __m128 vec = VxSIMDLoadFloat3(&v->x);
-    __m128 sq = _mm_mul_ps(vec, vec);
-
-    __m128 y = _mm_shuffle_ps(sq, sq, _MM_SHUFFLE(1, 1, 1, 1));
-    __m128 sum = _mm_add_ss(sq, y);
-    __m128 z = _mm_shuffle_ps(sq, sq, _MM_SHUFFLE(2, 2, 2, 2));
-    sum = _mm_add_ss(sum, z);
-
-    float lengthSq;
-    _mm_store_ss(&lengthSq, sum);
-    return lengthSq;
+    const __m128 vec = VxSIMDLoadFloat3(&v->x);
+    return _mm_cvtss_f32(VxSIMDDotProduct3(vec, vec));
 }
 
 VX_SIMD_INLINE float VxSIMDDistanceVector(const VxVector *a, const VxVector *b) noexcept {

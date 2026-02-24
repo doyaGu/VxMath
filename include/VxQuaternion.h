@@ -175,7 +175,7 @@ public:
      * @brief Creates a quaternion from a matrix.
      * @param Mat The source matrix.
      * @param MatIsUnit If TRUE, assumes the matrix has a unit scale, allowing for a faster conversion.
-     * @param RestoreMat Hint to avoid modifying the source matrix if possible.
+     * @param RestoreMat Legacy compatibility flag; kept for API stability.
      */
     inline void FromMatrix(const VxMatrix &Mat, XBOOL MatIsUnit = TRUE, XBOOL RestoreMat = TRUE);
 

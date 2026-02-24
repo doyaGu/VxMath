@@ -300,20 +300,20 @@ VX_SIMD_INLINE __m128 VxSIMDQuaternionNormalize(__m128 q) noexcept {
 }
 
 VX_SIMD_INLINE __m128 VxSIMDQuaternionMultiply(__m128 qa, __m128 qb) noexcept {
-    alignas(16) float a[4];
-    alignas(16) float b[4];
-    _mm_storeu_ps(a, qa);
-    _mm_storeu_ps(b, qb);
+    const __m128 q1W = _mm_shuffle_ps(qa, qa, _MM_SHUFFLE(3, 3, 3, 3));
+    const __m128 q1X = _mm_shuffle_ps(qa, qa, _MM_SHUFFLE(0, 0, 0, 0));
+    const __m128 q1Y = _mm_shuffle_ps(qa, qa, _MM_SHUFFLE(1, 1, 1, 1));
+    const __m128 q1Z = _mm_shuffle_ps(qa, qa, _MM_SHUFFLE(2, 2, 2, 2));
 
-    const float ax = a[0], ay = a[1], az = a[2], aw = a[3];
-    const float bx = b[0], by = b[1], bz = b[2], bw = b[3];
+    const __m128 q2WZYX = _mm_shuffle_ps(qb, qb, _MM_SHUFFLE(0, 1, 2, 3));
+    const __m128 q2ZWXY = _mm_shuffle_ps(qb, qb, _MM_SHUFFLE(1, 0, 3, 2));
+    const __m128 q2YXWZ = _mm_shuffle_ps(qb, qb, _MM_SHUFFLE(2, 3, 0, 1));
 
-    const float rx = aw * bx + ax * bw + ay * bz - az * by;
-    const float ry = aw * by - ax * bz + ay * bw + az * bx;
-    const float rz = aw * bz + ax * by - ay * bx + az * bw;
-    const float rw = aw * bw - ax * bx - ay * by - az * bz;
-
-    return _mm_setr_ps(rx, ry, rz, rw);
+    __m128 result = _mm_mul_ps(q1W, qb);
+    result = _mm_add_ps(result, _mm_mul_ps(q1X, _mm_mul_ps(q2WZYX, VX_SIMD_QUAT_SIGN1)));
+    result = _mm_add_ps(result, _mm_mul_ps(q1Y, _mm_mul_ps(q2ZWXY, VX_SIMD_QUAT_SIGN2)));
+    result = _mm_add_ps(result, _mm_mul_ps(q1Z, _mm_mul_ps(q2YXWZ, VX_SIMD_QUAT_SIGN3)));
+    return result;
 }
 
 VX_SIMD_INLINE __m128 VxSIMDQuaternionConjugate(__m128 q) noexcept {

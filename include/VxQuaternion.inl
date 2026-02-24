@@ -157,90 +157,76 @@ inline VxQuaternion Vx3DQuaternionDivide(const VxQuaternion &P, const VxQuaterni
 #if defined(VX_SIMD_SSE)
     VxSIMDDivideQuaternion(&result, &P, &Q);
 #else
+    const float denom = DotProduct(Q, Q);
+    if (denom <= EPSILON) {
+        return VxQuaternion();
+    }
     float newX = -P.w * Q.x + P.x * Q.w - P.y * Q.z + P.z * Q.y;
     float newY = -P.w * Q.y + P.x * Q.z + P.y * Q.w - P.z * Q.x;
     float newZ = -P.w * Q.z - P.x * Q.y + P.y * Q.x + P.z * Q.w;
     float newW = P.w * Q.w + P.x * Q.x + P.y * Q.y + P.z * Q.z;
-    result = VxQuaternion(newX, newY, newZ, newW);
+    const float invDenom = 1.0f / denom;
+    result = VxQuaternion(newX * invDenom, newY * invDenom, newZ * invDenom, newW * invDenom);
 #endif
     return result;
 }
 
 inline void VxQuaternion::Multiply(const VxQuaternion &Quat) {
-    VxQuaternion result;
-#if defined(VX_SIMD_SSE)
-    VxSIMDMultiplyQuaternion(&result, this, &Quat);
-#else
-    float newX = w * Quat.x + x * Quat.w + y * Quat.z - z * Quat.y;
-    float newY = w * Quat.y - x * Quat.z + y * Quat.w + z * Quat.x;
-    float newZ = w * Quat.z + x * Quat.y - y * Quat.x + z * Quat.w;
-    float newW = w * Quat.w - x * Quat.x - y * Quat.y - z * Quat.z;
-    result = VxQuaternion(newX, newY, newZ, newW);
-#endif
-    *this = result;
+    *this = Vx3DQuaternionMultiply(*this, Quat);
 }
 
 inline void VxQuaternion::Normalize() {
 #if defined(VX_SIMD_SSE)
     VxSIMDNormalizeQuaternion(this);
 #else
-    float norm = sqrtf(x * x + y * y + z * z + w * w);
-    if (norm == 0.0f) {
-        x = 0.0f;
-        y = 0.0f;
-        z = 0.0f;
+    float m = sqrtf(x * x + y * y + z * z + w * w);
+    if (m == 0.0f) {
+        x = y = z = 0.0f;
         w = 1.0f;
-    } else {
-        float invNorm = 1.0f / norm;
-        x *= invNorm;
-        y *= invNorm;
-        z *= invNorm;
-        w *= invNorm;
+        return;
     }
+
+    const float invM = 1.0f / m;
+    x *= invM;
+    y *= invM;
+    z *= invM;
+    w *= invM;
 #endif
 }
 
 inline VxQuaternion Slerp(float t, const VxQuaternion &Quat1, const VxQuaternion &Quat2) {
-#if defined(VX_SIMD_SSE)
     VxQuaternion result;
+#if defined(VX_SIMD_SSE)
     VxSIMDSlerpQuaternion(&result, t, &Quat1, &Quat2);
-    return result;
 #else
-    float cosOmega = Quat1.x * Quat2.x + Quat1.y * Quat2.y + Quat1.z * Quat2.z + Quat1.w * Quat2.w;
-
-    float k0, k1;
-
-    if (cosOmega >= 0.0f) {
-        float oneMinusCos = 1.0f - cosOmega;
-        if (oneMinusCos < 0.01f) {
-            k0 = 1.0f - t;
-            k1 = t;
+    float cosOmega = DotProduct(Quat1, Quat2);
+    float k0;
+    float k1;
+    if (cosOmega < 0.0f) {
+        cosOmega = -cosOmega;
+        if (1.0f - cosOmega > 0.01f) {
+            const float omega = acosf(cosOmega);
+            const float invSin = 1.0f / sinf(omega);
+            k0 = sinf((1.0f - t) * omega) * invSin;
+            k1 = -sinf(t * omega) * invSin;
         } else {
-            float omega = acosf(cosOmega);
-            float invSinOmega = 1.0f / sinf(omega);
-            k0 = sinf((1.0f - t) * omega) * invSinOmega;
-            k1 = sinf(t * omega) * invSinOmega;
-        }
-    } else {
-        float oneMinusCosNeg = 1.0f - (-cosOmega);
-        if (oneMinusCosNeg < 0.01f) {
             k0 = 1.0f - t;
             k1 = -t;
+        }
+    } else {
+        if (1.0f - cosOmega > 0.01f) {
+            const float omega = acosf(cosOmega);
+            const float invSin = 1.0f / sinf(omega);
+            k0 = sinf((1.0f - t) * omega) * invSin;
+            k1 = sinf(t * omega) * invSin;
         } else {
-            float omega = acosf(-cosOmega);
-            float invSinOmega = 1.0f / sinf(omega);
-            k0 = sinf((1.0f - t) * omega) * invSinOmega;
-            k1 = -sinf(t * omega) * invSinOmega;
+            k0 = 1.0f - t;
+            k1 = t;
         }
     }
-
-    return VxQuaternion(
-        k0 * Quat1.x + k1 * Quat2.x,
-        k0 * Quat1.y + k1 * Quat2.y,
-        k0 * Quat1.z + k1 * Quat2.z,
-        k0 * Quat1.w + k1 * Quat2.w
-    );
+    result = k0 * Quat1 + k1 * Quat2;
 #endif
+    return result;
 }
 
 inline VxQuaternion Squad(float t, const VxQuaternion &Quat1, const VxQuaternion &Quat1Out, const VxQuaternion &Quat2In,
@@ -308,8 +294,14 @@ VX_SIMD_INLINE void VxSIMDConjugateQuaternion(VxQuaternion *result, const VxQuat
 VX_SIMD_INLINE void VxSIMDDivideQuaternion(VxQuaternion *result, const VxQuaternion *p, const VxQuaternion *q) noexcept {
     __m128 qp = VxSIMDLoadFloat4(&p->x);
     __m128 qq = VxSIMDLoadFloat4(&q->x);
+    const float denom = _mm_cvtss_f32(VxSIMDDotProduct4(qq, qq));
+    if (denom <= EPSILON) {
+        VxSIMDStoreFloat4(&result->x, VX_SIMD_QUAT_IDENTITY);
+        return;
+    }
     __m128 qqConj = VxSIMDQuaternionConjugate(qq);
     __m128 divided = VxSIMDQuaternionMultiply(qp, qqConj);
+    divided = _mm_mul_ps(divided, _mm_set1_ps(1.0f / denom));
     VxSIMDStoreFloat4(&result->x, divided);
 }
 

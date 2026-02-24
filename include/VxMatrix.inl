@@ -393,59 +393,53 @@ inline VxQuaternion Vx3DQuaternionFromMatrix(const VxMatrix &Mat) {
     return quat;
 }
 
+inline void Vx3DNormalizeRotationRows(const VxMatrix &in, VxMatrix &out) {
+    out = in;
+    VxVector row0(in[0][0], in[0][1], in[0][2]);
+    VxVector row1(in[1][0], in[1][1], in[1][2]);
+    row0.Normalize();
+    row1.Normalize();
+    VxVector row2 = CrossProduct(row0, row1);
+    out[0][0] = row0.x; out[0][1] = row0.y; out[0][2] = row0.z;
+    out[1][0] = row1.x; out[1][1] = row1.y; out[1][2] = row1.z;
+    out[2][0] = row2.x; out[2][1] = row2.y; out[2][2] = row2.z;
+}
+
 inline void VxQuaternion::FromMatrix(const VxMatrix &Mat, XBOOL MatIsUnit, XBOOL RestoreMat) {
-    float original[9];
-    if (!MatIsUnit && RestoreMat) {
-        original[0] = Mat[0][0]; original[1] = Mat[0][1]; original[2] = Mat[0][2];
-        original[3] = Mat[1][0]; original[4] = Mat[1][1]; original[5] = Mat[1][2];
-        original[6] = Mat[2][0]; original[7] = Mat[2][1]; original[8] = Mat[2][2];
-    }
-
+    (void) RestoreMat;
+    const VxMatrix *matrix = &Mat;
+    VxMatrix normalized;
     if (!MatIsUnit) {
-        VxMatrix &nonConstMat = const_cast<VxMatrix &>(Mat);
-        VxVector row0(Mat[0][0], Mat[0][1], Mat[0][2]);
-        VxVector row1(Mat[1][0], Mat[1][1], Mat[1][2]);
-        row0.Normalize();
-        row1.Normalize();
-        nonConstMat[0][0] = row0.x; nonConstMat[0][1] = row0.y; nonConstMat[0][2] = row0.z;
-        nonConstMat[1][0] = row1.x; nonConstMat[1][1] = row1.y; nonConstMat[1][2] = row1.z;
-        VxVector row2 = CrossProduct(row0, row1);
-        nonConstMat[2][0] = row2.x; nonConstMat[2][1] = row2.y; nonConstMat[2][2] = row2.z;
+        Vx3DNormalizeRotationRows(Mat, normalized);
+        matrix = &normalized;
     }
 
-    float trace = Mat[0][0] + Mat[1][1] + Mat[2][2];
+    float trace = (*matrix)[0][0] + (*matrix)[1][1] + (*matrix)[2][2];
     if (trace > 0.0f) {
         float s = sqrtf(trace + 1.0f);
         w = s * 0.5f;
         s = 0.5f / s;
-        x = (Mat[2][1] - Mat[1][2]) * s;
-        y = (Mat[0][2] - Mat[2][0]) * s;
-        z = (Mat[1][0] - Mat[0][1]) * s;
+        x = ((*matrix)[2][1] - (*matrix)[1][2]) * s;
+        y = ((*matrix)[0][2] - (*matrix)[2][0]) * s;
+        z = ((*matrix)[1][0] - (*matrix)[0][1]) * s;
     } else {
         int i = 0;
-        if (Mat[1][1] > Mat[0][0]) i = 1;
-        if (Mat[2][2] > Mat[i][i]) i = 2;
+        if ((*matrix)[1][1] > (*matrix)[0][0]) i = 1;
+        if ((*matrix)[2][2] > (*matrix)[i][i]) i = 2;
         static const int next[3] = {1, 2, 0};
         int j = next[i];
         int k = next[j];
-        float s = sqrtf(Mat[i][i] - Mat[j][j] - Mat[k][k] + 1.0f);
+        float s = sqrtf((*matrix)[i][i] - (*matrix)[j][j] - (*matrix)[k][k] + 1.0f);
         float *q[4] = {&x, &y, &z, &w};
         *q[i] = s * 0.5f;
         if (s > EPSILON) {
             s = 0.5f / s;
-            *q[3] = (Mat[k][j] - Mat[j][k]) * s;
-            *q[j] = (Mat[j][i] + Mat[i][j]) * s;
-            *q[k] = (Mat[k][i] + Mat[i][k]) * s;
+            *q[3] = ((*matrix)[k][j] - (*matrix)[j][k]) * s;
+            *q[j] = ((*matrix)[j][i] + (*matrix)[i][j]) * s;
+            *q[k] = ((*matrix)[k][i] + (*matrix)[i][k]) * s;
         } else {
             *q[3] = 1.0f; *q[j] = 0.0f; *q[k] = 0.0f;
         }
-    }
-
-    if (!MatIsUnit && RestoreMat) {
-        VxMatrix &nonConstMat = const_cast<VxMatrix &>(Mat);
-        nonConstMat[0][0] = original[0]; nonConstMat[0][1] = original[1]; nonConstMat[0][2] = original[2];
-        nonConstMat[1][0] = original[3]; nonConstMat[1][1] = original[4]; nonConstMat[1][2] = original[5];
-        nonConstMat[2][0] = original[6]; nonConstMat[2][1] = original[7]; nonConstMat[2][2] = original[8];
     }
 }
 
@@ -786,11 +780,12 @@ inline VxVector Vx3DMatrixSpectralDecomposition(const VxMatrix &S_in, VxMatrix &
 
 inline void Vx3DDecomposeMatrix(const VxMatrix &A, VxQuaternion &Quat, VxVector &Pos, VxVector &Scale) {
     Pos = VxVector(A[3][0], A[3][1], A[3][2]);
-    VxMatrix Mat = A;
-    Quat.FromMatrix(Mat, FALSE, FALSE);
-    Scale.x = Mat[0][0]*A[0][0] + Mat[0][1]*A[0][1] + Mat[0][2]*A[0][2];
-    Scale.y = Mat[1][0]*A[1][0] + Mat[1][1]*A[1][1] + Mat[1][2]*A[1][2];
-    Scale.z = Mat[2][0]*A[2][0] + Mat[2][1]*A[2][1] + Mat[2][2]*A[2][2];
+    VxMatrix unitRows;
+    Vx3DNormalizeRotationRows(A, unitRows);
+    Quat.FromMatrix(unitRows, TRUE, TRUE);
+    Scale.x = unitRows[0][0]*A[0][0] + unitRows[0][1]*A[0][1] + unitRows[0][2]*A[0][2];
+    Scale.y = unitRows[1][0]*A[1][0] + unitRows[1][1]*A[1][1] + unitRows[1][2]*A[1][2];
+    Scale.z = unitRows[2][0]*A[2][0] + unitRows[2][1]*A[2][1] + unitRows[2][2]*A[2][2];
 }
 
 inline float Vx3DDecomposeMatrixTotal(const VxMatrix &A, VxQuaternion &Quat, VxVector &Pos, VxVector &Scale, VxQuaternion &URot) {

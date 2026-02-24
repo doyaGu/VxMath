@@ -16,6 +16,12 @@
 
 struct VxColor;
 
+static inline unsigned int VxColorFloatToByte(float v) {
+    if (v <= 0.0f) return 0u;
+    if (v >= 1.0f) return 255u;
+    return static_cast<unsigned int>(v * 255.0f);
+}
+
 /**
  * @brief Converts 4 float components to a 32-bit DWORD ARGB color.
  * @param r Red component (0.0f to 1.0f).
@@ -366,38 +372,26 @@ inline int operator!=(const VxColor &col1, const VxColor &col2) {
 }
 
 inline XDWORD RGBAFTOCOLOR(float r, float g, float b, float a) {
-    unsigned int red   = static_cast<unsigned int>(r * 255.0f);
-    unsigned int green = static_cast<unsigned int>(g * 255.0f);
-    unsigned int blue  = static_cast<unsigned int>(b * 255.0f);
-    unsigned int alpha = static_cast<unsigned int>(a * 255.0f);
-    red   = (red   > 255) ? 255 : red;
-    green = (green > 255) ? 255 : green;
-    blue  = (blue  > 255) ? 255 : blue;
-    alpha = (alpha > 255) ? 255 : alpha;
+    const unsigned int red = VxColorFloatToByte(r);
+    const unsigned int green = VxColorFloatToByte(g);
+    const unsigned int blue = VxColorFloatToByte(b);
+    const unsigned int alpha = VxColorFloatToByte(a);
     return (alpha << 24) | (red << 16) | (green << 8) | blue;
 }
 
 inline XDWORD RGBAFTOCOLOR(const VxColor *col) {
-    unsigned int red   = static_cast<unsigned int>(col->r * 255.0f);
-    unsigned int green = static_cast<unsigned int>(col->g * 255.0f);
-    unsigned int blue  = static_cast<unsigned int>(col->b * 255.0f);
-    unsigned int alpha = static_cast<unsigned int>(col->a * 255.0f);
-    red   = (red   > 255) ? 255 : red;
-    green = (green > 255) ? 255 : green;
-    blue  = (blue  > 255) ? 255 : blue;
-    alpha = (alpha > 255) ? 255 : alpha;
+    const unsigned int red = VxColorFloatToByte(col->r);
+    const unsigned int green = VxColorFloatToByte(col->g);
+    const unsigned int blue = VxColorFloatToByte(col->b);
+    const unsigned int alpha = VxColorFloatToByte(col->a);
     return (alpha << 24) | (red << 16) | (green << 8) | blue;
 }
 
 inline XDWORD BGRAFTOCOLOR(const VxColor *col) {
-    unsigned int red   = static_cast<unsigned int>(col->r * 255.0f);
-    unsigned int green = static_cast<unsigned int>(col->g * 255.0f);
-    unsigned int blue  = static_cast<unsigned int>(col->b * 255.0f);
-    unsigned int alpha = static_cast<unsigned int>(col->a * 255.0f);
-    red   = (red   > 255) ? 255 : red;
-    green = (green > 255) ? 255 : green;
-    blue  = (blue  > 255) ? 255 : blue;
-    alpha = (alpha > 255) ? 255 : alpha;
+    const unsigned int red = VxColorFloatToByte(col->r);
+    const unsigned int green = VxColorFloatToByte(col->g);
+    const unsigned int blue = VxColorFloatToByte(col->b);
+    const unsigned int alpha = VxColorFloatToByte(col->a);
     return blue | (green << 8) | (red << 16) | (alpha << 24);
 }
 

@@ -190,7 +190,7 @@ inline void VxRect::VTranslate(float v) {
 
 inline void VxRect::TransformFromHomogeneous(Vx2DVector &dest, const Vx2DVector &srchom) const {
     dest.x = left + GetWidth() * srchom.x;
-    dest.y = left + GetHeight() * srchom.y;
+    dest.y = top + GetHeight() * srchom.y;
 }
 
 inline void VxRect::Scale(const Vx2DVector &s) {
