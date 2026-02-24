@@ -128,10 +128,27 @@
 #define _MAX_EXT 256
 #endif
 
-#ifdef WIN32
+#if defined(WIN32) || defined(_WIN32)
 #define ENDIANSWAP16(x)
-#define ENDIANSWAP32(x)		
+#define ENDIANSWAP32(x)
 #define ENDIANSWAPFLOAT(x)
+#else
+#if defined(__BYTE_ORDER__) && (__BYTE_ORDER__ == __ORDER_BIG_ENDIAN__)
+#if defined(__clang__) || defined(__GNUC__)
+#define VX_BSWAP16(v) __builtin_bswap16((uint16_t) (v))
+#define VX_BSWAP32(v) __builtin_bswap32((uint32_t) (v))
+#else
+#define VX_BSWAP16(v) (uint16_t) ((((uint16_t) (v) & 0x00FFu) << 8) | (((uint16_t) (v) & 0xFF00u) >> 8))
+#define VX_BSWAP32(v) (uint32_t) ((((uint32_t) (v) & 0x000000FFu) << 24) | (((uint32_t) (v) & 0x0000FF00u) << 8) | (((uint32_t) (v) & 0x00FF0000u) >> 8) | (((uint32_t) (v) & 0xFF000000u) >> 24))
+#endif
+#define ENDIANSWAP16(x) do { (x) = (XWORD) VX_BSWAP16(x); } while (0)
+#define ENDIANSWAP32(x) do { (x) = (XDWORD) VX_BSWAP32(x); } while (0)
+#define ENDIANSWAPFLOAT(x) do { union { float f; uint32_t u; } _vx_endian_tmp; _vx_endian_tmp.f = (x); _vx_endian_tmp.u = VX_BSWAP32(_vx_endian_tmp.u); (x) = _vx_endian_tmp.f; } while (0)
+#else
+#define ENDIANSWAP16(x)
+#define ENDIANSWAP32(x)
+#define ENDIANSWAPFLOAT(x)
+#endif
 #endif
 
 // Basic type definitions
