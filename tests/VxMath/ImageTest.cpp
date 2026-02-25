@@ -312,6 +312,10 @@ TEST(VxColorTests, GlobalFunctions) {
     // // Test BGRAFTOCOLOR
     // color = BGRAFTOCOLOR(&c);
     // EXPECT_EQ(color, 0xCC996633); // BGRA format
+
+    // Negative channels must clamp to 0 before packing.
+    color = RGBAFTOCOLOR(-0.25f, 0.5f, -1.0f, 1.0f);
+    EXPECT_EQ(color, 0xFF007F00);
 }
 
 //--- VxImageDescEx & Pixel Format Tests ---

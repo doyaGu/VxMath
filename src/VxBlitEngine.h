@@ -3,6 +3,7 @@
 
 #include "VxMathDefines.h"
 #include "VxImageDescEx.h"
+#include "VxSIMD.h"
 #include "XArray.h"
 
 // Suppress C4251 warning for DLL interface
@@ -262,21 +263,9 @@ public:
     void MultiplyBlend(const VxImageDescEx &src_desc, const VxImageDescEx &dst_desc);
 
     /**
-     * @brief Initializes the generic (C) blitting function table.
+     * @brief Rebuilds all dispatch tables using the active SIMD backend.
      */
-    void BuildGenericTables();
-
-    /**
-     * @brief Initializes the x86-optimized blitting function table.
-     */
-    void BuildX86Table();
-
-    /**
-     * @brief Initializes the SSE-optimized blitting function table (if available).
-     *
-     * Uses simde for portable SSE intrinsics across platforms.
-     */
-    void BuildSSETable();
+    void RebuildTables();
 
 private:
     /**
@@ -340,6 +329,15 @@ private:
      */
     void DoBlitWithResize(const VxImageDescEx &src_desc, const VxImageDescEx &dst_desc, VxBlitLineFunc blitFunc);
 
+    // Dispatch table setup helpers
+    void ResetDispatchTables();
+    void ResetHotPathKernels();
+    void BuildGenericTables();
+    void BuildX86Table();
+    void ApplySSE2Overrides();
+    void ApplySSSE3Overrides();
+    void ApplyAVX2Overrides();
+
     // Function dispatch tables
     // Layout: [srcBpp][dstBpp] for generic, [srcFormat][dstFormat] for specific
     static const int TABLE_SIZE = 16;        // 16 entries per dimension
@@ -367,6 +365,21 @@ private:
 
     // Temporary buffer for resizing operations
     XArray<XDWORD> m_ResizeBuffer;
+
+    // Backend chosen at construction-time for this engine instance.
+    VxSIMDBackend m_ActiveBackend;
+
+    // Runtime-selected hot-path kernels.
+    void (*m_FillLine32)(XDWORD *dst, int width, XDWORD color);
+    void (*m_FillLine16)(XWORD *dst, int width, XWORD color);
+    VxBlitLineFunc m_PremultiplyAlpha32;
+    VxBlitLineFunc m_UnpremultiplyAlpha32;
+    VxBlitLineFunc m_SwapRedBlue32;
+    VxBlitLineFunc m_ClearAlpha32;
+    VxBlitLineFunc m_SetFullAlpha32;
+    VxBlitLineFunc m_InvertColors32;
+    VxBlitLineFunc m_Grayscale32;
+    VxBlitLineFunc m_MultiplyBlend32;
 };
 
 /**

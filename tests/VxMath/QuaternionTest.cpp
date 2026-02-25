@@ -805,6 +805,14 @@ TEST_F(VxQuaternionUtilityTest, Vx3DQuaternionDivide) {
     EXPECT_TRUE(QuaternionNearBool(reconstructed, q90, ACCUMULATION_TOL));
 }
 
+TEST_F(VxQuaternionUtilityTest, Vx3DQuaternionDivideHandlesNonUnitDenominator) {
+    const VxQuaternion scaled_q90 = 2.0f * q90;
+    const VxQuaternion product = Vx3DQuaternionMultiply(q45, scaled_q90);
+    const VxQuaternion recovered = Vx3DQuaternionDivide(product, scaled_q90);
+
+    EXPECT_TRUE(QuaternionNearBool(recovered, q45, ACCUMULATION_TOL));
+}
+
 TEST_F(VxQuaternionUtilityTest, SlerpComprehensive) {
     // Test boundary conditions - ground-truth DLL has lower precision
     VxQuaternion result0 = Slerp(0.0f, q45, q90);

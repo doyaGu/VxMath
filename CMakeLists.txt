@@ -66,7 +66,23 @@ option(VXMATH_INSTALL "Generate install target" ${VXMATH_IS_TOP_LEVEL})
 # =============================================================================
 option(VXMATH_ENABLE_SIMD "Enable SIMD optimizations" ON)
 set(VXMATH_SIMD_LEVEL "AUTO" CACHE STRING "SIMD instruction set level")
-set_property(CACHE VXMATH_SIMD_LEVEL PROPERTY STRINGS AUTO NONE SSE2 SSE4_1 AVX AVX2)
+set_property(CACHE VXMATH_SIMD_LEVEL PROPERTY STRINGS
+        AUTO NONE SSE2 SSSE3 SSE4_1 AVX AVX2)
+
+set(_vx_simd_level_allowed
+        AUTO
+        NONE
+        SSE2
+        SSSE3
+        SSE4_1
+        AVX
+        AVX2
+)
+if (NOT VXMATH_SIMD_LEVEL IN_LIST _vx_simd_level_allowed)
+    message(FATAL_ERROR
+            "Invalid VXMATH_SIMD_LEVEL='${VXMATH_SIMD_LEVEL}'. "
+            "Expected one of: AUTO, NONE, SSE2, SSSE3, SSE4_1, AVX, AVX2.")
+endif ()
 
 if (NOT VXMATH_BUILD_SHARED AND NOT VXMATH_BUILD_STATIC)
     message(FATAL_ERROR "At least one of VXMATH_BUILD_SHARED or VXMATH_BUILD_STATIC must be enabled")
@@ -130,6 +146,9 @@ set(VX_SOURCE_DIR "${VXMATH_SOURCE_DIR}" CACHE INTERNAL "")
 # =============================================================================
 add_subdirectory(deps)
 add_subdirectory(src)
+
+set(VXMATH_SIMDE_ENABLED ${VXMATH_SIMDE_ENABLED} CACHE INTERNAL "Whether VxMath configured bundled SIMDe")
+set(VXMATH_SIMDE_INCLUDE_DIR "${VXMATH_SIMDE_INCLUDE_DIR}" CACHE INTERNAL "Bundled SIMDe include directory exported by VxMath")
 
 if (VXMATH_BUILD_TESTS)
     enable_testing()

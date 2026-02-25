@@ -284,6 +284,57 @@ TEST_F(PalettedBlitTest, ARGB32ToPaletted_WithExistingPalette) {
     }
 }
 
+TEST_F(PalettedBlitTest, ARGB32ToPaletted_DoBlitMatchesQuantizeImage) {
+    const int width = 31, height = 19;
+    ImageBuffer srcBuffer(width * height * 4);
+    ImageBuffer dstDoBlitBuffer(width * height);
+    ImageBuffer dstQuantBuffer(width * height);
+    PaletteBuffer doBlitPalette;
+    PaletteBuffer quantPalette;
+
+    auto src = ImageDescFactory::Create32BitARGB(width, height, srcBuffer.Data());
+    auto dstDoBlit = ImageDescFactory::Create8BitPaletted(width, height, dstDoBlitBuffer.Data(), doBlitPalette.Data());
+    auto dstQuant = ImageDescFactory::Create8BitPaletted(width, height, dstQuantBuffer.Data(), quantPalette.Data());
+
+    PatternGenerator::FillUniquePixels32(srcBuffer.Data(), width, height);
+
+    blitter.DoBlit(src, dstDoBlit);
+    const XBOOL quantized = blitter.QuantizeImage(src, dstQuant);
+    ASSERT_TRUE(quantized);
+
+    EXPECT_EQ(0, memcmp(dstDoBlitBuffer.Data(), dstQuantBuffer.Data(), width * height));
+    EXPECT_EQ(0, memcmp(doBlitPalette.Data(), quantPalette.Data(), doBlitPalette.Size()));
+}
+
+TEST_F(PalettedBlitTest, ARGB32ToPaletted_DoBlitUpsideDownFlipsIndices) {
+    const int width = 29, height = 17;
+    ImageBuffer srcBuffer(width * height * 4);
+    ImageBuffer dstUpsideBuffer(width * height);
+    ImageBuffer dstNormalBuffer(width * height);
+    PaletteBuffer upsidePalette;
+    PaletteBuffer normalPalette;
+
+    auto src = ImageDescFactory::Create32BitARGB(width, height, srcBuffer.Data());
+    auto dstUpside = ImageDescFactory::Create8BitPaletted(width, height, dstUpsideBuffer.Data(), upsidePalette.Data());
+    auto dstNormal = ImageDescFactory::Create8BitPaletted(width, height, dstNormalBuffer.Data(), normalPalette.Data());
+
+    PatternGenerator::FillUniquePixels32(srcBuffer.Data(), width, height);
+
+    blitter.DoBlitUpsideDown(src, dstUpside);
+    const XBOOL quantized = blitter.QuantizeImage(src, dstNormal);
+    ASSERT_TRUE(quantized);
+
+    for (int y = 0; y < height; ++y) {
+        for (int x = 0; x < width; ++x) {
+            const int upIdx = dstUpsideBuffer[y * width + x];
+            const int normalIdx = dstNormalBuffer[(height - 1 - y) * width + x];
+            const XDWORD upColor = upsidePalette.GetColor(upIdx);
+            const XDWORD normalColor = normalPalette.GetColor(normalIdx);
+            EXPECT_EQ(normalColor, upColor) << "Mismatch at (" << x << ", " << y << ")";
+        }
+    }
+}
+
 //==============================================================================
 // Palette Edge Cases
 //==============================================================================

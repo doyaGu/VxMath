@@ -626,6 +626,40 @@ TEST_F(BlitEngineResizeEdgeCaseTest, Resize_SmallerToLarger) {
     ImageWriter::SaveFromDesc("resize_upscale_dst", dstDesc, "ResizeEdge");
 }
 
+TEST_F(BlitEngineResizeEdgeCaseTest, DoBlitResize_GrowY_DoesNotWritePastDestination) {
+    const int srcW = 2, srcH = 2;
+    const int dstW = 5, dstH = 5;
+    const int dstContentBytes = dstW * 4;
+    const int dstStride = dstContentBytes + 16;
+    const int guardBytes = 64;
+
+    ImageBuffer srcBuf(srcW * srcH * 4);
+    std::vector<XBYTE> dstStorage(static_cast<size_t>(dstStride) * dstH + guardBytes, SENTINEL);
+
+    PatternGenerator::FillUniquePixels32(srcBuf.Data(), srcW, srcH);
+
+    auto srcDesc = ImageDescFactory::Create32BitARGB(srcW, srcH, srcBuf.Data());
+
+    VxImageDescEx dstDesc = ImageDescFactory::Create32BitARGB(dstW, dstH, dstStorage.data());
+    dstDesc.BytesPerLine = dstStride;
+
+    blitter.DoBlit(srcDesc, dstDesc);
+
+    for (int y = 0; y < dstH; ++y) {
+        const int rowBase = y * dstStride;
+        for (int i = dstContentBytes; i < dstStride; ++i) {
+            EXPECT_EQ(SENTINEL, dstStorage[rowBase + i])
+                << "Destination row padding modified at row " << y << ", byte " << i;
+        }
+    }
+
+    const int validBytes = dstStride * dstH;
+    for (int i = 0; i < guardBytes; ++i) {
+        EXPECT_EQ(SENTINEL, dstStorage[validBytes + i])
+            << "Write past destination buffer at guard byte " << i;
+    }
+}
+
 TEST_F(BlitEngineResizeEdgeCaseTest, Resize_NonSquare_WidthOnly) {
     const int srcW = 8, srcH = 32;
     const int dstW = 32, dstH = 32;

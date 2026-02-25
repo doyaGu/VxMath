@@ -154,6 +154,15 @@ TEST_F(VxRayTest, Distance) {
     EXPECT_NEAR(ray.Distance(point_on_line), 0.0f, 1e-6);
 }
 
+TEST_F(VxRayTest, DistanceWithNonUnitDirection) {
+    const VxVector non_unit_dir(2.0f, 0.0f, 0.0f);
+    VxRay ray(zero_origin, non_unit_dir, nullptr);
+
+    const VxVector point_off_line(5.0f, 3.0f, 4.0f);
+    EXPECT_NEAR(ray.SquareDistance(point_off_line), 25.0f, 1e-6f);
+    EXPECT_NEAR(ray.Distance(point_off_line), 5.0f, 1e-6f);
+}
+
 // Test the transformation of a ray by a matrix.
 TEST_F(VxRayTest, Transform) {
     // A simple ray along the X axis starting at p1

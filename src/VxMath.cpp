@@ -9,6 +9,7 @@
 
 #include "VxMath.h"
 #include "VxEigenMatrix.h"
+#include "VxBlitEngine.h"
 
 extern void InitializeTables();
 
@@ -36,6 +37,7 @@ static inline void VxSIMDProjectPointToAxes3(
 
 void InitVxMath() {
     VxDetectProcessor();
+    TheBlitter.RebuildTables();
     InitializeTables();
 #if defined(_WIN32)
     ::InitializeCriticalSection(&g_CriticalSection);
@@ -52,22 +54,15 @@ void InterpolateFloatArray(void *Res, void *array1, void *array2, float factor, 
         static_cast<const float *>(array1),
         static_cast<const float *>(array2),
         factor,
-        count
-    );
-    return;
+        count);
+#else
+    float *r = static_cast<float *>(Res);
+    const float *a = static_cast<const float *>(array1);
+    const float *b = static_cast<const float *>(array2);
+    for (int i = 0; i < count; ++i) {
+        r[i] = a[i] + (b[i] - a[i]) * factor;
+    }
 #endif
-
-    float *pRes = static_cast<float *>(Res);
-    float *pArray1 = static_cast<float *>(array1);
-    float *pArray2 = static_cast<float *>(array2);
-
-    do {
-        *pRes = *pArray1 + (*pArray2 - *pArray1) * factor;
-        ++pArray1;
-        ++pRes;
-        ++pArray2;
-        --count;
-    } while (count > 0);
 }
 
 void InterpolateVectorArray(void *Res, void *Inarray1, void *Inarray2, float factor, int count, XDWORD StrideRes, XDWORD StrideIn) {
@@ -75,23 +70,29 @@ void InterpolateVectorArray(void *Res, void *Inarray1, void *Inarray2, float fac
         return;
 
 #if defined(VX_SIMD_SSE)
-    VxSIMDInterpolateVectorArray(Res, Inarray1, Inarray2, factor, count, StrideRes, StrideIn);
-    return;
+    VxSIMDInterpolateVectorArray(
+        Res,
+        Inarray1,
+        Inarray2,
+        factor,
+        count,
+        StrideRes,
+        StrideIn);
+#else
+    const char *srcA = static_cast<const char *>(Inarray1);
+    const char *srcB = static_cast<const char *>(Inarray2);
+    char *dst = static_cast<char *>(Res);
+
+    for (int i = 0; i < count; ++i) {
+        const VxVector *vecA = reinterpret_cast<const VxVector *>(srcA + i * StrideIn);
+        const VxVector *vecB = reinterpret_cast<const VxVector *>(srcB + i * StrideIn);
+        VxVector *vecResult = reinterpret_cast<VxVector *>(dst + i * StrideRes);
+
+        vecResult->x = vecA->x + (vecB->x - vecA->x) * factor;
+        vecResult->y = vecA->y + (vecB->y - vecA->y) * factor;
+        vecResult->z = vecA->z + (vecB->z - vecA->z) * factor;
+    }
 #endif
-
-    VxVector *pRes = static_cast<VxVector *>(Res);
-    VxVector *pArray1 = static_cast<VxVector *>(Inarray1);
-    VxVector *pArray2 = static_cast<VxVector *>(Inarray2);
-
-    do {
-        pRes->z = pArray1->z + (pArray2->z - pArray1->z) * factor;
-        pRes->y = pArray1->y + (pArray2->y - pArray1->y) * factor;
-        pRes->x = pArray1->x + (pArray2->x - pArray1->x) * factor;
-        pArray1 = reinterpret_cast<VxVector *>(reinterpret_cast<char *>(pArray1) + StrideIn);
-        pArray2 = reinterpret_cast<VxVector *>(reinterpret_cast<char *>(pArray2) + StrideIn);
-        pRes = reinterpret_cast<VxVector *>(reinterpret_cast<char *>(pRes) + StrideRes);
-        --count;
-    } while (count > 0);
 }
 
 XBOOL VxTransformBox2D(const VxMatrix &World_ProjectionMat, const VxBbox &box, VxRect *ScreenSize, VxRect *Extents, VXCLIP_FLAGS &OrClipFlags, VXCLIP_FLAGS &AndClipFlags) {
@@ -195,6 +196,7 @@ XBOOL VxTransformBox2D(const VxMatrix &World_ProjectionMat, const VxBbox &box, V
         float minY = 1.0e6f;
         float maxX = -1.0e6f;
         float maxY = -1.0e6f;
+        bool hasProjected = false;
 
         // Calculate viewport parameters
         float halfWidth = (ScreenSize->right - ScreenSize->left) * 0.5f;
@@ -227,13 +229,16 @@ XBOOL VxTransformBox2D(const VxMatrix &World_ProjectionMat, const VxBbox &box, V
             if (screenY < minY) minY = screenY;
             if (screenX > maxX) maxX = screenX;
             if (screenY > maxY) maxY = screenY;
+            hasProjected = true;
         }
 
-        // Set rectangle extents
-        Extents->left = minX;
-        Extents->top = minY;
-        Extents->right = maxX;
-        Extents->bottom = maxY;
+        if (hasProjected) {
+            // Set rectangle extents
+            Extents->left = minX;
+            Extents->top = minY;
+            Extents->right = maxX;
+            Extents->bottom = maxY;
+        }
     }
 
     // Clamp to screen bounds only when some vertices are behind near plane (VXCLIP_FRONT set)

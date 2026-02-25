@@ -6,6 +6,17 @@
 # Option to use ground-truth DLL from bin/ for testing (default: OFF uses built lib)
 option(VXMATH_USE_GROUND_TRUTH_DLL "Link tests against ground-truth bin/VxMath.dll" OFF)
 
+set(_VXMATH_DEFAULT_TEST_TARGET "")
+if (TARGET VxMath)
+    set(_VXMATH_DEFAULT_TEST_TARGET VxMath)
+elseif (TARGET VxMathStatic)
+    set(_VXMATH_DEFAULT_TEST_TARGET VxMathStatic)
+endif ()
+
+if (NOT _VXMATH_DEFAULT_TEST_TARGET)
+    message(FATAL_ERROR "VxMath tests require VxMath or VxMathStatic target")
+endif ()
+
 if (VXMATH_USE_GROUND_TRUTH_DLL AND WIN32)
     # Create an IMPORTED target for the ground-truth DLL
     set(GROUND_TRUTH_DLL_PATH "${CMAKE_SOURCE_DIR}/bin/VxMath.dll")
@@ -30,10 +41,10 @@ if (VXMATH_USE_GROUND_TRUTH_DLL AND WIN32)
         file(COPY_FILE "${GROUND_TRUTH_DLL_PATH}" "${CMAKE_BINARY_DIR}/bin/VxMath.dll" ONLY_IF_DIFFERENT)
     else()
         message(WARNING "Ground-truth DLL not found at ${GROUND_TRUTH_DLL_PATH}, falling back to built library")
-        set(TEST_TARGET VxMath)
+        set(TEST_TARGET ${_VXMATH_DEFAULT_TEST_TARGET})
     endif()
 else()
-    set(TEST_TARGET VxMath)
+    set(TEST_TARGET ${_VXMATH_DEFAULT_TEST_TARGET})
 endif()
 
 # Function to add VxMath tests
@@ -78,6 +89,7 @@ set(VXMATH_TEST_SOURCES
         FrustumTest.cpp
         PlaneTest.cpp
         RayTest.cpp
+        RectTest.cpp
         SphereTest.cpp
         GeometryTest.cpp
         IntersectionTest.cpp
@@ -96,6 +108,7 @@ set(VXMATH_TEST_SOURCES
         # BlitEngine Tests
         BlitEngineFormatConversionTest.cpp
         BlitEngineAlphaTest.cpp
+        BlitEngineSIMDBackendDiffTest.cpp
         BlitEngineResizeTest.cpp
         BlitEngineQuantizeTest.cpp
         BlitEnginePalettedTest.cpp
@@ -122,4 +135,22 @@ foreach (TEST_SOURCE ${VXMATH_TEST_SOURCES})
                 ${CMAKE_CURRENT_SOURCE_DIR}  # For SIMDTestCommon.h
         )
     endif()
+endforeach ()
+
+foreach(_backend scalar sse2 avx2 auto)
+    add_test(
+            NAME SIMDDispatchTest_${_backend}
+            COMMAND SIMDDispatchTest
+    )
+    set_tests_properties(SIMDDispatchTest_${_backend} PROPERTIES
+            ENVIRONMENT "VXMATH_SIMD_FORCE=${_backend}"
+    )
+
+    add_test(
+            NAME BlitEngineSIMDBackendDiffTest_${_backend}
+            COMMAND BlitEngineSIMDBackendDiffTest
+    )
+    set_tests_properties(BlitEngineSIMDBackendDiffTest_${_backend} PROPERTIES
+            ENVIRONMENT "VXMATH_SIMD_FORCE=${_backend}"
+    )
 endforeach ()
