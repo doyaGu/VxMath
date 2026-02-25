@@ -14,12 +14,11 @@
 
 #include "VxBlitInternal.h"
 
-#include <algorithm>
-#include <vector>
-
 #include "VxMath.h"
 #include "VxSIMD.h"
 #include "NeuQuant.h"
+
+int GetQuantizationSamplingFactor();
 
 #if defined(VX_SIMD_SSE2)
 #include <emmintrin.h>
@@ -31,6 +30,26 @@
 
 VxBlitEngine TheBlitter;
 
+namespace {
+
+int CollapseSIMDModeToBlitKernelTier(int mode) {
+    switch (mode) {
+        case VX_SIMD_MODE_AVX2:
+            return VX_SIMD_MODE_AVX2;
+        case VX_SIMD_MODE_AVX:
+        case VX_SIMD_MODE_SSE4_1:
+        case VX_SIMD_MODE_SSSE3:
+            return VX_SIMD_MODE_SSSE3;
+        case VX_SIMD_MODE_SSE2:
+            return VX_SIMD_MODE_SSE2;
+        case VX_SIMD_MODE_NONE:
+        default:
+            return VX_SIMD_MODE_NONE;
+    }
+}
+
+} // namespace
+
 //==============================================================================
 //  VxBlitEngine -- Construction / Destruction
 //==============================================================================
@@ -39,8 +58,9 @@ VxBlitEngine::VxBlitEngine() {
     static_assert(FORMAT_TABLE_SIZE >= NUM_BLITTABLE_FORMATS,
                   "FORMAT_TABLE_SIZE must cover all blittable pixel format indices");
     memset(&m_BlitInfo, 0, sizeof(m_BlitInfo));
-    m_ActiveBackend = VxSIMDBackend::Scalar;
-    RebuildTables();
+    m_EffectiveBlitKernelMode = CollapseSIMDModeToBlitKernelTier(VxGetSIMDEffectiveBackend());
+    m_OperationStamp = 1;
+    RebuildTablesUnlocked();
 }
 
 VxBlitEngine::~VxBlitEngine() {
@@ -148,13 +168,21 @@ void VxBlitEngine::ResetHotPathKernels() {
     m_MultiplyBlend32 = nullptr;
 }
 
+XDWORD VxBlitEngine::NextOperationStamp() {
+    ++m_OperationStamp;
+    if (m_OperationStamp == 0) {
+        m_OperationStamp = 1;
+    }
+    return m_OperationStamp;
+}
+
 //==============================================================================
 //  SIMD Override Registration
 //==============================================================================
 
 void VxBlitEngine::ApplySSE2Overrides() {
 #if defined(VX_SIMD_SSE2)
-    if (m_ActiveBackend == VxSIMDBackend::Scalar) {
+    if (m_EffectiveBlitKernelMode == VX_SIMD_MODE_NONE) {
         return;
     }
 
@@ -198,7 +226,8 @@ void VxBlitEngine::ApplySSE2Overrides() {
 
 void VxBlitEngine::ApplySSSE3Overrides() {
 #if defined(VX_SIMD_SSE2)
-    if (m_ActiveBackend == VxSIMDBackend::Scalar) {
+    if (m_EffectiveBlitKernelMode != VX_SIMD_MODE_SSSE3 &&
+        m_EffectiveBlitKernelMode != VX_SIMD_MODE_AVX2) {
         return;
     }
     if (!VxGetSIMDFeatures().SSSE3) {
@@ -223,14 +252,17 @@ void VxBlitEngine::ApplySSSE3Overrides() {
 
 void VxBlitEngine::ApplyAVX2Overrides() {
 #if defined(VX_SIMD_AVX2)
-    if (m_ActiveBackend != VxSIMDBackend::AVX2) {
+    if (m_EffectiveBlitKernelMode != VX_SIMD_MODE_AVX2) {
         return;
     }
 
+    // Hybrid fastest policy (measured): keep AVX2 only where it wins while
+    // preserving bit-exact output against lower SIMD tiers.
+    //
+    // Leave these from earlier tiers:
+    // - 32RGB -> 32ARGB: SSE2 outperforms current AVX2 on our benchmark matrix.
+    // - 32ARGB <-> 24RGB: SSSE3 outperforms current AVX2 on our benchmark matrix.
     m_SpecificBlitTable[1][2] = CopyLine_32ARGB_32RGB_AVX2;
-    m_SpecificBlitTable[2][1] = CopyLine_32RGB_32ARGB_AVX2;
-    m_SpecificBlitTable[1][3] = CopyLine_32ARGB_24RGB_AVX2;
-    m_SpecificBlitTable[3][1] = CopyLine_24RGB_32ARGB_AVX2;
     m_SpecificBlitTable[1][10] = CopyLine_32ARGB_32ABGR_AVX2;
     m_SpecificBlitTable[10][1] = CopyLine_32ABGR_32ARGB_AVX2;
     m_SpecificBlitTable[1][11] = CopyLine_32ARGB_32RGBA_AVX2;
@@ -262,9 +294,7 @@ void VxBlitEngine::ApplyAVX2Overrides() {
 #endif
 }
 
-void VxBlitEngine::RebuildTables() {
-    m_ActiveBackend = VxGetActiveSIMDBackend();
-
+void VxBlitEngine::RebuildTablesUnlocked() {
     ResetDispatchTables();
 
     BuildGenericTables();
@@ -274,6 +304,17 @@ void VxBlitEngine::RebuildTables() {
     ApplySSE2Overrides();
     ApplySSSE3Overrides();
     ApplyAVX2Overrides();
+}
+
+void VxBlitEngine::RebuildTables() {
+    VxMutexLock lock(m_Lock);
+    RebuildTablesUnlocked();
+}
+
+void VxBlitEngine::ApplySIMDMode(int effectiveMode) {
+    VxMutexLock lock(m_Lock);
+    m_EffectiveBlitKernelMode = CollapseSIMDModeToBlitKernelTier(effectiveMode);
+    RebuildTablesUnlocked();
 }
 
 //==============================================================================
@@ -456,6 +497,8 @@ VxBlitLineFunc VxBlitEngine::GetCopyAlphaFunction(const VxImageDescEx &dst_desc)
 //==============================================================================
 
 void VxBlitEngine::DoBlit(const VxImageDescEx &src_desc, const VxImageDescEx &dst_desc) {
+    VxMutexLock lock(m_Lock);
+
     // Original binary precondition: only allow if 32-bit OR same dimensions.
     // Non-32-bit images with different dimensions are rejected.
     if (src_desc.BitsPerPixel != 32) {
@@ -482,6 +525,7 @@ void VxBlitEngine::DoBlit(const VxImageDescEx &src_desc, const VxImageDescEx &ds
     SetupBlitInfo(m_BlitInfo, src_desc, dst_desc);
     m_BlitInfo.srcBytesPerLine = src_desc.BytesPerLine;
     m_BlitInfo.dstBytesPerLine = dst_desc.BytesPerLine;
+    m_BlitInfo.operationStamp = NextOperationStamp();
 
     // Check if resize is needed (only for 32-bit)
     if (dst_desc.Width != src_desc.Width || dst_desc.Height != src_desc.Height) {
@@ -508,6 +552,8 @@ void VxBlitEngine::DoBlit(const VxImageDescEx &src_desc, const VxImageDescEx &ds
 }
 
 void VxBlitEngine::DoBlitUpsideDown(const VxImageDescEx &src_desc, const VxImageDescEx &dst_desc) {
+    VxMutexLock lock(m_Lock);
+
     if (src_desc.Width != dst_desc.Width) return;
     if (src_desc.Height != dst_desc.Height) return;
     if (!src_desc.Image || !dst_desc.Image) return;
@@ -539,6 +585,7 @@ void VxBlitEngine::DoBlitUpsideDown(const VxImageDescEx &src_desc, const VxImage
     SetupBlitInfo(m_BlitInfo, src_desc, dst_desc);
     m_BlitInfo.srcBytesPerLine = src_desc.BytesPerLine;
     m_BlitInfo.dstBytesPerLine = dst_desc.BytesPerLine;
+    m_BlitInfo.operationStamp = NextOperationStamp();
 
     // Source starts at last row, destination at first row (matching original binary)
     const XBYTE *srcRow = src_desc.Image + (src_desc.Height - 1) * src_desc.BytesPerLine;
@@ -560,6 +607,8 @@ void VxBlitEngine::DoBlitUpsideDown(const VxImageDescEx &src_desc, const VxImage
 //==============================================================================
 
 void VxBlitEngine::DoAlphaBlit(const VxImageDescEx &dst_desc, XBYTE AlphaValue) {
+    VxMutexLock lock(m_Lock);
+
     if (!dst_desc.AlphaMask) return;
     if (!dst_desc.Image) return;
     if (dst_desc.Width < 0) return;
@@ -573,6 +622,7 @@ void VxBlitEngine::DoAlphaBlit(const VxImageDescEx &dst_desc, XBYTE AlphaValue) 
     m_BlitInfo.alphaMaskInv = ~dst_desc.AlphaMask;
     m_BlitInfo.width = dst_desc.Width;
     m_BlitInfo.dstBytesPerLine = dst_desc.BytesPerLine;
+    m_BlitInfo.operationStamp = NextOperationStamp();
 
     // Scale 8-bit alpha to target bit depth
     XDWORD alphaMask = dst_desc.AlphaMask;
@@ -607,6 +657,8 @@ void VxBlitEngine::DoAlphaBlit(const VxImageDescEx &dst_desc, XBYTE AlphaValue) 
 }
 
 void VxBlitEngine::DoAlphaBlit(const VxImageDescEx &dst_desc, XBYTE *AlphaValues) {
+    VxMutexLock lock(m_Lock);
+
     if (!dst_desc.AlphaMask || !dst_desc.Image || !AlphaValues) return;
     if (dst_desc.Width < 0) return;
 
@@ -619,6 +671,7 @@ void VxBlitEngine::DoAlphaBlit(const VxImageDescEx &dst_desc, XBYTE *AlphaValues
     m_BlitInfo.width = dst_desc.Width;
     m_BlitInfo.dstBytesPerLine = dst_desc.BytesPerLine;
     m_BlitInfo.alphaShiftDst = static_cast<int>(GetBitShiftLocal(dst_desc.AlphaMask));
+    m_BlitInfo.operationStamp = NextOperationStamp();
 
     XBYTE *row = dst_desc.Image;
     const XBYTE *alphaRow = AlphaValues;
@@ -639,6 +692,8 @@ void VxBlitEngine::DoAlphaBlit(const VxImageDescEx &dst_desc, XBYTE *AlphaValues
 //==============================================================================
 
 void VxBlitEngine::FillImage(const VxImageDescEx &dst_desc, XDWORD color) {
+    VxMutexLock lock(m_Lock);
+
     if (!dst_desc.Image) return;
     if (dst_desc.Width <= 0 || dst_desc.Height <= 0) return;
 
@@ -698,6 +753,8 @@ void VxBlitEngine::FillImage(const VxImageDescEx &dst_desc, XDWORD color) {
 }
 
 void VxBlitEngine::PremultiplyAlpha(const VxImageDescEx &desc) {
+    VxMutexLock lock(m_Lock);
+
     if (!desc.Image) return;
     if (desc.BitsPerPixel != 32 || desc.AlphaMask == 0) return;
     if (desc.Width <= 0 || desc.Height <= 0) return;
@@ -717,6 +774,8 @@ void VxBlitEngine::PremultiplyAlpha(const VxImageDescEx &desc) {
 }
 
 void VxBlitEngine::UnpremultiplyAlpha(const VxImageDescEx &desc) {
+    VxMutexLock lock(m_Lock);
+
     if (!desc.Image) return;
     if (desc.BitsPerPixel != 32 || desc.AlphaMask == 0) return;
     if (desc.Width <= 0 || desc.Height <= 0) return;
@@ -736,6 +795,8 @@ void VxBlitEngine::UnpremultiplyAlpha(const VxImageDescEx &desc) {
 }
 
 void VxBlitEngine::SwapRedBlue(const VxImageDescEx &desc) {
+    VxMutexLock lock(m_Lock);
+
     if (!desc.Image) return;
     if (desc.BitsPerPixel != 32) return;
     if (desc.Width <= 0 || desc.Height <= 0) return;
@@ -755,6 +816,8 @@ void VxBlitEngine::SwapRedBlue(const VxImageDescEx &desc) {
 }
 
 void VxBlitEngine::ClearAlpha(const VxImageDescEx &desc) {
+    VxMutexLock lock(m_Lock);
+
     if (!desc.Image) return;
     if (desc.BitsPerPixel != 32) return;
     if (desc.Width <= 0 || desc.Height <= 0) return;
@@ -778,6 +841,8 @@ void VxBlitEngine::ClearAlpha(const VxImageDescEx &desc) {
 }
 
 void VxBlitEngine::SetFullAlpha(const VxImageDescEx &desc) {
+    VxMutexLock lock(m_Lock);
+
     if (!desc.Image) return;
     if (desc.BitsPerPixel != 32) return;
     if (desc.Width <= 0 || desc.Height <= 0) return;
@@ -801,6 +866,8 @@ void VxBlitEngine::SetFullAlpha(const VxImageDescEx &desc) {
 }
 
 void VxBlitEngine::InvertColors(const VxImageDescEx &desc) {
+    VxMutexLock lock(m_Lock);
+
     if (!desc.Image) return;
     if (desc.BitsPerPixel != 32) return;
     if (desc.Width <= 0 || desc.Height <= 0) return;
@@ -824,6 +891,8 @@ void VxBlitEngine::InvertColors(const VxImageDescEx &desc) {
 }
 
 void VxBlitEngine::ConvertToGrayscale(const VxImageDescEx &desc) {
+    VxMutexLock lock(m_Lock);
+
     if (!desc.Image) return;
     if (desc.BitsPerPixel != 32) return;
     if (desc.Width <= 0 || desc.Height <= 0) return;
@@ -854,6 +923,8 @@ void VxBlitEngine::ConvertToGrayscale(const VxImageDescEx &desc) {
 }
 
 void VxBlitEngine::MultiplyBlend(const VxImageDescEx &src_desc, const VxImageDescEx &dst_desc) {
+    VxMutexLock lock(m_Lock);
+
     if (!src_desc.Image || !dst_desc.Image) return;
     if (src_desc.BitsPerPixel != 32 || dst_desc.BitsPerPixel != 32) return;
     if (src_desc.Width != dst_desc.Width || src_desc.Height != dst_desc.Height) return;
@@ -1008,11 +1079,16 @@ void VxBlitEngine::DoBlitWithResize(const VxImageDescEx &src_desc, const VxImage
 }
 
 void VxBlitEngine::ResizeImage(const VxImageDescEx &src_desc, const VxImageDescEx &dst_desc) {
+    VxMutexLock lock(m_Lock);
+
     if (!src_desc.Image || !dst_desc.Image) return;
     if (src_desc.Width <= 0 || src_desc.Height <= 0) return;
     if (dst_desc.Width <= 0 || dst_desc.Height <= 0) return;
 
-    // Native high-quality bilinear resize implementation
+    // Hybrid resize policy:
+    // - direct bilinear for 24/32 same-format
+    // - nearest-neighbor for same-format low-bpp (8/16) for performance
+    // - 32-bit conversion path for mixed-format resize
     int srcChannels = src_desc.BitsPerPixel / 8;
     int dstChannels = dst_desc.BitsPerPixel / 8;
 
@@ -1096,79 +1172,97 @@ void VxBlitEngine::ResizeBilinear32(const VxImageDescEx &src_desc, const VxImage
     const int scaleY = (srcH << 16) / dstH;
 
 #if defined(VX_SIMD_SSE2)
-    // SSE2 optimized bilinear resize
-    for (int y = 0; y < dstH; ++y) {
-        // Calculate source Y coordinate and fraction
-        const int srcYFixed = y * scaleY;
-        const int srcY0 = srcYFixed >> 16;
-        const int srcY1 = XMin(srcY0 + 1, srcH - 1);
-        const int fracY = srcYFixed & 0xFFFF;
-        const int invFracY = 0x10000 - fracY;
-
-        const XDWORD *srcRow0 = (const XDWORD *)(src_desc.Image + srcY0 * src_desc.BytesPerLine);
-        const XDWORD *srcRow1 = (const XDWORD *)(src_desc.Image + srcY1 * src_desc.BytesPerLine);
-        XDWORD *dstRow = (XDWORD *)(dst_desc.Image + y * dst_desc.BytesPerLine);
-
-        // SSE constants for this row
-        const __m128i vFracY = _mm_set1_epi16((short)(fracY >> 8));
-        const __m128i vInvFracY = _mm_set1_epi16((short)(invFracY >> 8));
-        const __m128i zero = _mm_setzero_si128();
-
+    if (m_EffectiveBlitKernelMode != VX_SIMD_MODE_NONE) {
+        XArray<int> srcX0Lut(dstW);
+        XArray<int> srcX1Lut(dstW);
+        XArray<int> wX0Lut(dstW);
+        XArray<int> wX1Lut(dstW);
+        srcX0Lut.Resize(dstW);
+        srcX1Lut.Resize(dstW);
+        wX0Lut.Resize(dstW);
+        wX1Lut.Resize(dstW);
         int srcXFixed = 0;
         for (int x = 0; x < dstW; ++x) {
             const int srcX0 = srcXFixed >> 16;
             const int srcX1 = XMin(srcX0 + 1, srcW - 1);
             const int fracX = srcXFixed & 0xFFFF;
             const int invFracX = 0x10000 - fracX;
-
-            // Load 4 corner pixels
-            XDWORD p00 = srcRow0[srcX0];
-            XDWORD p10 = srcRow0[srcX1];
-            XDWORD p01 = srcRow1[srcX0];
-            XDWORD p11 = srcRow1[srcX1];
-
-            // Convert fractional weights to 8-bit for SSE (0-256 range)
-            int wX0 = (invFracX + 128) >> 8;
-            int wX1 = 256 - wX0;
-            int wY0 = (invFracY + 128) >> 8;
-            int wY1 = 256 - wY0;
-
-            // Calculate bilinear weights for 4 corners
-            int w00 = (wX0 * wY0 + 128) >> 8;
-            int w10 = (wX1 * wY0 + 128) >> 8;
-            int w01 = (wX0 * wY1 + 128) >> 8;
-            int w11 = 256 - w00 - w10 - w01;  // Ensure total = 256
-
-            // Unpack to 16-bit and multiply
-            __m128i px00 = _mm_cvtsi32_si128(p00);
-            __m128i px10 = _mm_cvtsi32_si128(p10);
-            __m128i px01 = _mm_cvtsi32_si128(p01);
-            __m128i px11 = _mm_cvtsi32_si128(p11);
-
-            px00 = _mm_unpacklo_epi8(px00, zero);
-            px10 = _mm_unpacklo_epi8(px10, zero);
-            px01 = _mm_unpacklo_epi8(px01, zero);
-            px11 = _mm_unpacklo_epi8(px11, zero);
-
-            __m128i vw00 = _mm_set1_epi16((short)w00);
-            __m128i vw10 = _mm_set1_epi16((short)w10);
-            __m128i vw01 = _mm_set1_epi16((short)w01);
-            __m128i vw11 = _mm_set1_epi16((short)w11);
-
-            __m128i result = _mm_mullo_epi16(px00, vw00);
-            result = _mm_add_epi16(result, _mm_mullo_epi16(px10, vw10));
-            result = _mm_add_epi16(result, _mm_mullo_epi16(px01, vw01));
-            result = _mm_add_epi16(result, _mm_mullo_epi16(px11, vw11));
-
-            // Shift right by 8 and pack back to bytes
-            result = _mm_srli_epi16(result, 8);
-            result = _mm_packus_epi16(result, zero);
-
-            dstRow[x] = _mm_cvtsi128_si32(result);
+            const int wX0 = (invFracX + 128) >> 8;
+            srcX0Lut[x] = srcX0;
+            srcX1Lut[x] = srcX1;
+            wX0Lut[x] = wX0;
+            wX1Lut[x] = 256 - wX0;
             srcXFixed += scaleX;
         }
+
+        // SSE2 optimized bilinear resize
+        for (int y = 0; y < dstH; ++y) {
+            // Calculate source Y coordinate and fraction
+            const int srcYFixed = y * scaleY;
+            const int srcY0 = srcYFixed >> 16;
+            const int srcY1 = XMin(srcY0 + 1, srcH - 1);
+            const int fracY = srcYFixed & 0xFFFF;
+            const int invFracY = 0x10000 - fracY;
+
+            const XDWORD *srcRow0 = (const XDWORD *)(src_desc.Image + srcY0 * src_desc.BytesPerLine);
+            const XDWORD *srcRow1 = (const XDWORD *)(src_desc.Image + srcY1 * src_desc.BytesPerLine);
+            XDWORD *dstRow = (XDWORD *)(dst_desc.Image + y * dst_desc.BytesPerLine);
+
+            // SSE constants for this row
+            const int wY0 = (invFracY + 128) >> 8;
+            const int wY1 = 256 - wY0;
+            const __m128i zero = _mm_setzero_si128();
+
+            for (int x = 0; x < dstW; ++x) {
+                const int srcX0 = srcX0Lut[x];
+                const int srcX1 = srcX1Lut[x];
+                const int wX0 = wX0Lut[x];
+                const int wX1 = wX1Lut[x];
+
+                // Load 4 corner pixels
+                XDWORD p00 = srcRow0[srcX0];
+                XDWORD p10 = srcRow0[srcX1];
+                XDWORD p01 = srcRow1[srcX0];
+                XDWORD p11 = srcRow1[srcX1];
+
+                // Calculate bilinear weights for 4 corners
+                int w00 = (wX0 * wY0 + 128) >> 8;
+                int w10 = (wX1 * wY0 + 128) >> 8;
+                int w01 = (wX0 * wY1 + 128) >> 8;
+                int w11 = 256 - w00 - w10 - w01;  // Ensure total = 256
+
+                // Unpack to 16-bit and multiply
+                __m128i px00 = _mm_cvtsi32_si128(p00);
+                __m128i px10 = _mm_cvtsi32_si128(p10);
+                __m128i px01 = _mm_cvtsi32_si128(p01);
+                __m128i px11 = _mm_cvtsi32_si128(p11);
+
+                px00 = _mm_unpacklo_epi8(px00, zero);
+                px10 = _mm_unpacklo_epi8(px10, zero);
+                px01 = _mm_unpacklo_epi8(px01, zero);
+                px11 = _mm_unpacklo_epi8(px11, zero);
+
+                __m128i vw00 = _mm_set1_epi16((short)w00);
+                __m128i vw10 = _mm_set1_epi16((short)w10);
+                __m128i vw01 = _mm_set1_epi16((short)w01);
+                __m128i vw11 = _mm_set1_epi16((short)w11);
+
+                __m128i result = _mm_mullo_epi16(px00, vw00);
+                result = _mm_add_epi16(result, _mm_mullo_epi16(px10, vw10));
+                result = _mm_add_epi16(result, _mm_mullo_epi16(px01, vw01));
+                result = _mm_add_epi16(result, _mm_mullo_epi16(px11, vw11));
+
+                // Shift right by 8 and pack back to bytes
+                result = _mm_srli_epi16(result, 8);
+                result = _mm_packus_epi16(result, zero);
+
+                dstRow[x] = _mm_cvtsi128_si32(result);
+            }
+        }
+        return;
     }
-#else
+#endif
+
     // Scalar bilinear resize (fallback)
     for (int y = 0; y < dstH; ++y) {
         const int srcYFixed = y * scaleY;
@@ -1207,7 +1301,6 @@ void VxBlitEngine::ResizeBilinear32(const VxImageDescEx &src_desc, const VxImage
             srcXFixed += scaleX;
         }
     }
-#endif
 }
 
 void VxBlitEngine::ResizeBilinear24(const VxImageDescEx &src_desc, const VxImageDescEx &dst_desc) {
@@ -1266,12 +1359,13 @@ void VxBlitEngine::ResizeNearestNeighbor(const VxImageDescEx &src_desc, const Vx
     const int scaleY = (srcH << 16) / dstH;
     const int copyBpp = XMin(srcBpp, dstBpp);
 
-    std::vector<int> srcXMap(static_cast<std::size_t>(dstW));
+    XArray<int> srcXMap(dstW);
+    srcXMap.Resize(dstW);
     int srcXFixed = 0;
     for (int x = 0; x < dstW; ++x) {
         int srcX = srcXFixed >> 16;
         if (srcX >= srcW) srcX = srcW - 1;
-        srcXMap[static_cast<std::size_t>(x)] = srcX;
+        srcXMap[x] = srcX;
         srcXFixed += scaleX;
     }
 
@@ -1285,18 +1379,18 @@ void VxBlitEngine::ResizeNearestNeighbor(const VxImageDescEx &src_desc, const Vx
         if (srcBpp == dstBpp) {
             if (srcBpp == 1) {
                 for (int x = 0; x < dstW; ++x) {
-                    dstRow[x] = srcRow[srcXMap[static_cast<std::size_t>(x)]];
+                    dstRow[x] = srcRow[srcXMap[x]];
                 }
             } else if (srcBpp == 2) {
                 for (int x = 0; x < dstW; ++x) {
-                    const XBYTE *srcPx = srcRow + (srcXMap[static_cast<std::size_t>(x)] * 2);
+                    const XBYTE *srcPx = srcRow + (srcXMap[x] * 2);
                     XBYTE *dstPx = dstRow + (x * 2);
                     dstPx[0] = srcPx[0];
                     dstPx[1] = srcPx[1];
                 }
             } else if (srcBpp == 3) {
                 for (int x = 0; x < dstW; ++x) {
-                    const XBYTE *srcPx = srcRow + (srcXMap[static_cast<std::size_t>(x)] * 3);
+                    const XBYTE *srcPx = srcRow + (srcXMap[x] * 3);
                     XBYTE *dstPx = dstRow + (x * 3);
                     dstPx[0] = srcPx[0];
                     dstPx[1] = srcPx[1];
@@ -1304,7 +1398,7 @@ void VxBlitEngine::ResizeNearestNeighbor(const VxImageDescEx &src_desc, const Vx
                 }
             } else if (srcBpp == 4) {
                 for (int x = 0; x < dstW; ++x) {
-                    const XBYTE *srcPx = srcRow + (srcXMap[static_cast<std::size_t>(x)] * 4);
+                    const XBYTE *srcPx = srcRow + (srcXMap[x] * 4);
                     XBYTE *dstPx = dstRow + (x * 4);
                     dstPx[0] = srcPx[0];
                     dstPx[1] = srcPx[1];
@@ -1313,14 +1407,14 @@ void VxBlitEngine::ResizeNearestNeighbor(const VxImageDescEx &src_desc, const Vx
                 }
             } else {
                 for (int x = 0; x < dstW; ++x) {
-                    const XBYTE *srcPx = srcRow + srcXMap[static_cast<std::size_t>(x)] * srcBpp;
+                    const XBYTE *srcPx = srcRow + srcXMap[x] * srcBpp;
                     XBYTE *dstPx = dstRow + x * dstBpp;
-                    memcpy(dstPx, srcPx, static_cast<std::size_t>(srcBpp));
+                    memcpy(dstPx, srcPx, static_cast<size_t>(srcBpp));
                 }
             }
         } else {
             for (int x = 0; x < dstW; ++x) {
-                const XBYTE *srcPx = srcRow + srcXMap[static_cast<std::size_t>(x)] * srcBpp;
+                const XBYTE *srcPx = srcRow + srcXMap[x] * srcBpp;
                 XBYTE *dstPx = dstRow + x * dstBpp;
 
                 for (int b = 0; b < copyBpp; ++b) {
@@ -1359,9 +1453,23 @@ struct ColorPixel {
     int count;
 };
 
-struct CompareR { bool operator()(const ColorPixel &a, const ColorPixel &b) { return a.r < b.r; } };
-struct CompareG { bool operator()(const ColorPixel &a, const ColorPixel &b) { return a.g < b.g; } };
-struct CompareB { bool operator()(const ColorPixel &a, const ColorPixel &b) { return a.b < b.b; } };
+int ComparePixelByR(const void *a, const void *b) {
+    const ColorPixel *pa = reinterpret_cast<const ColorPixel *>(a);
+    const ColorPixel *pb = reinterpret_cast<const ColorPixel *>(b);
+    return static_cast<int>(pa->r) - static_cast<int>(pb->r);
+}
+
+int ComparePixelByG(const void *a, const void *b) {
+    const ColorPixel *pa = reinterpret_cast<const ColorPixel *>(a);
+    const ColorPixel *pb = reinterpret_cast<const ColorPixel *>(b);
+    return static_cast<int>(pa->g) - static_cast<int>(pb->g);
+}
+
+int ComparePixelByB(const void *a, const void *b) {
+    const ColorPixel *pa = reinterpret_cast<const ColorPixel *>(a);
+    const ColorPixel *pb = reinterpret_cast<const ColorPixel *>(b);
+    return static_cast<int>(pa->b) - static_cast<int>(pb->b);
+}
 
 inline int ColorDistSq(int r1, int g1, int b1, int r2, int g2, int b2) {
     int dr = r1 - r2;
@@ -1378,6 +1486,8 @@ inline int ColorDistSq(int r1, int g1, int b1, int r2, int g2, int b2) {
 //------------------------------------------------------------------------------
 
 XBOOL VxBlitEngine::QuantizeImage(const VxImageDescEx &src_desc, const VxImageDescEx &dst_desc) {
+    VxMutexLock lock(m_Lock);
+
     // Quantization requires 256 color palette
     if (dst_desc.ColorMapEntries != 256) return FALSE;
     if (!dst_desc.ColorMap) return FALSE;
@@ -1475,6 +1585,8 @@ XBOOL VxBlitEngine::QuantizeImage(const VxImageDescEx &src_desc, const VxImageDe
 //------------------------------------------------------------------------------
 
 XBOOL VxBlitEngine::QuantizeImageMedianCut(const VxImageDescEx &src_desc, const VxImageDescEx &dst_desc) {
+    VxMutexLock lock(m_Lock);
+
     // Quantization requires 256 color palette
     if (dst_desc.ColorMapEntries != 256) return FALSE;
     if (!dst_desc.ColorMap) return FALSE;
@@ -1623,11 +1735,11 @@ XBOOL VxBlitEngine::QuantizeImageMedianCut(const VxImageDescEx &src_desc, const 
         // Sort pixels by longest axis
         ColorPixel *boxPixels = pixels.Begin() + box.pixelStartIdx;
         if (rRange >= gRange && rRange >= bRange) {
-            std::sort(boxPixels, boxPixels + box.pixelCount, CompareR());
+            qsort(boxPixels, static_cast<size_t>(box.pixelCount), sizeof(ColorPixel), ComparePixelByR);
         } else if (gRange >= bRange) {
-            std::sort(boxPixels, boxPixels + box.pixelCount, CompareG());
+            qsort(boxPixels, static_cast<size_t>(box.pixelCount), sizeof(ColorPixel), ComparePixelByG);
         } else {
-            std::sort(boxPixels, boxPixels + box.pixelCount, CompareB());
+            qsort(boxPixels, static_cast<size_t>(box.pixelCount), sizeof(ColorPixel), ComparePixelByB);
         }
 
         // Split at median

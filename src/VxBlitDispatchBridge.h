@@ -1,0 +1,6 @@
+#ifndef VXBLITDISPATCHBRIDGE_H
+#define VXBLITDISPATCHBRIDGE_H
+
+void VxBlitApplySIMDMode(int effectiveMode);
+
+#endif // VXBLITDISPATCHBRIDGE_H

@@ -175,42 +175,22 @@ bool SphereSphereRef(const VxSphere& s1, const VxVector& p1, const VxSphere& s2,
     return (*t1 <= 1.0f && *t1 >= 0.0f);
 }
 
-float PlaneClassifyAABBRef(const VxVector& n, float d, const VxBbox& box) {
-    VxVector nearPoint;
-    VxVector farPoint;
-
-    nearPoint.x = (n.x >= 0.0f) ? box.Min.x : box.Max.x;
-    nearPoint.y = (n.y >= 0.0f) ? box.Min.y : box.Max.y;
-    nearPoint.z = (n.z >= 0.0f) ? box.Min.z : box.Max.z;
-
-    farPoint.x = (n.x >= 0.0f) ? box.Max.x : box.Min.x;
-    farPoint.y = (n.y >= 0.0f) ? box.Max.y : box.Min.y;
-    farPoint.z = (n.z >= 0.0f) ? box.Max.z : box.Min.z;
-
-    const float nearDist = Dot3Ref(n, nearPoint) + d;
-    if (nearDist > 0.0f) {
-        return nearDist;
-    }
-
-    const float farDist = Dot3Ref(n, farPoint) + d;
-    if (farDist < 0.0f) {
-        return farDist;
-    }
-
-    return 0.0f;
-}
-
 bool SphereAABBRef(const VxSphere& sphere, const VxBbox& box) {
-    const VxVector boxCenter = (box.Min + box.Max) * 0.5f;
-    VxVector n = boxCenter - sphere.Center();
-    const float magSq = SquareMagnitude(n);
-    if (magSq > EPSILON) {
-        n *= (1.0f / std::sqrt(magSq));
+    const VxVector& center = sphere.Center();
+    float sqDist = 0.0f;
+
+    for (int i = 0; i < 3; ++i) {
+        if (center[i] < box.Min[i]) {
+            const float delta = box.Min[i] - center[i];
+            sqDist += delta * delta;
+        } else if (center[i] > box.Max[i]) {
+            const float delta = center[i] - box.Max[i];
+            sqDist += delta * delta;
+        }
     }
 
-    const float d = -Dot3Ref(n, sphere.Center());
-    const float signedDist = PlaneClassifyAABBRef(n, d, box);
-    return std::fabs(signedDist) <= sphere.Radius();
+    const float radius = sphere.Radius();
+    return sqDist <= radius * radius;
 }
 
 float Dot3RefArray(const float a[3], const float b[3]) {
@@ -995,6 +975,24 @@ TEST(VxIntersect_Spheres, RaySphere_HitMissInsideTangentAndNonUnitDir) {
     }
 }
 
+TEST(VxIntersect_Spheres, RaySphere_DegenerateDirectionAndNullOutputs) {
+    const VxSphere sphere(VxVector(0.0f, 0.0f, 0.0f), 2.0f);
+
+    // Degenerate direction should not divide by zero or report intersections.
+    {
+        const VxRay ray = MakeRay(VxVector(0.0f, 0.0f, -5.0f), VxVector(0.0f, 0.0f, 0.0f));
+        EXPECT_EQ(VxIntersect::RaySphere(ray, sphere, nullptr, nullptr), 0);
+    }
+
+    // Optional outputs may be null.
+    {
+        const VxRay ray = MakeRay(VxVector(0.0f, 0.0f, -5.0f), VxVector(0.0f, 0.0f, 1.0f));
+        VxVector inter2 = VxVector::axis0();
+        EXPECT_EQ(VxIntersect::RaySphere(ray, sphere, nullptr, &inter2), 2);
+        EXPECT_TRUE(VectorNearBool(inter2, VxVector(0.0f, 0.0f, 2.0f), BINARY_TOL));
+    }
+}
+
 TEST(VxIntersect_Spheres, SphereSphere_MovingCollision) {
     // Already intersecting
     {
@@ -1041,6 +1039,19 @@ TEST(VxIntersect_Spheres, SphereAABB_BasicCases) {
     EXPECT_TRUE(VxIntersect::SphereAABB(VxSphere(VxVector(1.2f, 1.2f, 0), 0.5f), box));
     EXPECT_TRUE(VxIntersect::SphereAABB(VxSphere(VxVector(1.2f, 1.2f, 1.2f), 0.5f), box));
     EXPECT_FALSE(VxIntersect::SphereAABB(VxSphere(VxVector(2.0f, 0, 0), 0.5f), box));
+}
+
+TEST(VxIntersect_Spheres, SphereAABB_DoesNotUsePlaneApproximation) {
+    // The sphere is near the box corner direction but still too far in Euclidean distance.
+    const VxBbox box(
+        VxVector(4.38262268f, -3.76811886f, -4.92815447f),
+        VxVector(5.86545181f, -3.65976524f, -2.50481009f));
+    const VxSphere sphere(
+        VxVector(5.74680996f, -5.00813293f, -6.20174360f),
+        1.72290361f);
+
+    EXPECT_FALSE(VxIntersect::SphereAABB(sphere, box));
+    EXPECT_FALSE(SphereAABBRef(sphere, box));
 }
 
 TEST(VxIntersect_SIMDConsistency, SphereAABB_MatchScalarReferenceRandomized) {

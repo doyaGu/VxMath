@@ -5,9 +5,109 @@
 #include "VxRay.h"
 #include "VxOBB.h"
 #include "VxSIMD.h"
+#include "VxSIMDDispatchInternal.h"
+#include "VxIntersectDispatchStateInternal.h"
 
 constexpr float kHugeT = 1.0e30f;
 constexpr float kSegmentMaxT = 1.0f;
+
+namespace {
+
+typedef XBOOL (*VxIntersectRayBoxDispatchFn)(const VxRay &, const VxBbox &);
+typedef int (*VxIntersectRayBoxDetailedDispatchFn)(const VxRay &, const VxBbox &, VxVector &, VxVector *, VxVector *, VxVector *);
+typedef XBOOL (*VxIntersectSegmentBoxDispatchFn)(const VxRay &, const VxBbox &);
+typedef int (*VxIntersectSegmentBoxDetailedDispatchFn)(const VxRay &, const VxBbox &, VxVector &, VxVector *, VxVector *, VxVector *);
+typedef XBOOL (*VxIntersectLineBoxDispatchFn)(const VxRay &, const VxBbox &);
+typedef int (*VxIntersectLineBoxDetailedDispatchFn)(const VxRay &, const VxBbox &, VxVector &, VxVector *, VxVector *, VxVector *);
+typedef XBOOL (*VxIntersectAABBAABBDispatchFn)(const VxBbox &, const VxBbox &);
+typedef XBOOL (*VxIntersectAABBOBBDispatchFn)(const VxBbox &, const VxOBB &);
+typedef XBOOL (*VxIntersectOBBOBBDispatchFn)(const VxOBB &, const VxOBB &);
+typedef XBOOL (*VxIntersectAABBFaceDispatchFn)(const VxBbox &, const VxVector &, const VxVector &, const VxVector &, const VxVector &);
+
+template <bool kUseSIMD>
+static XBOOL RayBoxCore(const VxRay &ray, const VxBbox &box);
+template <bool kUseSIMD>
+static int RayBoxDetailedCore(const VxRay &ray, const VxBbox &box, VxVector &inpoint, VxVector *outpoint, VxVector *innormal, VxVector *outnormal);
+template <bool kUseSIMD>
+static XBOOL SegmentBoxCore(const VxRay &segment, const VxBbox &box);
+template <bool kUseSIMD>
+static int SegmentBoxDetailedCore(const VxRay &segment, const VxBbox &box, VxVector &inpoint, VxVector *outpoint, VxVector *innormal, VxVector *outnormal);
+template <bool kUseSIMD>
+static XBOOL LineBoxCore(const VxRay &line, const VxBbox &box);
+template <bool kUseSIMD>
+static int LineBoxDetailedCore(const VxRay &line, const VxBbox &box, VxVector &inpoint, VxVector *outpoint, VxVector *innormal, VxVector *outnormal);
+template <bool kUseSIMD>
+static XBOOL AABBAABBCore(const VxBbox &box1, const VxBbox &box2);
+template <bool kUseSIMD>
+static XBOOL AABBOBBCore(const VxBbox &box1, const VxOBB &box2);
+template <bool kUseSIMD>
+static XBOOL OBBOBBCore(const VxOBB &box1, const VxOBB &box2);
+template <bool kUseSIMD>
+static XBOOL AABBFaceCore(const VxBbox &box, const VxVector &A0, const VxVector &A1, const VxVector &A2, const VxVector &N);
+
+struct VxIntersectBoxDispatchTable {
+    VxIntersectRayBoxDispatchFn rayBox;
+    VxIntersectRayBoxDetailedDispatchFn rayBoxDetailed;
+    VxIntersectSegmentBoxDispatchFn segmentBox;
+    VxIntersectSegmentBoxDetailedDispatchFn segmentBoxDetailed;
+    VxIntersectLineBoxDispatchFn lineBox;
+    VxIntersectLineBoxDetailedDispatchFn lineBoxDetailed;
+    VxIntersectAABBAABBDispatchFn aabbAabb;
+    VxIntersectAABBOBBDispatchFn aabbObb;
+    VxIntersectOBBOBBDispatchFn obbObb;
+    VxIntersectAABBFaceDispatchFn aabbFace;
+};
+
+VxIntersectBoxDispatchTable g_VxIntersectBoxDispatch = {
+    RayBoxCore<false>,
+    RayBoxDetailedCore<false>,
+    SegmentBoxCore<false>,
+    SegmentBoxDetailedCore<false>,
+    LineBoxCore<false>,
+    LineBoxDetailedCore<false>,
+    AABBAABBCore<false>,
+    AABBOBBCore<false>,
+    OBBOBBCore<false>,
+    AABBFaceCore<false>
+};
+
+} // namespace
+
+void VxIntersectDispatchRebuild(int effectiveMode) {
+    const bool useSIMD = (effectiveMode != VX_SIMD_MODE_NONE);
+
+#if defined(VX_SIMD_SSE)
+    if (useSIMD) {
+        g_VxIntersectBoxDispatch.rayBox = RayBoxCore<true>;
+        g_VxIntersectBoxDispatch.rayBoxDetailed = RayBoxDetailedCore<true>;
+        g_VxIntersectBoxDispatch.segmentBox = SegmentBoxCore<true>;
+        g_VxIntersectBoxDispatch.segmentBoxDetailed = SegmentBoxDetailedCore<true>;
+        g_VxIntersectBoxDispatch.lineBox = LineBoxCore<true>;
+        g_VxIntersectBoxDispatch.lineBoxDetailed = LineBoxDetailedCore<true>;
+        g_VxIntersectBoxDispatch.aabbAabb = AABBAABBCore<true>;
+        g_VxIntersectBoxDispatch.aabbObb = AABBOBBCore<true>;
+        g_VxIntersectBoxDispatch.obbObb = OBBOBBCore<true>;
+        g_VxIntersectBoxDispatch.aabbFace = AABBFaceCore<true>;
+    } else
+#endif
+    {
+        g_VxIntersectBoxDispatch.rayBox = RayBoxCore<false>;
+        g_VxIntersectBoxDispatch.rayBoxDetailed = RayBoxDetailedCore<false>;
+        g_VxIntersectBoxDispatch.segmentBox = SegmentBoxCore<false>;
+        g_VxIntersectBoxDispatch.segmentBoxDetailed = SegmentBoxDetailedCore<false>;
+        g_VxIntersectBoxDispatch.lineBox = LineBoxCore<false>;
+        g_VxIntersectBoxDispatch.lineBoxDetailed = LineBoxDetailedCore<false>;
+        g_VxIntersectBoxDispatch.aabbAabb = AABBAABBCore<false>;
+        g_VxIntersectBoxDispatch.aabbObb = AABBOBBCore<false>;
+        g_VxIntersectBoxDispatch.obbObb = OBBOBBCore<false>;
+        g_VxIntersectBoxDispatch.aabbFace = AABBFaceCore<false>;
+    }
+
+    VxIntersectPlaneDispatchRebuild(useSIMD);
+    VxIntersectSphereDispatchRebuild(useSIMD);
+    VxIntersectFrustumDispatchRebuild(useSIMD);
+    VxIntersectFaceDispatchRebuild(useSIMD);
+}
 
 #if defined(VX_SIMD_SSE)
 static inline __m128 VxSIMDLoadVector3(const VxVector& v) {
@@ -131,35 +231,44 @@ static inline XBOOL PointInAABB_OutCode(const VxBbox &box, const VxVector &p, un
 
 // Intersection Ray - Box (simple boolean version)
 XBOOL VxIntersect::RayBox(const VxRay &ray, const VxBbox &box) {
+    return g_VxIntersectBoxDispatch.rayBox(ray, box);
+}
+
+namespace {
+
+template <bool kUseSIMD>
+static XBOOL RayBoxCore(const VxRay &ray, const VxBbox &box) {
 #if defined(VX_SIMD_SSE)
-    const __m128 boxMin = VxSIMDLoadVector3(box.Min);
-    const __m128 boxMax = VxSIMDLoadVector3(box.Max);
-    const __m128 half = _mm_mul_ps(_mm_sub_ps(boxMax, boxMin), _mm_set1_ps(0.5f));
-    const __m128 center = _mm_mul_ps(_mm_add_ps(boxMax, boxMin), _mm_set1_ps(0.5f));
-    const __m128 origin = VxSIMDLoadVector3(ray.m_Origin);
-    const __m128 direction = VxSIMDLoadVector3(ray.m_Direction);
-    const __m128 p = _mm_sub_ps(origin, center);
+    if constexpr (kUseSIMD) {
+        const __m128 boxMin = VxSIMDLoadVector3(box.Min);
+        const __m128 boxMax = VxSIMDLoadVector3(box.Max);
+        const __m128 half = _mm_mul_ps(_mm_sub_ps(boxMax, boxMin), _mm_set1_ps(0.5f));
+        const __m128 center = _mm_mul_ps(_mm_add_ps(boxMax, boxMin), _mm_set1_ps(0.5f));
+        const __m128 origin = VxSIMDLoadVector3(ray.m_Origin);
+        const __m128 direction = VxSIMDLoadVector3(ray.m_Direction);
+        const __m128 p = _mm_sub_ps(origin, center);
 
-    const __m128 outside = _mm_cmpgt_ps(VxSIMDAbs3(p), half);
-    const __m128 away = _mm_cmpge_ps(_mm_mul_ps(p, direction), _mm_setzero_ps());
-    const __m128 reject = _mm_and_ps(outside, away);
-    if ((_mm_movemask_ps(reject) & 0x7) != 0) {
-        return FALSE;
+        const __m128 outside = _mm_cmpgt_ps(VxSIMDAbs3(p), half);
+        const __m128 away = _mm_cmpge_ps(_mm_mul_ps(p, direction), _mm_setzero_ps());
+        const __m128 reject = _mm_and_ps(outside, away);
+        if ((_mm_movemask_ps(reject) & 0x7) != 0) {
+            return FALSE;
+        }
+
+        alignas(16) float crossVals[4];
+        alignas(16) float absDirVals[4];
+        alignas(16) float halfVals[4];
+        _mm_store_ps(crossVals, VxSIMDAbs3(VxSIMDCrossProduct3(p, direction)));
+        _mm_store_ps(absDirVals, VxSIMDAbs3(direction));
+        _mm_store_ps(halfVals, half);
+
+        if (crossVals[0] > absDirVals[2] * halfVals[1] + absDirVals[1] * halfVals[2]) return FALSE;
+        if (crossVals[1] > absDirVals[0] * halfVals[2] + absDirVals[2] * halfVals[0]) return FALSE;
+        if (crossVals[2] > absDirVals[0] * halfVals[1] + absDirVals[1] * halfVals[0]) return FALSE;
+
+        return TRUE;
     }
-
-    alignas(16) float crossVals[4];
-    alignas(16) float absDirVals[4];
-    alignas(16) float halfVals[4];
-    _mm_store_ps(crossVals, VxSIMDAbs3(VxSIMDCrossProduct3(p, direction)));
-    _mm_store_ps(absDirVals, VxSIMDAbs3(direction));
-    _mm_store_ps(halfVals, half);
-
-    if (crossVals[0] > absDirVals[2] * halfVals[1] + absDirVals[1] * halfVals[2]) return FALSE;
-    if (crossVals[1] > absDirVals[0] * halfVals[2] + absDirVals[2] * halfVals[0]) return FALSE;
-    if (crossVals[2] > absDirVals[0] * halfVals[1] + absDirVals[1] * halfVals[0]) return FALSE;
-
-    return TRUE;
-#else
+#endif
     // Get box center and half-extents
     float boxHalfX = (box.Max.x - box.Min.x) * 0.5f;
     float boxHalfY = (box.Max.y - box.Min.y) * 0.5f;
@@ -199,66 +308,76 @@ XBOOL VxIntersect::RayBox(const VxRay &ray, const VxBbox &box) {
     if (XAbs(crossZ) > absDirX * boxHalfY + absDirY * boxHalfX) return FALSE;
 
     return TRUE;
-#endif
 }
+
+} // namespace
 
 // Intersection Ray - Box (detailed version with intersection points and normals)
 int VxIntersect::RayBox(const VxRay &ray, const VxBbox &box, VxVector &inpoint, VxVector *outpoint, VxVector *innormal, VxVector *outnormal) {
+    return g_VxIntersectBoxDispatch.rayBoxDetailed(ray, box, inpoint, outpoint, innormal, outnormal);
+}
+
+namespace {
+
+template <bool kUseSIMD>
+static int RayBoxDetailedCore(const VxRay &ray, const VxBbox &box, VxVector &inpoint, VxVector *outpoint, VxVector *innormal, VxVector *outnormal) {
 #if defined(VX_SIMD_SSE)
-    float tNear = -kHugeT;
-    float tFar = kHugeT;
-    int nearAxis = 0;
-    float nearSign = -1.0f;
-    int farAxis = 0;
-    float farSign = 1.0f;
+    if constexpr (kUseSIMD) {
+        float tNear = -kHugeT;
+        float tFar = kHugeT;
+        int nearAxis = 0;
+        float nearSign = -1.0f;
+        int farAxis = 0;
+        float farSign = 1.0f;
 
-    const VxSlabSIMDPrecompute pre = VxSIMDPrecomputeSlabs(ray.m_Origin, ray.m_Direction, box);
-    if (pre.outsideParallelMask != 0) {
-        return 0;
-    }
-
-    for (int i = 0; i < 3; ++i) {
-        if ((pre.parallelMask & (1 << i)) != 0) {
-            continue;
-        }
-
-        float t1 = pre.tMin[i];
-        float t2 = pre.tMax[i];
-
-        if (t1 > tNear) {
-            tNear = t1;
-            nearAxis = i;
-            nearSign = OppositeDirSign(ray.m_Direction[i]);
-        }
-
-        if (t2 < tFar) {
-            tFar = t2;
-            farAxis = i;
-            farSign = OppositeDirSign(ray.m_Direction[i]);
-        }
-
-        if (tNear > tFar || tFar < EPSILON) {
+        const VxSlabSIMDPrecompute pre = VxSIMDPrecomputeSlabs(ray.m_Origin, ray.m_Direction, box);
+        if (pre.outsideParallelMask != 0) {
             return 0;
         }
-    }
 
-    inpoint = ray.m_Origin + ray.m_Direction * tNear;
-    if (outpoint) {
-        *outpoint = ray.m_Origin + ray.m_Direction * tFar;
-    }
+        for (int i = 0; i < 3; ++i) {
+            if ((pre.parallelMask & (1 << i)) != 0) {
+                continue;
+            }
 
-    if (innormal) {
-        *innormal = VxVector::axis0();
-        (*innormal)[nearAxis] = nearSign;
-    }
+            float t1 = pre.tMin[i];
+            float t2 = pre.tMax[i];
 
-    if (outnormal) {
-        *outnormal = VxVector::axis0();
-        (*outnormal)[farAxis] = farSign;
-    }
+            if (t1 > tNear) {
+                tNear = t1;
+                nearAxis = i;
+                nearSign = OppositeDirSign(ray.m_Direction[i]);
+            }
 
-    return (tNear <= EPSILON) ? -1 : 1;
-#else
+            if (t2 < tFar) {
+                tFar = t2;
+                farAxis = i;
+                farSign = OppositeDirSign(ray.m_Direction[i]);
+            }
+
+            if (tNear > tFar || tFar < EPSILON) {
+                return 0;
+            }
+        }
+
+        inpoint = ray.m_Origin + ray.m_Direction * tNear;
+        if (outpoint) {
+            *outpoint = ray.m_Origin + ray.m_Direction * tFar;
+        }
+
+        if (innormal) {
+            *innormal = VxVector::axis0();
+            (*innormal)[nearAxis] = nearSign;
+        }
+
+        if (outnormal) {
+            *outnormal = VxVector::axis0();
+            (*outnormal)[farAxis] = farSign;
+        }
+
+        return (tNear <= EPSILON) ? -1 : 1;
+    }
+#endif
     float tNear = -kHugeT;
     float tFar = kHugeT;
     int nearAxis = 0;
@@ -319,39 +438,49 @@ int VxIntersect::RayBox(const VxRay &ray, const VxBbox &box, VxVector &inpoint, 
     }
 
     return (tNear <= EPSILON) ? -1 : 1;
-#endif
 }
+
+} // namespace
 
 // Intersection Segment - Box (simple boolean version)
 XBOOL VxIntersect::SegmentBox(const VxRay &segment, const VxBbox &box) {
+    return g_VxIntersectBoxDispatch.segmentBox(segment, box);
+}
+
+namespace {
+
+template <bool kUseSIMD>
+static XBOOL SegmentBoxCore(const VxRay &segment, const VxBbox &box) {
 #if defined(VX_SIMD_SSE)
-    const __m128 boxMin = VxSIMDLoadVector3(box.Min);
-    const __m128 boxMax = VxSIMDLoadVector3(box.Max);
-    const __m128 half = _mm_mul_ps(_mm_sub_ps(boxMax, boxMin), _mm_set1_ps(0.5f));
-    const __m128 center = _mm_mul_ps(_mm_add_ps(boxMax, boxMin), _mm_set1_ps(0.5f));
-    const __m128 origin = VxSIMDLoadVector3(segment.m_Origin);
-    const __m128 segHalf = _mm_mul_ps(VxSIMDLoadVector3(segment.m_Direction), _mm_set1_ps(0.5f));
-    const __m128 segCenter = _mm_add_ps(origin, segHalf);
-    const __m128 d = _mm_sub_ps(segCenter, center);
+    if constexpr (kUseSIMD) {
+        const __m128 boxMin = VxSIMDLoadVector3(box.Min);
+        const __m128 boxMax = VxSIMDLoadVector3(box.Max);
+        const __m128 half = _mm_mul_ps(_mm_sub_ps(boxMax, boxMin), _mm_set1_ps(0.5f));
+        const __m128 center = _mm_mul_ps(_mm_add_ps(boxMax, boxMin), _mm_set1_ps(0.5f));
+        const __m128 origin = VxSIMDLoadVector3(segment.m_Origin);
+        const __m128 segHalf = _mm_mul_ps(VxSIMDLoadVector3(segment.m_Direction), _mm_set1_ps(0.5f));
+        const __m128 segCenter = _mm_add_ps(origin, segHalf);
+        const __m128 d = _mm_sub_ps(segCenter, center);
 
-    const __m128 sepAxis = _mm_cmpgt_ps(VxSIMDAbs3(d), _mm_add_ps(VxSIMDAbs3(segHalf), half));
-    if ((_mm_movemask_ps(sepAxis) & 0x7) != 0) {
-        return FALSE;
+        const __m128 sepAxis = _mm_cmpgt_ps(VxSIMDAbs3(d), _mm_add_ps(VxSIMDAbs3(segHalf), half));
+        if ((_mm_movemask_ps(sepAxis) & 0x7) != 0) {
+            return FALSE;
+        }
+
+        alignas(16) float crossVals[4];
+        alignas(16) float absHalfVals[4];
+        alignas(16) float halfVals[4];
+        _mm_store_ps(crossVals, VxSIMDAbs3(VxSIMDCrossProduct3(d, segHalf)));
+        _mm_store_ps(absHalfVals, VxSIMDAbs3(segHalf));
+        _mm_store_ps(halfVals, half);
+
+        if (crossVals[0] > absHalfVals[2] * halfVals[1] + absHalfVals[1] * halfVals[2]) return FALSE;
+        if (crossVals[1] > absHalfVals[2] * halfVals[0] + absHalfVals[0] * halfVals[2]) return FALSE;
+        if (crossVals[2] > absHalfVals[1] * halfVals[0] + absHalfVals[0] * halfVals[1]) return FALSE;
+
+        return TRUE;
     }
-
-    alignas(16) float crossVals[4];
-    alignas(16) float absHalfVals[4];
-    alignas(16) float halfVals[4];
-    _mm_store_ps(crossVals, VxSIMDAbs3(VxSIMDCrossProduct3(d, segHalf)));
-    _mm_store_ps(absHalfVals, VxSIMDAbs3(segHalf));
-    _mm_store_ps(halfVals, half);
-
-    if (crossVals[0] > absHalfVals[2] * halfVals[1] + absHalfVals[1] * halfVals[2]) return FALSE;
-    if (crossVals[1] > absHalfVals[2] * halfVals[0] + absHalfVals[0] * halfVals[2]) return FALSE;
-    if (crossVals[2] > absHalfVals[1] * halfVals[0] + absHalfVals[0] * halfVals[1]) return FALSE;
-
-    return TRUE;
-#else
+#endif
     // Get box center and half-extents
     float boxHalfX = (box.Max.x - box.Min.x) * 0.5f;
     float boxHalfY = (box.Max.y - box.Min.y) * 0.5f;
@@ -397,73 +526,83 @@ XBOOL VxIntersect::SegmentBox(const VxRay &segment, const VxBbox &box) {
         return FALSE;
 
     return TRUE;
-#endif
 }
+
+} // namespace
 
 // Intersection Segment - Box (detailed version)
 int VxIntersect::SegmentBox(const VxRay &segment, const VxBbox &box, VxVector &inpoint, VxVector *outpoint, VxVector *innormal, VxVector *outnormal) {
+    return g_VxIntersectBoxDispatch.segmentBoxDetailed(segment, box, inpoint, outpoint, innormal, outnormal);
+}
+
+namespace {
+
+template <bool kUseSIMD>
+static int SegmentBoxDetailedCore(const VxRay &segment, const VxBbox &box, VxVector &inpoint, VxVector *outpoint, VxVector *innormal, VxVector *outnormal) {
 #if defined(VX_SIMD_SSE)
-    float tNear = -kHugeT;
-    float tFar = kHugeT;
-    int nearAxis = 0;
-    float nearSign = -1.0f;
-    int farAxis = 0;
-    float farSign = 1.0f;
+    if constexpr (kUseSIMD) {
+        float tNear = -kHugeT;
+        float tFar = kHugeT;
+        int nearAxis = 0;
+        float nearSign = -1.0f;
+        int farAxis = 0;
+        float farSign = 1.0f;
 
-    const VxSlabSIMDPrecompute pre = VxSIMDPrecomputeSlabs(segment.m_Origin, segment.m_Direction, box);
-    if (pre.outsideParallelMask != 0) {
-        return 0;
-    }
-
-    for (int i = 0; i < 3; ++i) {
-        if ((pre.parallelMask & (1 << i)) != 0) {
-            continue;
-        }
-
-        float t1 = pre.tMin[i];
-        float t2 = pre.tMax[i];
-
-        if (t1 > tNear) {
-            tNear = t1;
-            nearAxis = i;
-            nearSign = OppositeDirSign(segment.m_Direction[i]);
-        }
-
-        if (t2 < tFar) {
-            tFar = t2;
-            farAxis = i;
-            farSign = OppositeDirSign(segment.m_Direction[i]);
-        }
-
-        if (tNear > tFar || tFar < EPSILON) {
+        const VxSlabSIMDPrecompute pre = VxSIMDPrecomputeSlabs(segment.m_Origin, segment.m_Direction, box);
+        if (pre.outsideParallelMask != 0) {
             return 0;
         }
-    }
 
-    if (tNear > kSegmentMaxT) {
-        return 0;
-    }
-    if (tNear < EPSILON && tFar > kSegmentMaxT) {
-        return 0;
-    }
+        for (int i = 0; i < 3; ++i) {
+            if ((pre.parallelMask & (1 << i)) != 0) {
+                continue;
+            }
 
-    inpoint = segment.m_Origin + segment.m_Direction * tNear;
-    if (outpoint) {
-        *outpoint = segment.m_Origin + segment.m_Direction * tFar;
-    }
+            float t1 = pre.tMin[i];
+            float t2 = pre.tMax[i];
 
-    if (innormal) {
-        *innormal = VxVector::axis0();
-        (*innormal)[nearAxis] = nearSign;
-    }
+            if (t1 > tNear) {
+                tNear = t1;
+                nearAxis = i;
+                nearSign = OppositeDirSign(segment.m_Direction[i]);
+            }
 
-    if (outnormal) {
-        *outnormal = VxVector::axis0();
-        (*outnormal)[farAxis] = farSign;
-    }
+            if (t2 < tFar) {
+                tFar = t2;
+                farAxis = i;
+                farSign = OppositeDirSign(segment.m_Direction[i]);
+            }
 
-    return (tNear <= EPSILON) ? -1 : 1;
-#else
+            if (tNear > tFar || tFar < EPSILON) {
+                return 0;
+            }
+        }
+
+        if (tNear > kSegmentMaxT) {
+            return 0;
+        }
+        if (tNear < EPSILON && tFar > kSegmentMaxT) {
+            return 0;
+        }
+
+        inpoint = segment.m_Origin + segment.m_Direction * tNear;
+        if (outpoint) {
+            *outpoint = segment.m_Origin + segment.m_Direction * tFar;
+        }
+
+        if (innormal) {
+            *innormal = VxVector::axis0();
+            (*innormal)[nearAxis] = nearSign;
+        }
+
+        if (outnormal) {
+            *outnormal = VxVector::axis0();
+            (*outnormal)[farAxis] = farSign;
+        }
+
+        return (tNear <= EPSILON) ? -1 : 1;
+    }
+#endif
     float tNear = -kHugeT;
     float tFar = kHugeT;
     int nearAxis = 0;
@@ -530,33 +669,43 @@ int VxIntersect::SegmentBox(const VxRay &segment, const VxBbox &box, VxVector &i
     }
 
     return (tNear <= EPSILON) ? -1 : 1;
-#endif
 }
+
+} // namespace
 
 // Intersection Line - Box (simple boolean version)
 XBOOL VxIntersect::LineBox(const VxRay &line, const VxBbox &box) {
+    return g_VxIntersectBoxDispatch.lineBox(line, box);
+}
+
+namespace {
+
+template <bool kUseSIMD>
+static XBOOL LineBoxCore(const VxRay &line, const VxBbox &box) {
 #if defined(VX_SIMD_SSE)
-    const __m128 boxMin = VxSIMDLoadVector3(box.Min);
-    const __m128 boxMax = VxSIMDLoadVector3(box.Max);
-    const __m128 half = _mm_mul_ps(_mm_sub_ps(boxMax, boxMin), _mm_set1_ps(0.5f));
-    const __m128 center = _mm_mul_ps(_mm_add_ps(boxMax, boxMin), _mm_set1_ps(0.5f));
-    const __m128 origin = VxSIMDLoadVector3(line.m_Origin);
-    const __m128 direction = VxSIMDLoadVector3(line.m_Direction);
-    const __m128 d = _mm_sub_ps(origin, center);
+    if constexpr (kUseSIMD) {
+        const __m128 boxMin = VxSIMDLoadVector3(box.Min);
+        const __m128 boxMax = VxSIMDLoadVector3(box.Max);
+        const __m128 half = _mm_mul_ps(_mm_sub_ps(boxMax, boxMin), _mm_set1_ps(0.5f));
+        const __m128 center = _mm_mul_ps(_mm_add_ps(boxMax, boxMin), _mm_set1_ps(0.5f));
+        const __m128 origin = VxSIMDLoadVector3(line.m_Origin);
+        const __m128 direction = VxSIMDLoadVector3(line.m_Direction);
+        const __m128 d = _mm_sub_ps(origin, center);
 
-    alignas(16) float crossVals[4];
-    alignas(16) float absDirVals[4];
-    alignas(16) float halfVals[4];
-    _mm_store_ps(crossVals, VxSIMDAbs3(VxSIMDCrossProduct3(d, direction)));
-    _mm_store_ps(absDirVals, VxSIMDAbs3(direction));
-    _mm_store_ps(halfVals, half);
+        alignas(16) float crossVals[4];
+        alignas(16) float absDirVals[4];
+        alignas(16) float halfVals[4];
+        _mm_store_ps(crossVals, VxSIMDAbs3(VxSIMDCrossProduct3(d, direction)));
+        _mm_store_ps(absDirVals, VxSIMDAbs3(direction));
+        _mm_store_ps(halfVals, half);
 
-    if (crossVals[0] > absDirVals[2] * halfVals[1] + absDirVals[1] * halfVals[2]) return FALSE;
-    if (crossVals[1] > absDirVals[0] * halfVals[2] + absDirVals[2] * halfVals[0]) return FALSE;
-    if (crossVals[2] > absDirVals[0] * halfVals[1] + absDirVals[1] * halfVals[0]) return FALSE;
+        if (crossVals[0] > absDirVals[2] * halfVals[1] + absDirVals[1] * halfVals[2]) return FALSE;
+        if (crossVals[1] > absDirVals[0] * halfVals[2] + absDirVals[2] * halfVals[0]) return FALSE;
+        if (crossVals[2] > absDirVals[0] * halfVals[1] + absDirVals[1] * halfVals[0]) return FALSE;
 
-    return TRUE;
-#else
+        return TRUE;
+    }
+#endif
     // Get box center and half-extents
     float boxHalfX = (box.Max.x - box.Min.x) * 0.5f;
     float boxHalfY = (box.Max.y - box.Min.y) * 0.5f;
@@ -588,73 +737,83 @@ XBOOL VxIntersect::LineBox(const VxRay &line, const VxBbox &box) {
         return FALSE;
 
     return TRUE;
-#endif
 }
+
+} // namespace
 
 // Intersection Line - Box (detailed version)
 int VxIntersect::LineBox(const VxRay &line, const VxBbox &box, VxVector &inpoint, VxVector *outpoint, VxVector *innormal, VxVector *outnormal) {
+    return g_VxIntersectBoxDispatch.lineBoxDetailed(line, box, inpoint, outpoint, innormal, outnormal);
+}
+
+namespace {
+
+template <bool kUseSIMD>
+static int LineBoxDetailedCore(const VxRay &line, const VxBbox &box, VxVector &inpoint, VxVector *outpoint, VxVector *innormal, VxVector *outnormal) {
 #if defined(VX_SIMD_SSE)
-    float tNear = -kHugeT;
-    float tFar = kHugeT;
-    int nearAxis = 0;
-    float nearSign = -1.0f;
-    int farAxis = 0;
-    float farSign = 1.0f;
+    if constexpr (kUseSIMD) {
+        float tNear = -kHugeT;
+        float tFar = kHugeT;
+        int nearAxis = 0;
+        float nearSign = -1.0f;
+        int farAxis = 0;
+        float farSign = 1.0f;
 
-    const VxSlabSIMDPrecompute pre = VxSIMDPrecomputeSlabs(line.m_Origin, line.m_Direction, box);
-    if (pre.outsideParallelMask != 0) {
-        return 0;
-    }
-
-    for (int i = 0; i < 3; ++i) {
-        if ((pre.parallelMask & (1 << i)) != 0) {
-            continue;
-        }
-
-        float t1 = pre.tMin[i];
-        float t2 = pre.tMax[i];
-
-        // Orders the slab parameters by absolute value for lines.
-        if (fabsf(t2) < fabsf(t1)) {
-            const float tmp = t1;
-            t1 = t2;
-            t2 = tmp;
-        }
-
-        if (fabsf(t1) < fabsf(tNear)) {
-            tNear = t1;
-            nearAxis = i;
-            nearSign = OppositeDirSign(line.m_Direction[i]);
-        }
-
-        if (fabsf(t2) < fabsf(tFar)) {
-            tFar = t2;
-            farAxis = i;
-            farSign = OppositeDirSign(line.m_Direction[i]);
-        }
-
-        if (fabsf(tFar) < fabsf(tNear)) {
+        const VxSlabSIMDPrecompute pre = VxSIMDPrecomputeSlabs(line.m_Origin, line.m_Direction, box);
+        if (pre.outsideParallelMask != 0) {
             return 0;
         }
-    }
 
-    inpoint = line.m_Origin + line.m_Direction * tNear;
-    if (outpoint) {
-        *outpoint = line.m_Origin + line.m_Direction * tFar;
-    }
+        for (int i = 0; i < 3; ++i) {
+            if ((pre.parallelMask & (1 << i)) != 0) {
+                continue;
+            }
 
-    if (innormal) {
-        *innormal = VxVector::axis0();
-        (*innormal)[nearAxis] = nearSign;
-    }
+            float t1 = pre.tMin[i];
+            float t2 = pre.tMax[i];
 
-    if (outnormal) {
-        *outnormal = VxVector::axis0();
-        (*outnormal)[farAxis] = farSign;
-    }
+            // Orders the slab parameters by absolute value for lines.
+            if (fabsf(t2) < fabsf(t1)) {
+                const float tmp = t1;
+                t1 = t2;
+                t2 = tmp;
+            }
 
-    return 1;
-#else
+            if (fabsf(t1) < fabsf(tNear)) {
+                tNear = t1;
+                nearAxis = i;
+                nearSign = OppositeDirSign(line.m_Direction[i]);
+            }
+
+            if (fabsf(t2) < fabsf(tFar)) {
+                tFar = t2;
+                farAxis = i;
+                farSign = OppositeDirSign(line.m_Direction[i]);
+            }
+
+            if (fabsf(tFar) < fabsf(tNear)) {
+                return 0;
+            }
+        }
+
+        inpoint = line.m_Origin + line.m_Direction * tNear;
+        if (outpoint) {
+            *outpoint = line.m_Origin + line.m_Direction * tFar;
+        }
+
+        if (innormal) {
+            *innormal = VxVector::axis0();
+            (*innormal)[nearAxis] = nearSign;
+        }
+
+        if (outnormal) {
+            *outnormal = VxVector::axis0();
+            (*outnormal)[farAxis] = farSign;
+        }
+
+        return 1;
+    }
+#endif
     float tNear = -kHugeT;
     float tFar = kHugeT;
     int nearAxis = 0;
@@ -716,132 +875,166 @@ int VxIntersect::LineBox(const VxRay &line, const VxBbox &box, VxVector &inpoint
     }
 
     return 1;
-#endif
 }
+
+} // namespace
 
 // Intersection Box - Box
 XBOOL VxIntersect::AABBAABB(const VxBbox &box1, const VxBbox &box2) {
-#if defined(VX_SIMD_SSE)
-    const __m128 min1 = VxSIMDLoadVector3(box1.Min);
-    const __m128 max1 = VxSIMDLoadVector3(box1.Max);
-    const __m128 min2 = VxSIMDLoadVector3(box2.Min);
-    const __m128 max2 = VxSIMDLoadVector3(box2.Max);
+    return g_VxIntersectBoxDispatch.aabbAabb(box1, box2);
+}
 
-    const __m128 minLeMax = _mm_cmple_ps(min1, max2);
-    const __m128 maxGeMin = _mm_cmpge_ps(max1, min2);
-    const __m128 overlap = _mm_and_ps(minLeMax, maxGeMin);
-    return ((_mm_movemask_ps(overlap) & 0x7) == 0x7) ? TRUE : FALSE;
-#else
+namespace {
+
+template <bool kUseSIMD>
+static XBOOL AABBAABBCore(const VxBbox &box1, const VxBbox &box2) {
+#if defined(VX_SIMD_SSE)
+    if constexpr (kUseSIMD) {
+        const __m128 min1 = VxSIMDLoadVector3(box1.Min);
+        const __m128 max1 = VxSIMDLoadVector3(box1.Max);
+        const __m128 min2 = VxSIMDLoadVector3(box2.Min);
+        const __m128 max2 = VxSIMDLoadVector3(box2.Max);
+
+        const __m128 minLeMax = _mm_cmple_ps(min1, max2);
+        const __m128 maxGeMin = _mm_cmpge_ps(max1, min2);
+        const __m128 overlap = _mm_and_ps(minLeMax, maxGeMin);
+        return ((_mm_movemask_ps(overlap) & 0x7) == 0x7) ? TRUE : FALSE;
+    }
+#endif
     return (box1.Min.x <= box2.Max.x) && (box1.Max.x >= box2.Min.x) &&
            (box1.Min.y <= box2.Max.y) && (box1.Max.y >= box2.Min.y) &&
            (box1.Min.z <= box2.Max.z) && (box1.Max.z >= box2.Min.z);
-#endif
 }
+
+} // namespace
 
 // AABB - OBB intersection
 XBOOL VxIntersect::AABBOBB(const VxBbox &box1, const VxOBB &box2) {
+    return g_VxIntersectBoxDispatch.aabbObb(box1, box2);
+}
+
+namespace {
+
+template <bool kUseSIMD>
+static XBOOL AABBOBBCore(const VxBbox &box1, const VxOBB &box2) {
+    float aabbHalfX = 0.0f;
+    float aabbHalfY = 0.0f;
+    float aabbHalfZ = 0.0f;
+    float Tx = 0.0f;
+    float Ty = 0.0f;
+    float Tz = 0.0f;
+    float R00 = 0.0f, R01 = 0.0f, R02 = 0.0f;
+    float R10 = 0.0f, R11 = 0.0f, R12 = 0.0f;
+    float R20 = 0.0f, R21 = 0.0f, R22 = 0.0f;
+    float absR00 = 0.0f, absR01 = 0.0f, absR02 = 0.0f;
+    float absR10 = 0.0f, absR11 = 0.0f, absR12 = 0.0f;
+    float absR20 = 0.0f, absR21 = 0.0f, absR22 = 0.0f;
+
 #if defined(VX_SIMD_SSE)
-    const __m128 boxMin = VxSIMDLoadVector3(box1.Min);
-    const __m128 boxMax = VxSIMDLoadVector3(box1.Max);
-    const __m128 boxCenter = _mm_mul_ps(_mm_add_ps(boxMax, boxMin), _mm_set1_ps(0.5f));
-    const __m128 aabbHalf = _mm_mul_ps(_mm_sub_ps(boxMax, boxMin), _mm_set1_ps(0.5f));
-    const __m128 tVec = _mm_sub_ps(VxSIMDLoadVector3(box2.m_Center), boxCenter);
+    if constexpr (kUseSIMD) {
+        const __m128 boxMin = VxSIMDLoadVector3(box1.Min);
+        const __m128 boxMax = VxSIMDLoadVector3(box1.Max);
+        const __m128 boxCenter = _mm_mul_ps(_mm_add_ps(boxMax, boxMin), _mm_set1_ps(0.5f));
+        const __m128 aabbHalf = _mm_mul_ps(_mm_sub_ps(boxMax, boxMin), _mm_set1_ps(0.5f));
+        const __m128 tVec = _mm_sub_ps(VxSIMDLoadVector3(box2.m_Center), boxCenter);
 
-    alignas(16) float halfVals[4];
-    alignas(16) float tVals[4];
-    _mm_store_ps(halfVals, aabbHalf);
-    _mm_store_ps(tVals, tVec);
+        alignas(16) float halfVals[4];
+        alignas(16) float tVals[4];
+        _mm_store_ps(halfVals, aabbHalf);
+        _mm_store_ps(tVals, tVec);
 
-    const float aabbHalfX = halfVals[0];
-    const float aabbHalfY = halfVals[1];
-    const float aabbHalfZ = halfVals[2];
-    const float Tx = tVals[0];
-    const float Ty = tVals[1];
-    const float Tz = tVals[2];
+        aabbHalfX = halfVals[0];
+        aabbHalfY = halfVals[1];
+        aabbHalfZ = halfVals[2];
+        Tx = tVals[0];
+        Ty = tVals[1];
+        Tz = tVals[2];
 
-    const __m128 axis0 = VxSIMDLoadVector3(box2.m_Axis[0]);
-    const __m128 axis1 = VxSIMDLoadVector3(box2.m_Axis[1]);
-    const __m128 axis2 = VxSIMDLoadVector3(box2.m_Axis[2]);
-    const __m128 absAxis0 = VxSIMDAbs3(axis0);
-    const __m128 absAxis1 = VxSIMDAbs3(axis1);
-    const __m128 absAxis2 = VxSIMDAbs3(axis2);
-    const __m128 ext2 = VxSIMDLoadVector3(box2.m_Extents);
+        const __m128 axis0 = VxSIMDLoadVector3(box2.m_Axis[0]);
+        const __m128 axis1 = VxSIMDLoadVector3(box2.m_Axis[1]);
+        const __m128 axis2 = VxSIMDLoadVector3(box2.m_Axis[2]);
+        const __m128 absAxis0 = VxSIMDAbs3(axis0);
+        const __m128 absAxis1 = VxSIMDAbs3(axis1);
+        const __m128 absAxis2 = VxSIMDAbs3(axis2);
+        const __m128 ext2 = VxSIMDLoadVector3(box2.m_Extents);
 
-    const __m128 row0 = _mm_setr_ps(box2.m_Axis[0].x, box2.m_Axis[1].x, box2.m_Axis[2].x, 0.0f);
-    const __m128 row1 = _mm_setr_ps(box2.m_Axis[0].y, box2.m_Axis[1].y, box2.m_Axis[2].y, 0.0f);
-    const __m128 row2 = _mm_setr_ps(box2.m_Axis[0].z, box2.m_Axis[1].z, box2.m_Axis[2].z, 0.0f);
-    const __m128 absRow0 = VxSIMDAbs3(row0);
-    const __m128 absRow1 = VxSIMDAbs3(row1);
-    const __m128 absRow2 = VxSIMDAbs3(row2);
+        const __m128 row0 = _mm_setr_ps(box2.m_Axis[0].x, box2.m_Axis[1].x, box2.m_Axis[2].x, 0.0f);
+        const __m128 row1 = _mm_setr_ps(box2.m_Axis[0].y, box2.m_Axis[1].y, box2.m_Axis[2].y, 0.0f);
+        const __m128 row2 = _mm_setr_ps(box2.m_Axis[0].z, box2.m_Axis[1].z, box2.m_Axis[2].z, 0.0f);
+        const __m128 absRow0 = VxSIMDAbs3(row0);
+        const __m128 absRow1 = VxSIMDAbs3(row1);
+        const __m128 absRow2 = VxSIMDAbs3(row2);
 
-    if (XAbs(Tx) > aabbHalfX + VxSIMDDot3Scalar(absRow0, ext2))
-        return FALSE;
-    if (XAbs(Ty) > aabbHalfY + VxSIMDDot3Scalar(absRow1, ext2))
-        return FALSE;
-    if (XAbs(Tz) > aabbHalfZ + VxSIMDDot3Scalar(absRow2, ext2))
-        return FALSE;
+        if (XAbs(Tx) > aabbHalfX + VxSIMDDot3Scalar(absRow0, ext2))
+            return FALSE;
+        if (XAbs(Ty) > aabbHalfY + VxSIMDDot3Scalar(absRow1, ext2))
+            return FALSE;
+        if (XAbs(Tz) > aabbHalfZ + VxSIMDDot3Scalar(absRow2, ext2))
+            return FALSE;
 
-    if (XAbs(VxSIMDDot3Scalar(tVec, axis0)) > box2.m_Extents.x + VxSIMDDot3Scalar(absAxis0, aabbHalf))
-        return FALSE;
-    if (XAbs(VxSIMDDot3Scalar(tVec, axis1)) > box2.m_Extents.y + VxSIMDDot3Scalar(absAxis1, aabbHalf))
-        return FALSE;
-    if (XAbs(VxSIMDDot3Scalar(tVec, axis2)) > box2.m_Extents.z + VxSIMDDot3Scalar(absAxis2, aabbHalf))
-        return FALSE;
+        if (XAbs(VxSIMDDot3Scalar(tVec, axis0)) > box2.m_Extents.x + VxSIMDDot3Scalar(absAxis0, aabbHalf))
+            return FALSE;
+        if (XAbs(VxSIMDDot3Scalar(tVec, axis1)) > box2.m_Extents.y + VxSIMDDot3Scalar(absAxis1, aabbHalf))
+            return FALSE;
+        if (XAbs(VxSIMDDot3Scalar(tVec, axis2)) > box2.m_Extents.z + VxSIMDDot3Scalar(absAxis2, aabbHalf))
+            return FALSE;
 
-    // OBB axis components (kept as scalars for cross-axis SAT tests)
-    float R00 = box2.m_Axis[0].x, R01 = box2.m_Axis[1].x, R02 = box2.m_Axis[2].x;
-    float R10 = box2.m_Axis[0].y, R11 = box2.m_Axis[1].y, R12 = box2.m_Axis[2].y;
-    float R20 = box2.m_Axis[0].z, R21 = box2.m_Axis[1].z, R22 = box2.m_Axis[2].z;
+        // OBB axis components (kept as scalars for cross-axis SAT tests)
+        R00 = box2.m_Axis[0].x; R01 = box2.m_Axis[1].x; R02 = box2.m_Axis[2].x;
+        R10 = box2.m_Axis[0].y; R11 = box2.m_Axis[1].y; R12 = box2.m_Axis[2].y;
+        R20 = box2.m_Axis[0].z; R21 = box2.m_Axis[1].z; R22 = box2.m_Axis[2].z;
 
-    float absR00 = XAbs(R00), absR01 = XAbs(R01), absR02 = XAbs(R02);
-    float absR10 = XAbs(R10), absR11 = XAbs(R11), absR12 = XAbs(R12);
-    float absR20 = XAbs(R20), absR21 = XAbs(R21), absR22 = XAbs(R22);
-#else
-    // Get AABB center and half-extents
-    float aabbHalfX = (box1.Max.x - box1.Min.x) * 0.5f;
-    float aabbHalfY = (box1.Max.y - box1.Min.y) * 0.5f;
-    float aabbHalfZ = (box1.Max.z - box1.Min.z) * 0.5f;
-    
-    VxVector aabbCenter = (box1.Max + box1.Min) * 0.5f;
-
-    // Vector from AABB center to OBB center
-    float Tx = box2.m_Center.x - aabbCenter.x;
-    float Ty = box2.m_Center.y - aabbCenter.y;
-    float Tz = box2.m_Center.z - aabbCenter.z;
-
-    // OBB axis components
-    float R00 = box2.m_Axis[0].x, R01 = box2.m_Axis[1].x, R02 = box2.m_Axis[2].x;
-    float R10 = box2.m_Axis[0].y, R11 = box2.m_Axis[1].y, R12 = box2.m_Axis[2].y;
-    float R20 = box2.m_Axis[0].z, R21 = box2.m_Axis[1].z, R22 = box2.m_Axis[2].z;
-
-    float absR00 = XAbs(R00), absR01 = XAbs(R01), absR02 = XAbs(R02);
-    float absR10 = XAbs(R10), absR11 = XAbs(R11), absR12 = XAbs(R12);
-    float absR20 = XAbs(R20), absR21 = XAbs(R21), absR22 = XAbs(R22);
-
-    // Test AABB X axis
-    if (XAbs(Tx) > aabbHalfX + absR00 * box2.m_Extents.x + absR01 * box2.m_Extents.y + absR02 * box2.m_Extents.z)
-        return FALSE;
-
-    // Test AABB Y axis
-    if (XAbs(Ty) > aabbHalfY + absR10 * box2.m_Extents.x + absR11 * box2.m_Extents.y + absR12 * box2.m_Extents.z)
-        return FALSE;
-
-    // Test AABB Z axis
-    if (XAbs(Tz) > aabbHalfZ + absR20 * box2.m_Extents.x + absR21 * box2.m_Extents.y + absR22 * box2.m_Extents.z)
-        return FALSE;
-
-    // Test OBB axis 0
-    if (XAbs(Tx * R00 + Ty * R10 + Tz * R20) > box2.m_Extents.x + absR00 * aabbHalfX + absR10 * aabbHalfY + absR20 * aabbHalfZ)
-        return FALSE;
-
-    // Test OBB axis 1
-    if (XAbs(Tx * R01 + Ty * R11 + Tz * R21) > box2.m_Extents.y + absR01 * aabbHalfX + absR11 * aabbHalfY + absR21 * aabbHalfZ)
-        return FALSE;
-
-    // Test OBB axis 2
-    if (XAbs(Tx * R02 + Ty * R12 + Tz * R22) > box2.m_Extents.z + absR02 * aabbHalfX + absR12 * aabbHalfY + absR22 * aabbHalfZ)
-        return FALSE;
+        absR00 = XAbs(R00); absR01 = XAbs(R01); absR02 = XAbs(R02);
+        absR10 = XAbs(R10); absR11 = XAbs(R11); absR12 = XAbs(R12);
+        absR20 = XAbs(R20); absR21 = XAbs(R21); absR22 = XAbs(R22);
+    } else
 #endif
+    {
+        // Get AABB center and half-extents
+        aabbHalfX = (box1.Max.x - box1.Min.x) * 0.5f;
+        aabbHalfY = (box1.Max.y - box1.Min.y) * 0.5f;
+        aabbHalfZ = (box1.Max.z - box1.Min.z) * 0.5f;
+
+        VxVector aabbCenter = (box1.Max + box1.Min) * 0.5f;
+
+        // Vector from AABB center to OBB center
+        Tx = box2.m_Center.x - aabbCenter.x;
+        Ty = box2.m_Center.y - aabbCenter.y;
+        Tz = box2.m_Center.z - aabbCenter.z;
+
+        // OBB axis components
+        R00 = box2.m_Axis[0].x; R01 = box2.m_Axis[1].x; R02 = box2.m_Axis[2].x;
+        R10 = box2.m_Axis[0].y; R11 = box2.m_Axis[1].y; R12 = box2.m_Axis[2].y;
+        R20 = box2.m_Axis[0].z; R21 = box2.m_Axis[1].z; R22 = box2.m_Axis[2].z;
+
+        absR00 = XAbs(R00); absR01 = XAbs(R01); absR02 = XAbs(R02);
+        absR10 = XAbs(R10); absR11 = XAbs(R11); absR12 = XAbs(R12);
+        absR20 = XAbs(R20); absR21 = XAbs(R21); absR22 = XAbs(R22);
+
+        // Test AABB X axis
+        if (XAbs(Tx) > aabbHalfX + absR00 * box2.m_Extents.x + absR01 * box2.m_Extents.y + absR02 * box2.m_Extents.z)
+            return FALSE;
+
+        // Test AABB Y axis
+        if (XAbs(Ty) > aabbHalfY + absR10 * box2.m_Extents.x + absR11 * box2.m_Extents.y + absR12 * box2.m_Extents.z)
+            return FALSE;
+
+        // Test AABB Z axis
+        if (XAbs(Tz) > aabbHalfZ + absR20 * box2.m_Extents.x + absR21 * box2.m_Extents.y + absR22 * box2.m_Extents.z)
+            return FALSE;
+
+        // Test OBB axis 0
+        if (XAbs(Tx * R00 + Ty * R10 + Tz * R20) > box2.m_Extents.x + absR00 * aabbHalfX + absR10 * aabbHalfY + absR20 * aabbHalfZ)
+            return FALSE;
+
+        // Test OBB axis 1
+        if (XAbs(Tx * R01 + Ty * R11 + Tz * R21) > box2.m_Extents.y + absR01 * aabbHalfX + absR11 * aabbHalfY + absR21 * aabbHalfZ)
+            return FALSE;
+
+        // Test OBB axis 2
+        if (XAbs(Tx * R02 + Ty * R12 + Tz * R22) > box2.m_Extents.z + absR02 * aabbHalfX + absR12 * aabbHalfY + absR22 * aabbHalfZ)
+            return FALSE;
+    }
 
     // Test cross product axes
     // AABB X axis x OBB axis 0
@@ -883,133 +1076,156 @@ XBOOL VxIntersect::AABBOBB(const VxBbox &box1, const VxOBB &box2) {
     return TRUE;
 }
 
+} // namespace
+
 // OBB - OBB intersection using SAT (Separating Axis Theorem)
 XBOOL VxIntersect::OBBOBB(const VxOBB &box1, const VxOBB &box2) {
+    return g_VxIntersectBoxDispatch.obbObb(box1, box2);
+}
+
+namespace {
+
+template <bool kUseSIMD>
+static XBOOL OBBOBBCore(const VxOBB &box1, const VxOBB &box2) {
+    float Tx = 0.0f;
+    float Ty = 0.0f;
+    float Tz = 0.0f;
+    float R00 = 0.0f, R01 = 0.0f, R02 = 0.0f;
+    float R10 = 0.0f, R11 = 0.0f, R12 = 0.0f;
+    float R20 = 0.0f, R21 = 0.0f, R22 = 0.0f;
+    float T0 = 0.0f, T1 = 0.0f, T2 = 0.0f;
+    float absR00 = 0.0f, absR01 = 0.0f, absR02 = 0.0f;
+    float absR10 = 0.0f, absR11 = 0.0f, absR12 = 0.0f;
+    float absR20 = 0.0f, absR21 = 0.0f, absR22 = 0.0f;
+
 #if defined(VX_SIMD_SSE)
-    const __m128 centerDelta = _mm_sub_ps(VxSIMDLoadVector3(box2.m_Center), VxSIMDLoadVector3(box1.m_Center));
-    const __m128 axisA0 = VxSIMDLoadVector3(box1.m_Axis[0]);
-    const __m128 axisA1 = VxSIMDLoadVector3(box1.m_Axis[1]);
-    const __m128 axisA2 = VxSIMDLoadVector3(box1.m_Axis[2]);
-    const __m128 axisB0 = VxSIMDLoadVector3(box2.m_Axis[0]);
-    const __m128 axisB1 = VxSIMDLoadVector3(box2.m_Axis[1]);
-    const __m128 axisB2 = VxSIMDLoadVector3(box2.m_Axis[2]);
-    const __m128 ext1 = VxSIMDLoadVector3(box1.m_Extents);
-    const __m128 ext2 = VxSIMDLoadVector3(box2.m_Extents);
+    if constexpr (kUseSIMD) {
+        const __m128 centerDelta = _mm_sub_ps(VxSIMDLoadVector3(box2.m_Center), VxSIMDLoadVector3(box1.m_Center));
+        const __m128 axisA0 = VxSIMDLoadVector3(box1.m_Axis[0]);
+        const __m128 axisA1 = VxSIMDLoadVector3(box1.m_Axis[1]);
+        const __m128 axisA2 = VxSIMDLoadVector3(box1.m_Axis[2]);
+        const __m128 axisB0 = VxSIMDLoadVector3(box2.m_Axis[0]);
+        const __m128 axisB1 = VxSIMDLoadVector3(box2.m_Axis[1]);
+        const __m128 axisB2 = VxSIMDLoadVector3(box2.m_Axis[2]);
+        const __m128 ext1 = VxSIMDLoadVector3(box1.m_Extents);
+        const __m128 ext2 = VxSIMDLoadVector3(box2.m_Extents);
 
-    alignas(16) float tComp[4];
-    _mm_store_ps(tComp, centerDelta);
-    float Tx = tComp[0];
-    float Ty = tComp[1];
-    float Tz = tComp[2];
+        alignas(16) float tComp[4];
+        _mm_store_ps(tComp, centerDelta);
+        Tx = tComp[0];
+        Ty = tComp[1];
+        Tz = tComp[2];
 
-    float R00 = VxSIMDDot3Scalar(axisA0, axisB0);
-    float R01 = VxSIMDDot3Scalar(axisA0, axisB1);
-    float R02 = VxSIMDDot3Scalar(axisA0, axisB2);
-    float R10 = VxSIMDDot3Scalar(axisA1, axisB0);
-    float R11 = VxSIMDDot3Scalar(axisA1, axisB1);
-    float R12 = VxSIMDDot3Scalar(axisA1, axisB2);
-    float R20 = VxSIMDDot3Scalar(axisA2, axisB0);
-    float R21 = VxSIMDDot3Scalar(axisA2, axisB1);
-    float R22 = VxSIMDDot3Scalar(axisA2, axisB2);
+        R00 = VxSIMDDot3Scalar(axisA0, axisB0);
+        R01 = VxSIMDDot3Scalar(axisA0, axisB1);
+        R02 = VxSIMDDot3Scalar(axisA0, axisB2);
+        R10 = VxSIMDDot3Scalar(axisA1, axisB0);
+        R11 = VxSIMDDot3Scalar(axisA1, axisB1);
+        R12 = VxSIMDDot3Scalar(axisA1, axisB2);
+        R20 = VxSIMDDot3Scalar(axisA2, axisB0);
+        R21 = VxSIMDDot3Scalar(axisA2, axisB1);
+        R22 = VxSIMDDot3Scalar(axisA2, axisB2);
 
-    float T0 = VxSIMDDot3Scalar(centerDelta, axisA0);
-    float T1 = VxSIMDDot3Scalar(centerDelta, axisA1);
-    float T2 = VxSIMDDot3Scalar(centerDelta, axisA2);
+        T0 = VxSIMDDot3Scalar(centerDelta, axisA0);
+        T1 = VxSIMDDot3Scalar(centerDelta, axisA1);
+        T2 = VxSIMDDot3Scalar(centerDelta, axisA2);
 
-    float absR00 = XAbs(R00);
-    float absR01 = XAbs(R01);
-    float absR02 = XAbs(R02);
-    float absR10 = XAbs(R10);
-    float absR11 = XAbs(R11);
-    float absR12 = XAbs(R12);
-    float absR20 = XAbs(R20);
-    float absR21 = XAbs(R21);
-    float absR22 = XAbs(R22);
+        absR00 = XAbs(R00);
+        absR01 = XAbs(R01);
+        absR02 = XAbs(R02);
+        absR10 = XAbs(R10);
+        absR11 = XAbs(R11);
+        absR12 = XAbs(R12);
+        absR20 = XAbs(R20);
+        absR21 = XAbs(R21);
+        absR22 = XAbs(R22);
 
-    const __m128 rowA0 = _mm_setr_ps(absR00, absR01, absR02, 0.0f);
-    const __m128 rowA1 = _mm_setr_ps(absR10, absR11, absR12, 0.0f);
-    const __m128 rowA2 = _mm_setr_ps(absR20, absR21, absR22, 0.0f);
-    if (XAbs(T0) > box1.m_Extents.x + VxSIMDDot3Scalar(rowA0, ext2))
-        return FALSE;
-    if (XAbs(T1) > box1.m_Extents.y + VxSIMDDot3Scalar(rowA1, ext2))
-        return FALSE;
-    if (XAbs(T2) > box1.m_Extents.z + VxSIMDDot3Scalar(rowA2, ext2))
-        return FALSE;
+        const __m128 rowA0 = _mm_setr_ps(absR00, absR01, absR02, 0.0f);
+        const __m128 rowA1 = _mm_setr_ps(absR10, absR11, absR12, 0.0f);
+        const __m128 rowA2 = _mm_setr_ps(absR20, absR21, absR22, 0.0f);
+        if (XAbs(T0) > box1.m_Extents.x + VxSIMDDot3Scalar(rowA0, ext2))
+            return FALSE;
+        if (XAbs(T1) > box1.m_Extents.y + VxSIMDDot3Scalar(rowA1, ext2))
+            return FALSE;
+        if (XAbs(T2) > box1.m_Extents.z + VxSIMDDot3Scalar(rowA2, ext2))
+            return FALSE;
 
-    const __m128 colB0 = _mm_setr_ps(absR00, absR10, absR20, 0.0f);
-    const __m128 colB1 = _mm_setr_ps(absR01, absR11, absR21, 0.0f);
-    const __m128 colB2 = _mm_setr_ps(absR02, absR12, absR22, 0.0f);
-    if (XAbs(VxSIMDDot3Scalar(centerDelta, axisB0)) > box2.m_Extents.x + VxSIMDDot3Scalar(colB0, ext1))
-        return FALSE;
-    if (XAbs(VxSIMDDot3Scalar(centerDelta, axisB1)) > box2.m_Extents.y + VxSIMDDot3Scalar(colB1, ext1))
-        return FALSE;
-    if (XAbs(VxSIMDDot3Scalar(centerDelta, axisB2)) > box2.m_Extents.z + VxSIMDDot3Scalar(colB2, ext1))
-        return FALSE;
-#else
-    // Translation vector between box centers
-    float Tx = box2.m_Center.x - box1.m_Center.x;
-    float Ty = box2.m_Center.y - box1.m_Center.y;
-    float Tz = box2.m_Center.z - box1.m_Center.z;
-
-    // Rotation matrix from box1 to box2 coordinate system
-    // R[i][j] = dot(box1.Axis[i], box2.Axis[j])
-    float R00 = box1.m_Axis[0].x * box2.m_Axis[0].x + box1.m_Axis[0].y * box2.m_Axis[0].y + box1.m_Axis[0].z * box2.m_Axis[0].z;
-    float R01 = box1.m_Axis[0].x * box2.m_Axis[1].x + box1.m_Axis[0].y * box2.m_Axis[1].y + box1.m_Axis[0].z * box2.m_Axis[1].z;
-    float R02 = box1.m_Axis[0].x * box2.m_Axis[2].x + box1.m_Axis[0].y * box2.m_Axis[2].y + box1.m_Axis[0].z * box2.m_Axis[2].z;
-
-    // T in box1's coordinate frame for axis A0
-    float T0 = Tx * box1.m_Axis[0].x + Ty * box1.m_Axis[0].y + Tz * box1.m_Axis[0].z;
-    float absR00 = XAbs(R00);
-    float absR01 = XAbs(R01);
-    float absR02 = XAbs(R02);
-
-    // Test axis A0
-    if (XAbs(T0) > box1.m_Extents.x + absR00 * box2.m_Extents.x + absR01 * box2.m_Extents.y + absR02 * box2.m_Extents.z)
-        return FALSE;
-
-    float R10 = box1.m_Axis[1].x * box2.m_Axis[0].x + box1.m_Axis[1].y * box2.m_Axis[0].y + box1.m_Axis[1].z * box2.m_Axis[0].z;
-    float R11 = box1.m_Axis[1].x * box2.m_Axis[1].x + box1.m_Axis[1].y * box2.m_Axis[1].y + box1.m_Axis[1].z * box2.m_Axis[1].z;
-    float R12 = box1.m_Axis[1].x * box2.m_Axis[2].x + box1.m_Axis[1].y * box2.m_Axis[2].y + box1.m_Axis[1].z * box2.m_Axis[2].z;
-
-    // T in box1's coordinate frame for axis A1
-    float T1 = Tx * box1.m_Axis[1].x + Ty * box1.m_Axis[1].y + Tz * box1.m_Axis[1].z;
-    float absR10 = XAbs(R10);
-    float absR11 = XAbs(R11);
-    float absR12 = XAbs(R12);
-
-    // Test axis A1
-    if (XAbs(T1) > box1.m_Extents.y + absR10 * box2.m_Extents.x + absR11 * box2.m_Extents.y + absR12 * box2.m_Extents.z)
-        return FALSE;
-
-    float R20 = box1.m_Axis[2].x * box2.m_Axis[0].x + box1.m_Axis[2].y * box2.m_Axis[0].y + box1.m_Axis[2].z * box2.m_Axis[0].z;
-    float R21 = box1.m_Axis[2].x * box2.m_Axis[1].x + box1.m_Axis[2].y * box2.m_Axis[1].y + box1.m_Axis[2].z * box2.m_Axis[1].z;
-    float R22 = box1.m_Axis[2].x * box2.m_Axis[2].x + box1.m_Axis[2].y * box2.m_Axis[2].y + box1.m_Axis[2].z * box2.m_Axis[2].z;
-
-    // T in box1's coordinate frame for axis A2
-    float T2 = Tx * box1.m_Axis[2].x + Ty * box1.m_Axis[2].y + Tz * box1.m_Axis[2].z;
-    float absR20 = XAbs(R20);
-    float absR21 = XAbs(R21);
-    float absR22 = XAbs(R22);
-
-    // Test axis A2
-    if (XAbs(T2) > box1.m_Extents.z + absR20 * box2.m_Extents.x + absR21 * box2.m_Extents.y + absR22 * box2.m_Extents.z)
-        return FALSE;
-
-    // Test axis B0
-    if (XAbs(Tx * box2.m_Axis[0].x + Ty * box2.m_Axis[0].y + Tz * box2.m_Axis[0].z) >
-        box2.m_Extents.x + absR00 * box1.m_Extents.x + absR10 * box1.m_Extents.y + absR20 * box1.m_Extents.z)
-        return FALSE;
-
-    // Test axis B1
-    if (XAbs(Tx * box2.m_Axis[1].x + Ty * box2.m_Axis[1].y + Tz * box2.m_Axis[1].z) >
-        box2.m_Extents.y + absR01 * box1.m_Extents.x + absR11 * box1.m_Extents.y + absR21 * box1.m_Extents.z)
-        return FALSE;
-
-    // Test axis B2
-    if (XAbs(Tx * box2.m_Axis[2].x + Ty * box2.m_Axis[2].y + Tz * box2.m_Axis[2].z) >
-        box2.m_Extents.z + absR02 * box1.m_Extents.x + absR12 * box1.m_Extents.y + absR22 * box1.m_Extents.z)
-        return FALSE;
+        const __m128 colB0 = _mm_setr_ps(absR00, absR10, absR20, 0.0f);
+        const __m128 colB1 = _mm_setr_ps(absR01, absR11, absR21, 0.0f);
+        const __m128 colB2 = _mm_setr_ps(absR02, absR12, absR22, 0.0f);
+        if (XAbs(VxSIMDDot3Scalar(centerDelta, axisB0)) > box2.m_Extents.x + VxSIMDDot3Scalar(colB0, ext1))
+            return FALSE;
+        if (XAbs(VxSIMDDot3Scalar(centerDelta, axisB1)) > box2.m_Extents.y + VxSIMDDot3Scalar(colB1, ext1))
+            return FALSE;
+        if (XAbs(VxSIMDDot3Scalar(centerDelta, axisB2)) > box2.m_Extents.z + VxSIMDDot3Scalar(colB2, ext1))
+            return FALSE;
+    } else
 #endif
+    {
+        // Translation vector between box centers
+        Tx = box2.m_Center.x - box1.m_Center.x;
+        Ty = box2.m_Center.y - box1.m_Center.y;
+        Tz = box2.m_Center.z - box1.m_Center.z;
+
+        // Rotation matrix from box1 to box2 coordinate system
+        // R[i][j] = dot(box1.Axis[i], box2.Axis[j])
+        R00 = box1.m_Axis[0].x * box2.m_Axis[0].x + box1.m_Axis[0].y * box2.m_Axis[0].y + box1.m_Axis[0].z * box2.m_Axis[0].z;
+        R01 = box1.m_Axis[0].x * box2.m_Axis[1].x + box1.m_Axis[0].y * box2.m_Axis[1].y + box1.m_Axis[0].z * box2.m_Axis[1].z;
+        R02 = box1.m_Axis[0].x * box2.m_Axis[2].x + box1.m_Axis[0].y * box2.m_Axis[2].y + box1.m_Axis[0].z * box2.m_Axis[2].z;
+
+        // T in box1's coordinate frame for axis A0
+        T0 = Tx * box1.m_Axis[0].x + Ty * box1.m_Axis[0].y + Tz * box1.m_Axis[0].z;
+        absR00 = XAbs(R00);
+        absR01 = XAbs(R01);
+        absR02 = XAbs(R02);
+
+        // Test axis A0
+        if (XAbs(T0) > box1.m_Extents.x + absR00 * box2.m_Extents.x + absR01 * box2.m_Extents.y + absR02 * box2.m_Extents.z)
+            return FALSE;
+
+        R10 = box1.m_Axis[1].x * box2.m_Axis[0].x + box1.m_Axis[1].y * box2.m_Axis[0].y + box1.m_Axis[1].z * box2.m_Axis[0].z;
+        R11 = box1.m_Axis[1].x * box2.m_Axis[1].x + box1.m_Axis[1].y * box2.m_Axis[1].y + box1.m_Axis[1].z * box2.m_Axis[1].z;
+        R12 = box1.m_Axis[1].x * box2.m_Axis[2].x + box1.m_Axis[1].y * box2.m_Axis[2].y + box1.m_Axis[1].z * box2.m_Axis[2].z;
+
+        // T in box1's coordinate frame for axis A1
+        T1 = Tx * box1.m_Axis[1].x + Ty * box1.m_Axis[1].y + Tz * box1.m_Axis[1].z;
+        absR10 = XAbs(R10);
+        absR11 = XAbs(R11);
+        absR12 = XAbs(R12);
+
+        // Test axis A1
+        if (XAbs(T1) > box1.m_Extents.y + absR10 * box2.m_Extents.x + absR11 * box2.m_Extents.y + absR12 * box2.m_Extents.z)
+            return FALSE;
+
+        R20 = box1.m_Axis[2].x * box2.m_Axis[0].x + box1.m_Axis[2].y * box2.m_Axis[0].y + box1.m_Axis[2].z * box2.m_Axis[0].z;
+        R21 = box1.m_Axis[2].x * box2.m_Axis[1].x + box1.m_Axis[2].y * box2.m_Axis[1].y + box1.m_Axis[2].z * box2.m_Axis[1].z;
+        R22 = box1.m_Axis[2].x * box2.m_Axis[2].x + box1.m_Axis[2].y * box2.m_Axis[2].y + box1.m_Axis[2].z * box2.m_Axis[2].z;
+
+        // T in box1's coordinate frame for axis A2
+        T2 = Tx * box1.m_Axis[2].x + Ty * box1.m_Axis[2].y + Tz * box1.m_Axis[2].z;
+        absR20 = XAbs(R20);
+        absR21 = XAbs(R21);
+        absR22 = XAbs(R22);
+
+        // Test axis A2
+        if (XAbs(T2) > box1.m_Extents.z + absR20 * box2.m_Extents.x + absR21 * box2.m_Extents.y + absR22 * box2.m_Extents.z)
+            return FALSE;
+
+        // Test axis B0
+        if (XAbs(Tx * box2.m_Axis[0].x + Ty * box2.m_Axis[0].y + Tz * box2.m_Axis[0].z) >
+            box2.m_Extents.x + absR00 * box1.m_Extents.x + absR10 * box1.m_Extents.y + absR20 * box1.m_Extents.z)
+            return FALSE;
+
+        // Test axis B1
+        if (XAbs(Tx * box2.m_Axis[1].x + Ty * box2.m_Axis[1].y + Tz * box2.m_Axis[1].z) >
+            box2.m_Extents.y + absR01 * box1.m_Extents.x + absR11 * box1.m_Extents.y + absR21 * box1.m_Extents.z)
+            return FALSE;
+
+        // Test axis B2
+        if (XAbs(Tx * box2.m_Axis[2].x + Ty * box2.m_Axis[2].y + Tz * box2.m_Axis[2].z) >
+            box2.m_Extents.z + absR02 * box1.m_Extents.x + absR12 * box1.m_Extents.y + absR22 * box1.m_Extents.z)
+            return FALSE;
+    }
 
     // Test axis A0 x B0
     if (XAbs(T2 * R10 - R20 * T1) > absR20 * box1.m_Extents.y + absR10 * box1.m_Extents.z + absR02 * box2.m_Extents.y + absR01 * box2.m_Extents.z)
@@ -1051,27 +1267,39 @@ XBOOL VxIntersect::OBBOBB(const VxOBB &box1, const VxOBB &box2) {
     return TRUE;
 }
 
+} // namespace
+
 // AABB - Face (triangle) intersection
 XBOOL VxIntersect::AABBFace(const VxBbox &box, const VxVector &A0, const VxVector &A1, const VxVector &A2, const VxVector &N) {
+    return g_VxIntersectBoxDispatch.aabbFace(box, A0, A1, A2, N);
+}
+
+namespace {
+
+template <bool kUseSIMD>
+static XBOOL AABBFaceCore(const VxBbox &box, const VxVector &A0, const VxVector &A1, const VxVector &A2, const VxVector &N) {
     // Implements a hybrid of trivial rejection + triangle-edge vs box
     // tests, and finally tests the most "planar" box diagonal vs the triangle.
 
     unsigned int code0 = 0, code1 = 0, code2 = 0;
 #if defined(VX_SIMD_SSE)
-    if (PointInAABB_OutCode_SIMD(box, A0, code0))
-        return TRUE;
-    if (PointInAABB_OutCode_SIMD(box, A1, code1))
-        return TRUE;
-    if (PointInAABB_OutCode_SIMD(box, A2, code2))
-        return TRUE;
-#else
+    if constexpr (kUseSIMD) {
+        if (PointInAABB_OutCode_SIMD(box, A0, code0))
+            return TRUE;
+        if (PointInAABB_OutCode_SIMD(box, A1, code1))
+            return TRUE;
+        if (PointInAABB_OutCode_SIMD(box, A2, code2))
+            return TRUE;
+    } else
+#endif
+    {
     if (PointInAABB_OutCode(box, A0, code0))
         return TRUE;
     if (PointInAABB_OutCode(box, A1, code1))
         return TRUE;
     if (PointInAABB_OutCode(box, A2, code2))
         return TRUE;
-#endif
+    }
 
     // Trivial reject: all vertices outside the same slab half-space.
     if ((code0 & code1 & code2) != 0)
@@ -1081,17 +1309,17 @@ XBOOL VxIntersect::AABBFace(const VxBbox &box, const VxVector &A0, const VxVecto
     VxRay edge;
     edge.m_Origin = A0;
     edge.m_Direction = A1 - A0;
-    if (SegmentBox(edge, box))
+    if (VxIntersect::SegmentBox(edge, box))
         return TRUE;
 
     edge.m_Origin = A1;
     edge.m_Direction = A2 - A1;
-    if (SegmentBox(edge, box))
+    if (VxIntersect::SegmentBox(edge, box))
         return TRUE;
 
     edge.m_Origin = A0;
     edge.m_Direction = A2 - A0;
-    if (SegmentBox(edge, box))
+    if (VxIntersect::SegmentBox(edge, box))
         return TRUE;
 
     // Build box corners in the same order as the original.
@@ -1111,7 +1339,9 @@ XBOOL VxIntersect::AABBFace(const VxBbox &box, const VxVector &A0, const VxVecto
     int bestA = 0;
     int bestB = 7;
 #if defined(VX_SIMD_SSE)
-    float bestScore = VxSIMDAbsDotDiff3(corners[bestA], corners[bestB], N);
+    float bestScore = kUseSIMD
+                      ? VxSIMDAbsDotDiff3(corners[bestA], corners[bestB], N)
+                      : fabsf(DotProduct(corners[bestA] - corners[bestB], N));
 #else
     float bestScore = fabsf(DotProduct(corners[bestA] - corners[bestB], N));
 #endif
@@ -1119,7 +1349,9 @@ XBOOL VxIntersect::AABBFace(const VxBbox &box, const VxVector &A0, const VxVecto
     {
         const int a = 1, b = 6;
 #if defined(VX_SIMD_SSE)
-        const float s = VxSIMDAbsDotDiff3(corners[a], corners[b], N);
+        const float s = kUseSIMD
+                        ? VxSIMDAbsDotDiff3(corners[a], corners[b], N)
+                        : fabsf(DotProduct(corners[a] - corners[b], N));
 #else
         const float s = fabsf(DotProduct(corners[a] - corners[b], N));
 #endif
@@ -1132,7 +1364,9 @@ XBOOL VxIntersect::AABBFace(const VxBbox &box, const VxVector &A0, const VxVecto
     {
         const int a = 2, b = 5;
 #if defined(VX_SIMD_SSE)
-        const float s = VxSIMDAbsDotDiff3(corners[a], corners[b], N);
+        const float s = kUseSIMD
+                        ? VxSIMDAbsDotDiff3(corners[a], corners[b], N)
+                        : fabsf(DotProduct(corners[a] - corners[b], N));
 #else
         const float s = fabsf(DotProduct(corners[a] - corners[b], N));
 #endif
@@ -1145,7 +1379,9 @@ XBOOL VxIntersect::AABBFace(const VxBbox &box, const VxVector &A0, const VxVecto
     {
         const int a = 3, b = 4;
 #if defined(VX_SIMD_SSE)
-        const float s = VxSIMDAbsDotDiff3(corners[a], corners[b], N);
+        const float s = kUseSIMD
+                        ? VxSIMDAbsDotDiff3(corners[a], corners[b], N)
+                        : fabsf(DotProduct(corners[a] - corners[b], N));
 #else
         const float s = fabsf(DotProduct(corners[a] - corners[b], N));
 #endif
@@ -1163,5 +1399,10 @@ XBOOL VxIntersect::AABBFace(const VxBbox &box, const VxVector &A0, const VxVecto
     VxVector hit;
     hit.z = 0.0f;
     float dist = bestScore;
-    return SegmentFace(diag, A0, A1, A2, N, hit, dist) ? TRUE : FALSE;
+    return VxIntersect::SegmentFace(diag, A0, A1, A2, N, hit, dist) ? TRUE : FALSE;
 }
+
+} // namespace
+
+
+

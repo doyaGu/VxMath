@@ -4,6 +4,8 @@
 #include "VxMathDefines.h"
 #include "VxImageDescEx.h"
 #include "VxSIMD.h"
+#include "VxSIMDMode.h"
+#include "VxMutex.h"
 #include "XArray.h"
 
 // Suppress C4251 warning for DLL interface
@@ -70,6 +72,9 @@ struct VxBlitInfo {
     const XBYTE *colorMap;
     int colorMapEntries;
     int bytesPerColorEntry;
+
+    // Per-operation stamp used by scanline kernels for ephemeral caching.
+    XDWORD operationStamp;
 };
 
 /**
@@ -151,9 +156,14 @@ public:
     void DoAlphaBlit(const VxImageDescEx &dst_desc, XBYTE *AlphaValues);
 
     /**
-     * @brief Resizes a 32-bit image using bilinear filtering.
+     * @brief Resizes an image using the best built-in path for the format pair.
      * @param src_desc Source image descriptor.
      * @param dst_desc Destination image descriptor.
+     *
+     * Current policy:
+     * - 32bpp -> 32bpp and 24bpp -> 24bpp use bilinear filtering.
+     * - Same-format low-bpp paths (8/16bpp) use nearest-neighbor for speed.
+     * - Mixed-format resize falls back to 32bpp conversion + bilinear + conversion.
      */
     void ResizeImage(const VxImageDescEx &src_desc, const VxImageDescEx &dst_desc);
 
@@ -263,9 +273,15 @@ public:
     void MultiplyBlend(const VxImageDescEx &src_desc, const VxImageDescEx &dst_desc);
 
     /**
-     * @brief Rebuilds all dispatch tables using the active SIMD backend.
+     * @brief Rebuilds dispatch tables using the currently injected effective SIMD mode.
      */
     void RebuildTables();
+
+    /**
+     * @brief Applies the externally resolved SIMD mode and rebuilds dispatch tables.
+     * @param effectiveMode Effective mode resolved by global SIMD dispatch.
+     */
+    void ApplySIMDMode(int effectiveMode);
 
 private:
     /**
@@ -334,9 +350,11 @@ private:
     void ResetHotPathKernels();
     void BuildGenericTables();
     void BuildX86Table();
+    XDWORD NextOperationStamp();
     void ApplySSE2Overrides();
     void ApplySSSE3Overrides();
     void ApplyAVX2Overrides();
+    void RebuildTablesUnlocked();
 
     // Function dispatch tables
     // Layout: [srcBpp][dstBpp] for generic, [srcFormat][dstFormat] for specific
@@ -366,8 +384,11 @@ private:
     // Temporary buffer for resizing operations
     XArray<XDWORD> m_ResizeBuffer;
 
-    // Backend chosen at construction-time for this engine instance.
-    VxSIMDBackend m_ActiveBackend;
+    // Effective SIMD kernel tier used by blit tables.
+    int m_EffectiveBlitKernelMode;
+
+    // Monotonic stamp for per-operation kernel caches.
+    XDWORD m_OperationStamp;
 
     // Runtime-selected hot-path kernels.
     void (*m_FillLine32)(XDWORD *dst, int width, XDWORD color);
@@ -380,6 +401,9 @@ private:
     VxBlitLineFunc m_InvertColors32;
     VxBlitLineFunc m_Grayscale32;
     VxBlitLineFunc m_MultiplyBlend32;
+
+    // Engine-local synchronization for dispatch tables and mutable work buffers.
+    mutable VxMutex m_Lock;
 };
 
 /**

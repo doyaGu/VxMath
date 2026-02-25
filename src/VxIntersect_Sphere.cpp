@@ -3,8 +3,8 @@
 #include "VxVector.h"
 #include "VxRay.h"
 #include "VxSphere.h"
-#include "VxPlane.h"
 #include "VxSIMD.h"
+#include "VxIntersectDispatchStateInternal.h"
 
 #if defined(VX_SIMD_SSE)
 static inline float VxSIMDExtractX(__m128 v) {
@@ -32,25 +32,6 @@ static inline VxVector VxSIMDAddScaledVector3(const VxVector& a, const VxVector&
     const __m128 tv = _mm_set1_ps(t);
     VxSIMDStoreFloat3(&out.x, _mm_add_ps(av, _mm_mul_ps(dv, tv)));
     return out;
-}
-
-static inline float VxSIMDClassifyAABBWithPlane(__m128 normal, float planeD, const VxBbox& box) {
-    const __m128 minV = VxSIMDLoadFloat3(&box.Min.x);
-    const __m128 maxV = VxSIMDLoadFloat3(&box.Max.x);
-    const __m128 signMask = _mm_cmpge_ps(normal, _mm_setzero_ps());
-    const __m128 nearPoint = _mm_or_ps(_mm_and_ps(signMask, minV), _mm_andnot_ps(signMask, maxV));
-    const __m128 farPoint = _mm_or_ps(_mm_and_ps(signMask, maxV), _mm_andnot_ps(signMask, minV));
-
-    const float nearDist = _mm_cvtss_f32(_mm_add_ss(VxSIMDDotProduct3(normal, nearPoint), _mm_set_ss(planeD)));
-    if (nearDist > 0.0f) {
-        return nearDist;
-    }
-
-    const float farDist = _mm_cvtss_f32(_mm_add_ss(VxSIMDDotProduct3(normal, farPoint), _mm_set_ss(planeD)));
-    if (farDist < 0.0f) {
-        return farDist;
-    }
-    return 0.0f;
 }
 #endif
 
@@ -102,12 +83,142 @@ XBOOL QuadraticFormula(float a, float b, float c, float *t1, float *t2) {
     return 0;
 }
 
-//--------- Spheres
+namespace {
 
-// Sphere-Sphere intersection with movement
-XBOOL VxIntersect::SphereSphere(const VxSphere &iS1, const VxVector &iP1, const VxSphere &iS2, const VxVector &iP2,
-                                float *oCollisionTime1, float *oCollisionTime2) {
+typedef XBOOL (*VxIntersectSphereSphereDispatchFn)(const VxSphere &, const VxVector &, const VxSphere &, const VxVector &, float *, float *);
+typedef int (*VxIntersectRaySphereDispatchFn)(const VxRay &, const VxSphere &, VxVector *, VxVector *);
+typedef XBOOL (*VxIntersectSphereAABBDispatchFn)(const VxSphere &, const VxBbox &);
+
+static XBOOL SphereSphereScalarCore(const VxSphere &iS1, const VxVector &iP1, const VxSphere &iS2, const VxVector &iP2, float *oCollisionTime1, float *oCollisionTime2);
+static int RaySphereScalarCore(const VxRay &iRay, const VxSphere &iSphere, VxVector *oInter1, VxVector *oInter2);
+static XBOOL SphereAABBScalarCore(const VxSphere &iSphere, const VxBbox &iBox);
+
 #if defined(VX_SIMD_SSE)
+static XBOOL SphereSphereSIMDCore(const VxSphere &iS1, const VxVector &iP1, const VxSphere &iS2, const VxVector &iP2, float *oCollisionTime1, float *oCollisionTime2);
+static int RaySphereSIMDCore(const VxRay &iRay, const VxSphere &iSphere, VxVector *oInter1, VxVector *oInter2);
+static XBOOL SphereAABBMSIMDCore(const VxSphere &iSphere, const VxBbox &iBox);
+#endif
+
+struct VxIntersectSphereDispatchTable {
+    VxIntersectSphereSphereDispatchFn sphereSphere;
+    VxIntersectRaySphereDispatchFn raySphere;
+    VxIntersectSphereAABBDispatchFn sphereAABB;
+};
+
+VxIntersectSphereDispatchTable g_VxIntersectSphereDispatch = {
+    SphereSphereScalarCore,
+    RaySphereScalarCore,
+    SphereAABBScalarCore
+};
+
+static XBOOL SphereSphereScalarCore(const VxSphere &iS1, const VxVector &iP1, const VxSphere &iS2, const VxVector &iP2,
+                                    float *oCollisionTime1, float *oCollisionTime2) {
+    float fallbackCollisionTime1 = 0.0f;
+    float fallbackCollisionTime2 = 0.0f;
+    float *collisionTime1 = (oCollisionTime1 != nullptr) ? oCollisionTime1 : &fallbackCollisionTime1;
+    float *collisionTime2 = (oCollisionTime2 != nullptr) ? oCollisionTime2 : &fallbackCollisionTime2;
+
+    VxVector movement1 = iP1 - iS1.Center();
+    VxVector movement2 = iP2 - iS2.Center();
+    VxVector centerDiff = iS2.Center() - iS1.Center();
+    VxVector relativeMovement = movement2 - movement1;
+
+    float radiusSum = iS1.Radius() + iS2.Radius();
+    float radiusSumSquared = radiusSum * radiusSum;
+    float centerDistSquared = SquareMagnitude(centerDiff);
+
+    if (centerDistSquared <= radiusSumSquared) {
+        *collisionTime1 = 0.0f;
+        *collisionTime2 = 0.0f;
+        return TRUE;
+    }
+
+    float c = centerDistSquared - radiusSumSquared;
+    float b = 2.0f * DotProduct(relativeMovement, centerDiff);
+    float a = SquareMagnitude(relativeMovement);
+
+    if (!QuadraticFormula(a, b, c, collisionTime1, collisionTime2))
+        return FALSE;
+
+    if (*collisionTime1 > *collisionTime2) {
+        float temp = *collisionTime1;
+        *collisionTime1 = *collisionTime2;
+        *collisionTime2 = temp;
+    }
+
+    return (*collisionTime1 <= 1.0f && *collisionTime1 >= 0.0f);
+}
+
+static int RaySphereScalarCore(const VxRay &iRay, const VxSphere &iSphere, VxVector *oInter1, VxVector *oInter2) {
+    const float dirMagnitudeSq = SquareMagnitude(iRay.m_Direction);
+    if (dirMagnitudeSq <= EPSILON) {
+        return 0;
+    }
+
+    const float invMagnitude = 1.0f / sqrtf(dirMagnitudeSq);
+    const VxVector normalizedDir = iRay.m_Direction * invMagnitude;
+
+    const VxVector &center = iSphere.Center();
+    float toCenterX = center.x - iRay.m_Origin.x;
+    float toCenterY = center.y - iRay.m_Origin.y;
+    float toCenterZ = center.z - iRay.m_Origin.z;
+
+    float projection = normalizedDir.z * toCenterZ + normalizedDir.y * toCenterY + toCenterX * normalizedDir.x;
+    float radius = iSphere.Radius();
+    float radiusSquared = radius * radius;
+    float discriminant = radiusSquared - (toCenterZ * toCenterZ + toCenterY * toCenterY + toCenterX * toCenterX - projection * projection);
+
+    if (discriminant < 0.0f)
+        return 0;
+
+    if (discriminant == 0.0f) {
+        const VxVector hit = iRay.m_Origin + normalizedDir * projection;
+        if (oInter1) {
+            *oInter1 = hit;
+        } else if (oInter2) {
+            *oInter2 = hit;
+        }
+        return 1;
+    }
+
+    float sqrtDiscriminant = sqrtf(discriminant);
+    float t1 = projection - sqrtDiscriminant;
+    float t2 = projection + sqrtDiscriminant;
+    if (oInter1) {
+        *oInter1 = iRay.m_Origin + normalizedDir * t1;
+    }
+    if (oInter2) {
+        *oInter2 = iRay.m_Origin + normalizedDir * t2;
+    }
+    return 2;
+}
+
+static XBOOL SphereAABBScalarCore(const VxSphere &iSphere, const VxBbox &iBox) {
+    const VxVector &center = iSphere.Center();
+    float sqDist = 0.0f;
+
+    for (int i = 0; i < 3; ++i) {
+        if (center[i] < iBox.Min[i]) {
+            const float delta = iBox.Min[i] - center[i];
+            sqDist += delta * delta;
+        } else if (center[i] > iBox.Max[i]) {
+            const float delta = center[i] - iBox.Max[i];
+            sqDist += delta * delta;
+        }
+    }
+
+    const float radius = iSphere.Radius();
+    return (sqDist <= radius * radius);
+}
+
+#if defined(VX_SIMD_SSE)
+static XBOOL SphereSphereSIMDCore(const VxSphere &iS1, const VxVector &iP1, const VxSphere &iS2, const VxVector &iP2,
+                                  float *oCollisionTime1, float *oCollisionTime2) {
+    float fallbackCollisionTime1 = 0.0f;
+    float fallbackCollisionTime2 = 0.0f;
+    float *collisionTime1 = (oCollisionTime1 != nullptr) ? oCollisionTime1 : &fallbackCollisionTime1;
+    float *collisionTime2 = (oCollisionTime2 != nullptr) ? oCollisionTime2 : &fallbackCollisionTime2;
+
     const VxVector movement1 = VxSIMDSubtractVector3(iP1, iS1.Center());
     const VxVector movement2 = VxSIMDSubtractVector3(iP2, iS2.Center());
     const VxVector centerDiff = VxSIMDSubtractVector3(iS2.Center(), iS1.Center());
@@ -118,8 +229,8 @@ XBOOL VxIntersect::SphereSphere(const VxSphere &iS1, const VxVector &iP1, const 
     const float centerDistSquared = VxSIMDDot3Scalar(centerDiff, centerDiff);
 
     if (centerDistSquared <= radiusSumSquared) {
-        *oCollisionTime1 = 0.0f;
-        *oCollisionTime2 = 0.0f;
+        *collisionTime1 = 0.0f;
+        *collisionTime2 = 0.0f;
         return TRUE;
     }
 
@@ -127,67 +238,26 @@ XBOOL VxIntersect::SphereSphere(const VxSphere &iS1, const VxVector &iP1, const 
     const float b = 2.0f * VxSIMDDot3Scalar(relativeMovement, centerDiff);
     const float a = VxSIMDDot3Scalar(relativeMovement, relativeMovement);
 
-    if (!QuadraticFormula(a, b, c, oCollisionTime1, oCollisionTime2)) {
+    if (!QuadraticFormula(a, b, c, collisionTime1, collisionTime2)) {
         return FALSE;
     }
 
-    if (*oCollisionTime1 > *oCollisionTime2) {
-        const float temp = *oCollisionTime1;
-        *oCollisionTime1 = *oCollisionTime2;
-        *oCollisionTime2 = temp;
+    if (*collisionTime1 > *collisionTime2) {
+        const float temp = *collisionTime1;
+        *collisionTime1 = *collisionTime2;
+        *collisionTime2 = temp;
     }
 
-    return (*oCollisionTime1 <= 1.0f && *oCollisionTime1 >= 0.0f);
-#else
-    // Calculate movement vectors from sphere centers to target positions
-    VxVector movement1 = iP1 - iS1.Center();
-    VxVector movement2 = iP2 - iS2.Center();
-
-    // Vector from sphere1 center to sphere2 center
-    VxVector centerDiff = iS2.Center() - iS1.Center();
-
-    // Relative movement vector (difference of movements)
-    VxVector relativeMovement = movement2 - movement1;
-
-    // Sum of radii and its square
-    float radiusSum = iS1.Radius() + iS2.Radius();
-    float radiusSumSquared = radiusSum * radiusSum;
-
-    // Square distance between sphere centers
-    float centerDistSquared = SquareMagnitude(centerDiff);
-
-    // Check if spheres are already intersecting
-    if (centerDistSquared <= radiusSumSquared) {
-        *oCollisionTime1 = 0.0f;
-        *oCollisionTime2 = 0.0f;
-        return TRUE;
-    }
-
-    // Set up quadratic equation coefficients for collision detection
-    float c = centerDistSquared - radiusSumSquared;
-    float b = 2.0f * DotProduct(relativeMovement, centerDiff);
-    float a = SquareMagnitude(relativeMovement);
-
-    // Solve the quadratic equation
-    if (!QuadraticFormula(a, b, c, oCollisionTime1, oCollisionTime2))
-        return FALSE;
-
-    // Ensure t1 <= t2 (swap if necessary)
-    if (*oCollisionTime1 > *oCollisionTime2) {
-        float temp = *oCollisionTime1;
-        *oCollisionTime1 = *oCollisionTime2;
-        *oCollisionTime2 = temp;
-    }
-
-    // Check if collision occurs within valid time range [0, 1]
-    return (*oCollisionTime1 <= 1.0f && *oCollisionTime1 >= 0.0f);
-#endif
+    return (*collisionTime1 <= 1.0f && *collisionTime1 >= 0.0f);
 }
 
-// Intersection Ray - Sphere
-int VxIntersect::RaySphere(const VxRay &iRay, const VxSphere &iSphere, VxVector *oInter1, VxVector *oInter2) {
-#if defined(VX_SIMD_SSE)
-    const float invMagnitude = 1.0f / sqrtf(VxSIMDDot3Scalar(iRay.m_Direction, iRay.m_Direction));
+static int RaySphereSIMDCore(const VxRay &iRay, const VxSphere &iSphere, VxVector *oInter1, VxVector *oInter2) {
+    const float dirMagnitudeSq = VxSIMDDot3Scalar(iRay.m_Direction, iRay.m_Direction);
+    if (dirMagnitudeSq <= EPSILON) {
+        return 0;
+    }
+
+    const float invMagnitude = 1.0f / sqrtf(dirMagnitudeSq);
     VxVector normalizedDir;
     {
         const __m128 dir = VxSIMDLoadFloat3(&iRay.m_Direction.x);
@@ -208,83 +278,68 @@ int VxIntersect::RaySphere(const VxRay &iRay, const VxSphere &iSphere, VxVector 
     }
 
     if (discriminant == 0.0f) {
-        *oInter1 = VxSIMDAddScaledVector3(iRay.m_Origin, normalizedDir, projection);
+        const VxVector hit = VxSIMDAddScaledVector3(iRay.m_Origin, normalizedDir, projection);
+        if (oInter1) {
+            *oInter1 = hit;
+        } else if (oInter2) {
+            *oInter2 = hit;
+        }
         return 1;
     }
 
     const float sqrtDiscriminant = sqrtf(discriminant);
     const float t1 = projection - sqrtDiscriminant;
     const float t2 = projection + sqrtDiscriminant;
-    *oInter1 = VxSIMDAddScaledVector3(iRay.m_Origin, normalizedDir, t1);
-    *oInter2 = VxSIMDAddScaledVector3(iRay.m_Origin, normalizedDir, t2);
-    return 2;
-#else
-    // Normalize the ray direction vector.
-    const float invMagnitude = 1.0f / sqrtf(SquareMagnitude(iRay.m_Direction));
-    const VxVector normalizedDir = iRay.m_Direction * invMagnitude;
-
-    // Vector from ray origin to sphere center
-    const VxVector &center = iSphere.Center();
-    float toCenterX = center.x - iRay.m_Origin.x;
-    float toCenterY = center.y - iRay.m_Origin.y;
-    float toCenterZ = center.z - iRay.m_Origin.z;
-
-    // Project the toCenter vector onto the normalized ray direction
-    float projection = normalizedDir.z * toCenterZ + normalizedDir.y * toCenterY + toCenterX * normalizedDir.x;
-
-    // Calculate the discriminant using geometric approach
-    float radius = iSphere.Radius();
-    float radiusSquared = radius * radius;
-    float discriminant = radiusSquared - (toCenterZ * toCenterZ + toCenterY * toCenterY + toCenterX * toCenterX - projection * projection);
-
-    if (discriminant < 0.0f)
-        return 0; // No intersection
-
-    if (discriminant == 0.0f) {
-        // Single intersection point (ray is tangent to sphere)
-        *oInter1 = iRay.m_Origin + normalizedDir * projection;
-        return 1;
+    if (oInter1) {
+        *oInter1 = VxSIMDAddScaledVector3(iRay.m_Origin, normalizedDir, t1);
     }
-
-    // Two intersection points
-    float sqrtDiscriminant = sqrtf(discriminant);
-    float t1 = projection - sqrtDiscriminant;
-    float t2 = projection + sqrtDiscriminant;
-
-    // Compute first intersection point
-    *oInter1 = iRay.m_Origin + normalizedDir * t1;
-
-    // Compute second intersection point
-    *oInter2 = iRay.m_Origin + normalizedDir * t2;
-
+    if (oInter2) {
+        *oInter2 = VxSIMDAddScaledVector3(iRay.m_Origin, normalizedDir, t2);
+    }
     return 2;
-#endif
 }
 
-// Intersection Sphere - AABB
-XBOOL VxIntersect::SphereAABB(const VxSphere &iSphere, const VxBbox &iBox) {
-#if defined(VX_SIMD_SSE)
+static XBOOL SphereAABBMSIMDCore(const VxSphere &iSphere, const VxBbox &iBox) {
     const __m128 minV = VxSIMDLoadFloat3(&iBox.Min.x);
     const __m128 maxV = VxSIMDLoadFloat3(&iBox.Max.x);
-    const __m128 boxCenter = _mm_mul_ps(_mm_add_ps(minV, maxV), _mm_set1_ps(0.5f));
     const __m128 sphereCenter = VxSIMDLoadFloat3(&iSphere.Center().x);
-    __m128 normal = _mm_sub_ps(boxCenter, sphereCenter);
+    const __m128 clamped = _mm_min_ps(_mm_max_ps(sphereCenter, minV), maxV);
+    const __m128 delta = _mm_sub_ps(sphereCenter, clamped);
+    const float sqDist = _mm_cvtss_f32(VxSIMDDotProduct3(delta, delta));
+    const float radius = iSphere.Radius();
+    return (sqDist <= radius * radius);
+}
+#endif
 
-    const float magSq = _mm_cvtss_f32(VxSIMDDotProduct3(normal, normal));
-    if (magSq > EPSILON) {
-        normal = _mm_mul_ps(normal, _mm_set1_ps(1.0f / sqrtf(magSq)));
-    }
+} // namespace
 
-    const float planeD = -_mm_cvtss_f32(VxSIMDDotProduct3(normal, sphereCenter));
-    const float signedDist = VxSIMDClassifyAABBWithPlane(normal, planeD, iBox);
-    return (fabsf(signedDist) <= iSphere.Radius());
+void VxIntersectSphereDispatchRebuild(bool useSIMD) {
+#if defined(VX_SIMD_SSE)
+    g_VxIntersectSphereDispatch.sphereSphere = useSIMD ? SphereSphereSIMDCore : SphereSphereScalarCore;
+    g_VxIntersectSphereDispatch.raySphere = useSIMD ? RaySphereSIMDCore : RaySphereScalarCore;
+    g_VxIntersectSphereDispatch.sphereAABB = useSIMD ? SphereAABBMSIMDCore : SphereAABBScalarCore;
 #else
-    const VxVector boxCenter = (iBox.Min + iBox.Max) * 0.5f;
-
-    VxPlane plane;
-    plane.Create(boxCenter - iSphere.Center(), iSphere.Center());
-
-    const float signedDist = plane.Classify(iBox);
-    return (fabsf(signedDist) <= iSphere.Radius());
+    (void) useSIMD;
+    g_VxIntersectSphereDispatch.sphereSphere = SphereSphereScalarCore;
+    g_VxIntersectSphereDispatch.raySphere = RaySphereScalarCore;
+    g_VxIntersectSphereDispatch.sphereAABB = SphereAABBScalarCore;
 #endif
 }
+
+//--------- Spheres
+
+XBOOL VxIntersect::SphereSphere(const VxSphere &iS1, const VxVector &iP1, const VxSphere &iS2, const VxVector &iP2,
+                                float *oCollisionTime1, float *oCollisionTime2) {
+    return g_VxIntersectSphereDispatch.sphereSphere(iS1, iP1, iS2, iP2, oCollisionTime1, oCollisionTime2);
+}
+
+int VxIntersect::RaySphere(const VxRay &iRay, const VxSphere &iSphere, VxVector *oInter1, VxVector *oInter2) {
+    return g_VxIntersectSphereDispatch.raySphere(iRay, iSphere, oInter1, oInter2);
+}
+
+XBOOL VxIntersect::SphereAABB(const VxSphere &iSphere, const VxBbox &iBox) {
+    return g_VxIntersectSphereDispatch.sphereAABB(iSphere, iBox);
+}
+
+
+

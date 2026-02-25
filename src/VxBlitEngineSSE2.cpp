@@ -13,6 +13,7 @@
 
 #if defined(VX_SIMD_SSE2)
 
+#include <cstdint>
 #include <emmintrin.h>  // SSE2
 
 #include "VxMath.h"
@@ -31,10 +32,39 @@ void CopyLine_32ARGB_32RGB_SSE(const VxBlitInfo *info) {
     const __m128i mask = _mm_set1_epi32(0x00FFFFFF);
     int x = 0;
 
-    for (; x + 4 <= width; x += 4) {
-        __m128i pixels = _mm_loadu_si128((const __m128i *)(src + x));
-        pixels = _mm_and_si128(pixels, mask);
-        _mm_storeu_si128((__m128i *)(dst + x), pixels);
+    const bool aligned16 =
+        ((reinterpret_cast<std::uintptr_t>(src) | reinterpret_cast<std::uintptr_t>(dst)) & 15u) == 0u;
+
+    if (aligned16) {
+        for (; x + 16 <= width; x += 16) {
+            __m128i p0 = _mm_load_si128((const __m128i *)(src + x));
+            __m128i p1 = _mm_load_si128((const __m128i *)(src + x + 4));
+            __m128i p2 = _mm_load_si128((const __m128i *)(src + x + 8));
+            __m128i p3 = _mm_load_si128((const __m128i *)(src + x + 12));
+            _mm_store_si128((__m128i *)(dst + x), _mm_and_si128(p0, mask));
+            _mm_store_si128((__m128i *)(dst + x + 4), _mm_and_si128(p1, mask));
+            _mm_store_si128((__m128i *)(dst + x + 8), _mm_and_si128(p2, mask));
+            _mm_store_si128((__m128i *)(dst + x + 12), _mm_and_si128(p3, mask));
+        }
+        for (; x + 4 <= width; x += 4) {
+            __m128i pixels = _mm_load_si128((const __m128i *)(src + x));
+            _mm_store_si128((__m128i *)(dst + x), _mm_and_si128(pixels, mask));
+        }
+    } else {
+        for (; x + 16 <= width; x += 16) {
+            __m128i p0 = _mm_loadu_si128((const __m128i *)(src + x));
+            __m128i p1 = _mm_loadu_si128((const __m128i *)(src + x + 4));
+            __m128i p2 = _mm_loadu_si128((const __m128i *)(src + x + 8));
+            __m128i p3 = _mm_loadu_si128((const __m128i *)(src + x + 12));
+            _mm_storeu_si128((__m128i *)(dst + x), _mm_and_si128(p0, mask));
+            _mm_storeu_si128((__m128i *)(dst + x + 4), _mm_and_si128(p1, mask));
+            _mm_storeu_si128((__m128i *)(dst + x + 8), _mm_and_si128(p2, mask));
+            _mm_storeu_si128((__m128i *)(dst + x + 12), _mm_and_si128(p3, mask));
+        }
+        for (; x + 4 <= width; x += 4) {
+            __m128i pixels = _mm_loadu_si128((const __m128i *)(src + x));
+            _mm_storeu_si128((__m128i *)(dst + x), _mm_and_si128(pixels, mask));
+        }
     }
 
     CopyLine_32ARGB_32RGB_Scalar(info, x);
@@ -50,10 +80,39 @@ void CopyLine_32RGB_32ARGB_SSE(const VxBlitInfo *info) {
     const __m128i alphaMask = _mm_set1_epi32(0xFF000000);
     int x = 0;
 
-    for (; x + 4 <= width; x += 4) {
-        __m128i pixels = _mm_loadu_si128((const __m128i *)(src + x));
-        pixels = _mm_or_si128(pixels, alphaMask);
-        _mm_storeu_si128((__m128i *)(dst + x), pixels);
+    const bool aligned16 =
+        ((reinterpret_cast<std::uintptr_t>(src) | reinterpret_cast<std::uintptr_t>(dst)) & 15u) == 0u;
+
+    if (aligned16) {
+        for (; x + 16 <= width; x += 16) {
+            __m128i p0 = _mm_load_si128((const __m128i *)(src + x));
+            __m128i p1 = _mm_load_si128((const __m128i *)(src + x + 4));
+            __m128i p2 = _mm_load_si128((const __m128i *)(src + x + 8));
+            __m128i p3 = _mm_load_si128((const __m128i *)(src + x + 12));
+            _mm_store_si128((__m128i *)(dst + x), _mm_or_si128(p0, alphaMask));
+            _mm_store_si128((__m128i *)(dst + x + 4), _mm_or_si128(p1, alphaMask));
+            _mm_store_si128((__m128i *)(dst + x + 8), _mm_or_si128(p2, alphaMask));
+            _mm_store_si128((__m128i *)(dst + x + 12), _mm_or_si128(p3, alphaMask));
+        }
+        for (; x + 4 <= width; x += 4) {
+            __m128i pixels = _mm_load_si128((const __m128i *)(src + x));
+            _mm_store_si128((__m128i *)(dst + x), _mm_or_si128(pixels, alphaMask));
+        }
+    } else {
+        for (; x + 16 <= width; x += 16) {
+            __m128i p0 = _mm_loadu_si128((const __m128i *)(src + x));
+            __m128i p1 = _mm_loadu_si128((const __m128i *)(src + x + 4));
+            __m128i p2 = _mm_loadu_si128((const __m128i *)(src + x + 8));
+            __m128i p3 = _mm_loadu_si128((const __m128i *)(src + x + 12));
+            _mm_storeu_si128((__m128i *)(dst + x), _mm_or_si128(p0, alphaMask));
+            _mm_storeu_si128((__m128i *)(dst + x + 4), _mm_or_si128(p1, alphaMask));
+            _mm_storeu_si128((__m128i *)(dst + x + 8), _mm_or_si128(p2, alphaMask));
+            _mm_storeu_si128((__m128i *)(dst + x + 12), _mm_or_si128(p3, alphaMask));
+        }
+        for (; x + 4 <= width; x += 4) {
+            __m128i pixels = _mm_loadu_si128((const __m128i *)(src + x));
+            _mm_storeu_si128((__m128i *)(dst + x), _mm_or_si128(pixels, alphaMask));
+        }
     }
 
     CopyLine_32RGB_32ARGB_Scalar(info, x);

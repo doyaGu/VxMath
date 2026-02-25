@@ -4,6 +4,7 @@
 #include "VxMatrix.h"
 #include "VxPlane.h"
 #include "VxSIMD.h"
+#include "VxIntersectDispatchStateInternal.h"
 
 #if defined(VX_SIMD_SSE)
 static inline __m128 VxSIMDLoadVector3(const VxVector &v) {
@@ -61,38 +62,71 @@ static inline float VxSIMDCross2Scalar(__m128 a, __m128 b) {
 }
 #endif
 
-//---------- Faces
+int coplanar_tri_tri(const VxVector &N, const VxVector &V0, const VxVector &V1, const VxVector &V2,
+                     const VxVector &U0, const VxVector &U1, const VxVector &U2);
 
-// Is a point inside the boundary of a face
-XBOOL VxIntersect::PointInFace(const VxVector &point, const VxVector &pt0, const VxVector &pt1, const VxVector &pt2,
-                               const VxVector &norm, int &i1, int &i2) {
-    // Find dominant axis of normal to determine projection plane
+namespace {
+
+typedef XBOOL (*VxIntersectPointInFaceDispatchFn)(const VxVector &, const VxVector &, const VxVector &, const VxVector &,
+                                                  const VxVector &, int &, int &);
+typedef void (*VxIntersectGetPointCoefficientsDispatchFn)(const VxVector &, const VxVector &, const VxVector &, const VxVector &,
+                                                          const int &, const int &, float &, float &, float &);
+typedef XBOOL (*VxIntersectFaceFaceDispatchFn)(const VxVector &, const VxVector &, const VxVector &, const VxVector &,
+                                               const VxVector &, const VxVector &, const VxVector &, const VxVector &);
+
+static XBOOL PointInFaceScalarCore(const VxVector &point, const VxVector &pt0, const VxVector &pt1, const VxVector &pt2,
+                                   const VxVector &norm, int &i1, int &i2);
+static void GetPointCoefficientsScalarCore(const VxVector &pt, const VxVector &pt0, const VxVector &pt1, const VxVector &pt2,
+                                           const int &i1, const int &i2, float &V0Coef, float &V1Coef, float &V2Coef);
+static XBOOL FaceFaceScalarCore(const VxVector &A0, const VxVector &A1, const VxVector &A2, const VxVector &N0,
+                                const VxVector &B0, const VxVector &B1, const VxVector &B2, const VxVector &N1);
+#if defined(VX_SIMD_SSE)
+static XBOOL PointInFaceSIMDCore(const VxVector &point, const VxVector &pt0, const VxVector &pt1, const VxVector &pt2,
+                                 const VxVector &norm, int &i1, int &i2);
+static void GetPointCoefficientsSIMDCore(const VxVector &pt, const VxVector &pt0, const VxVector &pt1, const VxVector &pt2,
+                                         const int &i1, const int &i2, float &V0Coef, float &V1Coef, float &V2Coef);
+static XBOOL FaceFaceSIMDCore(const VxVector &A0, const VxVector &A1, const VxVector &A2, const VxVector &N0,
+                              const VxVector &B0, const VxVector &B1, const VxVector &B2, const VxVector &N1);
+#endif
+
+struct VxIntersectFaceDispatchTable {
+    VxIntersectPointInFaceDispatchFn pointInFace;
+    VxIntersectGetPointCoefficientsDispatchFn getPointCoefficients;
+    VxIntersectFaceFaceDispatchFn faceFace;
+};
+
+VxIntersectFaceDispatchTable g_VxIntersectFaceDispatch = {
+    PointInFaceScalarCore,
+    GetPointCoefficientsScalarCore,
+    FaceFaceScalarCore
+};
+
+static inline void SelectFaceProjectionAxes(const VxVector &norm, int &i1, int &i2) {
     float maxAbs = XAbs(norm.x);
-    i1 = 1; // Y
-    i2 = 2; // Z
+    i1 = 1;
+    i2 = 2;
 
     if (maxAbs < XAbs(norm.y)) {
-        i1 = 0; // X
-        i2 = 2; // Z
+        i1 = 0;
+        i2 = 2;
         maxAbs = XAbs(norm.y);
     }
 
     if (maxAbs < XAbs(norm.z)) {
-        i1 = 0; // X
-        i2 = 1; // Y
+        i1 = 0;
+        i2 = 1;
     }
+}
 
-#if defined(VX_SIMD_SSE)
-    return VxSIMDPointInFace3D(point, pt0, pt1, pt2, norm);
-#else
-    // Perform three edge tests using 2D cross products
-    // Test: (point - pt1) x (pt2 - pt1)
+static XBOOL PointInFaceScalarCore(const VxVector &point, const VxVector &pt0, const VxVector &pt1, const VxVector &pt2,
+                                   const VxVector &norm, int &i1, int &i2) {
+    SelectFaceProjectionAxes(norm, i1, i2);
+
     char flags = 1;
     if ((point[i1] - pt1[i1]) * (pt2[i2] - pt1[i2]) - (pt2[i1] - pt1[i1]) * (point[i2] - pt1[i2]) >= 0.0f) {
         flags = 2;
     }
 
-    // Test: (point - pt2) x (pt0 - pt2)
     if ((point[i1] - pt2[i1]) * (pt0[i2] - pt2[i2]) - (point[i2] - pt2[i2]) * (pt0[i1] - pt2[i1]) >= 0.0f) {
         flags &= 2;
     } else {
@@ -101,13 +135,29 @@ XBOOL VxIntersect::PointInFace(const VxVector &point, const VxVector &pt0, const
 
     if (!flags) return FALSE;
 
-    // Test: (point - pt0) x (pt1 - pt0)
     if ((point[i1] - pt0[i1]) * (pt1[i2] - pt0[i2]) - (point[i2] - pt0[i2]) * (pt1[i1] - pt0[i1]) >= 0.0f) {
         return (flags & 2) != 0;
     }
 
     return (flags & 1) != 0;
+}
+
+#if defined(VX_SIMD_SSE)
+static XBOOL PointInFaceSIMDCore(const VxVector &point, const VxVector &pt0, const VxVector &pt1, const VxVector &pt2,
+                                 const VxVector &norm, int &i1, int &i2) {
+    SelectFaceProjectionAxes(norm, i1, i2);
+    return VxSIMDPointInFace3D(point, pt0, pt1, pt2, norm);
+}
 #endif
+
+} // namespace
+
+//---------- Faces
+
+// Is a point inside the boundary of a face
+XBOOL VxIntersect::PointInFace(const VxVector &point, const VxVector &pt0, const VxVector &pt1, const VxVector &pt2,
+                               const VxVector &norm, int &i1, int &i2) {
+    return g_VxIntersectFaceDispatch.pointInFace(point, pt0, pt1, pt2, norm, i1, i2);
 }
 
 // Intersection Ray - Face
@@ -244,7 +294,40 @@ XBOOL VxIntersect::LineFace(const VxRay &ray, const VxVector &pt0, const VxVecto
 // Calculate barycentric coordinates for point in face
 void VxIntersect::GetPointCoefficients(const VxVector &pt, const VxVector &pt0, const VxVector &pt1, const VxVector &pt2,
                                        const int &i1, const int &i2, float &V0Coef, float &V1Coef, float &V2Coef) {
+    g_VxIntersectFaceDispatch.getPointCoefficients(pt, pt0, pt1, pt2, i1, i2, V0Coef, V1Coef, V2Coef);
+}
+
+namespace {
+
+static void GetPointCoefficientsScalarCore(const VxVector &pt, const VxVector &pt0, const VxVector &pt1, const VxVector &pt2,
+                                           const int &i1, const int &i2, float &V0Coef, float &V1Coef, float &V2Coef) {
+    float p0_i1 = pt0[i1], p0_i2 = pt0[i2];
+    float p1_i1 = pt1[i1], p1_i2 = pt1[i2];
+    float p2_i1 = pt2[i1], p2_i2 = pt2[i2];
+    float pt_i1 = pt[i1], pt_i2 = pt[i2];
+
+    float v1_i1 = pt_i1 - p0_i1;
+    float v1_i2 = pt_i2 - p0_i2;
+    float v2_i1 = p1_i1 - p0_i1;
+    float v2_i2 = p1_i2 - p0_i2;
+    float v3_i1 = p2_i1 - p0_i1;
+    float v3_i2 = p2_i2 - p0_i2;
+
+    if (v2_i1 == 0.0f) {
+        V2Coef = v1_i1 / v3_i1;
+        V1Coef = (v1_i2 - V2Coef * v3_i2) / v2_i2;
+    } else {
+        float denom = v3_i2 * v2_i1 - v3_i1 * v2_i2;
+        V2Coef = (v2_i1 * v1_i2 - v2_i2 * v1_i1) / denom;
+        V1Coef = (v1_i1 - V2Coef * v3_i1) / v2_i1;
+    }
+
+    V0Coef = 1.0f - (V1Coef + V2Coef);
+}
+
 #if defined(VX_SIMD_SSE)
+static void GetPointCoefficientsSIMDCore(const VxVector &pt, const VxVector &pt0, const VxVector &pt1, const VxVector &pt2,
+                                         const int &i1, const int &i2, float &V0Coef, float &V1Coef, float &V2Coef) {
     const __m128 p0 = VxSIMDLoadProjected2(pt0, i1, i2);
     const __m128 p1 = VxSIMDLoadProjected2(pt1, i1, i2);
     const __m128 p2 = VxSIMDLoadProjected2(pt2, i1, i2);
@@ -271,89 +354,26 @@ void VxIntersect::GetPointCoefficients(const VxVector &pt, const VxVector &pt0, 
     }
 
     V0Coef = 1.0f - (V1Coef + V2Coef);
-#else
-    // Get 2D coordinates for the calculation
-    float p0_i1 = pt0[i1], p0_i2 = pt0[i2];
-    float p1_i1 = pt1[i1], p1_i2 = pt1[i2];
-    float p2_i1 = pt2[i1], p2_i2 = pt2[i2];
-    float pt_i1 = pt[i1], pt_i2 = pt[i2];
-
-    // Compute vectors from pt0
-    float v1_i1 = pt_i1 - p0_i1;
-    float v1_i2 = pt_i2 - p0_i2;
-    float v2_i1 = p1_i1 - p0_i1;
-    float v2_i2 = p1_i2 - p0_i2;
-    float v3_i1 = p2_i1 - p0_i1;
-    float v3_i2 = p2_i2 - p0_i2;
-
-    // Solve 2D linear system: v1 = V1Coef * v2 + V2Coef * v3
-    if (v2_i1 == 0.0f) {
-        V2Coef = v1_i1 / v3_i1;
-        V1Coef = (v1_i2 - V2Coef * v3_i2) / v2_i2;
-    } else {
-        float denom = v3_i2 * v2_i1 - v3_i1 * v2_i2;
-        V2Coef = (v2_i1 * v1_i2 - v2_i2 * v1_i1) / denom;
-        V1Coef = (v1_i1 - V2Coef * v3_i1) / v2_i1;
-    }
-
-    V0Coef = 1.0f - (V1Coef + V2Coef);
-#endif
 }
+#endif
 
-int coplanar_tri_tri(const VxVector &N, const VxVector &V0, const VxVector &V1, const VxVector &V2,
-                     const VxVector &U0, const VxVector &U1, const VxVector &U2);
+} // namespace
 
 // Intersection Face - Face
 XBOOL VxIntersect::FaceFace(const VxVector &A0, const VxVector &A1, const VxVector &A2, const VxVector &N0,
                             const VxVector &B0, const VxVector &B1, const VxVector &B2, const VxVector &N1) {
-#if defined(VX_SIMD_SSE)
-    const __m128 n0V = VxSIMDLoadVector3(N0);
-    const __m128 n1V = VxSIMDLoadVector3(N1);
+    return g_VxIntersectFaceDispatch.faceFace(A0, A1, A2, N0, B0, B1, B2, N1);
+}
 
-    const float planeA_d = -VxSIMDDot3Scalar(n0V, VxSIMDLoadVector3(A0));
-    float distB[3];
-    VxSIMDComputePlaneDistances(N0, planeA_d, B0, B1, B2, distB);
-#else
-    // Signed distances of B vertices to plane of A
-    const float planeA_d = -DotProduct(N0, A0);
-    float distB[3] = {
-        DotProduct(N0, B0) + planeA_d,
-        DotProduct(N0, B1) + planeA_d,
-        DotProduct(N0, B2) + planeA_d,
-    };
-#endif
-    if (XAbs(distB[0]) < EPSILON) distB[0] = 0.0f;
-    if (XAbs(distB[1]) < EPSILON) distB[1] = 0.0f;
-    if (XAbs(distB[2]) < EPSILON) distB[2] = 0.0f;
-    if (distB[0] * distB[1] > 0.0f && distB[0] * distB[2] > 0.0f) return FALSE;
+namespace {
 
-#if defined(VX_SIMD_SSE)
-    const float planeB_d = -VxSIMDDot3Scalar(n1V, VxSIMDLoadVector3(B0));
-    float distA[3];
-    VxSIMDComputePlaneDistances(N1, planeB_d, A0, A1, A2, distA);
-#else
-    // Signed distances of A vertices to plane of B
-    const float planeB_d = -DotProduct(N1, B0);
-    float distA[3] = {
-        DotProduct(N1, A0) + planeB_d,
-        DotProduct(N1, A1) + planeB_d,
-        DotProduct(N1, A2) + planeB_d,
-    };
-#endif
-    if (XAbs(distA[0]) < EPSILON) distA[0] = 0.0f;
-    if (XAbs(distA[1]) < EPSILON) distA[1] = 0.0f;
-    if (XAbs(distA[2]) < EPSILON) distA[2] = 0.0f;
+static XBOOL FaceFaceFromDistances(const VxVector &A0, const VxVector &A1, const VxVector &A2, const VxVector &N0,
+                                   const VxVector &B0, const VxVector &B1, const VxVector &B2,
+                                   const float distA[3], const float distB[3], const VxVector &D) {
     const float distA01 = distA[0] * distA[1];
     const float distA02 = distA[0] * distA[2];
     if (distA01 > 0.0f && distA02 > 0.0f) return FALSE;
 
-    // Direction of intersection line between the two planes
-#if defined(VX_SIMD_SSE)
-    VxVector D;
-    VxSIMDStoreFloat3(&D.x, VxSIMDCrossProduct3(n0V, n1V));
-#else
-    const VxVector D = CrossProduct(N0, N1);
-#endif
     const VxVector absD = Absolute(D);
 
     int maxc = 0;
@@ -366,12 +386,9 @@ XBOOL VxIntersect::FaceFace(const VxVector &A0, const VxVector &A1, const VxVect
         maxc = 2;
     }
 
-    // Project vertices on the dominant axis of the intersection direction
     const float vA[3] = {A0[maxc], A1[maxc], A2[maxc]};
     const float vB[3] = {B0[maxc], B1[maxc], B2[maxc]};
 
-    // Compute the interval of intersection on the line for each triangle.
-    // This matches the original Moller-style branch structure, but keeps it readable.
     float aBase;
     float aNum0;
     float aNum1;
@@ -452,7 +469,6 @@ XBOOL VxIntersect::FaceFace(const VxVector &A0, const VxVector &A1, const VxVect
         return coplanar_tri_tri(N0, A0, A1, A2, B0, B1, B2);
     }
 
-    // Avoid divisions: compare intervals after multiplying by common denominator products.
     const float aDenProd = aDen0 * aDen1;
     const float bDenProd = bDen0 * bDen1;
     const float denProd = aDenProd * bDenProd;
@@ -475,6 +491,62 @@ XBOOL VxIntersect::FaceFace(const VxVector &A0, const VxVector &A1, const VxVect
 
     return (isectA1 >= isectB0 && isectB1 >= isectA0);
 }
+
+static XBOOL FaceFaceScalarCore(const VxVector &A0, const VxVector &A1, const VxVector &A2, const VxVector &N0,
+                                const VxVector &B0, const VxVector &B1, const VxVector &B2, const VxVector &N1) {
+    const float planeA_d = -DotProduct(N0, A0);
+    float distB[3] = {
+        DotProduct(N0, B0) + planeA_d,
+        DotProduct(N0, B1) + planeA_d,
+        DotProduct(N0, B2) + planeA_d,
+    };
+    if (XAbs(distB[0]) < EPSILON) distB[0] = 0.0f;
+    if (XAbs(distB[1]) < EPSILON) distB[1] = 0.0f;
+    if (XAbs(distB[2]) < EPSILON) distB[2] = 0.0f;
+    if (distB[0] * distB[1] > 0.0f && distB[0] * distB[2] > 0.0f) return FALSE;
+
+    const float planeB_d = -DotProduct(N1, B0);
+    float distA[3] = {
+        DotProduct(N1, A0) + planeB_d,
+        DotProduct(N1, A1) + planeB_d,
+        DotProduct(N1, A2) + planeB_d,
+    };
+    if (XAbs(distA[0]) < EPSILON) distA[0] = 0.0f;
+    if (XAbs(distA[1]) < EPSILON) distA[1] = 0.0f;
+    if (XAbs(distA[2]) < EPSILON) distA[2] = 0.0f;
+
+    const VxVector D = CrossProduct(N0, N1);
+    return FaceFaceFromDistances(A0, A1, A2, N0, B0, B1, B2, distA, distB, D);
+}
+
+#if defined(VX_SIMD_SSE)
+static XBOOL FaceFaceSIMDCore(const VxVector &A0, const VxVector &A1, const VxVector &A2, const VxVector &N0,
+                              const VxVector &B0, const VxVector &B1, const VxVector &B2, const VxVector &N1) {
+    const __m128 n0V = VxSIMDLoadVector3(N0);
+    const __m128 n1V = VxSIMDLoadVector3(N1);
+
+    float distB[3];
+    const float planeA_d = -VxSIMDDot3Scalar(n0V, VxSIMDLoadVector3(A0));
+    VxSIMDComputePlaneDistances(N0, planeA_d, B0, B1, B2, distB);
+    if (XAbs(distB[0]) < EPSILON) distB[0] = 0.0f;
+    if (XAbs(distB[1]) < EPSILON) distB[1] = 0.0f;
+    if (XAbs(distB[2]) < EPSILON) distB[2] = 0.0f;
+    if (distB[0] * distB[1] > 0.0f && distB[0] * distB[2] > 0.0f) return FALSE;
+
+    float distA[3];
+    const float planeB_d = -VxSIMDDot3Scalar(n1V, VxSIMDLoadVector3(B0));
+    VxSIMDComputePlaneDistances(N1, planeB_d, A0, A1, A2, distA);
+    if (XAbs(distA[0]) < EPSILON) distA[0] = 0.0f;
+    if (XAbs(distA[1]) < EPSILON) distA[1] = 0.0f;
+    if (XAbs(distA[2]) < EPSILON) distA[2] = 0.0f;
+
+    VxVector D = VxVector::axis0();
+    VxSIMDStoreFloat3(&D.x, VxSIMDCrossProduct3(n0V, n1V));
+    return FaceFaceFromDistances(A0, A1, A2, N0, B0, B1, B2, distA, distB, D);
+}
+#endif
+
+} // namespace
 
 /* this edge to edge test is based on Franlin Antonio's gem:
    "Faster Line Segment Intersection", in Graphics Gems III,
@@ -575,4 +647,19 @@ int coplanar_tri_tri(const VxVector &N, const VxVector &V0, const VxVector &V1, 
     POINT_IN_TRI(U0, V0, V1, V2);
 
     return 0;
+}
+
+void VxIntersectFaceDispatchRebuild(bool useSIMD) {
+#if defined(VX_SIMD_SSE)
+    if (useSIMD) {
+        g_VxIntersectFaceDispatch.pointInFace = PointInFaceSIMDCore;
+        g_VxIntersectFaceDispatch.getPointCoefficients = GetPointCoefficientsSIMDCore;
+        g_VxIntersectFaceDispatch.faceFace = FaceFaceSIMDCore;
+        return;
+    }
+#endif
+
+    g_VxIntersectFaceDispatch.pointInFace = PointInFaceScalarCore;
+    g_VxIntersectFaceDispatch.getPointCoefficients = GetPointCoefficientsScalarCore;
+    g_VxIntersectFaceDispatch.faceFace = FaceFaceScalarCore;
 }

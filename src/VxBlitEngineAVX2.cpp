@@ -10,7 +10,32 @@
 
 #if defined(VX_SIMD_AVX2)
 
+#include <cstdint>
 #include <immintrin.h>
+
+static inline __m128i Pack32x8To16x8_AVX2(const __m256i packed32) {
+    const __m128i lo = _mm256_castsi256_si128(packed32);
+    const __m128i hi = _mm256_extracti128_si256(packed32, 1);
+    return _mm_packus_epi32(lo, hi);
+}
+
+static inline __m256i Expand565ToARGB32_AVX2(const __m128i packed16,
+                                             const __m256i alpha,
+                                             const __m256i maskF800,
+                                             const __m256i maskE000,
+                                             const __m256i mask07E0,
+                                             const __m256i mask0600,
+                                             const __m256i mask001F,
+                                             const __m256i mask001C) {
+    const __m256i pixels = _mm256_cvtepu16_epi32(packed16);
+    const __m256i r = _mm256_or_si256(_mm256_slli_epi32(_mm256_and_si256(pixels, maskF800), 8),
+                                      _mm256_slli_epi32(_mm256_and_si256(pixels, maskE000), 3));
+    const __m256i g = _mm256_or_si256(_mm256_slli_epi32(_mm256_and_si256(pixels, mask07E0), 5),
+                                      _mm256_srli_epi32(_mm256_and_si256(pixels, mask0600), 1));
+    const __m256i b = _mm256_or_si256(_mm256_slli_epi32(_mm256_and_si256(pixels, mask001F), 3),
+                                      _mm256_srli_epi32(_mm256_and_si256(pixels, mask001C), 2));
+    return _mm256_or_si256(alpha, _mm256_or_si256(r, _mm256_or_si256(g, b)));
+}
 
 // -- 32<->32 format conversions --------------------------------------------
 
@@ -21,9 +46,40 @@ void CopyLine_32ARGB_32RGB_AVX2(const VxBlitInfo *info) {
 
     const __m256i mask = _mm256_set1_epi32(0x00FFFFFF);
     int x = 0;
-    for (; x + 8 <= width; x += 8) {
-        __m256i pixels = _mm256_loadu_si256((const __m256i *)(src + x));
-        _mm256_storeu_si256((__m256i *)(dst + x), _mm256_and_si256(pixels, mask));
+
+    const bool aligned32 =
+        ((reinterpret_cast<std::uintptr_t>(src) | reinterpret_cast<std::uintptr_t>(dst)) & 31u) == 0u;
+
+    if (aligned32) {
+        for (; x + 32 <= width; x += 32) {
+            const __m256i p0 = _mm256_load_si256((const __m256i *)(src + x));
+            const __m256i p1 = _mm256_load_si256((const __m256i *)(src + x + 8));
+            const __m256i p2 = _mm256_load_si256((const __m256i *)(src + x + 16));
+            const __m256i p3 = _mm256_load_si256((const __m256i *)(src + x + 24));
+            const __m256i r0 = _mm256_and_si256(p0, mask);
+            const __m256i r1 = _mm256_and_si256(p1, mask);
+            const __m256i r2 = _mm256_and_si256(p2, mask);
+            const __m256i r3 = _mm256_and_si256(p3, mask);
+            _mm256_store_si256((__m256i *)(dst + x), r0);
+            _mm256_store_si256((__m256i *)(dst + x + 8), r1);
+            _mm256_store_si256((__m256i *)(dst + x + 16), r2);
+            _mm256_store_si256((__m256i *)(dst + x + 24), r3);
+        }
+        for (; x + 8 <= width; x += 8) {
+            const __m256i pixels = _mm256_load_si256((const __m256i *)(src + x));
+            _mm256_store_si256((__m256i *)(dst + x), _mm256_and_si256(pixels, mask));
+        }
+    } else {
+        for (; x + 16 <= width; x += 16) {
+            const __m256i p0 = _mm256_loadu_si256((const __m256i *)(src + x));
+            const __m256i p1 = _mm256_loadu_si256((const __m256i *)(src + x + 8));
+            _mm256_storeu_si256((__m256i *)(dst + x), _mm256_and_si256(p0, mask));
+            _mm256_storeu_si256((__m256i *)(dst + x + 8), _mm256_and_si256(p1, mask));
+        }
+        for (; x + 8 <= width; x += 8) {
+            const __m256i pixels = _mm256_loadu_si256((const __m256i *)(src + x));
+            _mm256_storeu_si256((__m256i *)(dst + x), _mm256_and_si256(pixels, mask));
+        }
     }
     CopyLine_32ARGB_32RGB_Scalar(info, x);
 }
@@ -219,17 +275,56 @@ void CopyLine_32ARGB_565RGB_AVX2(const VxBlitInfo *info) {
     const __m256i maskB = _mm256_set1_epi32(0x001F);
     int x = 0;
 
-    for (; x + 8 <= width; x += 8) {
-        const __m256i pixels = _mm256_loadu_si256((const __m256i *)(src + x));
-        const __m256i r = _mm256_and_si256(_mm256_srli_epi32(pixels, 8), maskR);
-        const __m256i g = _mm256_and_si256(_mm256_srli_epi32(pixels, 5), maskG);
-        const __m256i b = _mm256_and_si256(_mm256_srli_epi32(pixels, 3), maskB);
-        const __m256i packed32 = _mm256_or_si256(_mm256_or_si256(r, g), b);
+    const bool aligned =
+        (reinterpret_cast<std::uintptr_t>(src) & 31u) == 0u &&
+        (reinterpret_cast<std::uintptr_t>(dst) & 15u) == 0u;
 
-        const __m128i lo = _mm256_castsi256_si128(packed32);
-        const __m128i hi = _mm256_extracti128_si256(packed32, 1);
-        const __m128i packed16 = _mm_packus_epi32(lo, hi);
-        _mm_storeu_si128((__m128i *)(dst + x), packed16);
+    if (aligned) {
+        for (; x + 16 <= width; x += 16) {
+            const __m256i p0 = _mm256_load_si256((const __m256i *)(src + x));
+            const __m256i p1 = _mm256_load_si256((const __m256i *)(src + x + 8));
+            const __m256i r0 = _mm256_and_si256(_mm256_srli_epi32(p0, 8), maskR);
+            const __m256i g0 = _mm256_and_si256(_mm256_srli_epi32(p0, 5), maskG);
+            const __m256i b0 = _mm256_and_si256(_mm256_srli_epi32(p0, 3), maskB);
+            const __m256i packed0 = _mm256_or_si256(_mm256_or_si256(r0, g0), b0);
+            const __m256i r1 = _mm256_and_si256(_mm256_srli_epi32(p1, 8), maskR);
+            const __m256i g1 = _mm256_and_si256(_mm256_srli_epi32(p1, 5), maskG);
+            const __m256i b1 = _mm256_and_si256(_mm256_srli_epi32(p1, 3), maskB);
+            const __m256i packed1 = _mm256_or_si256(_mm256_or_si256(r1, g1), b1);
+            _mm_store_si128((__m128i *)(dst + x), Pack32x8To16x8_AVX2(packed0));
+            _mm_store_si128((__m128i *)(dst + x + 8), Pack32x8To16x8_AVX2(packed1));
+        }
+        for (; x + 8 <= width; x += 8) {
+            const __m256i pixels = _mm256_load_si256((const __m256i *)(src + x));
+            const __m256i r = _mm256_and_si256(_mm256_srli_epi32(pixels, 8), maskR);
+            const __m256i g = _mm256_and_si256(_mm256_srli_epi32(pixels, 5), maskG);
+            const __m256i b = _mm256_and_si256(_mm256_srli_epi32(pixels, 3), maskB);
+            const __m256i packed = _mm256_or_si256(_mm256_or_si256(r, g), b);
+            _mm_store_si128((__m128i *)(dst + x), Pack32x8To16x8_AVX2(packed));
+        }
+    } else {
+        for (; x + 16 <= width; x += 16) {
+            const __m256i p0 = _mm256_loadu_si256((const __m256i *)(src + x));
+            const __m256i p1 = _mm256_loadu_si256((const __m256i *)(src + x + 8));
+            const __m256i r0 = _mm256_and_si256(_mm256_srli_epi32(p0, 8), maskR);
+            const __m256i g0 = _mm256_and_si256(_mm256_srli_epi32(p0, 5), maskG);
+            const __m256i b0 = _mm256_and_si256(_mm256_srli_epi32(p0, 3), maskB);
+            const __m256i packed0 = _mm256_or_si256(_mm256_or_si256(r0, g0), b0);
+            const __m256i r1 = _mm256_and_si256(_mm256_srli_epi32(p1, 8), maskR);
+            const __m256i g1 = _mm256_and_si256(_mm256_srli_epi32(p1, 5), maskG);
+            const __m256i b1 = _mm256_and_si256(_mm256_srli_epi32(p1, 3), maskB);
+            const __m256i packed1 = _mm256_or_si256(_mm256_or_si256(r1, g1), b1);
+            _mm_storeu_si128((__m128i *)(dst + x), Pack32x8To16x8_AVX2(packed0));
+            _mm_storeu_si128((__m128i *)(dst + x + 8), Pack32x8To16x8_AVX2(packed1));
+        }
+        for (; x + 8 <= width; x += 8) {
+            const __m256i pixels = _mm256_loadu_si256((const __m256i *)(src + x));
+            const __m256i r = _mm256_and_si256(_mm256_srli_epi32(pixels, 8), maskR);
+            const __m256i g = _mm256_and_si256(_mm256_srli_epi32(pixels, 5), maskG);
+            const __m256i b = _mm256_and_si256(_mm256_srli_epi32(pixels, 3), maskB);
+            const __m256i packed = _mm256_or_si256(_mm256_or_si256(r, g), b);
+            _mm_storeu_si128((__m128i *)(dst + x), Pack32x8To16x8_AVX2(packed));
+        }
     }
     CopyLine_32ARGB_565RGB_Scalar(info, x);
 }
@@ -270,18 +365,62 @@ void CopyLine_32ARGB_1555ARGB_AVX2(const VxBlitInfo *info) {
     const __m256i maskB = _mm256_set1_epi32(0x001F);
     int x = 0;
 
-    for (; x + 8 <= width; x += 8) {
-        const __m256i pixels = _mm256_loadu_si256((const __m256i *)(src + x));
-        const __m256i a = _mm256_and_si256(_mm256_srli_epi32(pixels, 16), maskA);
-        const __m256i r = _mm256_and_si256(_mm256_srli_epi32(pixels, 9), maskR);
-        const __m256i g = _mm256_and_si256(_mm256_srli_epi32(pixels, 6), maskG);
-        const __m256i b = _mm256_and_si256(_mm256_srli_epi32(pixels, 3), maskB);
-        const __m256i packed32 = _mm256_or_si256(_mm256_or_si256(a, r), _mm256_or_si256(g, b));
+    const bool aligned =
+        (reinterpret_cast<std::uintptr_t>(src) & 31u) == 0u &&
+        (reinterpret_cast<std::uintptr_t>(dst) & 15u) == 0u;
 
-        const __m128i lo = _mm256_castsi256_si128(packed32);
-        const __m128i hi = _mm256_extracti128_si256(packed32, 1);
-        const __m128i packed16 = _mm_packus_epi32(lo, hi);
-        _mm_storeu_si128((__m128i *)(dst + x), packed16);
+    if (aligned) {
+        for (; x + 16 <= width; x += 16) {
+            const __m256i p0 = _mm256_load_si256((const __m256i *)(src + x));
+            const __m256i p1 = _mm256_load_si256((const __m256i *)(src + x + 8));
+            const __m256i a0 = _mm256_and_si256(_mm256_srli_epi32(p0, 16), maskA);
+            const __m256i r0 = _mm256_and_si256(_mm256_srli_epi32(p0, 9), maskR);
+            const __m256i g0 = _mm256_and_si256(_mm256_srli_epi32(p0, 6), maskG);
+            const __m256i b0 = _mm256_and_si256(_mm256_srli_epi32(p0, 3), maskB);
+            const __m256i packed0 = _mm256_or_si256(_mm256_or_si256(a0, r0), _mm256_or_si256(g0, b0));
+            const __m256i a1 = _mm256_and_si256(_mm256_srli_epi32(p1, 16), maskA);
+            const __m256i r1 = _mm256_and_si256(_mm256_srli_epi32(p1, 9), maskR);
+            const __m256i g1 = _mm256_and_si256(_mm256_srli_epi32(p1, 6), maskG);
+            const __m256i b1 = _mm256_and_si256(_mm256_srli_epi32(p1, 3), maskB);
+            const __m256i packed1 = _mm256_or_si256(_mm256_or_si256(a1, r1), _mm256_or_si256(g1, b1));
+            _mm_store_si128((__m128i *)(dst + x), Pack32x8To16x8_AVX2(packed0));
+            _mm_store_si128((__m128i *)(dst + x + 8), Pack32x8To16x8_AVX2(packed1));
+        }
+        for (; x + 8 <= width; x += 8) {
+            const __m256i pixels = _mm256_load_si256((const __m256i *)(src + x));
+            const __m256i a = _mm256_and_si256(_mm256_srli_epi32(pixels, 16), maskA);
+            const __m256i r = _mm256_and_si256(_mm256_srli_epi32(pixels, 9), maskR);
+            const __m256i g = _mm256_and_si256(_mm256_srli_epi32(pixels, 6), maskG);
+            const __m256i b = _mm256_and_si256(_mm256_srli_epi32(pixels, 3), maskB);
+            const __m256i packed = _mm256_or_si256(_mm256_or_si256(a, r), _mm256_or_si256(g, b));
+            _mm_store_si128((__m128i *)(dst + x), Pack32x8To16x8_AVX2(packed));
+        }
+    } else {
+        for (; x + 16 <= width; x += 16) {
+            const __m256i p0 = _mm256_loadu_si256((const __m256i *)(src + x));
+            const __m256i p1 = _mm256_loadu_si256((const __m256i *)(src + x + 8));
+            const __m256i a0 = _mm256_and_si256(_mm256_srli_epi32(p0, 16), maskA);
+            const __m256i r0 = _mm256_and_si256(_mm256_srli_epi32(p0, 9), maskR);
+            const __m256i g0 = _mm256_and_si256(_mm256_srli_epi32(p0, 6), maskG);
+            const __m256i b0 = _mm256_and_si256(_mm256_srli_epi32(p0, 3), maskB);
+            const __m256i packed0 = _mm256_or_si256(_mm256_or_si256(a0, r0), _mm256_or_si256(g0, b0));
+            const __m256i a1 = _mm256_and_si256(_mm256_srli_epi32(p1, 16), maskA);
+            const __m256i r1 = _mm256_and_si256(_mm256_srli_epi32(p1, 9), maskR);
+            const __m256i g1 = _mm256_and_si256(_mm256_srli_epi32(p1, 6), maskG);
+            const __m256i b1 = _mm256_and_si256(_mm256_srli_epi32(p1, 3), maskB);
+            const __m256i packed1 = _mm256_or_si256(_mm256_or_si256(a1, r1), _mm256_or_si256(g1, b1));
+            _mm_storeu_si128((__m128i *)(dst + x), Pack32x8To16x8_AVX2(packed0));
+            _mm_storeu_si128((__m128i *)(dst + x + 8), Pack32x8To16x8_AVX2(packed1));
+        }
+        for (; x + 8 <= width; x += 8) {
+            const __m256i pixels = _mm256_loadu_si256((const __m256i *)(src + x));
+            const __m256i a = _mm256_and_si256(_mm256_srli_epi32(pixels, 16), maskA);
+            const __m256i r = _mm256_and_si256(_mm256_srli_epi32(pixels, 9), maskR);
+            const __m256i g = _mm256_and_si256(_mm256_srli_epi32(pixels, 6), maskG);
+            const __m256i b = _mm256_and_si256(_mm256_srli_epi32(pixels, 3), maskB);
+            const __m256i packed = _mm256_or_si256(_mm256_or_si256(a, r), _mm256_or_si256(g, b));
+            _mm_storeu_si128((__m128i *)(dst + x), Pack32x8To16x8_AVX2(packed));
+        }
     }
     CopyLine_32ARGB_1555ARGB_Scalar(info, x);
 }
@@ -327,19 +466,38 @@ void CopyLine_565RGB_32ARGB_AVX2(const VxBlitInfo *info) {
     const __m256i mask001C = _mm256_set1_epi32(0x001C);
     int x = 0;
 
-    for (; x + 8 <= width; x += 8) {
-        const __m128i packed16 = _mm_loadu_si128((const __m128i *)(src + x));
-        const __m256i pixels = _mm256_cvtepu16_epi32(packed16);
+    const bool aligned =
+        (reinterpret_cast<std::uintptr_t>(src) & 15u) == 0u &&
+        (reinterpret_cast<std::uintptr_t>(dst) & 31u) == 0u;
 
-        const __m256i r = _mm256_or_si256(_mm256_slli_epi32(_mm256_and_si256(pixels, maskF800), 8),
-                                          _mm256_slli_epi32(_mm256_and_si256(pixels, maskE000), 3));
-        const __m256i g = _mm256_or_si256(_mm256_slli_epi32(_mm256_and_si256(pixels, mask07E0), 5),
-                                          _mm256_srli_epi32(_mm256_and_si256(pixels, mask0600), 1));
-        const __m256i b = _mm256_or_si256(_mm256_slli_epi32(_mm256_and_si256(pixels, mask001F), 3),
-                                          _mm256_srli_epi32(_mm256_and_si256(pixels, mask001C), 2));
-
-        const __m256i out = _mm256_or_si256(alpha, _mm256_or_si256(r, _mm256_or_si256(g, b)));
-        _mm256_storeu_si256((__m256i *)(dst + x), out);
+    if (aligned) {
+        for (; x + 16 <= width; x += 16) {
+            const __m128i p0 = _mm_load_si128((const __m128i *)(src + x));
+            const __m128i p1 = _mm_load_si128((const __m128i *)(src + x + 8));
+            _mm256_store_si256((__m256i *)(dst + x),
+                               Expand565ToARGB32_AVX2(p0, alpha, maskF800, maskE000, mask07E0, mask0600, mask001F, mask001C));
+            _mm256_store_si256((__m256i *)(dst + x + 8),
+                               Expand565ToARGB32_AVX2(p1, alpha, maskF800, maskE000, mask07E0, mask0600, mask001F, mask001C));
+        }
+        for (; x + 8 <= width; x += 8) {
+            const __m128i packed16 = _mm_load_si128((const __m128i *)(src + x));
+            _mm256_store_si256((__m256i *)(dst + x),
+                               Expand565ToARGB32_AVX2(packed16, alpha, maskF800, maskE000, mask07E0, mask0600, mask001F, mask001C));
+        }
+    } else {
+        for (; x + 16 <= width; x += 16) {
+            const __m128i p0 = _mm_loadu_si128((const __m128i *)(src + x));
+            const __m128i p1 = _mm_loadu_si128((const __m128i *)(src + x + 8));
+            _mm256_storeu_si256((__m256i *)(dst + x),
+                                Expand565ToARGB32_AVX2(p0, alpha, maskF800, maskE000, mask07E0, mask0600, mask001F, mask001C));
+            _mm256_storeu_si256((__m256i *)(dst + x + 8),
+                                Expand565ToARGB32_AVX2(p1, alpha, maskF800, maskE000, mask07E0, mask0600, mask001F, mask001C));
+        }
+        for (; x + 8 <= width; x += 8) {
+            const __m128i packed16 = _mm_loadu_si128((const __m128i *)(src + x));
+            _mm256_storeu_si256((__m256i *)(dst + x),
+                                Expand565ToARGB32_AVX2(packed16, alpha, maskF800, maskE000, mask07E0, mask0600, mask001F, mask001C));
+        }
     }
     CopyLine_565RGB_32ARGB_Scalar(info, x);
 }

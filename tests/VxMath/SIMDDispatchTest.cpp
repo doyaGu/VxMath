@@ -487,12 +487,20 @@ void ScalarProjectBoxZExtents(const VxMatrix &worldProjection, const VxBbox &box
     }
 }
 
-TEST(SIMDDispatchTest, ActiveBackendIsValid) {
-    const VxSIMDBackend backend = VxGetActiveSIMDBackend();
-    const bool valid = backend == VxSIMDBackend::Scalar ||
-                       backend == VxSIMDBackend::SSE2 ||
-                       backend == VxSIMDBackend::AVX2;
-    EXPECT_TRUE(valid);
+TEST(SIMDDispatchTest, SIMDFeatureHierarchyIsValid) {
+    const VxSIMDFeatures features = VxGetSIMDFeatures();
+
+    if (features.AVX2) {
+        EXPECT_TRUE(features.SSE2);
+    }
+
+    if (features.SSSE3) {
+        EXPECT_TRUE(features.SSE2);
+    }
+
+    if (features.SSE2) {
+        EXPECT_TRUE(features.SSE);
+    }
 }
 
 TEST(SIMDDispatchTest, InterpolateFloatArrayMatchesScalarWithTail) {

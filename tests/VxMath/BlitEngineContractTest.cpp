@@ -202,7 +202,7 @@ TEST_F(BlitEngineResizeContractTest, Resize_24BitSource_MayConvertFirst) {
     EXPECT_NO_THROW(blitter.ResizeImage(srcDesc, dstDesc));
 }
 
-TEST_F(BlitEngineResizeContractTest, Resize_16BitSource_MayNotWork) {
+TEST_F(BlitEngineResizeContractTest, Resize_16BitSource_UsesNearestPath) {
     const int srcW = 32, srcH = 32;
     const int dstW = 16, dstH = 16;
 
@@ -212,7 +212,7 @@ TEST_F(BlitEngineResizeContractTest, Resize_16BitSource_MayNotWork) {
     auto srcDesc = ImageDescFactory::Create16Bit565(srcW, srcH, srcBuf.Data());
     auto dstDesc = ImageDescFactory::Create16Bit565(dstW, dstH, dstBuf.Data());
 
-    // 16-bit resize typically not supported - document behavior
+    // 16-bit same-format resize is supported through nearest-neighbor path.
     EXPECT_NO_THROW(blitter.ResizeImage(srcDesc, dstDesc));
 }
 

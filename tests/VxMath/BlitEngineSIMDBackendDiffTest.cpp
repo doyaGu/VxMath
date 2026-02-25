@@ -147,6 +147,70 @@ TEST_F(BlitEngineSIMDBackendDiffTest, MultiplyBlend_OddWidthMisaligned_MatchesRe
     }
 }
 
+TEST_F(BlitEngineSIMDBackendDiffTest, Blit_32ARGB_To_32RGB_OddWidthMisaligned_MatchesReference) {
+    const int width = 1919;
+    const int height = 3;
+    const int srcPitch = width * 4;
+    const int dstPitch = width * 4;
+
+    std::vector<XBYTE> srcStorage(static_cast<std::size_t>(srcPitch) * height + 16u);
+    std::vector<XBYTE> dstStorage(static_cast<std::size_t>(dstPitch) * height + 16u, 0u);
+    XBYTE *srcImage = srcStorage.data() + 5;
+    XBYTE *dstImage = dstStorage.data() + 11;
+
+    uint32_t seed = 0xABCDEF01u;
+    for (int y = 0; y < height; ++y) {
+        for (int x = 0; x < width; ++x) {
+            StorePixel32(srcImage + y * srcPitch + x * 4, NextRand(seed));
+        }
+    }
+
+    VxImageDescEx srcDesc = ImageDescFactory::Create32BitARGB(width, height, srcImage);
+    VxImageDescEx dstDesc = ImageDescFactory::Create32BitRGB(width, height, dstImage);
+    blitter.DoBlit(srcDesc, dstDesc);
+
+    for (int y = 0; y < height; ++y) {
+        for (int x = 0; x < width; ++x) {
+            const XDWORD p = LoadPixel32(srcImage + y * srcPitch + x * 4);
+            const XDWORD expected = p & 0x00FFFFFFu;
+            const XDWORD actual = LoadPixel32(dstImage + y * dstPitch + x * 4);
+            EXPECT_EQ(expected, actual);
+        }
+    }
+}
+
+TEST_F(BlitEngineSIMDBackendDiffTest, Blit_32RGB_To_32ARGB_OddWidthMisaligned_MatchesReference) {
+    const int width = 1919;
+    const int height = 3;
+    const int srcPitch = width * 4;
+    const int dstPitch = width * 4;
+
+    std::vector<XBYTE> srcStorage(static_cast<std::size_t>(srcPitch) * height + 16u);
+    std::vector<XBYTE> dstStorage(static_cast<std::size_t>(dstPitch) * height + 16u, 0u);
+    XBYTE *srcImage = srcStorage.data() + 9;
+    XBYTE *dstImage = dstStorage.data() + 3;
+
+    uint32_t seed = 0x13579BDFu;
+    for (int y = 0; y < height; ++y) {
+        for (int x = 0; x < width; ++x) {
+            StorePixel32(srcImage + y * srcPitch + x * 4, NextRand(seed));
+        }
+    }
+
+    VxImageDescEx srcDesc = ImageDescFactory::Create32BitRGB(width, height, srcImage);
+    VxImageDescEx dstDesc = ImageDescFactory::Create32BitARGB(width, height, dstImage);
+    blitter.DoBlit(srcDesc, dstDesc);
+
+    for (int y = 0; y < height; ++y) {
+        for (int x = 0; x < width; ++x) {
+            const XDWORD p = LoadPixel32(srcImage + y * srcPitch + x * 4);
+            const XDWORD expected = p | 0xFF000000u;
+            const XDWORD actual = LoadPixel32(dstImage + y * dstPitch + x * 4);
+            EXPECT_EQ(expected, actual);
+        }
+    }
+}
+
 TEST_F(BlitEngineSIMDBackendDiffTest, Blit_32ARGB_To_565_OddWidthMisaligned_MatchesReference) {
     const int width = 1919;
     const int height = 3;

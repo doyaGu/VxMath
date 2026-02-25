@@ -15,8 +15,6 @@
 
 #include "VxBlitInternal.h"
 
-#include <algorithm>
-
 #include "VxMath.h"
 
 //==============================================================================
@@ -44,7 +42,8 @@ static inline XDWORD ConvertComponent(XDWORD value, int srcBits, int dstBits, in
         XDWORD expanded = value << shift;
         // Replicate lower bits for proper expansion
         if (srcBits > 0 && shift > 0) {
-            XDWORD rep = value >> (srcBits - std::min(srcBits, shift));
+            const int replicateBits = (srcBits < shift) ? srcBits : shift;
+            XDWORD rep = value >> (srcBits - replicateBits);
             expanded |= rep;
         }
         value = expanded;
@@ -565,25 +564,48 @@ void CopyLine_Paletted8_565RGB(const VxBlitInfo *info) {
     const int width = info->width;
     const XBYTE *colorMap = info->colorMap;
     const int bpc = info->bytesPerColorEntry;
+    const int entries = (info->colorMapEntries > 0) ? XMin(256, info->colorMapEntries) : 256;
 
     if (!colorMap) return;
 
-    // Pre-build 565 lookup table
-    XWORD palette16[256];
-    for (int i = 0; i < 256; ++i) {
-        const XBYTE *entry = colorMap + i * bpc;
-        palette16[i] = ((entry[2] >> 3) << 11) | ((entry[1] >> 2) << 5) | (entry[0] >> 3);
+    struct Pal565Cache {
+        const XBYTE *colorMap;
+        int bytesPerEntry;
+        int entries;
+        XDWORD operationStamp;
+        XWORD palette16[256];
+        bool valid;
+    };
+    thread_local Pal565Cache cache = {nullptr, 0, 0, 0u, {}, false};
+
+    if (!cache.valid ||
+        cache.operationStamp != info->operationStamp ||
+        cache.colorMap != colorMap ||
+        cache.bytesPerEntry != bpc ||
+        cache.entries != entries) {
+        for (int i = 0; i < entries; ++i) {
+            const XBYTE *entry = colorMap + i * bpc;
+            cache.palette16[i] = ((entry[2] >> 3) << 11) | ((entry[1] >> 2) << 5) | (entry[0] >> 3);
+        }
+        for (int i = entries; i < 256; ++i) {
+            cache.palette16[i] = 0;
+        }
+        cache.colorMap = colorMap;
+        cache.bytesPerEntry = bpc;
+        cache.entries = entries;
+        cache.operationStamp = info->operationStamp;
+        cache.valid = true;
     }
 
     int x = 0;
     for (; x + 4 <= width; x += 4) {
-        dst[x + 0] = palette16[src[x + 0]];
-        dst[x + 1] = palette16[src[x + 1]];
-        dst[x + 2] = palette16[src[x + 2]];
-        dst[x + 3] = palette16[src[x + 3]];
+        dst[x + 0] = cache.palette16[src[x + 0]];
+        dst[x + 1] = cache.palette16[src[x + 1]];
+        dst[x + 2] = cache.palette16[src[x + 2]];
+        dst[x + 3] = cache.palette16[src[x + 3]];
     }
     for (; x < width; ++x) {
-        dst[x] = palette16[src[x]];
+        dst[x] = cache.palette16[src[x]];
     }
 }
 
@@ -594,6 +616,7 @@ void CopyLine_Paletted8_16Alpha(const VxBlitInfo *info) {
     const int width = info->width;
     const XBYTE *colorMap = info->colorMap;
     const int bpc = info->bytesPerColorEntry;
+    const int entries = (info->colorMapEntries > 0) ? XMin(256, info->colorMapEntries) : 256;
 
     if (!colorMap) return;
 
@@ -606,33 +629,80 @@ void CopyLine_Paletted8_16Alpha(const VxBlitInfo *info) {
     const int bWidth = static_cast<int>(GetBitCountLocal(info->dstBlueMask));
     const int aWidth = static_cast<int>(GetBitCountLocal(info->dstAlphaMask));
 
-    XWORD palette16[256];
+    struct Pal16AlphaCache {
+        const XBYTE *colorMap;
+        int bytesPerEntry;
+        int entries;
+        XDWORD operationStamp;
+        XDWORD dstRedMask;
+        XDWORD dstGreenMask;
+        XDWORD dstBlueMask;
+        XDWORD dstAlphaMask;
+        int rShift;
+        int gShift;
+        int bShift;
+        int aShift;
+        XWORD palette16[256];
+        bool valid;
+    };
+    thread_local Pal16AlphaCache cache = {};
+
     auto quantize = [](XBYTE v, int width, int shift) -> XWORD {
         if (width <= 0) return 0;
         return (XWORD)((v >> (8 - width)) << shift);
     };
 
-    for (int i = 0; i < 256; ++i) {
-        const XBYTE *entry = colorMap + i * bpc;
-        const XBYTE b_val = entry[0];
-        const XBYTE g_val = entry[1];
-        const XBYTE r_val = entry[2];
-        const XBYTE a_val = (bpc >= 4) ? entry[3] : 0xFF;
-        palette16[i] = quantize(r_val, rWidth, rShift) |
-                       quantize(g_val, gWidth, gShift) |
-                       quantize(b_val, bWidth, bShift) |
-                       quantize(a_val, aWidth, aShift);
+    if (!cache.valid ||
+        cache.operationStamp != info->operationStamp ||
+        cache.colorMap != colorMap ||
+        cache.bytesPerEntry != bpc ||
+        cache.entries != entries ||
+        cache.dstRedMask != info->dstRedMask ||
+        cache.dstGreenMask != info->dstGreenMask ||
+        cache.dstBlueMask != info->dstBlueMask ||
+        cache.dstAlphaMask != info->dstAlphaMask ||
+        cache.rShift != rShift ||
+        cache.gShift != gShift ||
+        cache.bShift != bShift ||
+        cache.aShift != aShift) {
+        for (int i = 0; i < entries; ++i) {
+            const XBYTE *entry = colorMap + i * bpc;
+            const XBYTE b_val = entry[0];
+            const XBYTE g_val = entry[1];
+            const XBYTE r_val = entry[2];
+            const XBYTE a_val = (bpc >= 4) ? entry[3] : 0xFF;
+            cache.palette16[i] = quantize(r_val, rWidth, rShift) |
+                                 quantize(g_val, gWidth, gShift) |
+                                 quantize(b_val, bWidth, bShift) |
+                                 quantize(a_val, aWidth, aShift);
+        }
+        for (int i = entries; i < 256; ++i) {
+            cache.palette16[i] = 0;
+        }
+        cache.colorMap = colorMap;
+        cache.bytesPerEntry = bpc;
+        cache.entries = entries;
+        cache.operationStamp = info->operationStamp;
+        cache.dstRedMask = info->dstRedMask;
+        cache.dstGreenMask = info->dstGreenMask;
+        cache.dstBlueMask = info->dstBlueMask;
+        cache.dstAlphaMask = info->dstAlphaMask;
+        cache.rShift = rShift;
+        cache.gShift = gShift;
+        cache.bShift = bShift;
+        cache.aShift = aShift;
+        cache.valid = true;
     }
 
     int x = 0;
     for (; x + 4 <= width; x += 4) {
-        dst[x + 0] = palette16[src[x + 0]];
-        dst[x + 1] = palette16[src[x + 1]];
-        dst[x + 2] = palette16[src[x + 2]];
-        dst[x + 3] = palette16[src[x + 3]];
+        dst[x + 0] = cache.palette16[src[x + 0]];
+        dst[x + 1] = cache.palette16[src[x + 1]];
+        dst[x + 2] = cache.palette16[src[x + 2]];
+        dst[x + 3] = cache.palette16[src[x + 3]];
     }
     for (; x < width; ++x) {
-        dst[x] = palette16[src[x]];
+        dst[x] = cache.palette16[src[x]];
     }
 }
 
@@ -922,13 +992,20 @@ void CopyAlpha_8(const VxBlitInfo *info) {
     const XBYTE alphaMask = (XBYTE)info->dstAlphaMask;
     const XBYTE alphaMaskInv = (XBYTE)info->alphaMaskInv;
 
-    XBYTE alphaLut[256];
-    for (int i = 0; i < 256; ++i) {
-        alphaLut[i] = (XBYTE)(((i << alphaShift) & alphaMask));
+    int x = 0;
+    for (; x + 4 <= width; x += 4) {
+        const XBYTE a0 = (XBYTE)((src[x + 0] << alphaShift) & alphaMask);
+        const XBYTE a1 = (XBYTE)((src[x + 1] << alphaShift) & alphaMask);
+        const XBYTE a2 = (XBYTE)((src[x + 2] << alphaShift) & alphaMask);
+        const XBYTE a3 = (XBYTE)((src[x + 3] << alphaShift) & alphaMask);
+        dst[x + 0] = (dst[x + 0] & alphaMaskInv) | a0;
+        dst[x + 1] = (dst[x + 1] & alphaMaskInv) | a1;
+        dst[x + 2] = (dst[x + 2] & alphaMaskInv) | a2;
+        dst[x + 3] = (dst[x + 3] & alphaMaskInv) | a3;
     }
-
-    for (int x = 0; x < width; ++x) {
-        dst[x] = (dst[x] & alphaMaskInv) | alphaLut[src[x]];
+    for (; x < width; ++x) {
+        XBYTE alpha = (XBYTE)((src[x] << alphaShift) & alphaMask);
+        dst[x] = (dst[x] & alphaMaskInv) | alpha;
     }
 }
 
@@ -940,27 +1017,40 @@ void CopyAlpha_16(const VxBlitInfo *info) {
     const XWORD alphaMask = (XWORD)info->dstAlphaMask;
     const XWORD alphaMaskInv = (XWORD)info->alphaMaskInv;
 
-    const int alphaBits = static_cast<int>(GetBitCountLocal(alphaMask));
-    XWORD alphaLut[256];
-    if (alphaBits == 1) {
-        for (int i = 0; i < 256; ++i) {
-            alphaLut[i] = (XWORD)(((i >> 7) & 0x1) << alphaShift);
+    struct Alpha16Cache {
+        int alphaShift;
+        XWORD alphaMask;
+        XWORD alphaLut[256];
+        bool valid;
+    };
+    thread_local Alpha16Cache cache = {0, 0, {}, false};
+    if (!cache.valid ||
+        cache.alphaShift != alphaShift ||
+        cache.alphaMask != alphaMask) {
+        const int alphaBits = static_cast<int>(GetBitCountLocal(alphaMask));
+        if (alphaBits == 1) {
+            for (int i = 0; i < 256; ++i) {
+                cache.alphaLut[i] = (XWORD)(((i >> 7) & 0x1) << alphaShift);
+            }
+        } else if (alphaBits == 4) {
+            for (int i = 0; i < 256; ++i) {
+                cache.alphaLut[i] = (XWORD)(((i >> 4) << alphaShift) & alphaMask);
+            }
+        } else if (alphaBits > 0) {
+            const int scaleShift = (alphaBits >= 8) ? 0 : (8 - alphaBits);
+            for (int i = 0; i < 256; ++i) {
+                cache.alphaLut[i] = (XWORD)(((i >> scaleShift) << alphaShift) & alphaMask);
+            }
+        } else {
+            memset(cache.alphaLut, 0, sizeof(cache.alphaLut));
         }
-    } else if (alphaBits == 4) {
-        for (int i = 0; i < 256; ++i) {
-            alphaLut[i] = (XWORD)(((i >> 4) << alphaShift) & alphaMask);
-        }
-    } else if (alphaBits > 0) {
-        const int scaleShift = (alphaBits >= 8) ? 0 : (8 - alphaBits);
-        for (int i = 0; i < 256; ++i) {
-            alphaLut[i] = (XWORD)(((i >> scaleShift) << alphaShift) & alphaMask);
-        }
-    } else {
-        memset(alphaLut, 0, sizeof(alphaLut));
+        cache.alphaShift = alphaShift;
+        cache.alphaMask = alphaMask;
+        cache.valid = true;
     }
 
     for (int x = 0; x < width; ++x) {
-        dst[x] = (dst[x] & alphaMaskInv) | alphaLut[src[x]];
+        dst[x] = (dst[x] & alphaMaskInv) | cache.alphaLut[src[x]];
     }
 }
 

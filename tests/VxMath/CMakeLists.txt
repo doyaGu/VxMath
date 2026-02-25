@@ -49,7 +49,7 @@ endif()
 
 # Function to add VxMath tests
 function(vx_add_test TEST_NAME)
-    cmake_parse_arguments(TEST "" "" "SOURCES;DEPENDENCIES" ${ARGN})
+    cmake_parse_arguments(TEST "NO_GTEST_MAIN" "" "SOURCES;DEPENDENCIES" ${ARGN})
 
     if (NOT TEST_SOURCES)
         message(FATAL_ERROR "vx_add_test: SOURCES argument is required")
@@ -71,12 +71,21 @@ function(vx_add_test TEST_NAME)
             ${STB_INCLUDE_DIR}
     )
 
-    target_link_libraries(${TEST_NAME} PRIVATE
-            ${TEST_TARGET}
-            ${TEST_DEPENDENCIES}
-            gtest_main
-            gmock
-    )
+    if (TEST_NO_GTEST_MAIN)
+        target_link_libraries(${TEST_NAME} PRIVATE
+                ${TEST_TARGET}
+                ${TEST_DEPENDENCIES}
+                gtest
+                gmock
+        )
+    else ()
+        target_link_libraries(${TEST_NAME} PRIVATE
+                ${TEST_TARGET}
+                ${TEST_DEPENDENCIES}
+                gtest_main
+                gmock
+        )
+    endif ()
 
     # Register with CTest
     add_test(NAME ${TEST_NAME} COMMAND ${TEST_NAME})
@@ -104,11 +113,10 @@ set(VXMATH_TEST_SOURCES
         SIMDVectorTest.cpp
         SIMDMatrixTest.cpp
         SIMDQuaternionTest.cpp
-        SIMDDispatchTest.cpp
         # BlitEngine Tests
         BlitEngineFormatConversionTest.cpp
         BlitEngineAlphaTest.cpp
-        BlitEngineSIMDBackendDiffTest.cpp
+        BlitEngineSIMDOverrideTest.cpp
         BlitEngineResizeTest.cpp
         BlitEngineQuantizeTest.cpp
         BlitEnginePalettedTest.cpp
@@ -137,20 +145,35 @@ foreach (TEST_SOURCE ${VXMATH_TEST_SOURCES})
     endif()
 endforeach ()
 
-foreach(_backend scalar sse2 avx2 auto)
+vx_add_test(
+        SIMDDispatchTest
+        SOURCES
+        SIMDDispatchTest.cpp
+        BlitSIMDBackendTestMain.cpp
+        NO_GTEST_MAIN
+)
+target_include_directories(SIMDDispatchTest PRIVATE
+        ${PROJECT_SOURCE_DIR}/src
+        ${PROJECT_SOURCE_DIR}/deps/simde
+        ${CMAKE_CURRENT_SOURCE_DIR}
+)
+
+vx_add_test(
+        BlitEngineSIMDBackendDiffTest
+        SOURCES
+        BlitEngineSIMDBackendDiffTest.cpp
+        BlitSIMDBackendTestMain.cpp
+        NO_GTEST_MAIN
+)
+
+foreach(_backend none sse2 ssse3 sse4_1 avx avx2 auto)
     add_test(
             NAME SIMDDispatchTest_${_backend}
-            COMMAND SIMDDispatchTest
-    )
-    set_tests_properties(SIMDDispatchTest_${_backend} PROPERTIES
-            ENVIRONMENT "VXMATH_SIMD_FORCE=${_backend}"
+            COMMAND SIMDDispatchTest --simd-backend=${_backend}
     )
 
     add_test(
             NAME BlitEngineSIMDBackendDiffTest_${_backend}
-            COMMAND BlitEngineSIMDBackendDiffTest
-    )
-    set_tests_properties(BlitEngineSIMDBackendDiffTest_${_backend} PROPERTIES
-            ENVIRONMENT "VXMATH_SIMD_FORCE=${_backend}"
+            COMMAND BlitEngineSIMDBackendDiffTest --simd-backend=${_backend}
     )
 endforeach ()

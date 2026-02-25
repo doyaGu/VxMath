@@ -1,3 +1,5 @@
+include(CheckCXXCompilerFlag)
+
 set(VXMATH_PUBLIC_HEADERS
         ${VX_INCLUDE_DIR}/VxMathCompiler.h
         ${VX_INCLUDE_DIR}/FixedSizeAllocator.h
@@ -40,6 +42,7 @@ set(VXMATH_PUBLIC_HEADERS
         ${VX_INCLUDE_DIR}/VxDistance.h
         ${VX_INCLUDE_DIR}/VxFrustum.h
         ${VX_INCLUDE_DIR}/VxSIMD.h
+        ${VX_INCLUDE_DIR}/VxSIMDMode.h
         ${VX_INCLUDE_DIR}/VxSIMD.inl
         ${VX_INCLUDE_DIR}/VxVector.inl
         ${VX_INCLUDE_DIR}/VxMatrix.inl
@@ -65,12 +68,13 @@ set(VXMATH_PRIVATE_HEADERS
 
 set(VXMATH_COMMON_SOURCES
         VxMath.cpp
+        VxSIMDDispatch.cpp
+        VxBlitDispatchBridge.cpp
         VxGraphicUtils.cpp
         VxBlitKernels.cpp
         VxBlitEngineSSE2.cpp
         VxBlitEngineSSSE3.cpp
         VxBlitEngineClass.cpp
-        VxSIMD.cpp
         VxProcessor.cpp
         CKPathSplitter.cpp
         CKDirectoryParser.cpp
@@ -112,16 +116,19 @@ if (VXMATH_ENABLE_SIMD AND NOT VXMATH_SIMD_LEVEL STREQUAL "NONE")
     endif ()
 
     # VxBlitEngineSSSE3.cpp uses SSSE3 intrinsics directly.
-    # Add -mssse3 only when the compiler accepts GCC-style -m flags and the
-    # target architecture is x86-family. Use APPEND so we don't clobber other
-    # per-file compile options.
+    # Add -mssse3 only when:
+    #  1) target architecture is x86-family, and
+    #  2) the compiler front-end actually accepts -mssse3.
+    # Use APPEND so we don't clobber other per-file compile options.
     string(TOLOWER "${CMAKE_SYSTEM_PROCESSOR}" _vxmath_processor_lc)
-    if (CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang|AppleClang|IntelLLVM"
-            AND _vxmath_processor_lc MATCHES "^(x86_64|amd64|x64|i[3-6]86|x86)$")
-        set_property(
-                SOURCE VxBlitEngineSSSE3.cpp
-                APPEND PROPERTY COMPILE_OPTIONS "-mssse3"
-        )
+    if (NOT MSVC AND _vxmath_processor_lc MATCHES "^(x86_64|amd64|x64|i[3-6]86|x86)$")
+        check_cxx_compiler_flag("-mssse3" VXMATH_HAS_MSSSE3_FLAG)
+        if (VXMATH_HAS_MSSSE3_FLAG)
+            set_property(
+                    SOURCE VxBlitEngineSSSE3.cpp
+                    APPEND PROPERTY COMPILE_OPTIONS "-mssse3"
+            )
+        endif ()
     endif ()
 endif ()
 

@@ -39,6 +39,7 @@
 #include "VxMemoryPool.h"
 #include "VxTimeProfiler.h"
 #include "VxImageDescEx.h"
+#include "VxSIMDMode.h"
 
 // Threads and Synchro
 #include "VxMutex.h"
@@ -130,6 +131,35 @@ VX_EXPORT XBOOL VxCopyStructure(int Count, void *Dst, XDWORD OutStride, XDWORD S
  * @return TRUE on success, FALSE otherwise.
  */
 VX_EXPORT XBOOL VxIndexedCopy(const VxStridedData &Dst, const VxStridedData &Src, XDWORD SizeSrc, const int *Indices, int IndexCount);
+
+/**
+ * @brief Sets the preferred SIMD mode for VxMath runtime-dispatched paths.
+ * @param mode One of VX_SIMD_MODE_* constants.
+ * @return TRUE on success, FALSE if mode is invalid.
+ *
+ * The effective backend is resolved with staircase fallback:
+ * AVX2 -> AVX -> SSE4_1 -> SSSE3 -> SSE2 -> NONE.
+ */
+VX_EXPORT XBOOL VxSetSIMDOverride(int mode);
+
+/**
+ * @brief Gets the currently requested SIMD override mode.
+ * @return One of VX_SIMD_MODE_* constants.
+ */
+VX_EXPORT int VxGetSIMDOverride();
+
+/**
+ * @brief Gets the currently effective SIMD backend after fallback.
+ * @return One of VX_SIMD_MODE_* constants (never AUTO).
+ */
+VX_EXPORT int VxGetSIMDEffectiveBackend();
+
+/**
+ * @brief Gets the string representation of a SIMD mode.
+ * @param mode One of VX_SIMD_MODE_* constants.
+ * @return "auto", "none", "sse2", "ssse3", "sse4_1", "avx", "avx2", or "unknown".
+ */
+VX_EXPORT const char *VxGetSIMDBackendName(int mode);
 
 /**
  * @brief Performs a bit-block transfer (blit) from a source image to a destination image.

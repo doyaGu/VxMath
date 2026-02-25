@@ -9,13 +9,12 @@
 
 #include "VxMath.h"
 #include "VxEigenMatrix.h"
-#include "VxBlitEngine.h"
+#include "VxSIMDDispatchInternal.h"
 
 extern void InitializeTables();
 
 #if defined(_WIN32)
 HINSTANCE g_hinstDLL;
-CRITICAL_SECTION g_CriticalSection;
 #endif
 
 #if defined(VX_SIMD_SSE)
@@ -35,50 +34,115 @@ static inline void VxSIMDProjectPointToAxes3(
 }
 #endif
 
-void InitVxMath() {
-    VxDetectProcessor();
-    TheBlitter.RebuildTables();
-    InitializeTables();
-#if defined(_WIN32)
-    ::InitializeCriticalSection(&g_CriticalSection);
-#endif
-}
-
-void InterpolateFloatArray(void *Res, void *array1, void *array2, float factor, int count) {
-    if (!Res || !array1 || !array2 || count == 0)
-        return;
+static XBOOL FillStructureScalarImpl(int Count, void *Dst, XDWORD Stride, XDWORD SizeSrc, const void *Src);
+static XBOOL CopyStructureScalarImpl(int Count, void *Dst, XDWORD OutStride, XDWORD SizeSrc, const void *Src, XDWORD InStride);
+static XBOOL IndexedCopyScalarImpl(const VxStridedData &Dst, const VxStridedData &Src, XDWORD SizeSrc, const int *Indices, int IndexCount);
+static XBOOL PtInRectScalarImpl(CKRECT *rect, CKPOINT *pt);
+static XBOOL TransformBox2DScalarCore(const VxMatrix &World_ProjectionMat, const VxBbox &box, VxRect *ScreenSize, VxRect *Extents, VXCLIP_FLAGS &OrClipFlags, VXCLIP_FLAGS &AndClipFlags);
+static void ProjectBoxZExtentsScalarCore(const VxMatrix &World_ProjectionMat, const VxBbox &box, float &ZhMin, float &ZhMax);
+static void ProjectPointsToAxesExtentsScalar(const XBYTE *Points, XDWORD Stride, int Count, const VxMatrix &BBoxMatrix, float &minX, float &maxX, float &minY, float &maxY, float &minZ, float &maxZ);
 
 #if defined(VX_SIMD_SSE)
-    VxSIMDInterpolateFloatArray(
-        static_cast<float *>(Res),
-        static_cast<const float *>(array1),
-        static_cast<const float *>(array2),
-        factor,
-        count);
-#else
+static XBOOL FillStructureSIMDImpl(int Count, void *Dst, XDWORD Stride, XDWORD SizeSrc, const void *Src) {
+    return VxSIMDFillStructure(Count, Dst, Stride, SizeSrc, Src);
+}
+
+static XBOOL CopyStructureSIMDImpl(int Count, void *Dst, XDWORD OutStride, XDWORD SizeSrc, const void *Src, XDWORD InStride) {
+    return VxSIMDCopyStructure(Count, Dst, OutStride, SizeSrc, Src, InStride);
+}
+
+static XBOOL IndexedCopySIMDImpl(const VxStridedData &Dst, const VxStridedData &Src, XDWORD SizeSrc, const int *Indices, int IndexCount) {
+    return VxSIMDIndexedCopy(Dst, Src, SizeSrc, Indices, IndexCount);
+}
+
+static XBOOL PtInRectSIMDImpl(CKRECT *rect, CKPOINT *pt) {
+    return VxSIMDPtInRect(rect, pt);
+}
+
+static XBOOL TransformBox2DSIMDCore(const VxMatrix &World_ProjectionMat, const VxBbox &box, VxRect *ScreenSize, VxRect *Extents, VXCLIP_FLAGS &OrClipFlags, VXCLIP_FLAGS &AndClipFlags) {
+    return VxSIMDTransformBox2D(
+        &World_ProjectionMat,
+        &box,
+        Extents,
+        ScreenSize,
+        &OrClipFlags,
+        &AndClipFlags
+    );
+}
+
+static void ProjectBoxZExtentsSIMDCore(const VxMatrix &World_ProjectionMat, const VxBbox &box, float &ZhMin, float &ZhMax) {
+    if (!box.IsValid()) {
+        return;
+    }
+
+    VxSIMDProjectBoxZExtents(&World_ProjectionMat, &box, &ZhMin, &ZhMax);
+    if (ZhMin > ZhMax) {
+        ZhMin = 0.0f;
+        ZhMax = 1.0f;
+    }
+}
+
+static void ProjectPointsToAxesExtentsSIMD(const XBYTE *Points, XDWORD Stride, int Count, const VxMatrix &BBoxMatrix, float &minX, float &maxX, float &minY, float &maxY, float &minZ, float &maxZ) {
+    const __m128 axisX = VxSIMDLoadFloat3(&BBoxMatrix[0][0]);
+    const __m128 axisY = VxSIMDLoadFloat3(&BBoxMatrix[1][0]);
+    const __m128 axisZ = VxSIMDLoadFloat3(&BBoxMatrix[2][0]);
+
+    const float *firstPoint = reinterpret_cast<const float *>(Points);
+    float projX;
+    float projY;
+    float projZ;
+    VxSIMDProjectPointToAxes3(firstPoint, axisX, axisY, axisZ, projX, projY, projZ);
+
+    minX = maxX = projX;
+    minY = maxY = projY;
+    minZ = maxZ = projZ;
+
+    // Keep scalar-style comparisons so NaN handling stays consistent with legacy code.
+    for (int i = 0; i < Count; ++i) {
+        const float *p = reinterpret_cast<const float *>(Points + i * Stride);
+        float x, y, z;
+        VxSIMDProjectPointToAxes3(p, axisX, axisY, axisZ, x, y, z);
+
+        if (x >= maxX)
+            maxX = x;
+        else if (x < minX)
+            minX = x;
+
+        if (y >= maxY)
+            maxY = y;
+        else if (y < minY)
+            minY = y;
+
+        if (z >= maxZ)
+            maxZ = z;
+        else if (z < minZ)
+            minZ = z;
+    }
+}
+#endif
+
+namespace {
+
+typedef void (*VxInterpolateFloatArrayDispatchFn)(void *, void *, void *, float, int);
+typedef void (*VxInterpolateVectorArrayDispatchFn)(void *, void *, void *, float, int, XDWORD, XDWORD);
+typedef XBOOL (*VxFillStructureDispatchFn)(int, void *, XDWORD, XDWORD, const void *);
+typedef XBOOL (*VxCopyStructureDispatchFn)(int, void *, XDWORD, XDWORD, const void *, XDWORD);
+typedef XBOOL (*VxIndexedCopyDispatchFn)(const VxStridedData &, const VxStridedData &, XDWORD, const int *, int);
+typedef XBOOL (*VxPtInRectDispatchFn)(CKRECT *, CKPOINT *);
+typedef XBOOL (*VxTransformBox2DCoreDispatchFn)(const VxMatrix &, const VxBbox &, VxRect *, VxRect *, VXCLIP_FLAGS &, VXCLIP_FLAGS &);
+typedef void (*VxProjectBoxZExtentsCoreDispatchFn)(const VxMatrix &, const VxBbox &, float &, float &);
+typedef void (*VxProjectPointsToAxesExtentsDispatchFn)(const XBYTE *, XDWORD, int, const VxMatrix &, float &, float &, float &, float &, float &, float &);
+
+void InterpolateFloatArray_ScalarImpl(void *Res, void *array1, void *array2, float factor, int count) {
     float *r = static_cast<float *>(Res);
     const float *a = static_cast<const float *>(array1);
     const float *b = static_cast<const float *>(array2);
     for (int i = 0; i < count; ++i) {
         r[i] = a[i] + (b[i] - a[i]) * factor;
     }
-#endif
 }
 
-void InterpolateVectorArray(void *Res, void *Inarray1, void *Inarray2, float factor, int count, XDWORD StrideRes, XDWORD StrideIn) {
-    if (!Res || !Inarray1 || !Inarray2 || count == 0)
-        return;
-
-#if defined(VX_SIMD_SSE)
-    VxSIMDInterpolateVectorArray(
-        Res,
-        Inarray1,
-        Inarray2,
-        factor,
-        count,
-        StrideRes,
-        StrideIn);
-#else
+void InterpolateVectorArray_ScalarImpl(void *Res, void *Inarray1, void *Inarray2, float factor, int count, XDWORD StrideRes, XDWORD StrideIn) {
     const char *srcA = static_cast<const char *>(Inarray1);
     const char *srcB = static_cast<const char *>(Inarray2);
     char *dst = static_cast<char *>(Res);
@@ -92,36 +156,104 @@ void InterpolateVectorArray(void *Res, void *Inarray1, void *Inarray2, float fac
         vecResult->y = vecA->y + (vecB->y - vecA->y) * factor;
         vecResult->z = vecA->z + (vecB->z - vecA->z) * factor;
     }
+}
+
+#if defined(VX_SIMD_SSE)
+void InterpolateFloatArray_SIMDImpl(void *Res, void *array1, void *array2, float factor, int count) {
+    VxSIMDInterpolateFloatArray(
+        static_cast<float *>(Res),
+        static_cast<const float *>(array1),
+        static_cast<const float *>(array2),
+        factor,
+        count);
+}
+
+void InterpolateVectorArray_SIMDImpl(void *Res, void *Inarray1, void *Inarray2, float factor, int count, XDWORD StrideRes, XDWORD StrideIn) {
+    VxSIMDInterpolateVectorArray(
+        Res,
+        Inarray1,
+        Inarray2,
+        factor,
+        count,
+        StrideRes,
+        StrideIn);
+}
+#endif
+
+struct VxMathDispatchTable {
+    VxInterpolateFloatArrayDispatchFn interpolateFloatArray;
+    VxInterpolateVectorArrayDispatchFn interpolateVectorArray;
+    VxFillStructureDispatchFn fillStructure;
+    VxCopyStructureDispatchFn copyStructure;
+    VxIndexedCopyDispatchFn indexedCopy;
+    VxPtInRectDispatchFn ptInRect;
+    VxTransformBox2DCoreDispatchFn transformBox2DCore;
+    VxProjectBoxZExtentsCoreDispatchFn projectBoxZExtentsCore;
+    VxProjectPointsToAxesExtentsDispatchFn projectPointsToAxesExtents;
+    bool useSIMD;
+};
+
+VxMathDispatchTable g_VxMathDispatch = {
+    InterpolateFloatArray_ScalarImpl,
+    InterpolateVectorArray_ScalarImpl,
+    FillStructureScalarImpl,
+    CopyStructureScalarImpl,
+    IndexedCopyScalarImpl,
+    PtInRectScalarImpl,
+    TransformBox2DScalarCore,
+    ProjectBoxZExtentsScalarCore,
+    ProjectPointsToAxesExtentsScalar,
+    false
+};
+}
+
+void VxMathDispatchRebuild(int effectiveMode) {
+    const bool useSIMD = (effectiveMode != VX_SIMD_MODE_NONE);
+    g_VxMathDispatch.useSIMD = useSIMD;
+#if defined(VX_SIMD_SSE)
+    g_VxMathDispatch.interpolateFloatArray = useSIMD ? InterpolateFloatArray_SIMDImpl : InterpolateFloatArray_ScalarImpl;
+    g_VxMathDispatch.interpolateVectorArray = useSIMD ? InterpolateVectorArray_SIMDImpl : InterpolateVectorArray_ScalarImpl;
+    g_VxMathDispatch.fillStructure = useSIMD ? FillStructureSIMDImpl : FillStructureScalarImpl;
+    g_VxMathDispatch.copyStructure = useSIMD ? CopyStructureSIMDImpl : CopyStructureScalarImpl;
+    g_VxMathDispatch.indexedCopy = useSIMD ? IndexedCopySIMDImpl : IndexedCopyScalarImpl;
+    g_VxMathDispatch.ptInRect = useSIMD ? PtInRectSIMDImpl : PtInRectScalarImpl;
+    g_VxMathDispatch.transformBox2DCore = useSIMD ? TransformBox2DSIMDCore : TransformBox2DScalarCore;
+    g_VxMathDispatch.projectBoxZExtentsCore = useSIMD ? ProjectBoxZExtentsSIMDCore : ProjectBoxZExtentsScalarCore;
+    g_VxMathDispatch.projectPointsToAxesExtents = useSIMD ? ProjectPointsToAxesExtentsSIMD : ProjectPointsToAxesExtentsScalar;
+#else
+    g_VxMathDispatch.interpolateFloatArray = InterpolateFloatArray_ScalarImpl;
+    g_VxMathDispatch.interpolateVectorArray = InterpolateVectorArray_ScalarImpl;
+    g_VxMathDispatch.fillStructure = FillStructureScalarImpl;
+    g_VxMathDispatch.copyStructure = CopyStructureScalarImpl;
+    g_VxMathDispatch.indexedCopy = IndexedCopyScalarImpl;
+    g_VxMathDispatch.ptInRect = PtInRectScalarImpl;
+    g_VxMathDispatch.transformBox2DCore = TransformBox2DScalarCore;
+    g_VxMathDispatch.projectBoxZExtentsCore = ProjectBoxZExtentsScalarCore;
+    g_VxMathDispatch.projectPointsToAxesExtents = ProjectPointsToAxesExtentsScalar;
 #endif
 }
 
-XBOOL VxTransformBox2D(const VxMatrix &World_ProjectionMat, const VxBbox &box, VxRect *ScreenSize, VxRect *Extents, VXCLIP_FLAGS &OrClipFlags, VXCLIP_FLAGS &AndClipFlags) {
-    // Validate input
-    if (!box.IsValid()) {
-        OrClipFlags = VXCLIP_ALL;
-        AndClipFlags = VXCLIP_ALL;
-        return FALSE;
-    }
+void InitVxMath() {
+    VxDetectProcessor();
+    InitializeTables();
+    VxSIMDDispatchInitialize();
+}
 
-    // Initialize extents to zero for deterministic output
-    if (Extents) {
-        Extents->left = 0.0f;
-        Extents->top = 0.0f;
-        Extents->right = 0.0f;
-        Extents->bottom = 0.0f;
-    }
+void InterpolateFloatArray(void *Res, void *array1, void *array2, float factor, int count) {
+    if (!Res || !array1 || !array2 || count == 0)
+        return;
 
-#if defined(VX_SIMD_SSE)
-    return VxSIMDTransformBox2D(
-        &World_ProjectionMat,
-        &box,
-        Extents,
-        ScreenSize,
-        &OrClipFlags,
-        &AndClipFlags
-    );
-#endif
+    g_VxMathDispatch.interpolateFloatArray(Res, array1, array2, factor, count);
+}
 
+void InterpolateVectorArray(void *Res, void *Inarray1, void *Inarray2, float factor, int count, XDWORD StrideRes, XDWORD StrideIn) {
+    if (!Res || !Inarray1 || !Inarray2 || count == 0)
+        return;
+
+    g_VxMathDispatch.interpolateVectorArray(Res, Inarray1, Inarray2, factor, count, StrideRes, StrideIn);
+}
+
+static XBOOL TransformBox2DScalarCore(const VxMatrix &World_ProjectionMat, const VxBbox &box, VxRect *ScreenSize, VxRect *Extents, VXCLIP_FLAGS &OrClipFlags, VXCLIP_FLAGS &AndClipFlags) {
     // Use local variables for thread safety
     VxVector4 transformedVertices[8];
     XDWORD allVerticesFlags = 0;
@@ -257,24 +389,37 @@ XBOOL VxTransformBox2D(const VxMatrix &World_ProjectionMat, const VxBbox &box, V
     return !(allVerticesFlagsAnded & VXCLIP_ALL);
 }
 
-void VxProjectBoxZExtents(const VxMatrix &World_ProjectionMat, const VxBbox &box, float &ZhMin, float &ZhMax) {
-    // Initialize return values
-    ZhMin = 1.0e10f;
-    ZhMax = -1.0e10f;
+XBOOL VxTransformBox2D(const VxMatrix &World_ProjectionMat, const VxBbox &box, VxRect *ScreenSize, VxRect *Extents, VXCLIP_FLAGS &OrClipFlags, VXCLIP_FLAGS &AndClipFlags) {
+    // Validate input
+    if (!box.IsValid()) {
+        OrClipFlags = VXCLIP_ALL;
+        AndClipFlags = VXCLIP_ALL;
+        return FALSE;
+    }
 
+    // Initialize extents to zero for deterministic output
+    if (Extents) {
+        Extents->left = 0.0f;
+        Extents->top = 0.0f;
+        Extents->right = 0.0f;
+        Extents->bottom = 0.0f;
+    }
+
+    return g_VxMathDispatch.transformBox2DCore(
+        World_ProjectionMat,
+        box,
+        ScreenSize,
+        Extents,
+        OrClipFlags,
+        AndClipFlags
+    );
+}
+
+static void ProjectBoxZExtentsScalarCore(const VxMatrix &World_ProjectionMat, const VxBbox &box, float &ZhMin, float &ZhMax) {
     // Validate input (keep legacy behavior for invalid boxes)
     if (!box.IsValid()) {
         return;
     }
-
-#if defined(VX_SIMD_SSE)
-    VxSIMDProjectBoxZExtents(&World_ProjectionMat, &box, &ZhMin, &ZhMax);
-    if (ZhMin > ZhMax) {
-        ZhMin = 0.0f;
-        ZhMax = 1.0f;
-    }
-    return;
-#endif
 
     VxVector4 transformedVertex;
 
@@ -349,15 +494,24 @@ void VxProjectBoxZExtents(const VxMatrix &World_ProjectionMat, const VxBbox &box
     }
 }
 
+void VxProjectBoxZExtents(const VxMatrix &World_ProjectionMat, const VxBbox &box, float &ZhMin, float &ZhMax) {
+    // Initialize return values
+    ZhMin = 1.0e10f;
+    ZhMax = -1.0e10f;
+
+    // Preserve legacy contract for invalid boxes before backend dispatch.
+    if (!box.IsValid()) {
+        return;
+    }
+
+    g_VxMathDispatch.projectBoxZExtentsCore(World_ProjectionMat, box, ZhMin, ZhMax);
+}
+
 
 /**
  * Fills an array with copies of a structure
  */
-XBOOL VxFillStructure(int Count, void *Dst, XDWORD Stride, XDWORD SizeSrc, const void *Src) {
-#if defined(VX_SIMD_SSE)
-    return VxSIMDFillStructure(Count, Dst, Stride, SizeSrc, Src);
-#endif
-
+static XBOOL FillStructureScalarImpl(int Count, void *Dst, XDWORD Stride, XDWORD SizeSrc, const void *Src) {
     if (!Src || !Dst || !Count || !SizeSrc || !Stride || (SizeSrc & 3) != 0)
         return FALSE;
 
@@ -439,11 +593,7 @@ XBOOL VxFillStructure(int Count, void *Dst, XDWORD Stride, XDWORD SizeSrc, const
 /**
  * Copies structures from one array to another
  */
-XBOOL VxCopyStructure(int Count, void *Dst, XDWORD OutStride, XDWORD SizeSrc, const void *Src, XDWORD InStride) {
-#if defined(VX_SIMD_SSE)
-    return VxSIMDCopyStructure(Count, Dst, OutStride, SizeSrc, Src, InStride);
-#endif
-
+static XBOOL CopyStructureScalarImpl(int Count, void *Dst, XDWORD OutStride, XDWORD SizeSrc, const void *Src, XDWORD InStride) {
     if (!Src || !Dst || !Count || !SizeSrc || !OutStride || !InStride || (SizeSrc & 3) != 0)
         return FALSE;
 
@@ -525,11 +675,7 @@ XBOOL VxCopyStructure(int Count, void *Dst, XDWORD OutStride, XDWORD SizeSrc, co
 /**
  * Copies structures from an array to another using an index array
  */
-XBOOL VxIndexedCopy(const VxStridedData &Dst, const VxStridedData &Src, XDWORD SizeSrc, const int *Indices, int IndexCount) {
-#if defined(VX_SIMD_SSE)
-    return VxSIMDIndexedCopy(Dst, Src, SizeSrc, Indices, IndexCount);
-#endif
-
+static XBOOL IndexedCopyScalarImpl(const VxStridedData &Dst, const VxStridedData &Src, XDWORD SizeSrc, const int *Indices, int IndexCount) {
     // Validate parameters
     if (IndexCount == 0)
         return FALSE;
@@ -666,16 +812,66 @@ XBOOL VxIndexedCopy(const VxStridedData &Dst, const VxStridedData &Src, XDWORD S
     return TRUE;
 }
 
-XBOOL VxPtInRect(CKRECT *rect, CKPOINT *pt) {
-#if defined(VX_SIMD_SSE)
-    return VxSIMDPtInRect(rect, pt);
-#endif
-
+static XBOOL PtInRectScalarImpl(CKRECT *rect, CKPOINT *pt) {
     if (pt->x < rect->left)
         return FALSE;
     if (pt->x > rect->right)
         return FALSE;
     return pt->y <= rect->bottom && pt->y >= rect->top;
+}
+
+static void ProjectPointsToAxesExtentsScalar(const XBYTE *Points, XDWORD Stride, int Count, const VxMatrix &BBoxMatrix, float &minX, float &maxX, float &minY, float &maxY, float &minZ, float &maxZ) {
+    // Project all points onto the principal axes to find min/max extents
+    const float *pPoint = reinterpret_cast<const float *>(Points);
+
+    // Initialize min/max with the first point projection
+    float projX = pPoint[0] * BBoxMatrix[0][0] + pPoint[1] * BBoxMatrix[0][1] + pPoint[2] * BBoxMatrix[0][2];
+    minX = maxX = projX;
+
+    float projY = pPoint[0] * BBoxMatrix[1][0] + pPoint[1] * BBoxMatrix[1][1] + pPoint[2] * BBoxMatrix[1][2];
+    minY = maxY = projY;
+
+    float projZ = pPoint[0] * BBoxMatrix[2][0] + pPoint[1] * BBoxMatrix[2][1] + pPoint[2] * BBoxMatrix[2][2];
+    minZ = maxZ = projZ;
+
+    // Find min/max extents for all points
+    for (int i = 0; i < Count; ++i) {
+        const float *p = reinterpret_cast<const float *>(Points + i * Stride);
+
+        float x = p[0] * BBoxMatrix[0][0] + p[1] * BBoxMatrix[0][1] + p[2] * BBoxMatrix[0][2];
+        if (x >= maxX)
+            maxX = x;
+        else if (x < minX)
+            minX = x;
+
+        float y = p[0] * BBoxMatrix[1][0] + p[1] * BBoxMatrix[1][1] + p[2] * BBoxMatrix[1][2];
+        if (y >= maxY)
+            maxY = y;
+        else if (y < minY)
+            minY = y;
+
+        float z = p[0] * BBoxMatrix[2][0] + p[1] * BBoxMatrix[2][1] + p[2] * BBoxMatrix[2][2];
+        if (z >= maxZ)
+            maxZ = z;
+        else if (z < minZ)
+            minZ = z;
+    }
+}
+
+XBOOL VxFillStructure(int Count, void *Dst, XDWORD Stride, XDWORD SizeSrc, const void *Src) {
+    return g_VxMathDispatch.fillStructure(Count, Dst, Stride, SizeSrc, Src);
+}
+
+XBOOL VxCopyStructure(int Count, void *Dst, XDWORD OutStride, XDWORD SizeSrc, const void *Src, XDWORD InStride) {
+    return g_VxMathDispatch.copyStructure(Count, Dst, OutStride, SizeSrc, Src, InStride);
+}
+
+XBOOL VxIndexedCopy(const VxStridedData &Dst, const VxStridedData &Src, XDWORD SizeSrc, const int *Indices, int IndexCount) {
+    return g_VxMathDispatch.indexedCopy(Dst, Src, SizeSrc, Indices, IndexCount);
+}
+
+XBOOL VxPtInRect(CKRECT *rect, CKPOINT *pt) {
+    return g_VxMathDispatch.ptInRect(rect, pt);
 }
 
 XBOOL VxComputeBestFitBBox(const XBYTE *Points, XDWORD Stride, int Count, VxMatrix &BBoxMatrix, float AdditionalBorder) {
@@ -714,79 +910,18 @@ XBOOL VxComputeBestFitBBox(const XBYTE *Points, XDWORD Stride, int Count, VxMatr
         BBoxMatrix[2][3] = 0.0f;
 
         float minX, maxX, minY, maxY, minZ, maxZ;
-#if defined(VX_SIMD_SSE)
-        const __m128 axisX = VxSIMDLoadFloat3(&BBoxMatrix[0][0]);
-        const __m128 axisY = VxSIMDLoadFloat3(&BBoxMatrix[1][0]);
-        const __m128 axisZ = VxSIMDLoadFloat3(&BBoxMatrix[2][0]);
-
-        const float *firstPoint = reinterpret_cast<const float *>(Points);
-        float projX;
-        float projY;
-        float projZ;
-        VxSIMDProjectPointToAxes3(firstPoint, axisX, axisY, axisZ, projX, projY, projZ);
-
-        minX = maxX = projX;
-        minY = maxY = projY;
-        minZ = maxZ = projZ;
-
-        // Keep scalar-style comparisons so NaN handling stays consistent with legacy code.
-        for (int i = 0; i < Count; ++i) {
-            const float *p = reinterpret_cast<const float *>(Points + i * Stride);
-            float x, y, z;
-            VxSIMDProjectPointToAxes3(p, axisX, axisY, axisZ, x, y, z);
-
-            if (x >= maxX)
-                maxX = x;
-            else if (x < minX)
-                minX = x;
-
-            if (y >= maxY)
-                maxY = y;
-            else if (y < minY)
-                minY = y;
-
-            if (z >= maxZ)
-                maxZ = z;
-            else if (z < minZ)
-                minZ = z;
-        }
-#else
-        // Project all points onto the principal axes to find min/max extents
-        const float *pPoint = reinterpret_cast<const float *>(Points);
-
-        // Initialize min/max with the first point projection
-        float projX = pPoint[0] * BBoxMatrix[0][0] + pPoint[1] * BBoxMatrix[0][1] + pPoint[2] * BBoxMatrix[0][2];
-        minX = maxX = projX;
-
-        float projY = pPoint[0] * BBoxMatrix[1][0] + pPoint[1] * BBoxMatrix[1][1] + pPoint[2] * BBoxMatrix[1][2];
-        minY = maxY = projY;
-
-        float projZ = pPoint[0] * BBoxMatrix[2][0] + pPoint[1] * BBoxMatrix[2][1] + pPoint[2] * BBoxMatrix[2][2];
-        minZ = maxZ = projZ;
-
-        // Find min/max extents for all points
-        for (int i = 0; i < Count; ++i) {
-            const float *p = reinterpret_cast<const float *>(Points + i * Stride);
-
-            float x = p[0] * BBoxMatrix[0][0] + p[1] * BBoxMatrix[0][1] + p[2] * BBoxMatrix[0][2];
-            if (x >= maxX)
-                maxX = x;
-            else if (x < minX)
-                minX = x;
-
-            float y = p[0] * BBoxMatrix[1][0] + p[1] * BBoxMatrix[1][1] + p[2] * BBoxMatrix[1][2];
-            if (y >= maxY)
-                maxY = y;
-            else if (y < minY)
-                minY = y;
-
-            float z = p[0] * BBoxMatrix[2][0] + p[1] * BBoxMatrix[2][1] + p[2] * BBoxMatrix[2][2];
-            if (z >= maxZ)
-                maxZ = z;
-            else if (z < minZ)
-                minZ = z;
-        }
-#endif
+        g_VxMathDispatch.projectPointsToAxesExtents(
+            Points,
+            Stride,
+            Count,
+            BBoxMatrix,
+            minX,
+            maxX,
+            minY,
+            maxY,
+            minZ,
+            maxZ
+        );
 
         // Calculate center point in principal axis space
         float centerX = (minX + maxX) * 0.5f;
@@ -843,7 +978,6 @@ BOOL APIENTRY DllMain(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID lpReserved) {
             InitVxMath();
             break;
         case DLL_PROCESS_DETACH:
-            DeleteCriticalSection(&g_CriticalSection);
             break;
         default:
             break;

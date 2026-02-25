@@ -4,7 +4,11 @@
 
 VxMutex::VxMutex() {
     m_Mutex = (void *) new pthread_mutex_t;
-    pthread_mutex_init((pthread_mutex_t *) m_Mutex, nullptr);
+    pthread_mutexattr_t attr;
+    pthread_mutexattr_init(&attr);
+    pthread_mutexattr_settype(&attr, PTHREAD_MUTEX_RECURSIVE);
+    pthread_mutex_init((pthread_mutex_t *) m_Mutex, &attr);
+    pthread_mutexattr_destroy(&attr);
 }
 
 VxMutex::~VxMutex() {

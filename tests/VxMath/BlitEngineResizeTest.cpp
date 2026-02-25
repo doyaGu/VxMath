@@ -84,6 +84,31 @@ TEST_F(ResizeTest, SameSize_1x1) {
     EXPECT_EQ(0xFF123456, *dst);
 }
 
+TEST_F(ResizeTest, Resize16Bit565_UsesNearestNeighborMapping) {
+    const int srcW = 4, srcH = 4;
+    const int dstW = 2, dstH = 2;
+    ImageBuffer srcBuffer(srcW * srcH * 2);
+    ImageBuffer dstBuffer(dstW * dstH * 2);
+    dstBuffer.Fill(0);
+
+    XWORD *src = reinterpret_cast<XWORD *>(srcBuffer.Data());
+    for (int y = 0; y < srcH; ++y) {
+        for (int x = 0; x < srcW; ++x) {
+            src[y * srcW + x] = static_cast<XWORD>((y * srcW + x) & 0xFFFF);
+        }
+    }
+
+    auto srcDesc = ImageDescFactory::Create16Bit565(srcW, srcH, srcBuffer.Data());
+    auto dstDesc = ImageDescFactory::Create16Bit565(dstW, dstH, dstBuffer.Data());
+    blitter.ResizeImage(srcDesc, dstDesc);
+
+    const XWORD *dst = reinterpret_cast<const XWORD *>(dstBuffer.Data());
+    EXPECT_EQ(src[0], dst[0]);   // (0,0) <- (0,0)
+    EXPECT_EQ(src[2], dst[1]);   // (1,0) <- (2,0)
+    EXPECT_EQ(src[8], dst[2]);   // (0,1) <- (0,2)
+    EXPECT_EQ(src[10], dst[3]);  // (1,1) <- (2,2)
+}
+
 //==============================================================================
 // Upscaling Tests
 //==============================================================================

@@ -6,6 +6,7 @@
 #include "VxFrustum.h"
 #include "VxMatrix.h"
 #include "VxSIMD.h"
+#include "VxIntersectDispatchStateInternal.h"
 
 #if defined(VX_SIMD_SSE)
 static inline __m128 VxSIMDLoadVector3(const VxVector &v) {
@@ -83,26 +84,35 @@ static inline float VxSIMDPlaneClassifyFace(const VxPlane &plane, const VxVector
 //--------- Frustum
 
 // Intersection Frustum - Face
-XBOOL VxIntersect::FrustumFace(const VxFrustum &frustum, const VxVector &pt0, const VxVector &pt1, const VxVector &pt2) {
+namespace {
+
+typedef XBOOL (*VxIntersectFrustumFaceDispatchFn)(const VxFrustum &, const VxVector &, const VxVector &, const VxVector &);
+typedef XBOOL (*VxIntersectFrustumOBBDispatchFn)(const VxFrustum &, const VxBbox &, const VxMatrix &);
+typedef XBOOL (*VxIntersectFrustumBoxDispatchFn)(const VxFrustum &, const VxBbox &, const VxMatrix &);
+
+static XBOOL FrustumFaceScalarCore(const VxFrustum &frustum, const VxVector &pt0, const VxVector &pt1, const VxVector &pt2);
+static XBOOL FrustumOBBScalarCore(const VxFrustum &frustum, const VxBbox &box, const VxMatrix &mat);
+static XBOOL FrustumBoxScalarCore(const VxFrustum &frustum, const VxBbox &box, const VxMatrix &mat);
+
 #if defined(VX_SIMD_SSE)
-    if (VxSIMDPlaneClassifyFace(frustum.GetNearPlane(), pt0, pt1, pt2) > 0.0f)
-        return FALSE;
-    if (VxSIMDPlaneClassifyFace(frustum.GetFarPlane(), pt0, pt1, pt2) > 0.0f)
-        return FALSE;
-    if (VxSIMDPlaneClassifyFace(frustum.GetLeftPlane(), pt0, pt1, pt2) > 0.0f)
-        return FALSE;
-    if (VxSIMDPlaneClassifyFace(frustum.GetRightPlane(), pt0, pt1, pt2) > 0.0f)
-        return FALSE;
-    if (VxSIMDPlaneClassifyFace(frustum.GetBottomPlane(), pt0, pt1, pt2) > 0.0f)
-        return FALSE;
-    if (VxSIMDPlaneClassifyFace(frustum.GetUpPlane(), pt0, pt1, pt2) > 0.0f)
-        return FALSE;
-    return TRUE;
-#else
-    // Plane convention: Classify(point) > 0 => outside.
-    // Uses a face-classification test for the bottom/top planes.
-    // Using ClassifyFace consistently matches the reject rule:
-    // reject only if the whole triangle is strictly outside one plane.
+static XBOOL FrustumFaceSIMDCore(const VxFrustum &frustum, const VxVector &pt0, const VxVector &pt1, const VxVector &pt2);
+static XBOOL FrustumOBBSIMDCore(const VxFrustum &frustum, const VxBbox &box, const VxMatrix &mat);
+static XBOOL FrustumBoxSIMDCore(const VxFrustum &frustum, const VxBbox &box, const VxMatrix &mat);
+#endif
+
+struct VxIntersectFrustumDispatchTable {
+    VxIntersectFrustumFaceDispatchFn frustumFace;
+    VxIntersectFrustumOBBDispatchFn frustumOBB;
+    VxIntersectFrustumBoxDispatchFn frustumBox;
+};
+
+VxIntersectFrustumDispatchTable g_VxIntersectFrustumDispatch = {
+    FrustumFaceScalarCore,
+    FrustumOBBScalarCore,
+    FrustumBoxScalarCore
+};
+
+static XBOOL FrustumFaceScalarCore(const VxFrustum &frustum, const VxVector &pt0, const VxVector &pt1, const VxVector &pt2) {
     if (frustum.GetNearPlane().ClassifyFace(pt0, pt1, pt2) > 0.0f)
         return FALSE;
     if (frustum.GetFarPlane().ClassifyFace(pt0, pt1, pt2) > 0.0f)
@@ -115,82 +125,10 @@ XBOOL VxIntersect::FrustumFace(const VxFrustum &frustum, const VxVector &pt0, co
         return FALSE;
     if (frustum.GetUpPlane().ClassifyFace(pt0, pt1, pt2) > 0.0f)
         return FALSE;
-
     return TRUE;
-#endif
 }
 
-// Intersection Frustum - AABB
-XBOOL VxIntersect::FrustumAABB(const VxFrustum &frustum, const VxBbox &box) {
-    // It is equivalent to the OBB test with an identity transform.
-    VxMatrix id;
-    id.SetIdentity();
-    return FrustumOBB(frustum, box, id);
-}
-
-// Intersection Frustum - OBB
-XBOOL VxIntersect::FrustumOBB(const VxFrustum &frustum, const VxBbox &box, const VxMatrix &mat) {
-#if defined(VX_SIMD_SSE)
-    VxVector halfSize = (box.Max - box.Min) * 0.5f;
-
-    VxVector localCenter = (box.Max + box.Min) * 0.5f;
-    VxVector worldCenter;
-    Vx3DMultiplyMatrixVector(&worldCenter, mat, &localCenter);
-    VxVector relCenter = worldCenter - frustum.GetOrigin();
-
-    VxVector axis0(mat[0].x, mat[0].y, mat[0].z);
-    VxVector axis1(mat[1].x, mat[1].y, mat[1].z);
-    VxVector axis2(mat[2].x, mat[2].y, mat[2].z);
-
-    const __m128 axis0V = VxSIMDLoadVector3(axis0);
-    const __m128 axis1V = VxSIMDLoadVector3(axis1);
-    const __m128 axis2V = VxSIMDLoadVector3(axis2);
-
-    const float len0 = sqrtf(VxSIMDDot3Scalar(axis0V, axis0V));
-    const float len1 = sqrtf(VxSIMDDot3Scalar(axis1V, axis1V));
-    const float len2 = sqrtf(VxSIMDDot3Scalar(axis2V, axis2V));
-
-    if (len0 != 0.0f) axis0 *= (1.0f / len0);
-    if (len1 != 0.0f) axis1 *= (1.0f / len1);
-    if (len2 != 0.0f) axis2 *= (1.0f / len2);
-
-    halfSize.x *= len0;
-    halfSize.y *= len1;
-    halfSize.z *= len2;
-
-    const float rBound = frustum.GetRBound();
-    const float uBound = frustum.GetUBound();
-    const float dMin = frustum.GetDMin();
-    const float dRatio = frustum.GetDRatio();
-
-    const __m128 relCenterV = VxSIMDLoadVector3(relCenter);
-    const __m128 axis0N = VxSIMDLoadVector3(axis0);
-    const __m128 axis1N = VxSIMDLoadVector3(axis1);
-    const __m128 axis2N = VxSIMDLoadVector3(axis2);
-    const __m128 frUpV = VxSIMDLoadVector3(frustum.GetUp());
-    const __m128 frRightV = VxSIMDLoadVector3(frustum.GetRight());
-    const __m128 frDirV = VxSIMDLoadVector3(frustum.GetDir());
-
-    if (!VxSIMDFrustumOBBAxisTest(axis0N, relCenterV, axis0N, axis1N, axis2N, halfSize.x, halfSize.y, halfSize.z, frUpV, frRightV, frDirV, uBound, rBound, dMin, dRatio))
-        return FALSE;
-    if (!VxSIMDFrustumOBBAxisTest(axis1N, relCenterV, axis0N, axis1N, axis2N, halfSize.x, halfSize.y, halfSize.z, frUpV, frRightV, frDirV, uBound, rBound, dMin, dRatio))
-        return FALSE;
-    if (!VxSIMDFrustumOBBAxisTest(axis2N, relCenterV, axis0N, axis1N, axis2N, halfSize.x, halfSize.y, halfSize.z, frUpV, frRightV, frDirV, uBound, rBound, dMin, dRatio))
-        return FALSE;
-
-    if (!VxSIMDFrustumOBBAxisTest(VxSIMDLoadVector3(frustum.GetFarPlane().GetNormal()), relCenterV, axis0N, axis1N, axis2N, halfSize.x, halfSize.y, halfSize.z, frUpV, frRightV, frDirV, uBound, rBound, dMin, dRatio))
-        return FALSE;
-    if (!VxSIMDFrustumOBBAxisTest(VxSIMDLoadVector3(frustum.GetBottomPlane().GetNormal()), relCenterV, axis0N, axis1N, axis2N, halfSize.x, halfSize.y, halfSize.z, frUpV, frRightV, frDirV, uBound, rBound, dMin, dRatio))
-        return FALSE;
-    if (!VxSIMDFrustumOBBAxisTest(VxSIMDLoadVector3(frustum.GetUpPlane().GetNormal()), relCenterV, axis0N, axis1N, axis2N, halfSize.x, halfSize.y, halfSize.z, frUpV, frRightV, frDirV, uBound, rBound, dMin, dRatio))
-        return FALSE;
-    if (!VxSIMDFrustumOBBAxisTest(VxSIMDLoadVector3(frustum.GetLeftPlane().GetNormal()), relCenterV, axis0N, axis1N, axis2N, halfSize.x, halfSize.y, halfSize.z, frUpV, frRightV, frDirV, uBound, rBound, dMin, dRatio))
-        return FALSE;
-    if (!VxSIMDFrustumOBBAxisTest(VxSIMDLoadVector3(frustum.GetRightPlane().GetNormal()), relCenterV, axis0N, axis1N, axis2N, halfSize.x, halfSize.y, halfSize.z, frUpV, frRightV, frDirV, uBound, rBound, dMin, dRatio))
-        return FALSE;
-
-    return TRUE;
-#else
+static XBOOL FrustumOBBScalarCore(const VxFrustum &frustum, const VxBbox &box, const VxMatrix &mat) {
     // It performs SAT-style interval overlap tests along:
     //  - the 3 box axes (matrix rows, normalized)
     //  - the frustum's 5 plane normals (far, bottom, up, left, right)
@@ -267,12 +205,109 @@ XBOOL VxIntersect::FrustumOBB(const VxFrustum &frustum, const VxBbox &box, const
     if (!axisTest(frustum.GetRightPlane().GetNormal())) return FALSE;
 
     return TRUE;
-#endif
 }
 
-// Intersection Frustum - Box (deprecated, alias for FrustumOBB)
-XBOOL VxIntersect::FrustumBox(const VxFrustum &frustum, const VxBbox &box, const VxMatrix &mat) {
+static XBOOL FrustumBoxScalarCore(const VxFrustum &frustum, const VxBbox &box, const VxMatrix &mat) {
+    // Build a transformed oriented box representation (3 scaled axes + transformed center)
+    // and reject if it lies strictly outside any frustum plane.
+    VxVector axis[4];
+    axis[0] = mat[0] * ((box.Max.x - box.Min.x) * 0.5f);
+    axis[1] = mat[1] * ((box.Max.y - box.Min.y) * 0.5f);
+    axis[2] = mat[2] * ((box.Max.z - box.Min.z) * 0.5f);
+
+    VxVector center = box.GetCenter();
+    Vx3DMultiplyMatrixVector(axis + 3, mat, &center);
+
+    if (frustum.GetNearPlane().XClassify(axis) > 0.0f) return FALSE;
+    if (frustum.GetFarPlane().XClassify(axis) > 0.0f) return FALSE;
+    if (frustum.GetLeftPlane().XClassify(axis) > 0.0f) return FALSE;
+    if (frustum.GetRightPlane().XClassify(axis) > 0.0f) return FALSE;
+    if (frustum.GetBottomPlane().XClassify(axis) > 0.0f) return FALSE;
+    if (frustum.GetUpPlane().XClassify(axis) > 0.0f) return FALSE;
+
+    return TRUE;
+}
+
 #if defined(VX_SIMD_SSE)
+static XBOOL FrustumFaceSIMDCore(const VxFrustum &frustum, const VxVector &pt0, const VxVector &pt1, const VxVector &pt2) {
+    if (VxSIMDPlaneClassifyFace(frustum.GetNearPlane(), pt0, pt1, pt2) > 0.0f)
+        return FALSE;
+    if (VxSIMDPlaneClassifyFace(frustum.GetFarPlane(), pt0, pt1, pt2) > 0.0f)
+        return FALSE;
+    if (VxSIMDPlaneClassifyFace(frustum.GetLeftPlane(), pt0, pt1, pt2) > 0.0f)
+        return FALSE;
+    if (VxSIMDPlaneClassifyFace(frustum.GetRightPlane(), pt0, pt1, pt2) > 0.0f)
+        return FALSE;
+    if (VxSIMDPlaneClassifyFace(frustum.GetBottomPlane(), pt0, pt1, pt2) > 0.0f)
+        return FALSE;
+    if (VxSIMDPlaneClassifyFace(frustum.GetUpPlane(), pt0, pt1, pt2) > 0.0f)
+        return FALSE;
+    return TRUE;
+}
+
+static XBOOL FrustumOBBSIMDCore(const VxFrustum &frustum, const VxBbox &box, const VxMatrix &mat) {
+    VxVector halfSize = (box.Max - box.Min) * 0.5f;
+
+    VxVector localCenter = (box.Max + box.Min) * 0.5f;
+    VxVector worldCenter;
+    Vx3DMultiplyMatrixVector(&worldCenter, mat, &localCenter);
+    VxVector relCenter = worldCenter - frustum.GetOrigin();
+
+    VxVector axis0(mat[0].x, mat[0].y, mat[0].z);
+    VxVector axis1(mat[1].x, mat[1].y, mat[1].z);
+    VxVector axis2(mat[2].x, mat[2].y, mat[2].z);
+
+    const __m128 axis0V = VxSIMDLoadVector3(axis0);
+    const __m128 axis1V = VxSIMDLoadVector3(axis1);
+    const __m128 axis2V = VxSIMDLoadVector3(axis2);
+
+    const float len0 = sqrtf(VxSIMDDot3Scalar(axis0V, axis0V));
+    const float len1 = sqrtf(VxSIMDDot3Scalar(axis1V, axis1V));
+    const float len2 = sqrtf(VxSIMDDot3Scalar(axis2V, axis2V));
+
+    if (len0 != 0.0f) axis0 *= (1.0f / len0);
+    if (len1 != 0.0f) axis1 *= (1.0f / len1);
+    if (len2 != 0.0f) axis2 *= (1.0f / len2);
+
+    halfSize.x *= len0;
+    halfSize.y *= len1;
+    halfSize.z *= len2;
+
+    const float rBound = frustum.GetRBound();
+    const float uBound = frustum.GetUBound();
+    const float dMin = frustum.GetDMin();
+    const float dRatio = frustum.GetDRatio();
+
+    const __m128 relCenterV = VxSIMDLoadVector3(relCenter);
+    const __m128 axis0N = VxSIMDLoadVector3(axis0);
+    const __m128 axis1N = VxSIMDLoadVector3(axis1);
+    const __m128 axis2N = VxSIMDLoadVector3(axis2);
+    const __m128 frUpV = VxSIMDLoadVector3(frustum.GetUp());
+    const __m128 frRightV = VxSIMDLoadVector3(frustum.GetRight());
+    const __m128 frDirV = VxSIMDLoadVector3(frustum.GetDir());
+
+    if (!VxSIMDFrustumOBBAxisTest(axis0N, relCenterV, axis0N, axis1N, axis2N, halfSize.x, halfSize.y, halfSize.z, frUpV, frRightV, frDirV, uBound, rBound, dMin, dRatio))
+        return FALSE;
+    if (!VxSIMDFrustumOBBAxisTest(axis1N, relCenterV, axis0N, axis1N, axis2N, halfSize.x, halfSize.y, halfSize.z, frUpV, frRightV, frDirV, uBound, rBound, dMin, dRatio))
+        return FALSE;
+    if (!VxSIMDFrustumOBBAxisTest(axis2N, relCenterV, axis0N, axis1N, axis2N, halfSize.x, halfSize.y, halfSize.z, frUpV, frRightV, frDirV, uBound, rBound, dMin, dRatio))
+        return FALSE;
+
+    if (!VxSIMDFrustumOBBAxisTest(VxSIMDLoadVector3(frustum.GetFarPlane().GetNormal()), relCenterV, axis0N, axis1N, axis2N, halfSize.x, halfSize.y, halfSize.z, frUpV, frRightV, frDirV, uBound, rBound, dMin, dRatio))
+        return FALSE;
+    if (!VxSIMDFrustumOBBAxisTest(VxSIMDLoadVector3(frustum.GetBottomPlane().GetNormal()), relCenterV, axis0N, axis1N, axis2N, halfSize.x, halfSize.y, halfSize.z, frUpV, frRightV, frDirV, uBound, rBound, dMin, dRatio))
+        return FALSE;
+    if (!VxSIMDFrustumOBBAxisTest(VxSIMDLoadVector3(frustum.GetUpPlane().GetNormal()), relCenterV, axis0N, axis1N, axis2N, halfSize.x, halfSize.y, halfSize.z, frUpV, frRightV, frDirV, uBound, rBound, dMin, dRatio))
+        return FALSE;
+    if (!VxSIMDFrustumOBBAxisTest(VxSIMDLoadVector3(frustum.GetLeftPlane().GetNormal()), relCenterV, axis0N, axis1N, axis2N, halfSize.x, halfSize.y, halfSize.z, frUpV, frRightV, frDirV, uBound, rBound, dMin, dRatio))
+        return FALSE;
+    if (!VxSIMDFrustumOBBAxisTest(VxSIMDLoadVector3(frustum.GetRightPlane().GetNormal()), relCenterV, axis0N, axis1N, axis2N, halfSize.x, halfSize.y, halfSize.z, frUpV, frRightV, frDirV, uBound, rBound, dMin, dRatio))
+        return FALSE;
+
+    return TRUE;
+}
+
+static XBOOL FrustumBoxSIMDCore(const VxFrustum &frustum, const VxBbox &box, const VxMatrix &mat) {
     VxVector axis[4];
 
     const __m128 minV = VxSIMDLoadVector3(box.Min);
@@ -303,25 +338,43 @@ XBOOL VxIntersect::FrustumBox(const VxFrustum &frustum, const VxBbox &box, const
     if (frustum.GetUpPlane().XClassify(axis) > 0.0f) return FALSE;
 
     return TRUE;
+}
+#endif
+
+} // namespace
+
+void VxIntersectFrustumDispatchRebuild(bool useSIMD) {
+#if defined(VX_SIMD_SSE)
+    g_VxIntersectFrustumDispatch.frustumFace = useSIMD ? FrustumFaceSIMDCore : FrustumFaceScalarCore;
+    g_VxIntersectFrustumDispatch.frustumOBB = useSIMD ? FrustumOBBSIMDCore : FrustumOBBScalarCore;
+    g_VxIntersectFrustumDispatch.frustumBox = useSIMD ? FrustumBoxSIMDCore : FrustumBoxScalarCore;
 #else
-    // Build a transformed oriented box representation (3 scaled axes + transformed center)
-    // and reject if it lies strictly outside any frustum plane.
-
-    VxVector axis[4];
-    axis[0] = mat[0] * ((box.Max.x - box.Min.x) * 0.5f);
-    axis[1] = mat[1] * ((box.Max.y - box.Min.y) * 0.5f);
-    axis[2] = mat[2] * ((box.Max.z - box.Min.z) * 0.5f);
-
-    VxVector center = box.GetCenter();
-    Vx3DMultiplyMatrixVector(axis + 3, mat, &center);
-
-    if (frustum.GetNearPlane().XClassify(axis) > 0.0f) return FALSE;
-    if (frustum.GetFarPlane().XClassify(axis) > 0.0f) return FALSE;
-    if (frustum.GetLeftPlane().XClassify(axis) > 0.0f) return FALSE;
-    if (frustum.GetRightPlane().XClassify(axis) > 0.0f) return FALSE;
-    if (frustum.GetBottomPlane().XClassify(axis) > 0.0f) return FALSE;
-    if (frustum.GetUpPlane().XClassify(axis) > 0.0f) return FALSE;
-
-    return TRUE;
+    (void) useSIMD;
+    g_VxIntersectFrustumDispatch.frustumFace = FrustumFaceScalarCore;
+    g_VxIntersectFrustumDispatch.frustumOBB = FrustumOBBScalarCore;
+    g_VxIntersectFrustumDispatch.frustumBox = FrustumBoxScalarCore;
 #endif
 }
+
+XBOOL VxIntersect::FrustumFace(const VxFrustum &frustum, const VxVector &pt0, const VxVector &pt1, const VxVector &pt2) {
+    return g_VxIntersectFrustumDispatch.frustumFace(frustum, pt0, pt1, pt2);
+}
+
+// Intersection Frustum - AABB
+XBOOL VxIntersect::FrustumAABB(const VxFrustum &frustum, const VxBbox &box) {
+    VxMatrix id;
+    id.SetIdentity();
+    return FrustumOBB(frustum, box, id);
+}
+
+XBOOL VxIntersect::FrustumOBB(const VxFrustum &frustum, const VxBbox &box, const VxMatrix &mat) {
+    return g_VxIntersectFrustumDispatch.frustumOBB(frustum, box, mat);
+}
+
+// Intersection Frustum - Box (deprecated, alias for FrustumOBB)
+XBOOL VxIntersect::FrustumBox(const VxFrustum &frustum, const VxBbox &box, const VxMatrix &mat) {
+    return g_VxIntersectFrustumDispatch.frustumBox(frustum, box, mat);
+}
+
+
+

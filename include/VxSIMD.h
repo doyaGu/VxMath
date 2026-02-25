@@ -394,19 +394,6 @@ VX_SIMD_INLINE const VxSIMDFeatures &VxGetSIMDFeatures() {
 }
 
 // ============================================================================
-// Runtime SIMD Backend Selection
-// ============================================================================
-
-enum class VxSIMDBackend : int {
-    Scalar = 0,
-    SSE2 = 1,
-    AVX2 = 2
-};
-
-// Public diagnostic API used by performance tools and tests.
-VX_EXPORT VxSIMDBackend VxGetActiveSIMDBackend();
-
-// ============================================================================
 // Forward Declarations for Types
 // ============================================================================
 

@@ -4,7 +4,10 @@
 
 #include "VxRay.h"
 #include "VxSIMD.h"
+#include "VxSIMDDispatchInternal.h"
 #include "VxVector.h"
+
+namespace {
 
 struct RayPairTerms {
     VxVector diff;
@@ -61,13 +64,156 @@ static inline RayPairTerms MakeRayPairTermsSIMD(const VxRay& r0, const VxRay& r1
     t.det = XAbs(t.c * t.a - t.b * t.b);
     return t;
 }
+
+static float PointLineSquareDistanceSIMDImpl(const VxVector &point, const VxRay &line, float *t0) {
+    const __m128 pointV = VxSIMDLoadFloat3(&point.x);
+    const __m128 originV = VxSIMDLoadFloat3(&line.m_Origin.x);
+    const __m128 directionV = VxSIMDLoadFloat3(&line.m_Direction.x);
+    const __m128 diff = VxSIMDSubtract3(pointV, originV);
+    const __m128 dotDiffDir = VxSIMDDotProduct3(diff, directionV);
+    const __m128 dotDirDir = VxSIMDDotProduct3(directionV, directionV);
+    const __m128 tVec = _mm_div_ss(dotDiffDir, dotDirDir);
+    const float t = VxSIMDExtractX(tVec);
+
+    if (t0) *t0 = t;
+
+    const __m128 tSplat = _mm_shuffle_ps(tVec, tVec, _MM_SHUFFLE(0, 0, 0, 0));
+    const __m128 residual = _mm_sub_ps(diff, _mm_mul_ps(directionV, tSplat));
+    return VxSIMDExtractX(VxSIMDDotProduct3(residual, residual));
+}
+
+static float PointRaySquareDistanceSIMDImpl(const VxVector &point, const VxRay &ray, float *t0) {
+    __m128 diff = VxSIMDSubtract3(VxSIMDLoadFloat3(&point.x), VxSIMDLoadFloat3(&ray.m_Origin.x));
+    const __m128 directionV = VxSIMDLoadFloat3(&ray.m_Direction.x);
+    const float dotDiffDir = VxSIMDExtractX(VxSIMDDotProduct3(diff, directionV));
+
+    float t;
+    if (dotDiffDir > 0.0f) {
+        const float dotDirDir = VxSIMDExtractX(VxSIMDDotProduct3(directionV, directionV));
+        t = dotDiffDir / dotDirDir;
+        const __m128 tSplat = _mm_set1_ps(t);
+        diff = _mm_sub_ps(diff, _mm_mul_ps(directionV, tSplat));
+    } else {
+        t = 0.0f;
+    }
+
+    if (t0) *t0 = t;
+
+    return VxSIMDExtractX(VxSIMDDotProduct3(diff, diff));
+}
+
+static float PointSegmentSquareDistanceSIMDImpl(const VxVector &point, const VxRay &segment, float *t0) {
+    __m128 diff = VxSIMDSubtract3(VxSIMDLoadFloat3(&point.x), VxSIMDLoadFloat3(&segment.m_Origin.x));
+    const __m128 directionV = VxSIMDLoadFloat3(&segment.m_Direction.x);
+    const float dotDiffDir = VxSIMDExtractX(VxSIMDDotProduct3(diff, directionV));
+
+    float t;
+    if (dotDiffDir > 0.0f) {
+        const float dotDirDir = VxSIMDExtractX(VxSIMDDotProduct3(directionV, directionV));
+        if (dotDiffDir < dotDirDir) {
+            t = dotDiffDir / dotDirDir;
+            diff = _mm_sub_ps(diff, _mm_mul_ps(directionV, _mm_set1_ps(t)));
+        } else {
+            t = 1.0f;
+            diff = _mm_sub_ps(diff, directionV);
+        }
+    } else {
+        t = 0.0f;
+    }
+
+    if (t0) *t0 = t;
+
+    return VxSIMDExtractX(VxSIMDDotProduct3(diff, diff));
+}
 #endif
 
+static float PointLineSquareDistanceScalarImpl(const VxVector &point, const VxRay &line, float *t0) {
+    const VxVector diff = point - line.m_Origin;
+    const float t = DotProduct(diff, line.m_Direction) / SquareMagnitude(line.m_Direction);
+
+    if (t0) *t0 = t;
+
+    const VxVector d = diff - (line.m_Direction * t);
+    return SquareMagnitude(d);
+}
+
+static float PointRaySquareDistanceScalarImpl(const VxVector &point, const VxRay &ray, float *t0) {
+    VxVector diff = point - ray.m_Origin;
+    const float dotDiffDir = DotProduct(diff, ray.m_Direction);
+
+    float t;
+    if (dotDiffDir > 0.0f) {
+        t = dotDiffDir / SquareMagnitude(ray.m_Direction);
+        diff -= ray.m_Direction * t;
+    } else {
+        t = 0.0f;
+    }
+
+    if (t0) *t0 = t;
+
+    return SquareMagnitude(diff);
+}
+
+static float PointSegmentSquareDistanceScalarImpl(const VxVector &point, const VxRay &segment, float *t0) {
+    VxVector diff = point - segment.m_Origin;
+    const float dotDiffDir = DotProduct(diff, segment.m_Direction);
+
+    float t;
+    if (dotDiffDir > 0.0f) {
+        const float dotDirDir = SquareMagnitude(segment.m_Direction);
+        if (dotDiffDir < dotDirDir) {
+            t = dotDiffDir / dotDirDir;
+            diff -= segment.m_Direction * t;
+        } else {
+            // clamp to segment end
+            t = 1.0f;
+            diff -= segment.m_Direction;
+        }
+    } else {
+        t = 0.0f;
+    }
+
+    if (t0) *t0 = t;
+
+    return SquareMagnitude(diff);
+}
+
+typedef RayPairTerms (*MakeRayPairTermsDispatchFn)(const VxRay &, const VxRay &);
+typedef float (*PointDistanceDispatchFn)(const VxVector &, const VxRay &, float *);
+
+struct VxDistanceDispatchTable {
+    MakeRayPairTermsDispatchFn makeRayPairTerms;
+    PointDistanceDispatchFn pointLineSquareDistance;
+    PointDistanceDispatchFn pointRaySquareDistance;
+    PointDistanceDispatchFn pointSegmentSquareDistance;
+};
+
+VxDistanceDispatchTable g_VxDistanceDispatch = {
+    MakeRayPairTermsScalar,
+    PointLineSquareDistanceScalarImpl,
+    PointRaySquareDistanceScalarImpl,
+    PointSegmentSquareDistanceScalarImpl
+};
+
 static inline RayPairTerms MakeRayPairTerms(const VxRay& r0, const VxRay& r1) {
+    return g_VxDistanceDispatch.makeRayPairTerms(r0, r1);
+}
+
+}
+
+void VxDistanceDispatchRebuild(int effectiveMode) {
+    const bool useSIMD = (effectiveMode != VX_SIMD_MODE_NONE);
 #if defined(VX_SIMD_SSE)
-    return MakeRayPairTermsSIMD(r0, r1);
+    g_VxDistanceDispatch.makeRayPairTerms = useSIMD ? MakeRayPairTermsSIMD : MakeRayPairTermsScalar;
+    g_VxDistanceDispatch.pointLineSquareDistance = useSIMD ? PointLineSquareDistanceSIMDImpl : PointLineSquareDistanceScalarImpl;
+    g_VxDistanceDispatch.pointRaySquareDistance = useSIMD ? PointRaySquareDistanceSIMDImpl : PointRaySquareDistanceScalarImpl;
+    g_VxDistanceDispatch.pointSegmentSquareDistance = useSIMD ? PointSegmentSquareDistanceSIMDImpl : PointSegmentSquareDistanceScalarImpl;
 #else
-    return MakeRayPairTermsScalar(r0, r1);
+    (void) useSIMD;
+    g_VxDistanceDispatch.makeRayPairTerms = MakeRayPairTermsScalar;
+    g_VxDistanceDispatch.pointLineSquareDistance = PointLineSquareDistanceScalarImpl;
+    g_VxDistanceDispatch.pointRaySquareDistance = PointRaySquareDistanceScalarImpl;
+    g_VxDistanceDispatch.pointSegmentSquareDistance = PointSegmentSquareDistanceScalarImpl;
 #endif
 }
 
@@ -578,113 +724,16 @@ float VxDistance::SegmentSegmentSquareDistance(const VxRay &segment0, const VxRa
 // Point-Line distance calculations
 
 float VxDistance::PointLineSquareDistance(const VxVector &point, const VxRay &line, float *t0) {
-#if defined(VX_SIMD_SSE)
-    const __m128 pointV = VxSIMDLoadFloat3(&point.x);
-    const __m128 originV = VxSIMDLoadFloat3(&line.m_Origin.x);
-    const __m128 directionV = VxSIMDLoadFloat3(&line.m_Direction.x);
-    const __m128 diff = VxSIMDSubtract3(pointV, originV);
-    const __m128 dotDiffDir = VxSIMDDotProduct3(diff, directionV);
-    const __m128 dotDirDir = VxSIMDDotProduct3(directionV, directionV);
-    const __m128 tVec = _mm_div_ss(dotDiffDir, dotDirDir);
-    const float t = VxSIMDExtractX(tVec);
-
-    if (t0) *t0 = t;
-
-    const __m128 tSplat = _mm_shuffle_ps(tVec, tVec, _MM_SHUFFLE(0, 0, 0, 0));
-    const __m128 residual = _mm_sub_ps(diff, _mm_mul_ps(directionV, tSplat));
-    return VxSIMDExtractX(VxSIMDDotProduct3(residual, residual));
-#else
-    const VxVector diff = point - line.m_Origin;
-    const float t = DotProduct(diff, line.m_Direction) / SquareMagnitude(line.m_Direction);
-
-    if (t0) *t0 = t;
-
-    const VxVector d = diff - (line.m_Direction * t);
-    return SquareMagnitude(d);
-#endif
+    return g_VxDistanceDispatch.pointLineSquareDistance(point, line, t0);
 }
 
 float VxDistance::PointRaySquareDistance(const VxVector &point, const VxRay &ray, float *t0) {
-#if defined(VX_SIMD_SSE)
-    __m128 diff = VxSIMDSubtract3(VxSIMDLoadFloat3(&point.x), VxSIMDLoadFloat3(&ray.m_Origin.x));
-    const __m128 directionV = VxSIMDLoadFloat3(&ray.m_Direction.x);
-    const float dotDiffDir = VxSIMDExtractX(VxSIMDDotProduct3(diff, directionV));
-
-    float t;
-    if (dotDiffDir > 0.0f) {
-        const float dotDirDir = VxSIMDExtractX(VxSIMDDotProduct3(directionV, directionV));
-        t = dotDiffDir / dotDirDir;
-        const __m128 tSplat = _mm_set1_ps(t);
-        diff = _mm_sub_ps(diff, _mm_mul_ps(directionV, tSplat));
-    } else {
-        t = 0.0f;
-    }
-
-    if (t0) *t0 = t;
-
-    return VxSIMDExtractX(VxSIMDDotProduct3(diff, diff));
-#else
-    VxVector diff = point - ray.m_Origin;
-    const float dotDiffDir = DotProduct(diff, ray.m_Direction);
-
-    float t;
-    if (dotDiffDir > 0.0f) {
-        t = dotDiffDir / SquareMagnitude(ray.m_Direction);
-        diff -= ray.m_Direction * t;
-    } else {
-        t = 0.0f;
-    }
-
-    if (t0) *t0 = t;
-
-    return SquareMagnitude(diff);
-#endif
+    return g_VxDistanceDispatch.pointRaySquareDistance(point, ray, t0);
 }
 
 float VxDistance::PointSegmentSquareDistance(const VxVector &point, const VxRay &segment, float *t0) {
-#if defined(VX_SIMD_SSE)
-    __m128 diff = VxSIMDSubtract3(VxSIMDLoadFloat3(&point.x), VxSIMDLoadFloat3(&segment.m_Origin.x));
-    const __m128 directionV = VxSIMDLoadFloat3(&segment.m_Direction.x);
-    const float dotDiffDir = VxSIMDExtractX(VxSIMDDotProduct3(diff, directionV));
-
-    float t;
-    if (dotDiffDir > 0.0f) {
-        const float dotDirDir = VxSIMDExtractX(VxSIMDDotProduct3(directionV, directionV));
-        if (dotDiffDir < dotDirDir) {
-            t = dotDiffDir / dotDirDir;
-            diff = _mm_sub_ps(diff, _mm_mul_ps(directionV, _mm_set1_ps(t)));
-        } else {
-            t = 1.0f;
-            diff = _mm_sub_ps(diff, directionV);
-        }
-    } else {
-        t = 0.0f;
-    }
-
-    if (t0) *t0 = t;
-
-    return VxSIMDExtractX(VxSIMDDotProduct3(diff, diff));
-#else
-    VxVector diff = point - segment.m_Origin;
-    const float dotDiffDir = DotProduct(diff, segment.m_Direction);
-
-    float t;
-    if (dotDiffDir > 0.0f) {
-        const float dotDirDir = SquareMagnitude(segment.m_Direction);
-        if (dotDiffDir < dotDirDir) {
-            t = dotDiffDir / dotDirDir;
-            diff -= segment.m_Direction * t;
-        } else {
-            // clamp to segment end
-            t = 1.0f;
-            diff -= segment.m_Direction;
-        }
-    } else {
-        t = 0.0f;
-    }
-
-    if (t0) *t0 = t;
-
-    return SquareMagnitude(diff);
-#endif
+    return g_VxDistanceDispatch.pointSegmentSquareDistance(point, segment, t0);
 }
+
+
+

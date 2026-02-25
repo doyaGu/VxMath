@@ -1,16 +1,71 @@
 #include <limits>
 
-#if defined(_WIN32)
-#ifndef WIN32_LEAN_AND_MEAN
-#define WIN32_LEAN_AND_MEAN
-#endif
-#include <Windows.h>
-extern CRITICAL_SECTION g_CriticalSection;
-#endif
-
 #include "VxMath.h"
 #include "VxSIMD.h"
+#include "VxSIMDDispatchInternal.h"
 #include "VxBlitEngine.h"
+
+static void GenerateMipMapImpl(const VxImageDescEx &src_desc, XBYTE *Buffer, bool useSIMD);
+static XBOOL ConvertToNormalMapImpl(const VxImageDescEx &image, XDWORD ColorMask, bool useSIMD);
+static XBOOL ConvertToBumpMapImpl(const VxImageDescEx &image, bool useSIMD);
+
+namespace {
+typedef void (*VxGenerateMipMapDispatchFn)(const VxImageDescEx &, XBYTE *);
+typedef XBOOL (*VxConvertToNormalMapDispatchFn)(const VxImageDescEx &, XDWORD);
+typedef XBOOL (*VxConvertToBumpMapDispatchFn)(const VxImageDescEx &);
+
+static void GenerateMipMapScalarDispatch(const VxImageDescEx &src_desc, XBYTE *Buffer) {
+    GenerateMipMapImpl(src_desc, Buffer, false);
+}
+
+static XBOOL ConvertToNormalMapScalarDispatch(const VxImageDescEx &image, XDWORD ColorMask) {
+    return ConvertToNormalMapImpl(image, ColorMask, false);
+}
+
+static XBOOL ConvertToBumpMapScalarDispatch(const VxImageDescEx &image) {
+    return ConvertToBumpMapImpl(image, false);
+}
+
+#if defined(VX_SIMD_SSE2)
+static void GenerateMipMapSIMDDispatch(const VxImageDescEx &src_desc, XBYTE *Buffer) {
+    GenerateMipMapImpl(src_desc, Buffer, true);
+}
+
+static XBOOL ConvertToNormalMapSIMDDispatch(const VxImageDescEx &image, XDWORD ColorMask) {
+    return ConvertToNormalMapImpl(image, ColorMask, true);
+}
+
+static XBOOL ConvertToBumpMapSIMDDispatch(const VxImageDescEx &image) {
+    return ConvertToBumpMapImpl(image, true);
+}
+#endif
+
+struct VxGraphicDispatchTable {
+    VxGenerateMipMapDispatchFn generateMipMap;
+    VxConvertToNormalMapDispatchFn convertToNormalMap;
+    VxConvertToBumpMapDispatchFn convertToBumpMap;
+};
+
+VxGraphicDispatchTable g_VxGraphicDispatch = {
+    GenerateMipMapScalarDispatch,
+    ConvertToNormalMapScalarDispatch,
+    ConvertToBumpMapScalarDispatch
+};
+}
+
+void VxGraphicDispatchRebuild(int effectiveMode) {
+    const bool useSIMD = (effectiveMode != VX_SIMD_MODE_NONE);
+#if defined(VX_SIMD_SSE2)
+    g_VxGraphicDispatch.generateMipMap = useSIMD ? GenerateMipMapSIMDDispatch : GenerateMipMapScalarDispatch;
+    g_VxGraphicDispatch.convertToNormalMap = useSIMD ? ConvertToNormalMapSIMDDispatch : ConvertToNormalMapScalarDispatch;
+    g_VxGraphicDispatch.convertToBumpMap = useSIMD ? ConvertToBumpMapSIMDDispatch : ConvertToBumpMapScalarDispatch;
+#else
+    (void) useSIMD;
+    g_VxGraphicDispatch.generateMipMap = GenerateMipMapScalarDispatch;
+    g_VxGraphicDispatch.convertToNormalMap = ConvertToNormalMapScalarDispatch;
+    g_VxGraphicDispatch.convertToBumpMap = ConvertToBumpMapScalarDispatch;
+#endif
+}
 
 //------------------------------------------------------------------------------
 // Bit manipulation functions
@@ -131,56 +186,26 @@ void VxBppToMask(VxImageDescEx &desc) {
 //------------------------------------------------------------------------------
 
 void VxDoBlit(const VxImageDescEx &src_desc, const VxImageDescEx &dst_desc) {
-#if defined(_WIN32)
-    EnterCriticalSection(&g_CriticalSection);
     TheBlitter.DoBlit(src_desc, dst_desc);
-    LeaveCriticalSection(&g_CriticalSection);
-#else
-    TheBlitter.DoBlit(src_desc, dst_desc);
-#endif
 }
 
 void VxDoBlitUpsideDown(const VxImageDescEx &src_desc, const VxImageDescEx &dst_desc) {
-#if defined(_WIN32)
-    EnterCriticalSection(&g_CriticalSection);
     TheBlitter.DoBlitUpsideDown(src_desc, dst_desc);
-    LeaveCriticalSection(&g_CriticalSection);
-#else
-    TheBlitter.DoBlitUpsideDown(src_desc, dst_desc);
-#endif
 }
 
 void VxDoAlphaBlit(const VxImageDescEx &dst_desc, XBYTE AlphaValue) {
-#if defined(_WIN32)
-    EnterCriticalSection(&g_CriticalSection);
     TheBlitter.DoAlphaBlit(dst_desc, AlphaValue);
-    LeaveCriticalSection(&g_CriticalSection);
-#else
-    TheBlitter.DoAlphaBlit(dst_desc, AlphaValue);
-#endif
 }
 
 void VxDoAlphaBlit(const VxImageDescEx &dst_desc, XBYTE *AlphaValues) {
-#if defined(_WIN32)
-    EnterCriticalSection(&g_CriticalSection);
     TheBlitter.DoAlphaBlit(dst_desc, AlphaValues);
-    LeaveCriticalSection(&g_CriticalSection);
-#else
-    TheBlitter.DoAlphaBlit(dst_desc, AlphaValues);
-#endif
 }
 
 void VxResizeImage32(const VxImageDescEx &src_desc, const VxImageDescEx &dst_desc) {
-#if defined(_WIN32)
-    EnterCriticalSection(&g_CriticalSection);
     TheBlitter.ResizeImage(src_desc, dst_desc);
-    LeaveCriticalSection(&g_CriticalSection);
-#else
-    TheBlitter.ResizeImage(src_desc, dst_desc);
-#endif
 }
 
-void VxGenerateMipMap(const VxImageDescEx &src_desc, XBYTE *Buffer) {
+static void GenerateMipMapImpl(const VxImageDescEx &src_desc, XBYTE *Buffer, bool useSIMD) {
     int Height = src_desc.Height;
     int BytesPerLine = src_desc.BytesPerLine;
     XBYTE *Image = src_desc.Image;
@@ -195,22 +220,24 @@ void VxGenerateMipMap(const VxImageDescEx &src_desc, XBYTE *Buffer) {
             XBYTE *srcPtr = Image;
             int h = dstHeight;
 #if defined(VX_SIMD_SSE2)
-            __m128i zero = _mm_setzero_si128();
-            // Process 4 output pixels at a time if possible
-            while (h >= 4) {
-                for (int i = 0; i < 4; i++) {
-                    __m128i p0 = _mm_cvtsi32_si128(*(int *) srcPtr);
-                    __m128i p1 = _mm_cvtsi32_si128(*(int *) (srcPtr + BytesPerLine));
-                    __m128i lo0 = _mm_unpacklo_epi8(p0, zero);
-                    __m128i lo1 = _mm_unpacklo_epi8(p1, zero);
-                    __m128i sum = _mm_add_epi16(lo0, lo1);
-                    sum = _mm_srli_epi16(sum, 1);
-                    __m128i result = _mm_packus_epi16(sum, zero);
-                    *(int *) dstPtr = _mm_cvtsi128_si32(result);
-                    dstPtr += BytesPerLine;
-                    srcPtr += BytesPerLine * 2;
+            if (useSIMD) {
+                __m128i zero = _mm_setzero_si128();
+                // Process 4 output pixels at a time if possible
+                while (h >= 4) {
+                    for (int i = 0; i < 4; i++) {
+                        __m128i p0 = _mm_cvtsi32_si128(*(int *) srcPtr);
+                        __m128i p1 = _mm_cvtsi32_si128(*(int *) (srcPtr + BytesPerLine));
+                        __m128i lo0 = _mm_unpacklo_epi8(p0, zero);
+                        __m128i lo1 = _mm_unpacklo_epi8(p1, zero);
+                        __m128i sum = _mm_add_epi16(lo0, lo1);
+                        sum = _mm_srli_epi16(sum, 1);
+                        __m128i result = _mm_packus_epi16(sum, zero);
+                        *(int *) dstPtr = _mm_cvtsi128_si32(result);
+                        dstPtr += BytesPerLine;
+                        srcPtr += BytesPerLine * 2;
+                    }
+                    h -= 4;
                 }
-                h -= 4;
             }
 #endif
             while (h > 0) {
@@ -241,66 +268,69 @@ void VxGenerateMipMap(const VxImageDescEx &src_desc, XBYTE *Buffer) {
         XDWORD *srcPtr = (XDWORD *) Image;
 
 #if defined(VX_SIMD_SSE2)
-        // SSE2 path - process 2 output pixels at a time (4 source pixels)
-        __m128i zero = _mm_setzero_si128();
-        int w = dstWidth;
-        while (w >= 2) {
-            // Load 4 source pixels (16 bytes)
-            __m128i src = _mm_loadu_si128((const __m128i *) srcPtr);
-            // Unpack bytes to 16-bit
-            __m128i lo = _mm_unpacklo_epi8(src, zero);
-            __m128i hi = _mm_unpackhi_epi8(src, zero);
+        if (useSIMD) {
+            // SSE2 path - process 2 output pixels at a time (4 source pixels)
+            __m128i zero = _mm_setzero_si128();
+            int w = dstWidth;
+            while (w >= 2) {
+                // Load 4 source pixels (16 bytes)
+                __m128i src = _mm_loadu_si128((const __m128i *) srcPtr);
+                // Unpack bytes to 16-bit
+                __m128i lo = _mm_unpacklo_epi8(src, zero);
+                __m128i hi = _mm_unpackhi_epi8(src, zero);
 
-            // Extract odd/even pixels and average
-            __m128i p0 = _mm_unpacklo_epi64(lo, hi);
-            __m128i p1 = _mm_unpackhi_epi64(lo, hi);
-            __m128i sum = _mm_add_epi16(p0, p1);
-            sum = _mm_srli_epi16(sum, 1);
+                // Extract odd/even pixels and average
+                __m128i p0 = _mm_unpacklo_epi64(lo, hi);
+                __m128i p1 = _mm_unpackhi_epi64(lo, hi);
+                __m128i sum = _mm_add_epi16(p0, p1);
+                sum = _mm_srli_epi16(sum, 1);
 
-            // Pack back to bytes
-            __m128i result = _mm_packus_epi16(sum, zero);
-            _mm_storel_epi64((__m128i *) dstPtr, result);
+                // Pack back to bytes
+                __m128i result = _mm_packus_epi16(sum, zero);
+                _mm_storel_epi64((__m128i *) dstPtr, result);
 
-            srcPtr += 4;
-            dstPtr += 8;
-            w -= 2;
-        }
-        // Handle remaining pixel
-        while (w > 0) {
-            XDWORD p0 = srcPtr[0];
-            XDWORD p1 = srcPtr[1];
-            XDWORD rb0 = p0 & 0x00FF00FF;
-            XDWORD rb1 = p1 & 0x00FF00FF;
-            XDWORD ag0 = (p0 & 0xFF00FF00) >> 8;
-            XDWORD ag1 = (p1 & 0xFF00FF00) >> 8;
-            XDWORD rbAvg = ((rb0 + rb1) >> 1) & 0x00FF00FF;
-            XDWORD agAvg = ((ag0 + ag1) << 7) & 0xFF00FF00;
-            *(XDWORD *) dstPtr = rbAvg | agAvg;
-            srcPtr += 2;
-            dstPtr += 4;
-            --w;
-        }
-#else
-        // Plain C path
-        int w = dstWidth;
-        do {
-            XDWORD p0 = srcPtr[0];
-            XDWORD p1 = srcPtr[1];
-
-            XDWORD rb0 = p0 & 0x00FF00FF;
-            XDWORD rb1 = p1 & 0x00FF00FF;
-            XDWORD ag0 = (p0 & 0xFF00FF00) >> 8;
-            XDWORD ag1 = (p1 & 0xFF00FF00) >> 8;
-
-            XDWORD rbAvg = ((rb0 + rb1) >> 1) & 0x00FF00FF;
-            XDWORD agAvg = ((ag0 + ag1) << 7) & 0xFF00FF00;
-
-            *(XDWORD *) dstPtr = rbAvg | agAvg;
-            srcPtr += 2;
-            dstPtr += 4;
-            --w;
-        } while (w);
+                srcPtr += 4;
+                dstPtr += 8;
+                w -= 2;
+            }
+            // Handle remaining pixel
+            while (w > 0) {
+                XDWORD p0 = srcPtr[0];
+                XDWORD p1 = srcPtr[1];
+                XDWORD rb0 = p0 & 0x00FF00FF;
+                XDWORD rb1 = p1 & 0x00FF00FF;
+                XDWORD ag0 = (p0 & 0xFF00FF00) >> 8;
+                XDWORD ag1 = (p1 & 0xFF00FF00) >> 8;
+                XDWORD rbAvg = ((rb0 + rb1) >> 1) & 0x00FF00FF;
+                XDWORD agAvg = ((ag0 + ag1) << 7) & 0xFF00FF00;
+                *(XDWORD *) dstPtr = rbAvg | agAvg;
+                srcPtr += 2;
+                dstPtr += 4;
+                --w;
+            }
+        } else
 #endif
+        // Plain C path
+        {
+            int w = dstWidth;
+            do {
+                XDWORD p0 = srcPtr[0];
+                XDWORD p1 = srcPtr[1];
+
+                XDWORD rb0 = p0 & 0x00FF00FF;
+                XDWORD rb1 = p1 & 0x00FF00FF;
+                XDWORD ag0 = (p0 & 0xFF00FF00) >> 8;
+                XDWORD ag1 = (p1 & 0xFF00FF00) >> 8;
+
+                XDWORD rbAvg = ((rb0 + rb1) >> 1) & 0x00FF00FF;
+                XDWORD agAvg = ((ag0 + ag1) << 7) & 0xFF00FF00;
+
+                *(XDWORD *) dstPtr = rbAvg | agAvg;
+                srcPtr += 2;
+                dstPtr += 4;
+                --w;
+            } while (w);
+        }
         return;
     }
 
@@ -309,93 +339,100 @@ void VxGenerateMipMap(const VxImageDescEx &src_desc, XBYTE *Buffer) {
     XDWORD *srcPtr = (XDWORD *) Image;
 
 #if defined(VX_SIMD_SSE2)
-    // SSE2 path - process 2 output pixels at a time
-    __m128i zero = _mm_setzero_si128();
-    int h = dstHeight;
-    do {
-        XDWORD *rowStart = srcPtr;
-        int w = dstWidth;
-        while (w >= 2) {
-            // Load 4 source pixels from current row
-            __m128i src0 = _mm_loadu_si128((const __m128i *) srcPtr);
-            // Load 4 source pixels from next row
-            __m128i src1 = _mm_loadu_si128((const __m128i *) ((XBYTE *) srcPtr + BytesPerLine));
-
-            // Unpack to 16-bit
-            __m128i lo0 = _mm_unpacklo_epi8(src0, zero);
-            __m128i hi0 = _mm_unpackhi_epi8(src0, zero);
-            __m128i lo1 = _mm_unpacklo_epi8(src1, zero);
-            __m128i hi1 = _mm_unpackhi_epi8(src1, zero);
-
-            // Sum all 4 pixels for each output pixel
-            __m128i p0 = _mm_unpacklo_epi64(lo0, hi0);
-            __m128i p1 = _mm_unpackhi_epi64(lo0, hi0);
-            __m128i p2 = _mm_unpacklo_epi64(lo1, hi1);
-            __m128i p3 = _mm_unpackhi_epi64(lo1, hi1);
-
-            __m128i sum = _mm_add_epi16(_mm_add_epi16(_mm_add_epi16(p0, p1), p2), p3);
-            sum = _mm_srli_epi16(sum, 2);
-
-            // Pack back to bytes
-            __m128i result = _mm_packus_epi16(sum, zero);
-            _mm_storel_epi64((__m128i *) dstPtr, result);
-
-            srcPtr += 4;
-            dstPtr += 8;
-            w -= 2;
-        }
-        // Handle remaining pixel
-        while (w > 0) {
-            XDWORD p0 = srcPtr[0];
-            XDWORD p1 = srcPtr[1];
-            XDWORD p2 = *(XDWORD *) ((XBYTE *) srcPtr + BytesPerLine);
-            XDWORD p3 = *(XDWORD *) ((XBYTE *) srcPtr + BytesPerLine + 4);
-
-            XDWORD rb = (p0 & 0x00FF00FF) + (p1 & 0x00FF00FF) +
-                (p2 & 0x00FF00FF) + (p3 & 0x00FF00FF);
-            XDWORD ag = ((p0 & 0xFF00FF00) >> 8) + ((p1 & 0xFF00FF00) >> 8) +
-                ((p2 & 0xFF00FF00) >> 8) + ((p3 & 0xFF00FF00) >> 8);
-
-            XDWORD rbAvg = (rb >> 2) & 0x00FF00FF;
-            XDWORD agAvg = ((ag >> 2) << 8) & 0xFF00FF00;
-
-            *(XDWORD *) dstPtr = rbAvg | agAvg;
-            srcPtr += 2;
-            dstPtr += 4;
-            --w;
-        }
-        srcPtr = (XDWORD *) ((XBYTE *) rowStart + BytesPerLine * 2);
-        --h;
-    } while (h);
-#else
-    // Plain C path
-    int h = dstHeight;
-    do {
-        XDWORD *rowStart = srcPtr;
-        int w = dstWidth;
+    if (useSIMD) {
+        // SSE2 path - process 2 output pixels at a time
+        __m128i zero = _mm_setzero_si128();
+        int h = dstHeight;
         do {
-            XDWORD p0 = srcPtr[0];
-            XDWORD p1 = srcPtr[1];
-            XDWORD p2 = *(XDWORD *) ((XBYTE *) srcPtr + BytesPerLine);
-            XDWORD p3 = *(XDWORD *) ((XBYTE *) srcPtr + BytesPerLine + 4);
+            XDWORD *rowStart = srcPtr;
+            int w = dstWidth;
+            while (w >= 2) {
+                // Load 4 source pixels from current row
+                __m128i src0 = _mm_loadu_si128((const __m128i *) srcPtr);
+                // Load 4 source pixels from next row
+                __m128i src1 = _mm_loadu_si128((const __m128i *) ((XBYTE *) srcPtr + BytesPerLine));
 
-            XDWORD rb = (p0 & 0x00FF00FF) + (p1 & 0x00FF00FF) +
-                (p2 & 0x00FF00FF) + (p3 & 0x00FF00FF);
-            XDWORD ag = ((p0 & 0xFF00FF00) >> 8) + ((p1 & 0xFF00FF00) >> 8) +
-                ((p2 & 0xFF00FF00) >> 8) + ((p3 & 0xFF00FF00) >> 8);
+                // Unpack to 16-bit
+                __m128i lo0 = _mm_unpacklo_epi8(src0, zero);
+                __m128i hi0 = _mm_unpackhi_epi8(src0, zero);
+                __m128i lo1 = _mm_unpacklo_epi8(src1, zero);
+                __m128i hi1 = _mm_unpackhi_epi8(src1, zero);
 
-            XDWORD rbAvg = (rb >> 2) & 0x00FF00FF;
-            XDWORD agAvg = ((ag >> 2) << 8) & 0xFF00FF00;
+                // Sum all 4 pixels for each output pixel
+                __m128i p0 = _mm_unpacklo_epi64(lo0, hi0);
+                __m128i p1 = _mm_unpackhi_epi64(lo0, hi0);
+                __m128i p2 = _mm_unpacklo_epi64(lo1, hi1);
+                __m128i p3 = _mm_unpackhi_epi64(lo1, hi1);
 
-            *(XDWORD *) dstPtr = rbAvg | agAvg;
-            srcPtr += 2;
-            dstPtr += 4;
-            --w;
-        } while (w);
-        srcPtr = (XDWORD *) ((XBYTE *) rowStart + BytesPerLine * 2);
-        --h;
-    } while (h);
+                __m128i sum = _mm_add_epi16(_mm_add_epi16(_mm_add_epi16(p0, p1), p2), p3);
+                sum = _mm_srli_epi16(sum, 2);
+
+                // Pack back to bytes
+                __m128i result = _mm_packus_epi16(sum, zero);
+                _mm_storel_epi64((__m128i *) dstPtr, result);
+
+                srcPtr += 4;
+                dstPtr += 8;
+                w -= 2;
+            }
+            // Handle remaining pixel
+            while (w > 0) {
+                XDWORD p0 = srcPtr[0];
+                XDWORD p1 = srcPtr[1];
+                XDWORD p2 = *(XDWORD *) ((XBYTE *) srcPtr + BytesPerLine);
+                XDWORD p3 = *(XDWORD *) ((XBYTE *) srcPtr + BytesPerLine + 4);
+
+                XDWORD rb = (p0 & 0x00FF00FF) + (p1 & 0x00FF00FF) +
+                    (p2 & 0x00FF00FF) + (p3 & 0x00FF00FF);
+                XDWORD ag = ((p0 & 0xFF00FF00) >> 8) + ((p1 & 0xFF00FF00) >> 8) +
+                    ((p2 & 0xFF00FF00) >> 8) + ((p3 & 0xFF00FF00) >> 8);
+
+                XDWORD rbAvg = (rb >> 2) & 0x00FF00FF;
+                XDWORD agAvg = ((ag >> 2) << 8) & 0xFF00FF00;
+
+                *(XDWORD *) dstPtr = rbAvg | agAvg;
+                srcPtr += 2;
+                dstPtr += 4;
+                --w;
+            }
+            srcPtr = (XDWORD *) ((XBYTE *) rowStart + BytesPerLine * 2);
+            --h;
+        } while (h);
+    } else
 #endif
+    // Plain C path
+    {
+        int h = dstHeight;
+        do {
+            XDWORD *rowStart = srcPtr;
+            int w = dstWidth;
+            do {
+                XDWORD p0 = srcPtr[0];
+                XDWORD p1 = srcPtr[1];
+                XDWORD p2 = *(XDWORD *) ((XBYTE *) srcPtr + BytesPerLine);
+                XDWORD p3 = *(XDWORD *) ((XBYTE *) srcPtr + BytesPerLine + 4);
+
+                XDWORD rb = (p0 & 0x00FF00FF) + (p1 & 0x00FF00FF) +
+                    (p2 & 0x00FF00FF) + (p3 & 0x00FF00FF);
+                XDWORD ag = ((p0 & 0xFF00FF00) >> 8) + ((p1 & 0xFF00FF00) >> 8) +
+                    ((p2 & 0xFF00FF00) >> 8) + ((p3 & 0xFF00FF00) >> 8);
+
+                XDWORD rbAvg = (rb >> 2) & 0x00FF00FF;
+                XDWORD agAvg = ((ag >> 2) << 8) & 0xFF00FF00;
+
+                *(XDWORD *) dstPtr = rbAvg | agAvg;
+                srcPtr += 2;
+                dstPtr += 4;
+                --w;
+            } while (w);
+            srcPtr = (XDWORD *) ((XBYTE *) rowStart + BytesPerLine * 2);
+            --h;
+        } while (h);
+    }
+}
+
+void VxGenerateMipMap(const VxImageDescEx &src_desc, XBYTE *Buffer) {
+    g_VxGraphicDispatch.generateMipMap(src_desc, Buffer);
 }
 
 //------------------------------------------------------------------------------
@@ -466,7 +503,7 @@ static __m128 CalculateLuminanceSSE4(const XDWORD *pixels, const __m128 &scale) 
 }
 #endif
 
-XBOOL VxConvertToNormalMap(const VxImageDescEx &image, XDWORD ColorMask) {
+static XBOOL ConvertToNormalMapImpl(const VxImageDescEx &image, XDWORD ColorMask, bool useSIMD) {
     if (image.BitsPerPixel != 32) return FALSE;
     if (image.Width == 0 || image.Height == 0) return FALSE;
     if (image.Image == nullptr) return FALSE;
@@ -480,7 +517,7 @@ XBOOL VxConvertToNormalMap(const VxImageDescEx &image, XDWORD ColorMask) {
         const float scale = 0.0013071896f; // 1.0 / 765.0 (255*3)
 
 #if defined(VX_SIMD_SSE2)
-        if (Width >= 8) {
+        if (useSIMD && Width >= 8) {
             __m128 scaleVec = _mm_set1_ps(scale);
             __m128 one = _mm_set1_ps(1.0f);
 
@@ -633,13 +670,17 @@ XBOOL VxConvertToNormalMap(const VxImageDescEx &image, XDWORD ColorMask) {
     return TRUE;
 }
 
+XBOOL VxConvertToNormalMap(const VxImageDescEx &image, XDWORD ColorMask) {
+    return g_VxGraphicDispatch.convertToNormalMap(image, ColorMask);
+}
+
 #if defined(VX_SIMD_SSE2)
 static inline int SseLuminance(XDWORD pixel) {
     return (int) ((pixel & 0xFF) + ((pixel >> 8) & 0xFF) + ((pixel >> 16) & 0xFF));
 }
 #endif
 
-XBOOL VxConvertToBumpMap(const VxImageDescEx &image) {
+static XBOOL ConvertToBumpMapImpl(const VxImageDescEx &image, bool useSIMD) {
     if (image.BitsPerPixel != 32) return FALSE;
     if (image.Image == nullptr) return FALSE;
     if (image.Width < 2 || image.Height <= 0 || image.BytesPerLine <= 0) return FALSE;
@@ -715,7 +756,7 @@ XBOOL VxConvertToBumpMap(const VxImageDescEx &image) {
 
 #if defined(VX_SIMD_SSE2)
         // SSE2 optimized middle pixels - process 4 pixels at a time
-        if (Width >= 6) {
+        if (useSIMD && Width >= 6) {
             __m128i zero = _mm_setzero_si128();
 
             unsigned int x = 1;
@@ -852,6 +893,10 @@ XBOOL VxConvertToBumpMap(const VxImageDescEx &image) {
     return TRUE;
 }
 
+XBOOL VxConvertToBumpMap(const VxImageDescEx &image) {
+    return g_VxGraphicDispatch.convertToBumpMap(image);
+}
+
 //------------------------------------------------------------------------------
 // Color Quantization
 //------------------------------------------------------------------------------
@@ -866,3 +911,6 @@ int GetQuantizationSamplingFactor() {
 void SetQuantizationSamplingFactor(int factor) {
     QuantizationSamplingFactor = factor;
 }
+
+
+

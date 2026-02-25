@@ -481,7 +481,7 @@ inline VxVector4::operator float *() const { return (float *) &x; }
 inline VxVector4::operator float *() const { return (float *) &v[0]; }
 #endif
 
-// ─── VxCompressedVector bodies ───────────────────────────────────────────────
+// --- VxCompressedVector bodies -----------------------------------------------
 
 /**
  * @brief Performs spherical linear interpolation between two compressed vectors.
@@ -659,7 +659,7 @@ VX_SIMD_INLINE void VxSIMDRotateVector(VxVector *result, const VxMatrix *mat, co
     VxSIMDStoreFloat3(&result->x, res);
 }
 
-// ─── VxVector4 SIMD ─────────────────────────────────────────────────────────
+// --- VxVector4 SIMD ---------------------------------------------------------
 
 VX_SIMD_INLINE void VxSIMDAddVector4(VxVector4 *result, const VxVector4 *a, const VxVector4 *b) noexcept {
     __m128 aVec = VxSIMDLoadFloat4((const float *) a);
@@ -700,7 +700,7 @@ VX_SIMD_INLINE void VxSIMDLerpVector4(VxVector4 *result, const VxVector4 *a, con
     VxSIMDStoreFloat4((float *) result, resultVec);
 }
 
-// ─── Array operations ────────────────────────────────────────────────────────
+// --- Array operations --------------------------------------------------------
 
 VX_SIMD_INLINE void VxSIMDInterpolateFloatArray(float *result, const float *a, const float *b, float factor, int count) noexcept {
     const __m128 factorVec = _mm_set1_ps(factor);
