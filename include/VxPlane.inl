@@ -192,56 +192,31 @@ inline float VxPlane::XClassify(const VxVector boxaxis[4]) const {
 #include "VxSIMD.h"
 
 VX_SIMD_INLINE void VxSIMDPlaneCreateFromPoint(VxPlane *plane, const VxVector *normal, const VxVector *point) noexcept {
-    plane->m_Normal = *normal;
-
-    __m128 n = VxSIMDLoadFloat3(&plane->m_Normal.x);
-    const __m128 mul = _mm_mul_ps(n, n);
-    __m128 sum = _mm_add_ss(mul, _mm_shuffle_ps(mul, mul, _MM_SHUFFLE(1, 1, 1, 1)));
-    sum = _mm_add_ss(sum, _mm_shuffle_ps(mul, mul, _MM_SHUFFLE(2, 2, 2, 2)));
-
-    float magSqScalar;
-    _mm_store_ss(&magSqScalar, sum);
-    if (magSqScalar > EPSILON) {
-        const __m128 mag = _mm_sqrt_ss(sum);
-        const __m128 invMag = _mm_div_ss(_mm_set_ss(1.0f), mag);
-        const __m128 invMag4 = _mm_shuffle_ps(invMag, invMag, _MM_SHUFFLE(0, 0, 0, 0));
-        n = _mm_mul_ps(n, invMag4);
-        VxSIMDStoreFloat3(&plane->m_Normal.x, n);
-    }
+    __m128 n = VxSIMDLoadFloat3(&normal->x);
+    n = VxSIMDNormalizeChecked(n, VxSIMDDotProduct3(n, n));
+    VxSIMDStoreFloat3(&plane->m_Normal.x, n);
 
     const __m128 p = VxSIMDLoadFloat3(&point->x);
-    const __m128 dp = _mm_mul_ps(VxSIMDLoadFloat3(&plane->m_Normal.x), p);
-    __m128 dsum = _mm_add_ss(dp, _mm_shuffle_ps(dp, dp, _MM_SHUFFLE(1, 1, 1, 1)));
-    dsum = _mm_add_ss(dsum, _mm_shuffle_ps(dp, dp, _MM_SHUFFLE(2, 2, 2, 2)));
-    float d;
-    _mm_store_ss(&d, dsum);
-    plane->m_D = -d;
+    plane->m_D = -_mm_cvtss_f32(VxSIMDDotProduct3(n, p));
 }
 
 VX_SIMD_INLINE void VxSIMDPlaneCreateFromTriangle(VxPlane *plane, const VxVector *a, const VxVector *b, const VxVector *c) noexcept {
-    VxVector edge1, edge2, n;
-    VxSIMDSubtractVector(&edge1, b, a);
-    VxSIMDSubtractVector(&edge2, c, a);
-    VxSIMDCrossVector(&n, &edge1, &edge2);
+    const __m128 va = VxSIMDLoadFloat3(&a->x);
+    const __m128 vb = VxSIMDLoadFloat3(&b->x);
+    const __m128 vc = VxSIMDLoadFloat3(&c->x);
+    const __m128 edge1 = _mm_sub_ps(vb, va);
+    const __m128 edge2 = _mm_sub_ps(vc, va);
 
-    __m128 nn = VxSIMDLoadFloat3(&n.x);
-    const __m128 mul = _mm_mul_ps(nn, nn);
-    __m128 sum = _mm_add_ss(mul, _mm_shuffle_ps(mul, mul, _MM_SHUFFLE(1, 1, 1, 1)));
-    sum = _mm_add_ss(sum, _mm_shuffle_ps(mul, mul, _MM_SHUFFLE(2, 2, 2, 2)));
-    float magSqScalar;
-    _mm_store_ss(&magSqScalar, sum);
-
-    if (magSqScalar > EPSILON) {
-        const __m128 mag = _mm_sqrt_ss(sum);
-        const __m128 invMag = _mm_div_ss(_mm_set_ss(1.0f), mag);
-        const __m128 invMag4 = _mm_shuffle_ps(invMag, invMag, _MM_SHUFFLE(0, 0, 0, 0));
-        nn = _mm_mul_ps(nn, invMag4);
-        VxSIMDStoreFloat3(&n.x, nn);
+    __m128 n = VxSIMDCrossProduct3(edge1, edge2);
+    const __m128 magSq = VxSIMDDotProduct3(n, n);
+    if (_mm_cvtss_f32(magSq) > EPSILON) {
+        n = _mm_mul_ps(n, VxSIMDReciprocalSqrtAccurate(magSq));
     } else {
-        n = VxVector(0.0f, 0.0f, 1.0f);
+        n = _mm_setr_ps(0.0f, 0.0f, 1.0f, 0.0f);
     }
 
-    VxSIMDPlaneCreateFromPoint(plane, &n, a);
+    VxSIMDStoreFloat3(&plane->m_Normal.x, n);
+    plane->m_D = -_mm_cvtss_f32(VxSIMDDotProduct3(n, va));
 }
 
 VX_SIMD_INLINE float VxSIMDPlaneClassifyPoint(const VxPlane *plane, const VxVector *point) noexcept {
@@ -283,8 +258,11 @@ VX_SIMD_INLINE float VxSIMDPlaneClassifyAABB(const VxPlane *plane, const VxBbox 
 }
 
 VX_SIMD_INLINE float VxSIMDPlaneDistance(const VxPlane *plane, const VxVector *point) noexcept {
-    const float classify = VxSIMDPlaneClassifyPoint(plane, point);
-    return (classify < 0.0f) ? -classify : classify;
+    const __m128 n = VxSIMDLoadFloat3(&plane->m_Normal.x);
+    const __m128 p = VxSIMDLoadFloat3(&point->x);
+    __m128 dist = _mm_add_ss(VxSIMDDotProduct3(n, p), _mm_set_ss(plane->m_D));
+    dist = _mm_and_ps(dist, VX_SIMD_ABS_MASK);
+    return _mm_cvtss_f32(dist);
 }
 
 VX_SIMD_INLINE void VxSIMDPlaneNearestPoint(VxVector *outPoint, const VxPlane *plane, const VxVector *point) noexcept {

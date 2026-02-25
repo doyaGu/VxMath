@@ -353,35 +353,33 @@ VX_SIMD_INLINE void VxSIMDFrustumUpdate(VxFrustum *frustum) noexcept {
 }
 
 VX_SIMD_INLINE void VxSIMDFrustumComputeVertices(const VxFrustum *frustum, VxVector *vertices) noexcept {
-    const VxVector &dir = frustum->GetDir();
-    const VxVector &right = frustum->GetRight();
-    const VxVector &up = frustum->GetUp();
-    const VxVector &origin = frustum->GetOrigin();
-    const float dMin = frustum->GetDMin();
-    const float rBound = frustum->GetRBound();
-    const float uBound = frustum->GetUBound();
-    const float dRatio = frustum->GetDRatio();
+    const __m128 dir = VxSIMDLoadFloat3(&frustum->GetDir().x);
+    const __m128 right = VxSIMDLoadFloat3(&frustum->GetRight().x);
+    const __m128 up = VxSIMDLoadFloat3(&frustum->GetUp().x);
+    const __m128 origin = VxSIMDLoadFloat3(&frustum->GetOrigin().x);
+    const __m128 dMin = _mm_set1_ps(frustum->GetDMin());
+    const __m128 rBound = _mm_set1_ps(frustum->GetRBound());
+    const __m128 uBound = _mm_set1_ps(frustum->GetUBound());
+    const __m128 dRatio = _mm_set1_ps(frustum->GetDRatio());
 
-    VxVector nearDirVec, rightVec, upVec;
-    VxSIMDScaleVector(&nearDirVec, &dir, dMin);
-    VxSIMDScaleVector(&rightVec, &right, rBound);
-    VxSIMDScaleVector(&upVec, &up, uBound);
+    const __m128 nearDirVec = _mm_mul_ps(dir, dMin);
+    const __m128 rightVec = _mm_mul_ps(right, rBound);
+    const __m128 upVec = _mm_mul_ps(up, uBound);
 
-    VxVector leftVec, rightVec2, temp1;
-    VxSIMDSubtractVector(&leftVec, &nearDirVec, &rightVec);
-    VxSIMDAddVector(&rightVec2, &nearDirVec, &rightVec);
+    const __m128 leftVec = _mm_sub_ps(nearDirVec, rightVec);
+    const __m128 rightVec2 = _mm_add_ps(nearDirVec, rightVec);
 
-    VxSIMDSubtractVector(&vertices[0], &leftVec, &upVec);
-    VxSIMDAddVector(&vertices[1], &leftVec, &upVec);
-    VxSIMDAddVector(&vertices[2], &rightVec2, &upVec);
-    VxSIMDSubtractVector(&vertices[3], &rightVec2, &upVec);
+    __m128 nearCorners[4];
+    nearCorners[0] = _mm_sub_ps(leftVec, upVec);
+    nearCorners[1] = _mm_add_ps(leftVec, upVec);
+    nearCorners[2] = _mm_add_ps(rightVec2, upVec);
+    nearCorners[3] = _mm_sub_ps(rightVec2, upVec);
 
-    for (int i = 0; i < 4; i++) {
-        VxVector farVec;
-        VxSIMDScaleVector(&farVec, &vertices[i], dRatio);
-        VxSIMDAddVector(&vertices[i + 4], &origin, &farVec);
-        VxSIMDAddVector(&temp1, &vertices[i], &origin);
-        vertices[i] = temp1;
+    for (int i = 0; i < 4; ++i) {
+        const __m128 farVec = _mm_add_ps(origin, _mm_mul_ps(nearCorners[i], dRatio));
+        const __m128 nearVec = _mm_add_ps(origin, nearCorners[i]);
+        VxSIMDStoreFloat3(&vertices[i].x, nearVec);
+        VxSIMDStoreFloat3(&vertices[i + 4].x, farVec);
     }
 }
 
@@ -396,34 +394,42 @@ VX_SIMD_INLINE void VxSIMDFrustumTransform(VxFrustum *frustum, const VxMatrix *i
     float &dMax = frustum->GetDMax();
     const float dRatio = frustum->GetDRatio();
 
-    VxSIMDScaleVector(&right, &right, rBound);
-    VxSIMDScaleVector(&up, &up, uBound);
-    VxSIMDScaleVector(&dir, &dir, dMin);
+    const float *matData = reinterpret_cast<const float *>(&(*invWorldMat)[0][0]);
+    const __m128 rightScaled = _mm_mul_ps(VxSIMDLoadFloat3(&right.x), _mm_set1_ps(rBound));
+    const __m128 upScaled = _mm_mul_ps(VxSIMDLoadFloat3(&up.x), _mm_set1_ps(uBound));
+    const __m128 dirScaled = _mm_mul_ps(VxSIMDLoadFloat3(&dir.x), _mm_set1_ps(dMin));
 
-    VxVector newOrigin;
-    VxSIMDMultiplyMatrixVector(&newOrigin, invWorldMat, &origin);
-    origin = newOrigin;
+    const __m128 newOrigin = VxSIMDMatrixMultiplyVector3(matData, VxSIMDLoadFloat3(&origin.x));
+    VxSIMDStoreFloat3(&origin.x, newOrigin);
 
-    VxVector resultVectors[3];
-    VxSIMDRotateVector(&resultVectors[0], invWorldMat, &right);
-    VxSIMDRotateVector(&resultVectors[1], invWorldMat, &up);
-    VxSIMDRotateVector(&resultVectors[2], invWorldMat, &dir);
+    const __m128 rotatedRight = VxSIMDMatrixRotateVector3(matData, rightScaled);
+    const __m128 rotatedUp = VxSIMDMatrixRotateVector3(matData, upScaled);
+    const __m128 rotatedDir = VxSIMDMatrixRotateVector3(matData, dirScaled);
 
-    float newRBound = VxSIMDLengthVector(&resultVectors[0]);
-    float newUBound = VxSIMDLengthVector(&resultVectors[1]);
-    float newDMin = VxSIMDLengthVector(&resultVectors[2]);
+    const float newRBound = VxSIMDLength3(rotatedRight);
+    const float newUBound = VxSIMDLength3(rotatedUp);
+    const float newDMin = VxSIMDLength3(rotatedDir);
 
     rBound = newRBound;
     uBound = newUBound;
     dMin = newDMin;
     dMax = newDMin * dRatio;
 
-    if (newRBound > 0.0f) VxSIMDScaleVector(&right, &resultVectors[0], 1.0f / newRBound);
-    else right = VxVector::axis0();
-    if (newUBound > 0.0f) VxSIMDScaleVector(&up, &resultVectors[1], 1.0f / newUBound);
-    else up = VxVector::axis0();
-    if (newDMin > 0.0f) VxSIMDScaleVector(&dir, &resultVectors[2], 1.0f / newDMin);
-    else dir = VxVector::axis0();
+    if (newRBound > 0.0f) {
+        VxSIMDStoreFloat3(&right.x, _mm_mul_ps(rotatedRight, _mm_set1_ps(1.0f / newRBound)));
+    } else {
+        right = VxVector::axis0();
+    }
+    if (newUBound > 0.0f) {
+        VxSIMDStoreFloat3(&up.x, _mm_mul_ps(rotatedUp, _mm_set1_ps(1.0f / newUBound)));
+    } else {
+        up = VxVector::axis0();
+    }
+    if (newDMin > 0.0f) {
+        VxSIMDStoreFloat3(&dir.x, _mm_mul_ps(rotatedDir, _mm_set1_ps(1.0f / newDMin)));
+    } else {
+        dir = VxVector::axis0();
+    }
 
     frustum->Update();
 }
@@ -497,6 +503,7 @@ VX_SIMD_INLINE XBOOL VxSIMDTransformBox2D(const VxMatrix *worldProjection, const
     if (extents && screenSize && (allAnd & VXCLIP_ALL) == 0) {
         __m128 minXY = _mm_set1_ps(1000000.0f);
         __m128 maxXY = _mm_set1_ps(-1000000.0f);
+        bool hasProjected = false;
 
         const float halfWidth = (screenSize->right - screenSize->left) * 0.5f;
         const float halfHeight = (screenSize->bottom - screenSize->top) * 0.5f;
@@ -522,16 +529,19 @@ VX_SIMD_INLINE XBOOL VxSIMDTransformBox2D(const VxMatrix *worldProjection, const
             __m128 projected = _mm_add_ps(_mm_mul_ps(_mm_mul_ps(v, invW), viewScale), viewOffset);
             minXY = _mm_min_ps(minXY, projected);
             maxXY = _mm_max_ps(maxXY, projected);
+            hasProjected = true;
         }
 
-        alignas(16) float minf[4], maxf[4];
-        _mm_store_ps(minf, minXY);
-        _mm_store_ps(maxf, maxXY);
+        if (hasProjected) {
+            alignas(16) float minf[4], maxf[4];
+            _mm_store_ps(minf, minXY);
+            _mm_store_ps(maxf, maxXY);
 
-        extents->left = minf[0];
-        extents->bottom = maxf[1];
-        extents->right = maxf[0];
-        extents->top = minf[1];
+            extents->left = minf[0];
+            extents->bottom = maxf[1];
+            extents->right = maxf[0];
+            extents->top = minf[1];
+        }
     }
 
     if ((allOr & VXCLIP_FRONT) != 0 && extents && screenSize) {
@@ -587,17 +597,20 @@ VX_SIMD_INLINE void VxSIMDProjectBoxZExtents(const VxMatrix *worldProjection, co
     }
 
     for (int i = 0; i < vertexCount; ++i) {
-        alignas(16) float v[4];
-        _mm_storeu_ps(v, corners[i]);
-        const float z = v[2];
-        const float w = v[3];
-
-        if (w <= EPSILON)
+        const __m128 v = corners[i];
+        const float w = _mm_cvtss_f32(_mm_shuffle_ps(v, v, _MM_SHUFFLE(3, 3, 3, 3)));
+        if (w <= EPSILON) {
             continue;
-
+        }
+        const float z = _mm_cvtss_f32(_mm_shuffle_ps(v, v, _MM_SHUFFLE(2, 2, 2, 2)));
         const float projZ = z / w;
         if (projZ < *zhMin) *zhMin = projZ;
         if (projZ > *zhMax) *zhMax = projZ;
+    }
+
+    if (*zhMin > *zhMax) {
+        *zhMin = 0.0f;
+        *zhMax = 1.0f;
     }
 }
 

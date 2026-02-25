@@ -42,13 +42,10 @@ inline VxMatrix::VxMatrix(float m[4][4]) {
     memcpy(m_Data, m, sizeof(VxMatrix));
 }
 
-inline const VxMatrix &VxMatrix::Identity() {
-    static const VxMatrix s = [] {
-        VxMatrix m;
-        m.SetIdentity();
-        return m;
-    }();
-    return s;
+inline VxMatrix VxMatrix::Identity() {
+   VxMatrix m;
+    m.SetIdentity();
+    return m;
 }
 
 inline void VxMatrix::Clear() {

@@ -613,9 +613,10 @@ VX_SIMD_INLINE float VxSIMDLengthSquaredVector(const VxVector *v) noexcept {
 }
 
 VX_SIMD_INLINE float VxSIMDDistanceVector(const VxVector *a, const VxVector *b) noexcept {
-    VxVector diff;
-    VxSIMDSubtractVector(&diff, a, b);
-    return VxSIMDLengthVector(&diff);
+    const __m128 aVec = VxSIMDLoadFloat3(&a->x);
+    const __m128 bVec = VxSIMDLoadFloat3(&b->x);
+    const __m128 diff = _mm_sub_ps(aVec, bVec);
+    return _mm_cvtss_f32(_mm_sqrt_ss(VxSIMDDotProduct3(diff, diff)));
 }
 
 VX_SIMD_INLINE void VxSIMDLerpVector(VxVector *result, const VxVector *a, const VxVector *b, float t) noexcept {
@@ -719,22 +720,57 @@ VX_SIMD_INLINE void VxSIMDInterpolateFloatArray(float *result, const float *a, c
 }
 
 VX_SIMD_INLINE void VxSIMDInterpolateVectorArray(void *result, const void *a, const void *b, float factor, int count, XDWORD strideResult, XDWORD strideInput) noexcept {
+    const __m128 factorVec = _mm_set1_ps(factor);
+
+    if (strideResult == static_cast<XDWORD>(sizeof(VxVector)) &&
+        strideInput == static_cast<XDWORD>(sizeof(VxVector))) {
+        const VxVector *vecA = static_cast<const VxVector *>(a);
+        const VxVector *vecB = static_cast<const VxVector *>(b);
+        VxVector *vecResult = static_cast<VxVector *>(result);
+
+        int i = 0;
+        for (; i + 3 < count; i += 4) {
+            __m128 a0 = VxSIMDLoadFloat3(&vecA[i + 0].x);
+            __m128 b0 = VxSIMDLoadFloat3(&vecB[i + 0].x);
+            __m128 a1 = VxSIMDLoadFloat3(&vecA[i + 1].x);
+            __m128 b1 = VxSIMDLoadFloat3(&vecB[i + 1].x);
+            __m128 a2 = VxSIMDLoadFloat3(&vecA[i + 2].x);
+            __m128 b2 = VxSIMDLoadFloat3(&vecB[i + 2].x);
+            __m128 a3 = VxSIMDLoadFloat3(&vecA[i + 3].x);
+            __m128 b3 = VxSIMDLoadFloat3(&vecB[i + 3].x);
+
+            VxSIMDStoreFloat3(&vecResult[i + 0].x, VX_FMADD_PS(_mm_sub_ps(b0, a0), factorVec, a0));
+            VxSIMDStoreFloat3(&vecResult[i + 1].x, VX_FMADD_PS(_mm_sub_ps(b1, a1), factorVec, a1));
+            VxSIMDStoreFloat3(&vecResult[i + 2].x, VX_FMADD_PS(_mm_sub_ps(b2, a2), factorVec, a2));
+            VxSIMDStoreFloat3(&vecResult[i + 3].x, VX_FMADD_PS(_mm_sub_ps(b3, a3), factorVec, a3));
+        }
+
+        for (; i < count; ++i) {
+            __m128 va = VxSIMDLoadFloat3(&vecA[i].x);
+            __m128 vb = VxSIMDLoadFloat3(&vecB[i].x);
+            VxSIMDStoreFloat3(&vecResult[i].x, VX_FMADD_PS(_mm_sub_ps(vb, va), factorVec, va));
+        }
+        return;
+    }
+
     const char *srcA = static_cast<const char *>(a);
     const char *srcB = static_cast<const char *>(b);
     char *dst = static_cast<char *>(result);
 
-    const __m128 factorVec = _mm_set1_ps(factor);
-
     for (int i = 0; i < count; ++i) {
-        const VxVector *vecA = reinterpret_cast<const VxVector *>(srcA + i * strideInput);
-        const VxVector *vecB = reinterpret_cast<const VxVector *>(srcB + i * strideInput);
-        VxVector *vecResult = reinterpret_cast<VxVector *>(dst + i * strideResult);
+        const VxVector *vecA = reinterpret_cast<const VxVector *>(srcA);
+        const VxVector *vecB = reinterpret_cast<const VxVector *>(srcB);
+        VxVector *vecResult = reinterpret_cast<VxVector *>(dst);
 
         __m128 aVec = VxSIMDLoadFloat3(&vecA->x);
         __m128 bVec = VxSIMDLoadFloat3(&vecB->x);
         __m128 diff = _mm_sub_ps(bVec, aVec);
         __m128 resultVec = VX_FMADD_PS(diff, factorVec, aVec);
         VxSIMDStoreFloat3(&vecResult->x, resultVec);
+
+        srcA += strideInput;
+        srcB += strideInput;
+        dst += strideResult;
     }
 }
 

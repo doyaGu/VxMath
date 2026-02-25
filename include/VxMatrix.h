@@ -239,7 +239,7 @@ public:
      * @brief Returns a reference to a static identity matrix.
      * @return A const reference to the identity matrix.
      */
-    static const VxMatrix &Identity();
+    static VxMatrix Identity();
 
     // Matrix construction
     /// @brief Sets all elements of the matrix to zero.

@@ -109,26 +109,22 @@ VX_SIMD_INLINE void VxSIMDRayInterpolate(VxVector *point, const VxRay *ray, floa
 }
 
 VX_SIMD_INLINE float VxSIMDRaySquareDistance(const VxRay *ray, const VxVector *point) noexcept {
-    __m128 p = VxSIMDLoadFloat3(&point->x);
-    __m128 o = VxSIMDLoadFloat3(&ray->m_Origin.x);
-    __m128 d = VxSIMDLoadFloat3(&ray->m_Direction.x);
-    __m128 v = _mm_sub_ps(p, o);
-    __m128 aa = VxSIMDDotProduct3(v, v);
-    __m128 ps = VxSIMDDotProduct3(v, d);
-    __m128 dd = VxSIMDDotProduct3(d, d);
-    float aaScalar;
-    float psScalar;
-    float ddScalar;
-    _mm_store_ss(&aaScalar, aa);
-    _mm_store_ss(&psScalar, ps);
-    _mm_store_ss(&ddScalar, dd);
+    const __m128 p = VxSIMDLoadFloat3(&point->x);
+    const __m128 o = VxSIMDLoadFloat3(&ray->m_Origin.x);
+    const __m128 d = VxSIMDLoadFloat3(&ray->m_Direction.x);
+    const __m128 v = _mm_sub_ps(p, o);
+    const __m128 aa = VxSIMDDotProduct3(v, v);
+    const __m128 dd = VxSIMDDotProduct3(d, d);
 
+    const float ddScalar = _mm_cvtss_f32(dd);
     if (ddScalar <= EPSILON) {
-        return aaScalar;
+        return _mm_cvtss_f32(aa);
     }
 
-    const float sq = aaScalar - (psScalar * psScalar) / ddScalar;
-    return (sq > 0.0f) ? sq : 0.0f;
+    const __m128 ps = VxSIMDDotProduct3(v, d);
+    __m128 sq = _mm_sub_ss(aa, _mm_div_ss(_mm_mul_ss(ps, ps), dd));
+    sq = _mm_max_ss(sq, _mm_setzero_ps());
+    return _mm_cvtss_f32(sq);
 }
 
 #endif // VX_SIMD_SSE
