@@ -1,5 +1,7 @@
 #include "VxWindowFunctions.h"
 
+#include <limits>
+
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
 #endif
@@ -11,7 +13,6 @@
 
 #include <direct.h>
 #include <shellapi.h>
-#include <string>
 
 #include "XString.h"
 #include "VxColor.h"
@@ -19,6 +20,14 @@
 #include "VxSharedLibrary.h"
 
 extern void VxDoBlitUpsideDown(const VxImageDescEx &src_desc, const VxImageDescEx &dst_desc);
+
+static DWORD ClampSizeToDword(size_t value) {
+    const size_t maxDword = static_cast<size_t>((std::numeric_limits<DWORD>::max)());
+    if (value > maxDword) {
+        return (std::numeric_limits<DWORD>::max)();
+    }
+    return static_cast<DWORD>(value);
+}
 
 char VxScanCodeToAscii(XDWORD scancode, unsigned char keystate[256]) {
     unsigned char state[256];
@@ -161,15 +170,15 @@ XBOOL VxGetEnvironmentVariable(const char *envName, XString &envValue) {
         return FALSE;
     }
 
-    std::string buffer(required, '\0');
-    DWORD written = GetEnvironmentVariableA(envName, buffer.data(), required);
+    XString buffer;
+    buffer.Resize(required - 1);
+    DWORD written = GetEnvironmentVariableA(envName, const_cast<char *>(buffer.CStr()), required);
     if (written == 0 || written >= required) {
         envValue = "";
         return FALSE;
     }
 
-    buffer.resize(written);
-    envValue = buffer.c_str();
+    envValue = buffer.CStr();
     return TRUE;
 }
 
@@ -316,7 +325,12 @@ int VxMessageBox(WIN_HANDLE hWnd, const char *lpText, const char *lpCaption, XDW
 }
 
 size_t VxGetModuleFileName(INSTANCE_HANDLE Handle, char *string, size_t StringSize) {
-    return GetModuleFileNameA((HMODULE) Handle, string, (DWORD) StringSize);
+    if (!string || StringSize == 0) {
+        return 0;
+    }
+    const DWORD winStringSize = ClampSizeToDword(StringSize);
+    const DWORD written = GetModuleFileNameA((HMODULE) Handle, string, winStringSize);
+    return static_cast<size_t>(written);
 }
 
 INSTANCE_HANDLE VxGetModuleHandle(const char *filename) {
@@ -341,6 +355,9 @@ XBOOL VxCreateFileTree(const char *file) {
 }
 
 XDWORD VxURLDownloadToCacheFile(const char *File, char *CachedFile, int szCachedFile) {
+    if (!CachedFile || szCachedFile <= 0) {
+        return E_INVALIDARG;
+    }
     char *cachedFile = CachedFile;
     CachedFile[0] = '\0';
 
@@ -355,7 +372,7 @@ XDWORD VxURLDownloadToCacheFile(const char *File, char *CachedFile, int szCached
         (LPFNURLDOWNLOADTOCACHEFILEA) sl.GetFunctionPtr("URLDownloadToCacheFileA");
     XDWORD ret = E_FAIL;
     if (lpfnURLDownloadToCacheFileA)
-        ret = lpfnURLDownloadToCacheFileA(NULL, File, cachedFile, (DWORD) szCachedFile, 0, NULL);
+        ret = lpfnURLDownloadToCacheFileA(NULL, File, cachedFile, static_cast<DWORD>(szCachedFile), 0, NULL);
     sl.ReleaseLibrary();
     return ret;
 }
@@ -384,8 +401,15 @@ BITMAP_HANDLE VxCreateBitmap(const VxImageDescEx &desc) {
 
     // Calculate proper bytes per line
     int bytePerLine = dibSection.dsBm.bmWidthBytes;
-    if ((bytePerLine & 3) != 0 && bytePerLine != dibSection.dsBmih.biSizeImage / dibSection.dsBm.bmHeight) {
-        bytePerLine = (int) dibSection.dsBmih.biSizeImage / dibSection.dsBm.bmHeight;
+    const int bmHeight = dibSection.dsBm.bmHeight;
+    if ((bytePerLine & 3) != 0 && bmHeight != 0) {
+        const long long signedHeight = static_cast<long long>(bmHeight);
+        const size_t absHeight = static_cast<size_t>(signedHeight < 0 ? -signedHeight : signedHeight);
+        const size_t expectedLineSize = static_cast<size_t>(dibSection.dsBmih.biSizeImage) / absHeight;
+        if (expectedLineSize <= static_cast<size_t>((std::numeric_limits<int>::max)()) &&
+            bytePerLine != static_cast<int>(expectedLineSize)) {
+            bytePerLine = static_cast<int>(expectedLineSize);
+        }
     }
 
     if (!bm.bmBits) return NULL;
@@ -542,8 +566,15 @@ XBOOL VxCopyBitmap(BITMAP_HANDLE Bitmap, const VxImageDescEx &desc) {
 
     // Calculate proper bytes per line
     int bytePerLine = dibSection.dsBm.bmWidthBytes;
-    if ((bytePerLine & 3) != 0 && bytePerLine != dibSection.dsBmih.biSizeImage / dibSection.dsBm.bmHeight) {
-        bytePerLine = (int) dibSection.dsBmih.biSizeImage / dibSection.dsBm.bmHeight;
+    const int bmHeight = dibSection.dsBm.bmHeight;
+    if ((bytePerLine & 3) != 0 && bmHeight != 0) {
+        const long long signedHeight = static_cast<long long>(bmHeight);
+        const size_t absHeight = static_cast<size_t>(signedHeight < 0 ? -signedHeight : signedHeight);
+        const size_t expectedLineSize = static_cast<size_t>(dibSection.dsBmih.biSizeImage) / absHeight;
+        if (expectedLineSize <= static_cast<size_t>((std::numeric_limits<int>::max)()) &&
+            bytePerLine != static_cast<int>(expectedLineSize)) {
+            bytePerLine = static_cast<int>(expectedLineSize);
+        }
     }
 
     // Create destination desc for the bitmap memory (24-bit)
