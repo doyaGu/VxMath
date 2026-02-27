@@ -45,7 +45,7 @@ VX_EXPORT void mydeletearray(void *a);
  * @param align The alignment boundary. Must be a power of two.
  * @return A pointer to the aligned allocated memory, or null on failure.
  */
-VX_EXPORT void *VxNewAligned(size_t size, int align);
+VX_EXPORT void *VxNewAligned(size_t size, size_t align);
 
 /**
  * @brief Deallocates a block of memory that was allocated with VxNewAligned.

@@ -27,27 +27,29 @@ void mydeletearray(void *a) {
     }
 }
 
-void *VxNewAligned(size_t size, int align) {
-#if defined(_MSC_VER)
-    return _aligned_malloc(size, align);
-#else
-    if (align < sizeof(void *)) {
-        align = sizeof(void *);
+void *VxNewAligned(size_t size, size_t align) {
+    size_t effectiveAlign = (align > 0) ? align : sizeof(void *);
+    if (effectiveAlign < sizeof(void *)) {
+        effectiveAlign = sizeof(void *);
     }
-    if ((align & (align - 1)) != 0) {
+    if ((effectiveAlign & (effectiveAlign - 1)) != 0) {
         size_t pow2 = sizeof(void *);
-        while (pow2 < align) {
+        while (pow2 < effectiveAlign) {
             pow2 <<= 1;
         }
-        align = pow2;
+        effectiveAlign = pow2;
     }
-    const size_t totalSize = size + align - 1 + sizeof(void *);
+
+#if defined(_MSC_VER)
+    return _aligned_malloc(size, effectiveAlign);
+#else
+    const size_t totalSize = size + effectiveAlign - 1 + sizeof(void *);
     void *raw = malloc(totalSize);
     if (!raw) {
         return nullptr;
     }
     const uintptr_t rawAddr = reinterpret_cast<uintptr_t>(raw) + sizeof(void *);
-    const uintptr_t alignedAddr = (rawAddr + (align - 1)) & ~(static_cast<uintptr_t>(align) - 1);
+    const uintptr_t alignedAddr = (rawAddr + (effectiveAlign - 1)) & ~(static_cast<uintptr_t>(effectiveAlign) - 1);
     reinterpret_cast<void **>(alignedAddr)[-1] = raw;
     return reinterpret_cast<void *>(alignedAddr);
 #endif
