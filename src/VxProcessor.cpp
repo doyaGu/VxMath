@@ -358,25 +358,22 @@ void VxDetectProcessor() {
 #if VX_HAS_X86_CPUID
     static LARGE_INTEGER freq;
     ::QueryPerformanceFrequency(&freq);
-    DWORD64 timeStamp1 = __rdtsc();
     LARGE_INTEGER freq1;
     ::QueryPerformanceCounter(&freq1);
+    DWORD64 timeStamp1 = __rdtsc();
+    ::Sleep(50);
     DWORD64 timeStamp2 = __rdtsc();
-    {
-        int x = 0, y = 0, z = 0;
-        for (int i = 0; i < 500000; ++i) {
-            x += ++y;
-            z += x;
-            x -= z;
-        }
-    }
     LARGE_INTEGER freq2;
     ::QueryPerformanceCounter(&freq2);
-    DWORD64 timeStamp3 = __rdtsc();
     double t1 = (double) (freq2.QuadPart - freq1.QuadPart) / (double) freq.QuadPart;
-    double t2 = (double) (timeStamp3 - timeStamp2);
-    g_MSecondsPerCycle = (float) (1000.0 * t1 / t2);
-    g_ProcessorFrequency = (int) (t2 / t1 / 1000000.0);
+    double t2 = (double) (timeStamp2 - timeStamp1);
+    if (t1 > 0.0 && t2 > 0.0) {
+        g_MSecondsPerCycle = (float) (1000.0 * t1 / t2);
+        g_ProcessorFrequency = (int) (t2 / t1 / 1000000.0);
+    } else {
+        g_MSecondsPerCycle = (float) (1000.0 / (double) freq.QuadPart);
+        g_ProcessorFrequency = (int) ((double) freq.QuadPart / 1000000.0);
+    }
 #else
     LARGE_INTEGER freq;
     ::QueryPerformanceFrequency(&freq);
@@ -387,29 +384,21 @@ void VxDetectProcessor() {
 #else
     fprintf(stderr, "VxMath: Detecting processor------------------------\n");
 
-    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    auto start = std::chrono::steady_clock::now();
 #if VX_HAS_X86_CPUID
     uint64_t timeStamp1 = __rdtsc();
 #endif
-    auto start = std::chrono::steady_clock::now();
-    {
-        int x = 0, y = 0, z = 0;
-        for (int i = 0; i < 500000; ++i) {
-            x += ++y;
-            z += x;
-            x -= z;
-        }
-    }
-    auto end = std::chrono::steady_clock::now();
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
 #if VX_HAS_X86_CPUID
     uint64_t timeStamp2 = __rdtsc();
 #endif
+    auto end = std::chrono::steady_clock::now();
     std::chrono::duration<double> elapsed = end - start;
-    double t1 = elapsed.count();
+    const double t1 = elapsed.count();
 #if VX_HAS_X86_CPUID
-    double t2 = (double) (timeStamp2 - timeStamp1);
+    const double t2 = (double) (timeStamp2 - timeStamp1);
 #else
-    double t2 = 0.0;
+    const double t2 = 0.0;
 #endif
     if (t1 > 0.0 && t2 > 0.0) {
         g_MSecondsPerCycle = (float) (1000.0 * t1 / t2);
