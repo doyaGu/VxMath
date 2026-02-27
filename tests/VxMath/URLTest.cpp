@@ -47,7 +47,7 @@ XDWORD VxEscapeURL(const char *InURL, XString &OutURL) {
     }
 
     // Calculate buffer size and allocate
-    int sz = strlen(InURL) + 1 + 2 * i;
+    size_t sz = strlen(InURL) + 1 + (2u * static_cast<size_t>(i));
     bool needsFileProtocol = (strstr(InURL, "://") == NULL);
     if (needsFileProtocol)
         sz += sizeof("file://") - 1;
@@ -95,12 +95,21 @@ void VxUnEscapeUrl(XString &str) {
 
     for (int i = 0; i < str.Length(); ++i) {
         if (str[i] == '%' && i + 2 < str.Length()) {
-            // Convert hex value to character
-            char hex[3] = {str[i + 1], str[i + 2], 0};
-            int value;
-            sscanf(hex, "%x", &value);
-            url += (char) value;
-            i += 2; // Skip the next two characters
+            const char high = str[i + 1];
+            const char low = str[i + 2];
+            const bool validHigh = (high >= '0' && high <= '9') || (high >= 'A' && high <= 'F') || (high >= 'a' && high <= 'f');
+            const bool validLow = (low >= '0' && low <= '9') || (low >= 'A' && low <= 'F') || (low >= 'a' && low <= 'f');
+            if (validHigh && validLow) {
+                // Convert validated hex value to character.
+                char hex[3] = {high, low, 0};
+                int value = 0;
+                sscanf(hex, "%x", &value);
+                url += (char) value;
+                i += 2; // Skip the next two characters
+            } else {
+                // Keep invalid escape sequences verbatim.
+                url += str[i];
+            }
         } else {
             url += str[i];
         }
@@ -525,18 +534,16 @@ TEST_F(VxUnEscapeUrlTest, PercentAtSecondToLastPosition) {
 TEST_F(VxUnEscapeUrlTest, InvalidHexCharacters) {
     testStr = "file:///path/to/file%ZZ";
     VxUnEscapeUrl(testStr);
-    // sscanf with %x will parse invalid hex as 0, creating null character
-    EXPECT_EQ(testStr.Length(), 21u);
-    EXPECT_EQ(testStr[20], '\xCC');
+    EXPECT_TRUE(testStr == "file:///path/to/file%ZZ");
 }
 
 TEST_F(VxUnEscapeUrlTest, MixedValidAndInvalidEncoding) {
     testStr = "file:///path%20to%ZZfile%2Ftxt";
     VxUnEscapeUrl(testStr);
-    // Should have: "file:///path to\xCCile/txt"
-    EXPECT_EQ(testStr.Length(), 24u);
-    EXPECT_TRUE(testStr.StartsWith("file:///path to"));
-    EXPECT_EQ(testStr[15], ' '); // The invalid %ZZ becomes \xCC
+    // Invalid escapes are preserved while valid ones are decoded.
+    EXPECT_EQ(testStr.Length(), 26u);
+    EXPECT_TRUE(testStr == "file:///path to%ZZfile/txt");
+    EXPECT_EQ(testStr[15], '%');
 }
 
 TEST_F(VxUnEscapeUrlTest, ConsecutivePercentEncoding) {

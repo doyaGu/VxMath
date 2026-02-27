@@ -63,7 +63,7 @@ protected:
     // Helper to collect all files found by the parser
     std::set<std::string> CollectFiles(CKDirectoryParser &parser) {
         std::set<std::string> foundFiles;
-        char *file;
+        const char *file;
         while ((file = parser.GetNextFile()) != nullptr) {
             std::string filePath(file);
             // Normalize path separators for consistent comparison

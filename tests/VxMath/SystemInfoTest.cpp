@@ -95,20 +95,30 @@ TEST_F(SystemInfoTest, GetProcessorType_ReturnsValidEnum) {
     ProcessorsType type = GetProcessorType();
     // The type should not be PROC_UNKNOWN on any machine this test is likely to run on.
     EXPECT_NE(type, PROC_UNKNOWN);
-    // It should be within the valid range of the architecture-based enum.
-    EXPECT_GE(type, PROC_X86);
-    EXPECT_LE(type, PROC_RISCV);
+    // It should be within the legacy Virtools processor enum range.
+    EXPECT_GE(type, PROC_PENTIUM);
+    EXPECT_LE(type, PROC_PSP);
 
     // Print the architecture type
     const char* archName = "Unknown";
     switch (type) {
-        case PROC_X86:    archName = "x86"; break;
-        case PROC_X86_64: archName = "x86_64"; break;
-        case PROC_ARM32:  archName = "ARM32"; break;
-        case PROC_ARM64:  archName = "ARM64"; break;
-        case PROC_MIPS:   archName = "MIPS"; break;
-        case PROC_PPC:    archName = "PowerPC"; break;
-        case PROC_RISCV:  archName = "RISC-V"; break;
+        case PROC_PENTIUM:         archName = "Pentium"; break;
+        case PROC_PENTIUMMMX:      archName = "Pentium MMX"; break;
+        case PROC_PENTIUMPRO:      archName = "Pentium Pro"; break;
+        case PROC_K63DNOW:         archName = "K6 3DNow"; break;
+        case PROC_PENTIUM2:        archName = "Pentium II"; break;
+        case PROC_PENTIUM2XEON:    archName = "Pentium II Xeon"; break;
+        case PROC_PENTIUM2CELERON: archName = "Pentium II Celeron"; break;
+        case PROC_PENTIUM3:        archName = "Pentium III"; break;
+        case PROC_ATHLON:          archName = "Athlon"; break;
+        case PROC_PENTIUM4:        archName = "Pentium 4 / x64-class"; break;
+        case PROC_PPC_ARM:         archName = "PPC ARM"; break;
+        case PROC_PPC_MIPS:        archName = "PPC MIPS"; break;
+        case PROC_PPC_G3:          archName = "PowerPC G3"; break;
+        case PROC_PPC_G4:          archName = "PowerPC G4"; break;
+        case PROC_PSX2:            archName = "PS2"; break;
+        case PROC_XBOX2:           archName = "Xbox 2"; break;
+        case PROC_PSP:             archName = "PSP"; break;
         default: break;
     }
     std::cout << "Processor Architecture: " << archName << " (enum " << type << ")" << std::endl;
@@ -134,8 +144,8 @@ TEST_F(SystemInfoTest, GetOsAndPlatform_ReturnsValidEnums) {
     // Should not be unknown.
     EXPECT_NE(os, VXOS_UNKNOWN);
     // Should be within the valid range.
-    EXPECT_GE(os, VXOS_WIN31);
-    EXPECT_LE(os, VXOS_SWITCH);
+    EXPECT_GE(os, VXOS_UNKNOWN);
+    EXPECT_LE(os, VXOS_WINSEVEN);
 
     // Print the OS type
     const char* osName = "Unknown";
@@ -148,21 +158,19 @@ TEST_F(SystemInfoTest, GetOsAndPlatform_ReturnsValidEnums) {
         case VXOS_WIN2K:      osName = "Windows 2000"; break;
         case VXOS_WINXP:      osName = "Windows XP"; break;
         case VXOS_WINVISTA:   osName = "Windows Vista"; break;
-        case VXOS_WIN7:       osName = "Windows 7"; break;
-        case VXOS_WIN8:       osName = "Windows 8"; break;
-        case VXOS_WIN81:      osName = "Windows 8.1"; break;
-        case VXOS_WIN10:      osName = "Windows 10"; break;
-        case VXOS_WIN11:      osName = "Windows 11"; break;
-        case VXOS_MACOS:      osName = "macOS"; break;
-        case VXOS_IOS:        osName = "iOS"; break;
-        case VXOS_LINUX:      osName = "Linux"; break;
-        case VXOS_FREEBSD:    osName = "FreeBSD"; break;
-        case VXOS_ANDROID:    osName = "Android"; break;
-        case VXOS_PS4:        osName = "PlayStation 4"; break;
-        case VXOS_PS5:        osName = "PlayStation 5"; break;
-        case VXOS_XBOXONE:    osName = "Xbox One"; break;
-        case VXOS_XBOXSERIES: osName = "Xbox Series X/S"; break;
-        case VXOS_SWITCH:     osName = "Nintendo Switch"; break;
+        case VXOS_MACOS9:     osName = "Mac OS 9"; break;
+        case VXOS_MACOSX:     osName = "Mac OS X"; break;
+        case VXOS_XBOX:       osName = "Xbox"; break;
+        case VXOS_LINUXX86:   osName = "Linux x86"; break;
+        case VXOS_WINCE1:     osName = "Windows CE 1.0"; break;
+        case VXOS_WINCE2:     osName = "Windows CE 2.0"; break;
+        case VXOS_WINCE3:     osName = "Windows CE 3.0"; break;
+        case VXOS_PSX2:       osName = "PlayStation 2"; break;
+        case VXOS_XBOX2:      osName = "Xbox 2"; break;
+        case VXOS_PSP:        osName = "PlayStation Portable"; break;
+        case VXOS_XBOX360:    osName = "Xbox 360"; break;
+        case VXOS_WII:        osName = "Nintendo Wii"; break;
+        case VXOS_WINSEVEN:   osName = "Windows 7"; break;
         default: break;
     }
     std::cout << "OS Info: " << osName << " (enum " << os << ")" << std::endl;

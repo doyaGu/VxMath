@@ -105,6 +105,16 @@ set(VXMATH_TEST_SOURCES
         DistanceTest.cpp
         PropertyTests.cpp
         FixedSizeAllocatorTest.cpp
+        ArrayTest.cpp
+        ListTest.cpp
+        HashTableTest.cpp
+        StringTest.cpp
+        ConfigurationTest.cpp
+        PathParsingTest.cpp
+        URLTest.cpp
+        MemoryMappedFileTest.cpp
+        SystemInfoTest.cpp
+        TimeProfilerTest.cpp
         WindowTest.cpp
         ImageTest.cpp
         # SIMD Tests
