@@ -1,4 +1,7 @@
 #include "VxTimeProfiler.h"
+#include "VxMath.h"
+
+#include <string.h>
 
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
@@ -27,10 +30,22 @@ VxTimeProfiler &VxTimeProfiler::operator=(const VxTimeProfiler &t) {
 }
 
 void VxTimeProfiler::Reset() {
-    *(DWORD64 *) &Times[0] = VxReadCounter();
+    const uint64_t now = static_cast<uint64_t>(VxReadCounter());
+    memcpy(&Times[0], &now, sizeof(now));
+    const uint64_t zero = 0;
+    memcpy(&Times[2], &zero, sizeof(zero));
 }
 
 float VxTimeProfiler::Current() {
-    *(DWORD64 *) &Times[2] = VxReadCounter() - *(DWORD64 *) &Times[0];
-    return (float) *(DWORD64 *) &Times[2] * g_MSecondsPerCycle;
+    if (g_MSecondsPerCycle <= 0.0f) {
+        VxDetectProcessor();
+    }
+
+    uint64_t start = 0;
+    memcpy(&start, &Times[0], sizeof(start));
+
+    const uint64_t elapsed = static_cast<uint64_t>(VxReadCounter()) - start;
+    memcpy(&Times[2], &elapsed, sizeof(elapsed));
+
+    return static_cast<float>(elapsed) * g_MSecondsPerCycle;
 }
