@@ -642,35 +642,36 @@ VxConfigurationSection *VxConfiguration::GetSubSection(VxConfigurationSection *r
 XBOOL VxConfiguration::ManageSection(const char *line, VxConfigurationSection **current, XString &error) {
     if (!line || !current || !m_Root) return FALSE;
 
-    char *lineCopy = new char[strlen(line) + 1];
-    strcpy(lineCopy, line);
+    char *lineStorage = new char[strlen(line) + 1];
+    strcpy(lineStorage, line);
 
     // Remove leading and trailing spaces
-    lineCopy = Shrink(lineCopy);
+    char *lineCopy = Shrink(lineStorage);
 
     // Check for closing tag format </SectionName>
     size_t len = strlen(lineCopy);
     if (len > 3 && lineCopy[0] == '<' && lineCopy[1] == '/' && lineCopy[len - 1] == '>') {
-        XString tagName(line + 2, (int)(len - 3));
+        XString tagName(lineCopy + 2, static_cast<int>(len - 3));
         char *closingTag = Shrink(tagName.Str());
         if (!closingTag || !*closingTag) {
             error = "Invalid closing tag format: ";
             error += line;
-            delete[] lineCopy;
+            delete[] lineStorage;
             return FALSE;
         }
 
         if (!*current || *current == m_Root) {
             error = "Unexpected closing tag: ";
             error += closingTag;
-            delete[] lineCopy;
+            delete[] lineStorage;
             return FALSE;
         }
 
         const char *expectedName = (*current)->GetName();
         XString expectedPath = GetSectionPath(*current);
-        if (strcmp(closingTag, expectedName) != 0 &&
-            (expectedPath.Empty() || strcmp(closingTag, expectedPath.CStr()) != 0)) {
+        const bool matchesName = strcmp(closingTag, expectedName) == 0;
+        const bool matchesPath = !expectedPath.Empty() && strcmp(closingTag, expectedPath.CStr()) == 0;
+        if (!matchesName && !matchesPath) {
             error = "Mismatched closing tag: ";
             error += closingTag;
             error += " (expected ";
@@ -680,15 +681,24 @@ XBOOL VxConfiguration::ManageSection(const char *line, VxConfigurationSection **
                 error += expectedPath.CStr();
             }
             error += ")";
-            delete[] lineCopy;
+            delete[] lineStorage;
             return FALSE;
         }
 
-        *current = (*current)->GetParent();
+        if (matchesPath && !matchesName) {
+            // A dotted close tag (for example </Parent.Child>) closes the full dotted hierarchy.
+            VxConfigurationSection *section = *current;
+            while (section && section->GetParent() && section->GetParent() != m_Root) {
+                section = section->GetParent();
+            }
+            *current = section ? section->GetParent() : m_Root;
+        } else {
+            *current = (*current)->GetParent();
+        }
         if (!*current) {
             *current = m_Root;
         }
-        delete[] lineCopy;
+        delete[] lineStorage;
         return TRUE;
     }
 
@@ -696,11 +706,11 @@ XBOOL VxConfiguration::ManageSection(const char *line, VxConfigurationSection **
     if (len < 3 || lineCopy[0] != '<' || lineCopy[len - 1] != '>') {
         error = "Invalid section format: ";
         error += lineCopy;
-        delete[] lineCopy;
+        delete[] lineStorage;
         return FALSE;
     }
 
-    XString sectionNameStr(line + 1, (int)(len - 2));  // Skip brackets, copy substring
+    XString sectionNameStr(lineCopy + 1, static_cast<int>(len - 2));  // Skip brackets, copy substring
     const char *sectionName = sectionNameStr.CStr();
 
     // Handle dot notation in sections
@@ -716,7 +726,7 @@ XBOOL VxConfiguration::ManageSection(const char *line, VxConfigurationSection **
             if (!*current) {
                 error = "Failed to create section: ";
                 error += sectionName;
-                delete[] lineCopy;
+                delete[] lineStorage;
                 return FALSE;
             }
         }
@@ -728,31 +738,31 @@ XBOOL VxConfiguration::ManageSection(const char *line, VxConfigurationSection **
             if (!*current) {
                 error = "Failed to create hierarchical section: ";
                 error += sectionName;
-                delete[] lineCopy;
+                delete[] lineStorage;
                 return FALSE;
             }
         }
     }
 
-    delete[] lineCopy;
+    delete[] lineStorage;
     return TRUE;
 }
 
 XBOOL VxConfiguration::ManageEntry(const char *line, VxConfigurationSection *current, XString &error) {
     if (!line || !current) return FALSE;
 
-    char *lineCopy = new char[strlen(line) + 1];
-    strcpy(lineCopy, line);
+    char *lineStorage = new char[strlen(line) + 1];
+    strcpy(lineStorage, line);
 
     // Remove leading and trailing spaces
-    lineCopy = Shrink(lineCopy);
+    char *lineCopy = Shrink(lineStorage);
 
     // Find key-value separator
     char *separator = strchr(lineCopy, '=');
     if (!separator) {
         error = "Invalid entry format (missing '='): ";
         error += lineCopy;
-        delete[] lineCopy;
+        delete[] lineStorage;
         return FALSE;
     }
 
@@ -764,13 +774,13 @@ XBOOL VxConfiguration::ManageEntry(const char *line, VxConfigurationSection *cur
     if (!key || !*key) {
         error = "Empty key in entry: ";
         error += lineCopy;
-        delete[] lineCopy;
+        delete[] lineStorage;
         return FALSE;
     }
 
     // Add the entry to the current section
     current->AddEntry(key, value ? value : "");
-    delete[] lineCopy;
+    delete[] lineStorage;
     return TRUE;
 }
 
