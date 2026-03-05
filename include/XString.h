@@ -152,7 +152,10 @@ protected:
 class XString : public XBaseString {
 public:
     /// @brief A constant representing a position not found in search operations.
-    enum { NOTFOUND = 0xffff };
+    enum {
+        NOTFOUND = 0xffff,
+        MAX_LENGTH = 0xfffe
+    };
 
     /// @typedef Iterator A mutable iterator.
     typedef char *Iterator;
@@ -273,9 +276,9 @@ public:
      * @remark Content is copied; embedded NULs are preserved.
      */
     explicit XString(const std::string &s) : XBaseString() {
-        const size_t kMaxLen = 0xffffu;
+        const size_t kMaxLen = (size_t) MAX_LENGTH;
         const size_t n = (s.size() < kMaxLen) ? s.size() : kMaxLen;
-        Assign(s.data(), static_cast<int>(n));
+        Assign(s.data(), (int) n);
     }
 
     /**
@@ -283,7 +286,7 @@ public:
      * @remark All characters are copied; embedded NULs are preserved.
      */
     XString(std::initializer_list<char> chars) : XBaseString() {
-        const size_t kMaxLen = 0xffffu;
+        const size_t kMaxLen = (size_t) MAX_LENGTH;
         const size_t n = (chars.size() < kMaxLen) ? chars.size() : kMaxLen;
         if (n == 0) {
             m_Buffer = NULL;
@@ -291,12 +294,12 @@ public:
             m_Allocated = 0;
             return;
         }
-        CheckSize(static_cast<int>(n));
+        CheckSize((int) n);
         size_t i = 0;
         for (std::initializer_list<char>::const_iterator it = chars.begin(); it != chars.end() && i < n; ++it, ++i) {
             m_Buffer[i] = *it;
         }
-        m_Length = static_cast<XWORD>(n);
+        m_Length = (XWORD) n;
         m_Buffer[m_Length] = '\0';
     }
 
@@ -305,9 +308,9 @@ public:
      * @remark Content is copied; embedded NULs are preserved.
      */
     XString &operator=(const std::string &s) {
-        const size_t kMaxLen = 0xffffu;
+        const size_t kMaxLen = (size_t) MAX_LENGTH;
         const size_t n = (s.size() < kMaxLen) ? s.size() : kMaxLen;
-        Assign(s.data(), static_cast<int>(n));
+        Assign(s.data(), (int) n);
         return *this;
     }
 
@@ -317,15 +320,15 @@ public:
      */
     XString &operator<<(const std::string &s) {
         if (!s.empty()) {
-            const size_t kMaxLen = 0xffffu;
-            const size_t curLen = static_cast<size_t>(m_Length);
+            const size_t kMaxLen = (size_t) MAX_LENGTH;
+            const size_t curLen = (size_t) m_Length;
             const size_t remaining = (curLen < kMaxLen) ? (kMaxLen - curLen) : 0;
             const size_t toCopy = (s.size() < remaining) ? s.size() : remaining;
             if (toCopy > 0) {
                 const size_t newLen = curLen + toCopy;
-                CheckSize(static_cast<int>(newLen));
+                CheckSize((int) newLen);
                 memcpy(&m_Buffer[curLen], s.data(), toCopy);
-                m_Length = static_cast<XWORD>(newLen);
+                m_Length = (XWORD) newLen;
                 m_Buffer[m_Length] = '\0';
             }
         }
@@ -337,7 +340,7 @@ public:
      * @remark Preserves embedded NULs.
      */
     std::string ToStdString() const {
-        return std::string(m_Buffer ? m_Buffer : "", static_cast<size_t>(m_Length));
+        return std::string(m_Buffer ? m_Buffer : "", (size_t) m_Length);
     }
 
     /** @brief Explicit conversion to std::string (C++11). */
@@ -500,18 +503,13 @@ public:
         if (iStr.m_Length == 0)
             return m_Length;
 
-        char *s1 = m_Buffer;
-        char *s2 = iStr.m_Buffer;
-
-        int Lenght4 = (m_Length > iStr.m_Length) ? (iStr.m_Length >> 2) : (m_Length >> 2);
-        //--- Compare dwords by dwords....
-        while ((Lenght4-- > 0) && (*(XDWORD *) s1 == *(XDWORD *) s2))
-            s1 += 4, s2 += 4;
-
-        //----- remaining bytes...
-        while ((*s1 == *s2) && *s1)
-            ++s1, ++s2;
-        return (*s1 - *s2);
+        const unsigned char *s1 = (const unsigned char *) m_Buffer;
+        const unsigned char *s2 = (const unsigned char *) iStr.m_Buffer;
+        while ((*s1 == *s2) && *s1) {
+            ++s1;
+            ++s2;
+        }
+        return (int) *s1 - (int) *s2;
     }
 
     /**
@@ -740,10 +738,9 @@ public:
      * @return The number of substrings found.
      */
     int Split(char delimiter, XClassArray<XString> &parts) const {
+        parts.Clear();
         if (m_Length == 0)
             return 0;
-
-        parts.Clear();
 
         XWORD start = 0;
         XWORD pos;
@@ -781,17 +778,29 @@ public:
 
         XString result;
         int delimLen = delimiter ? (int) strlen(delimiter) : 0;
+        const size_t maxLength = (size_t) MAX_LENGTH;
 
         // Calculate total size
-        XWORD totalSize = 0;
+        size_t totalSize = 0;
         for (int i = 0; i < parts.Size(); i++) {
-            totalSize += parts[i].Length();
-            if (i < parts.Size() - 1 && delimLen > 0)
-                totalSize += delimLen;
+            const size_t partSize = (size_t) parts[i].Length();
+            if (partSize > (maxLength - totalSize)) {
+                totalSize = maxLength;
+                break;
+            }
+            totalSize += partSize;
+            if (i < parts.Size() - 1 && delimLen > 0) {
+                const size_t delimSize = (size_t) delimLen;
+                if (delimSize > (maxLength - totalSize)) {
+                    totalSize = maxLength;
+                    break;
+                }
+                totalSize += delimSize;
+            }
         }
 
         // Allocate space
-        result.Reserve(totalSize);
+        result.Reserve((XWORD) totalSize);
 
         // Join strings
         for (int i = 0; i < parts.Size(); i++) {
@@ -1175,6 +1184,26 @@ protected:
      * @param iLength The number of characters to copy.
      */
     void Assign(const char *iBuffer, int iLength);
+
+    /**
+     * @brief Clamps a requested length to the valid XString range.
+     */
+    int ClampLength(int iLength) const;
+
+    /**
+     * @brief Clamps a requested length to the valid XString range.
+     */
+    int ClampLength(size_t iLength) const;
+
+    /**
+     * @brief Returns how many characters can still be appended.
+     */
+    int GetRemainingLength() const;
+
+    /**
+     * @brief Checks whether a pointer points into the current internal buffer.
+     */
+    XBOOL IsPointerInBuffer(const char *iPtr) const;
 };
 
 #endif // XSTRING_H

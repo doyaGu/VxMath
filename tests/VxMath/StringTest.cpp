@@ -355,6 +355,22 @@ TEST(XStringTest, Concatenation) {
     EXPECT_TRUE(stream.StartsWith("s:1.200000p"));
 }
 
+TEST(XStringTest, SelfConcatenation) {
+    XString s("abc");
+    s << s;
+    ExpectStringState(s, "abcabc", 6);
+
+    s << s.CStr();
+    ExpectStringState(s, "abcabcabcabc", 12);
+}
+
+TEST(XStringTest, ConcatenationClampsToMaxLength) {
+    std::string large((size_t) XString::MAX_LENGTH + 128u, 'x');
+    XString s;
+    s << large.c_str();
+    EXPECT_EQ(s.Length(), (XWORD) XString::MAX_LENGTH);
+}
+
 TEST(XStringTest, Format) {
     XString s;
     s.Format("String: %s, Int: %d, Float: %.2f", "test", 123, 3.14159);
@@ -387,6 +403,25 @@ TEST(XStringTest, SplitNoDelimiter) {
     EXPECT_EQ(count, 1);
     ASSERT_EQ(parts.Size(), 1);
     EXPECT_STREQ(parts[0].CStr(), "abc");
+}
+
+TEST(XStringTest, SplitEmptyClearsOutput) {
+    XClassArray<XString> parts;
+    parts.PushBack("stale");
+
+    XString s;
+    EXPECT_EQ(s.Split(',', parts), 0);
+    EXPECT_EQ(parts.Size(), 0);
+}
+
+TEST(XStringTest, ReplaceOverflowKeepsOriginal) {
+    std::string nearLimit((size_t) XString::MAX_LENGTH, 'a');
+    XString s;
+    s = nearLimit.c_str();
+
+    const int replaced = s.Replace("a", "aa");
+    EXPECT_EQ(replaced, 0);
+    EXPECT_EQ(s.Length(), (XWORD) XString::MAX_LENGTH);
 }
 
 // TEST(XStringTest, Join) {

@@ -14,8 +14,16 @@ XString::XString(const char *iString, int iLength) : XBaseString() {
         return;
     }
 
-    m_Length = (iLength > 0) ? iLength : (XWORD) strlen(iString);
-    m_Allocated = m_Length + 1;
+    const int length = (iLength > 0) ? ClampLength(iLength) : ClampLength(strlen(iString));
+    if (length == 0) {
+        m_Buffer = NULL;
+        m_Length = 0;
+        m_Allocated = 0;
+        return;
+    }
+
+    m_Length = (XWORD) length;
+    m_Allocated = (XWORD) (length + 1);
     m_Buffer = new char[m_Allocated];
     strncpy(m_Buffer, iString, m_Length);
     m_Buffer[m_Length] = '\0';
@@ -23,7 +31,8 @@ XString::XString(const char *iString, int iLength) : XBaseString() {
 
 // Reserving Ctor
 XString::XString(int iLength) : XBaseString() {
-    if (iLength <= 0) {
+    const int reserved = ClampLength(iLength);
+    if (reserved <= 0) {
         m_Buffer = NULL;
         m_Length = 0;
         m_Allocated = 0;
@@ -31,39 +40,19 @@ XString::XString(int iLength) : XBaseString() {
     }
 
     m_Length = 0;
-    m_Allocated = iLength + 1;
+    m_Allocated = (XWORD) (reserved + 1);
     m_Buffer = new char[m_Allocated];
     memset(m_Buffer, 0, m_Allocated);
 }
 
 // Copy Ctor
 XString::XString(const XString &iSrc) : XBaseString() {
-    if (iSrc.m_Length == 0) {
-        m_Buffer = NULL;
-        m_Length = 0;
-        m_Allocated = 0;
-        return;
-    }
-
-    m_Length = iSrc.m_Length;
-    m_Allocated = iSrc.m_Length + 1;
-    m_Buffer = new char[m_Allocated];
-    memcpy(m_Buffer, iSrc.m_Buffer, m_Length + 1);
+    Assign(iSrc.m_Buffer, iSrc.m_Length);
 }
 
 // Copy Ctor from XBaseString
 XString::XString(const XBaseString &iSrc) : XBaseString() {
-    if (iSrc.m_Length == 0) {
-        m_Buffer = NULL;
-        m_Length = 0;
-        m_Allocated = 0;
-        return;
-    }
-
-    m_Length = iSrc.m_Length;
-    m_Allocated = iSrc.m_Length + 1;
-    m_Buffer = new char[m_Allocated];
-    memcpy(m_Buffer, iSrc.m_Buffer, m_Length + 1);
+    Assign(iSrc.m_Buffer, iSrc.m_Length);
 }
 
 // Dtor
@@ -101,18 +90,17 @@ XString &XString::operator=(const XBaseString &iSrc) {
 // Create from a string and a length
 XString &XString::Create(const char *iString, int iLength) {
     if (iString) {
-        const int length = (iLength > 0) ? iLength : (int) strlen(iString);
-        if (length <= 0) {
+        const int length = (iLength > 0) ? ClampLength(iLength) : ClampLength(strlen(iString));
+        if (length > 0) {
+            CheckSize(length);
+            m_Length = (XWORD) length;
+            strncpy(m_Buffer, iString, m_Length);
+            m_Buffer[m_Length] = '\0';
+        } else {
             m_Length = 0;
             if (m_Buffer)
                 m_Buffer[0] = '\0';
-            return *this;
         }
-
-        CheckSize(length);
-        m_Length = (XWORD) length;
-        strncpy(m_Buffer, iString, m_Length);
-        m_Buffer[m_Length] = '\0';
     } else {
         m_Length = 0;
         if (m_Buffer)
@@ -139,9 +127,11 @@ XString &XString::Format(const char *iFormat, ...) {
     va_end(args_copy);
 
     if (len > 0) {
-        CheckSize(len);
-        vsnprintf(m_Buffer, len + 1, iFormat, args);
-        m_Length = len;
+        const int writeLength = ClampLength(len);
+        CheckSize(writeLength);
+        vsnprintf(m_Buffer, (size_t) writeLength + 1, iFormat, args);
+        m_Length = (XWORD) writeLength;
+        m_Buffer[m_Length] = '\0';
     } else {
         m_Length = 0;
         if (m_Buffer)
@@ -358,7 +348,7 @@ int XString::Replace(char iSrc, char iDest) {
 }
 
 int XString::Replace(const XBaseString &iSrc, const XBaseString &iDest) {
-    if (iSrc.m_Length == 0)
+    if (iSrc.m_Length == 0 || m_Length == 0)
         return 0;
 
     int count = 0;
@@ -374,11 +364,22 @@ int XString::Replace(const XBaseString &iSrc, const XBaseString &iDest) {
         return 0;
 
     // Calculate new length
-    XWORD newLength = m_Length;
-    if (iDest.m_Length >= iSrc.m_Length) {
-        newLength += count * (iDest.m_Length - iSrc.m_Length);
+    const size_t maxLength = (size_t) MAX_LENGTH;
+    const size_t srcLength = (size_t) m_Length;
+    const size_t srcTokenLength = (size_t) iSrc.m_Length;
+    const size_t destTokenLength = (size_t) iDest.m_Length;
+
+    size_t newLength = srcLength;
+    if (destTokenLength >= srcTokenLength) {
+        const size_t growthPerMatch = destTokenLength - srcTokenLength;
+        const size_t maxGrowth = maxLength - newLength;
+        if (growthPerMatch != 0 &&
+            (size_t) count > (maxGrowth / growthPerMatch)) {
+            return 0;
+        }
+        newLength += (size_t) count * growthPerMatch;
     } else {
-        newLength -= count * (iSrc.m_Length - iDest.m_Length);
+        newLength -= (size_t) count * (srcTokenLength - destTokenLength);
     }
 
     if (iSrc.m_Length == iDest.m_Length) {
@@ -391,12 +392,12 @@ int XString::Replace(const XBaseString &iSrc, const XBaseString &iDest) {
     } else {
         // Complex case: different length replacement
         char *newBuffer = new char[newLength + 1];
-        XWORD srcPos = 0, destPos = 0;
+        size_t srcPos = 0, destPos = 0;
 
         pos = 0;
-        while ((pos = Find(iSrc, srcPos)) != NOTFOUND) {
+        while ((pos = Find(iSrc, (XWORD) srcPos)) != NOTFOUND) {
             // Copy text before match
-            XWORD copyLen = pos - srcPos;
+            const size_t copyLen = (size_t) pos - srcPos;
             if (copyLen > 0) {
                 memcpy(&newBuffer[destPos], &m_Buffer[srcPos], copyLen);
                 destPos += copyLen;
@@ -405,49 +406,77 @@ int XString::Replace(const XBaseString &iSrc, const XBaseString &iDest) {
             // Copy replacement text
             if (iDest.m_Length > 0) {
                 memcpy(&newBuffer[destPos], iDest.m_Buffer, iDest.m_Length);
-                destPos += iDest.m_Length;
+                destPos += (size_t) iDest.m_Length;
             }
 
-            srcPos = pos + iSrc.m_Length;
+            srcPos = (size_t) pos + (size_t) iSrc.m_Length;
         }
 
         // Copy remaining text
-        if (srcPos < m_Length) {
-            memcpy(&newBuffer[destPos], &m_Buffer[srcPos], m_Length - srcPos);
-            destPos += m_Length - srcPos;
+        if (srcPos < (size_t) m_Length) {
+            const size_t remaining = (size_t) m_Length - srcPos;
+            memcpy(&newBuffer[destPos], &m_Buffer[srcPos], remaining);
+            destPos += remaining;
         }
 
         newBuffer[newLength] = '\0';
 
         delete[] m_Buffer;
         m_Buffer = newBuffer;
-        m_Length = newLength;
-        m_Allocated = newLength + 1;
+        m_Length = (XWORD) newLength;
+        m_Allocated = (XWORD) (newLength + 1);
     }
 
     return count;
 }
 
 XString &XString::operator<<(const char *iString) {
-    if (iString) {
-        XWORD len = (XWORD) strlen(iString);
-        if (len > 0) {
-            CheckSize(m_Length + len);
-            strcpy(&m_Buffer[m_Length], iString);
-            m_Length += len;
-        }
+    if (!iString || *iString == '\0')
+        return *this;
+
+    const int remaining = GetRemainingLength();
+    if (remaining <= 0)
+        return *this;
+
+    const int toCopy = ClampLength(strlen(iString));
+    const int clippedToCopy = (toCopy < remaining) ? toCopy : remaining;
+    if (clippedToCopy <= 0)
+        return *this;
+
+    if (IsPointerInBuffer(iString)) {
+        XString temp(iString, clippedToCopy);
+        return (*this) << static_cast<const XBaseString &>(temp);
     }
+
+    CheckSize(m_Length + clippedToCopy);
+    memcpy(&m_Buffer[m_Length], iString, (size_t) clippedToCopy);
+    m_Length = (XWORD) (m_Length + clippedToCopy);
+    m_Buffer[m_Length] = '\0';
     return *this;
 }
 
 // Concatenation operator
 XString &XString::operator<<(const XBaseString &iString) {
-    if (iString.m_Length > 0) {
-        CheckSize(m_Length + iString.m_Length);
-        memcpy(&m_Buffer[m_Length], iString.m_Buffer, iString.m_Length);
-        m_Length += iString.m_Length;
-        m_Buffer[m_Length] = '\0';
+    if (iString.m_Length == 0 || !iString.m_Buffer)
+        return *this;
+
+    const int remaining = GetRemainingLength();
+    if (remaining <= 0)
+        return *this;
+
+    const int toCopy = (iString.m_Length < remaining) ? iString.m_Length : remaining;
+    if (toCopy <= 0)
+        return *this;
+
+    if (&iString == this || IsPointerInBuffer(iString.m_Buffer)) {
+        XString temp(iString.m_Buffer, toCopy);
+        return (*this) << static_cast<const XBaseString &>(temp);
     }
+
+    CheckSize(m_Length + toCopy);
+    memcpy(&m_Buffer[m_Length], iString.m_Buffer, (size_t) toCopy);
+    m_Length = (XWORD) (m_Length + toCopy);
+    m_Buffer[m_Length] = '\0';
     return *this;
 }
 
@@ -462,47 +491,31 @@ XString &XString::operator<<(char iValue) {
 // Concatenation operator
 XString &XString::operator<<(int iValue) {
     char buf[32];  // Increased buffer size for safety
-    int len = snprintf(buf, sizeof(buf), "%d", iValue);
-    if (len > 0) {
-        CheckSize(m_Length + len);
-        strcpy(&m_Buffer[m_Length], buf);
-        m_Length += len;
-    }
+    if (snprintf(buf, sizeof(buf), "%d", iValue) > 0)
+        (*this) << buf;
     return *this;
 }
 
 // Concatenation operator
 XString &XString::operator<<(unsigned int iValue) {
     char buf[32];  // Increased buffer size for safety
-    int len = snprintf(buf, sizeof(buf), "%u", iValue);
-    if (len > 0) {
-        CheckSize(m_Length + len);
-        strcpy(&m_Buffer[m_Length], buf);
-        m_Length += len;
-    }
+    if (snprintf(buf, sizeof(buf), "%u", iValue) > 0)
+        (*this) << buf;
     return *this;
 }
 
 // Concatenation operator
 XString &XString::operator<<(float iValue) {
     char buf[32];  // Increased buffer size for safety
-    int len = snprintf(buf, sizeof(buf), "%f", iValue);  // Use %g for cleaner float output
-    if (len > 0) {
-        CheckSize(m_Length + len);
-        strcpy(&m_Buffer[m_Length], buf);
-        m_Length += len;
-    }
+    if (snprintf(buf, sizeof(buf), "%f", iValue) > 0)  // Use %g for cleaner float output
+        (*this) << buf;
     return *this;
 }
 
 XString &XString::operator<<(double iValue) {
     char buf[64];
-    int len = snprintf(buf, sizeof(buf), "%.15g", iValue);
-    if (len > 0) {
-        CheckSize(m_Length + (XWORD) len);
-        strcpy(&m_Buffer[m_Length], buf);
-        m_Length += (XWORD) len;
-    }
+    if (snprintf(buf, sizeof(buf), "%.15g", iValue) > 0)
+        (*this) << buf;
     return *this;
 }
 
@@ -512,19 +525,14 @@ XString &XString::operator<<(bool iValue) {
 
 XString &XString::operator<<(const void *iValue) {
     char buf[32];
-    int len = snprintf(buf, sizeof(buf), "%p", iValue);
-    if (len > 0) {
-        CheckSize(m_Length + (XWORD) len);
-        strcpy(&m_Buffer[m_Length], buf);
-        m_Length += (XWORD) len;
-    }
+    if (snprintf(buf, sizeof(buf), "%p", iValue) > 0)
+        (*this) << buf;
     return *this;
 }
 
 void XString::Reserve(XWORD iLength) {
-    const XWORD required = iLength + 1;
-    if (required <= iLength)
-        return;
+    const XWORD requested = (iLength > MAX_LENGTH) ? (XWORD) MAX_LENGTH : iLength;
+    const XWORD required = (XWORD) (requested + 1);
 
     if (required > m_Allocated) {
         m_Allocated = required;
@@ -540,9 +548,26 @@ void XString::Reserve(XWORD iLength) {
 }
 
 void XString::CheckSize(int iLength) {
-    if (iLength + 1 > m_Allocated) {
+    const int length = ClampLength(iLength);
+    const int requiredCapacity = length + 1;
+
+    if (requiredCapacity > m_Allocated) {
         // Grow buffer with some extra space to reduce reallocations
-        m_Allocated = (iLength + 1) * 2;
+        int newCapacity = (m_Allocated > 0) ? m_Allocated : 1;
+        const int maxCapacity = (int) MAX_LENGTH + 1;
+
+        while (newCapacity < requiredCapacity && newCapacity < maxCapacity) {
+            const int doubled = newCapacity * 2;
+            if (doubled <= newCapacity || doubled > maxCapacity)
+                newCapacity = maxCapacity;
+            else
+                newCapacity = doubled;
+        }
+
+        if (newCapacity < requiredCapacity)
+            newCapacity = requiredCapacity;
+
+        m_Allocated = (XWORD) newCapacity;
         char *buf = new char[m_Allocated];
         if (m_Length > 0) {
             memcpy(buf, m_Buffer, m_Length + 1);
@@ -556,15 +581,56 @@ void XString::CheckSize(int iLength) {
 
 // Assign a string to the current string
 void XString::Assign(const char *iBuffer, int iLength) {
-    if (iLength > 0 && iBuffer) {
-        CheckSize(iLength);
-        memcpy(m_Buffer, iBuffer, iLength);
-        m_Length = iLength;
+    const int length = ClampLength(iLength);
+    if (length > 0 && iBuffer) {
+        const char *source = iBuffer;
+        char *tempCopy = NULL;
+
+        if (IsPointerInBuffer(iBuffer)) {
+            tempCopy = new char[length];
+            memcpy(tempCopy, iBuffer, (size_t) length);
+            source = tempCopy;
+        }
+
+        CheckSize(length);
+        memcpy(m_Buffer, source, (size_t) length);
+        m_Length = (XWORD) length;
         m_Buffer[m_Length] = '\0';
+
+        delete[] tempCopy;
     } else {
         m_Length = 0;
         if (m_Buffer) {
             m_Buffer[0] = '\0';
         }
     }
+}
+
+int XString::ClampLength(int iLength) const {
+    if (iLength <= 0)
+        return 0;
+    if (iLength > (int) MAX_LENGTH)
+        return (int) MAX_LENGTH;
+    return iLength;
+}
+
+int XString::ClampLength(size_t iLength) const {
+    const size_t maxLength = (size_t) MAX_LENGTH;
+    return (int) ((iLength > maxLength) ? maxLength : iLength);
+}
+
+int XString::GetRemainingLength() const {
+    if (m_Length >= MAX_LENGTH)
+        return 0;
+    return (int) (MAX_LENGTH - m_Length);
+}
+
+XBOOL XString::IsPointerInBuffer(const char *iPtr) const {
+    if (!iPtr || !m_Buffer || m_Allocated == 0)
+        return FALSE;
+
+    const XUINTPTR p = (XUINTPTR) iPtr;
+    const XUINTPTR begin = (XUINTPTR) m_Buffer;
+    const XUINTPTR end = begin + (XUINTPTR) m_Allocated;
+    return p >= begin && p < end;
 }
