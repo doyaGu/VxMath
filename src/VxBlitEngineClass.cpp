@@ -434,6 +434,17 @@ VxBlitLineFunc VxBlitEngine::GetBlitFunction(const VxImageDescEx &src_desc,
 
         // Only 8-bit paletted sources are currently supported
         if (srcBpp == 1 && dstBpp >= 1 && dstBpp <= 4) {
+            // Index copy does not require palette entry expansion.
+            if (dstBpp == 1) {
+                VxBlitLineFunc func = m_PalettedBlitTable[0][0];
+                if (func) return func;
+            }
+
+            // RGB expansion paths read B,G,R from each entry.
+            if (src_desc.BytesPerColorEntry < 3) {
+                return nullptr;
+            }
+
             // For 16-bit destinations with alpha (1555, 4444), use alpha-aware function
             if (dstBpp == 2 && dst_desc.AlphaMask != 0) {
                 return CopyLine_Paletted8_16Alpha;
@@ -509,6 +520,8 @@ void VxBlitEngine::DoBlit(const VxImageDescEx &src_desc, const VxImageDescEx &ds
 
     if (!src_desc.Image) return;
     if (!dst_desc.Image) return;
+    if (src_desc.Width <= 0 || src_desc.Height <= 0) return;
+    if (dst_desc.Width <= 0 || dst_desc.Height <= 0) return;
 
     // Truecolor -> paletted conversion goes through quantization and is complete.
     // Do not continue with a second blit pass (it would overwrite palette indices).
@@ -557,6 +570,7 @@ void VxBlitEngine::DoBlitUpsideDown(const VxImageDescEx &src_desc, const VxImage
     if (src_desc.Width != dst_desc.Width) return;
     if (src_desc.Height != dst_desc.Height) return;
     if (!src_desc.Image || !dst_desc.Image) return;
+    if (src_desc.Width <= 0 || src_desc.Height <= 0) return;
 
     // Truecolor -> paletted upside-down path:
     // quantize into a temporary paletted buffer, then run regular upside-down copy.
@@ -1226,10 +1240,29 @@ void VxBlitEngine::ResizeBilinear32(const VxImageDescEx &src_desc, const VxImage
                 XDWORD p11 = srcRow1[srcX1];
 
                 // Calculate bilinear weights for 4 corners
-                int w00 = (wX0 * wY0 + 128) >> 8;
-                int w10 = (wX1 * wY0 + 128) >> 8;
-                int w01 = (wX0 * wY1 + 128) >> 8;
-                int w11 = 256 - w00 - w10 - w01;  // Ensure total = 256
+                int weights[4] = {
+                    (wX0 * wY0 + 128) >> 8,
+                    (wX1 * wY0 + 128) >> 8,
+                    (wX0 * wY1 + 128) >> 8,
+                    (wX1 * wY1 + 128) >> 8
+                };
+
+                // Keep weights non-negative and normalized to 256.
+                const int sumW = weights[0] + weights[1] + weights[2] + weights[3];
+                if (sumW != 256) {
+                    int maxIdx = 0;
+                    for (int i = 1; i < 4; ++i) {
+                        if (weights[i] > weights[maxIdx]) {
+                            maxIdx = i;
+                        }
+                    }
+                    weights[maxIdx] += (256 - sumW);
+                }
+
+                const int w00 = weights[0];
+                const int w10 = weights[1];
+                const int w01 = weights[2];
+                const int w11 = weights[3];
 
                 // Unpack to 16-bit and multiply
                 __m128i px00 = _mm_cvtsi32_si128(p00);
@@ -1491,6 +1524,7 @@ XBOOL VxBlitEngine::QuantizeImage(const VxImageDescEx &src_desc, const VxImageDe
     // Quantization requires 256 color palette
     if (dst_desc.ColorMapEntries != 256) return FALSE;
     if (!dst_desc.ColorMap) return FALSE;
+    if (dst_desc.BytesPerColorEntry < 3) return FALSE;
 
     int srcBpp = src_desc.BitsPerPixel / 8;
     if (srcBpp != 3 && srcBpp != 4) return FALSE;
@@ -1590,6 +1624,7 @@ XBOOL VxBlitEngine::QuantizeImageMedianCut(const VxImageDescEx &src_desc, const 
     // Quantization requires 256 color palette
     if (dst_desc.ColorMapEntries != 256) return FALSE;
     if (!dst_desc.ColorMap) return FALSE;
+    if (dst_desc.BytesPerColorEntry < 3) return FALSE;
 
     int srcBpp = src_desc.BitsPerPixel / 8;
     if (srcBpp != 3 && srcBpp != 4) return FALSE;

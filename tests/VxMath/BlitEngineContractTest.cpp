@@ -164,6 +164,22 @@ TEST_F(BlitEngineQuantizeContractTest, Quantize_NullPalette_HandlesGracefully) {
     // Should either fail gracefully or succeed with some behavior
     EXPECT_NO_THROW(blitter.QuantizeImage(srcDesc, dstDesc));
 }
+TEST_F(BlitEngineQuantizeContractTest, Quantize_PaletteEntryTooSmall_Fails) {
+    const int width = 16, height = 16;
+
+    ImageBuffer srcBuf(width * height * 4);
+    ImageBuffer dstBuf(width * height);
+    PaletteBuffer palette(2);
+
+    PatternGenerator::FillSolid32(srcBuf.Data(), width, height, 64, 128, 192, 255);
+
+    auto srcDesc = ImageDescFactory::Create32BitARGB(width, height, srcBuf.Data());
+    auto dstDesc = ImageDescFactory::Create8BitPaletted(width, height, dstBuf.Data(),
+                                                         palette.Data(), 2);
+
+    XBOOL result = blitter.QuantizeImage(srcDesc, dstDesc);
+    EXPECT_FALSE(result) << "Quantize should reject palette entries smaller than 3 bytes";
+}
 
 //==============================================================================
 // Resize Precondition Tests
@@ -368,6 +384,21 @@ TEST_F(BlitEnginePalettedContractTest, Paletted_ZeroColorMapEntries_HandlesGrace
     auto dstDesc = ImageDescFactory::Create32BitARGB(width, height, dstBuf.Data());
 
     EXPECT_NO_THROW(blitter.DoBlit(srcDesc, dstDesc));
+}
+TEST_F(BlitEnginePalettedContractTest, Paletted_BytesPerEntryTooSmall_HandlesGracefully) {
+    const int width = 8, height = 8;
+    ImageBuffer srcBuf(width * height);
+    ImageBuffer dstBuf(width * height * 4);
+    PaletteBuffer palette(2);
+
+    dstBuf.Fill(0xAB);
+
+    auto srcDesc = ImageDescFactory::Create8BitPaletted(width, height, srcBuf.Data(),
+                                                         palette.Data(), 2);
+    auto dstDesc = ImageDescFactory::Create32BitARGB(width, height, dstBuf.Data());
+
+    EXPECT_NO_THROW(blitter.DoBlit(srcDesc, dstDesc));
+    EXPECT_EQ(0xAB, dstBuf[0]) << "Invalid palette entry size should not modify destination";
 }
 
 TEST_F(BlitEnginePalettedContractTest, Paletted_IndexOutOfRange_HandlesGracefully) {

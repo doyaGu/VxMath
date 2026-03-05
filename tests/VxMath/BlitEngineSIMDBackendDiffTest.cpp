@@ -24,6 +24,12 @@ XDWORD LoadPixel32(const XBYTE *ptr) {
 void StorePixel32(XBYTE *ptr, XDWORD p) {
     std::memcpy(ptr, &p, sizeof(XDWORD));
 }
+struct ScopedSIMDOverride {
+    ScopedSIMDOverride() : previousMode(VxGetSIMDOverride()) {}
+    ~ScopedSIMDOverride() { VxSetSIMDOverride(previousMode); }
+
+    int previousMode;
+};
 
 TEST_F(BlitEngineSIMDBackendDiffTest, FillImage32_OddWidthMisaligned_BitExact) {
     const int width = 1919;
@@ -741,6 +747,35 @@ TEST_F(BlitEngineSIMDBackendDiffTest, DoAlphaBlit_Array_OddWidthMisaligned_Match
     }
 }
 
+TEST_F(BlitEngineSIMDBackendDiffTest, ResizeBilinear32_TrickyFractions_AutoMatchesScalar) {
+    ScopedSIMDOverride scopedOverride;
+
+    const int srcW = 2;
+    const int srcH = 1;
+    const int dstW = 4;
+    const int dstH = 256;
+
+    ImageBuffer srcBuffer(srcW * srcH * 4);
+    ImageBuffer scalarBuffer(dstW * dstH * 4);
+    ImageBuffer autoBuffer(dstW * dstH * 4);
+
+    XDWORD *srcPixels = reinterpret_cast<XDWORD *>(srcBuffer.Data());
+    srcPixels[0] = 0xFF000000u;
+    srcPixels[1] = 0xFFFFFFFFu;
+
+    auto srcDesc = ImageDescFactory::Create32BitARGB(srcW, srcH, srcBuffer.Data());
+    auto scalarDesc = ImageDescFactory::Create32BitARGB(dstW, dstH, scalarBuffer.Data());
+    auto autoDesc = ImageDescFactory::Create32BitARGB(dstW, dstH, autoBuffer.Data());
+
+    ASSERT_TRUE(VxSetSIMDOverride(VX_SIMD_MODE_NONE));
+    blitter.ResizeImage(srcDesc, scalarDesc);
+
+    ASSERT_TRUE(VxSetSIMDOverride(VX_SIMD_MODE_AUTO));
+    blitter.ResizeImage(srcDesc, autoDesc);
+
+    EXPECT_EQ(0, std::memcmp(scalarBuffer.Data(), autoBuffer.Data(), scalarBuffer.Size()))
+        << "Auto SIMD resize must match scalar output for fractional-edge coordinates";
+}
 TEST_F(BlitEngineSIMDBackendDiffTest, Blit_Paletted8_To_32ARGB_OddWidthMisaligned_MatchesReference) {
     const int width = 1919;
     const int height = 3;

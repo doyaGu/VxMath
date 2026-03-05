@@ -435,6 +435,45 @@ TEST_F(BlitEngineZeroDimensionTest, ZeroBoth_NoOp_NoCrash) {
 
     EXPECT_NO_THROW(blitter.DoBlit(srcDesc, dstDesc));
 }
+TEST_F(BlitEngineZeroDimensionTest, ZeroDstWidth_ResizePath_NoOp_NoCrash) {
+    const int srcW = 8;
+    const int srcH = 8;
+    ImageBuffer srcBuf(srcW * srcH * 4);
+    ImageBuffer dstBuf(16);
+    dstBuf.Fill(SENTINEL);
+
+    PatternGenerator::FillGradient32(srcBuf.Data(), srcW, srcH);
+
+    auto srcDesc = ImageDescFactory::Create32BitARGB(srcW, srcH, srcBuf.Data());
+    auto dstDesc = ImageDescFactory::Create32BitARGB(0, srcH, dstBuf.Data());
+
+    EXPECT_NO_THROW(blitter.DoBlit(srcDesc, dstDesc));
+    EXPECT_EQ(SENTINEL, dstBuf[0]) << "Zero-destination-width resize modified destination";
+}
+
+TEST_F(BlitEngineZeroDimensionTest, UpsideDown_ZeroHeight_NoOp_NoCrash) {
+    ImageBuffer srcBuf(4);
+    ImageBuffer dstBuf(4);
+    dstBuf.Fill(SENTINEL);
+
+    auto srcDesc = ImageDescFactory::Create32BitARGB(8, 0, srcBuf.Data());
+    auto dstDesc = ImageDescFactory::Create32BitARGB(8, 0, dstBuf.Data());
+
+    EXPECT_NO_THROW(blitter.DoBlitUpsideDown(srcDesc, dstDesc));
+    EXPECT_EQ(SENTINEL, dstBuf[0]) << "Zero-height upside-down blit modified destination";
+}
+
+TEST_F(BlitEngineZeroDimensionTest, NegativeWidth_NoOp_NoCrash) {
+    ImageBuffer srcBuf(4);
+    ImageBuffer dstBuf(4);
+    dstBuf.Fill(SENTINEL);
+
+    auto srcDesc = ImageDescFactory::Create32BitARGB(-1, 1, srcBuf.Data());
+    auto dstDesc = ImageDescFactory::Create32BitARGB(-1, 1, dstBuf.Data());
+
+    EXPECT_NO_THROW(blitter.DoBlit(srcDesc, dstDesc));
+    EXPECT_EQ(SENTINEL, dstBuf[0]) << "Negative-width blit modified destination";
+}
 
 //==============================================================================
 // Dimension Mismatch Tests - Different source and destination sizes
