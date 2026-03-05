@@ -12,6 +12,7 @@
 #endif
 
 #include <direct.h>
+#include <new>
 #include <shellapi.h>
 
 #include "XString.h"
@@ -20,6 +21,7 @@
 #include "VxSharedLibrary.h"
 
 extern void VxDoBlitUpsideDown(const VxImageDescEx &src_desc, const VxImageDescEx &dst_desc);
+extern void VxDoBlit(const VxImageDescEx &src_desc, const VxImageDescEx &dst_desc);
 
 static DWORD ClampSizeToDword(size_t value) {
     const size_t maxDword = static_cast<size_t>((std::numeric_limits<DWORD>::max)());
@@ -453,10 +455,19 @@ XBYTE *VxConvertBitmap(BITMAP_HANDLE Bitmap, VxImageDescEx &desc) {
         return NULL;
     }
 
+    const int rawHeight = (dibSection.dsBmih.biHeight != 0) ? dibSection.dsBmih.biHeight : dibSection.dsBm.bmHeight;
+    if (dibSection.dsBm.bmWidth <= 0 || rawHeight == 0) {
+        if (bitmap24 != Bitmap)
+            DeleteObject(bitmap24);
+        return NULL;
+    }
+    const bool topDown = rawHeight < 0;
+    const int absHeight = topDown ? -rawHeight : rawHeight;
+
     // Create source desc
     VxImageDescEx srcDesc;
     srcDesc.Width = dibSection.dsBm.bmWidth;
-    srcDesc.Height = dibSection.dsBm.bmHeight;
+    srcDesc.Height = absHeight;
     srcDesc.BytesPerLine = dibSection.dsBm.bmWidthBytes;
     srcDesc.BitsPerPixel = dibSection.dsBm.bmBitsPixel;
     srcDesc.RedMask = R_MASK;
@@ -469,14 +480,31 @@ XBYTE *VxConvertBitmap(BITMAP_HANDLE Bitmap, VxImageDescEx &desc) {
     VxImageDescEx dstDesc;
     dstDesc.Width = srcDesc.Width;
     dstDesc.Height = srcDesc.Height;
-    dstDesc.BytesPerLine = 4 * srcDesc.Width;
+    if (srcDesc.Width > static_cast<int>((std::numeric_limits<size_t>::max)() / 4u)) {
+        if (bitmap24 != Bitmap)
+            DeleteObject(bitmap24);
+        return NULL;
+    }
+    const size_t dstBytesPerLine = static_cast<size_t>(srcDesc.Width) * 4u;
+    if (static_cast<size_t>(srcDesc.Height) > ((std::numeric_limits<size_t>::max)() / dstBytesPerLine)) {
+        if (bitmap24 != Bitmap)
+            DeleteObject(bitmap24);
+        return NULL;
+    }
+    if (dstBytesPerLine > static_cast<size_t>((std::numeric_limits<int>::max)())) {
+        if (bitmap24 != Bitmap)
+            DeleteObject(bitmap24);
+        return NULL;
+    }
+    dstDesc.BytesPerLine = static_cast<int>(dstBytesPerLine);
     dstDesc.BitsPerPixel = 32;
     dstDesc.RedMask = R_MASK;
     dstDesc.GreenMask = G_MASK;
     dstDesc.BlueMask = B_MASK;
     dstDesc.AlphaMask = A_MASK;
 
-    XBYTE *newImage = new XBYTE[4 * srcDesc.Width * dstDesc.Height];
+    const size_t totalBytes = dstBytesPerLine * static_cast<size_t>(dstDesc.Height);
+    XBYTE *newImage = new (std::nothrow) XBYTE[totalBytes];
     if (!newImage) {
         if (bitmap24 != Bitmap)
             DeleteObject(bitmap24);
@@ -484,7 +512,11 @@ XBYTE *VxConvertBitmap(BITMAP_HANDLE Bitmap, VxImageDescEx &desc) {
     }
     dstDesc.Image = newImage;
 
-    VxDoBlitUpsideDown(srcDesc, dstDesc);
+    if (topDown) {
+        VxDoBlit(srcDesc, dstDesc);
+    } else {
+        VxDoBlitUpsideDown(srcDesc, dstDesc);
+    }
 
     if (bitmap24 != Bitmap)
         DeleteObject(bitmap24);

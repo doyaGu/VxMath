@@ -1,9 +1,12 @@
 #include "VxIntersect.h"
 
+#include <atomic>
+
 #include "VxVector.h"
 #include "VxMatrix.h"
 #include "VxRay.h"
 #include "VxOBB.h"
+#include "VxAtomic.h"
 #include "VxSIMD.h"
 #include "VxSIMDDispatchInternal.h"
 #include "VxIntersectDispatchStateInternal.h"
@@ -58,7 +61,7 @@ struct VxIntersectBoxDispatchTable {
     VxIntersectAABBFaceDispatchFn aabbFace;
 };
 
-VxIntersectBoxDispatchTable g_VxIntersectBoxDispatch = {
+const VxIntersectBoxDispatchTable kVxIntersectBoxDispatchScalar = {
     RayBoxCore<false>,
     RayBoxDetailedCore<false>,
     SegmentBoxCore<false>,
@@ -71,37 +74,39 @@ VxIntersectBoxDispatchTable g_VxIntersectBoxDispatch = {
     AABBFaceCore<false>
 };
 
+#if defined(VX_SIMD_SSE)
+const VxIntersectBoxDispatchTable kVxIntersectBoxDispatchSIMD = {
+    RayBoxCore<true>,
+    RayBoxDetailedCore<true>,
+    SegmentBoxCore<true>,
+    SegmentBoxDetailedCore<true>,
+    LineBoxCore<true>,
+    LineBoxDetailedCore<true>,
+    AABBAABBCore<true>,
+    AABBOBBCore<true>,
+    OBBOBBCore<true>,
+    AABBFaceCore<true>
+};
+#endif
+
+std::atomic<const VxIntersectBoxDispatchTable *> g_VxIntersectBoxDispatch(&kVxIntersectBoxDispatchScalar);
+
+const VxIntersectBoxDispatchTable *GetVxIntersectBoxDispatchTable() {
+    return g_VxIntersectBoxDispatch.load(std::memory_order_acquire);
+}
+
 } // namespace
 
 void VxIntersectDispatchRebuild(int effectiveMode) {
     const bool useSIMD = (effectiveMode != VX_SIMD_MODE_NONE);
 
 #if defined(VX_SIMD_SSE)
-    if (useSIMD) {
-        g_VxIntersectBoxDispatch.rayBox = RayBoxCore<true>;
-        g_VxIntersectBoxDispatch.rayBoxDetailed = RayBoxDetailedCore<true>;
-        g_VxIntersectBoxDispatch.segmentBox = SegmentBoxCore<true>;
-        g_VxIntersectBoxDispatch.segmentBoxDetailed = SegmentBoxDetailedCore<true>;
-        g_VxIntersectBoxDispatch.lineBox = LineBoxCore<true>;
-        g_VxIntersectBoxDispatch.lineBoxDetailed = LineBoxDetailedCore<true>;
-        g_VxIntersectBoxDispatch.aabbAabb = AABBAABBCore<true>;
-        g_VxIntersectBoxDispatch.aabbObb = AABBOBBCore<true>;
-        g_VxIntersectBoxDispatch.obbObb = OBBOBBCore<true>;
-        g_VxIntersectBoxDispatch.aabbFace = AABBFaceCore<true>;
-    } else
+    const VxIntersectBoxDispatchTable *next = useSIMD ? &kVxIntersectBoxDispatchSIMD : &kVxIntersectBoxDispatchScalar;
+#else
+    (void) useSIMD;
+    const VxIntersectBoxDispatchTable *next = &kVxIntersectBoxDispatchScalar;
 #endif
-    {
-        g_VxIntersectBoxDispatch.rayBox = RayBoxCore<false>;
-        g_VxIntersectBoxDispatch.rayBoxDetailed = RayBoxDetailedCore<false>;
-        g_VxIntersectBoxDispatch.segmentBox = SegmentBoxCore<false>;
-        g_VxIntersectBoxDispatch.segmentBoxDetailed = SegmentBoxDetailedCore<false>;
-        g_VxIntersectBoxDispatch.lineBox = LineBoxCore<false>;
-        g_VxIntersectBoxDispatch.lineBoxDetailed = LineBoxDetailedCore<false>;
-        g_VxIntersectBoxDispatch.aabbAabb = AABBAABBCore<false>;
-        g_VxIntersectBoxDispatch.aabbObb = AABBOBBCore<false>;
-        g_VxIntersectBoxDispatch.obbObb = OBBOBBCore<false>;
-        g_VxIntersectBoxDispatch.aabbFace = AABBFaceCore<false>;
-    }
+    g_VxIntersectBoxDispatch.store(next, std::memory_order_release);
 
     VxIntersectPlaneDispatchRebuild(useSIMD);
     VxIntersectSphereDispatchRebuild(useSIMD);
@@ -231,7 +236,7 @@ static inline XBOOL PointInAABB_OutCode(const VxBbox &box, const VxVector &p, un
 
 // Intersection Ray - Box (simple boolean version)
 XBOOL VxIntersect::RayBox(const VxRay &ray, const VxBbox &box) {
-    return g_VxIntersectBoxDispatch.rayBox(ray, box);
+    return GetVxIntersectBoxDispatchTable()->rayBox(ray, box);
 }
 
 namespace {
@@ -314,7 +319,7 @@ static XBOOL RayBoxCore(const VxRay &ray, const VxBbox &box) {
 
 // Intersection Ray - Box (detailed version with intersection points and normals)
 int VxIntersect::RayBox(const VxRay &ray, const VxBbox &box, VxVector &inpoint, VxVector *outpoint, VxVector *innormal, VxVector *outnormal) {
-    return g_VxIntersectBoxDispatch.rayBoxDetailed(ray, box, inpoint, outpoint, innormal, outnormal);
+    return GetVxIntersectBoxDispatchTable()->rayBoxDetailed(ray, box, inpoint, outpoint, innormal, outnormal);
 }
 
 namespace {
@@ -444,7 +449,7 @@ static int RayBoxDetailedCore(const VxRay &ray, const VxBbox &box, VxVector &inp
 
 // Intersection Segment - Box (simple boolean version)
 XBOOL VxIntersect::SegmentBox(const VxRay &segment, const VxBbox &box) {
-    return g_VxIntersectBoxDispatch.segmentBox(segment, box);
+    return GetVxIntersectBoxDispatchTable()->segmentBox(segment, box);
 }
 
 namespace {
@@ -532,7 +537,7 @@ static XBOOL SegmentBoxCore(const VxRay &segment, const VxBbox &box) {
 
 // Intersection Segment - Box (detailed version)
 int VxIntersect::SegmentBox(const VxRay &segment, const VxBbox &box, VxVector &inpoint, VxVector *outpoint, VxVector *innormal, VxVector *outnormal) {
-    return g_VxIntersectBoxDispatch.segmentBoxDetailed(segment, box, inpoint, outpoint, innormal, outnormal);
+    return GetVxIntersectBoxDispatchTable()->segmentBoxDetailed(segment, box, inpoint, outpoint, innormal, outnormal);
 }
 
 namespace {
@@ -675,7 +680,7 @@ static int SegmentBoxDetailedCore(const VxRay &segment, const VxBbox &box, VxVec
 
 // Intersection Line - Box (simple boolean version)
 XBOOL VxIntersect::LineBox(const VxRay &line, const VxBbox &box) {
-    return g_VxIntersectBoxDispatch.lineBox(line, box);
+    return GetVxIntersectBoxDispatchTable()->lineBox(line, box);
 }
 
 namespace {
@@ -743,7 +748,7 @@ static XBOOL LineBoxCore(const VxRay &line, const VxBbox &box) {
 
 // Intersection Line - Box (detailed version)
 int VxIntersect::LineBox(const VxRay &line, const VxBbox &box, VxVector &inpoint, VxVector *outpoint, VxVector *innormal, VxVector *outnormal) {
-    return g_VxIntersectBoxDispatch.lineBoxDetailed(line, box, inpoint, outpoint, innormal, outnormal);
+    return GetVxIntersectBoxDispatchTable()->lineBoxDetailed(line, box, inpoint, outpoint, innormal, outnormal);
 }
 
 namespace {
@@ -881,7 +886,7 @@ static int LineBoxDetailedCore(const VxRay &line, const VxBbox &box, VxVector &i
 
 // Intersection Box - Box
 XBOOL VxIntersect::AABBAABB(const VxBbox &box1, const VxBbox &box2) {
-    return g_VxIntersectBoxDispatch.aabbAabb(box1, box2);
+    return GetVxIntersectBoxDispatchTable()->aabbAabb(box1, box2);
 }
 
 namespace {
@@ -910,7 +915,7 @@ static XBOOL AABBAABBCore(const VxBbox &box1, const VxBbox &box2) {
 
 // AABB - OBB intersection
 XBOOL VxIntersect::AABBOBB(const VxBbox &box1, const VxOBB &box2) {
-    return g_VxIntersectBoxDispatch.aabbObb(box1, box2);
+    return GetVxIntersectBoxDispatchTable()->aabbObb(box1, box2);
 }
 
 namespace {
@@ -1080,7 +1085,7 @@ static XBOOL AABBOBBCore(const VxBbox &box1, const VxOBB &box2) {
 
 // OBB - OBB intersection using SAT (Separating Axis Theorem)
 XBOOL VxIntersect::OBBOBB(const VxOBB &box1, const VxOBB &box2) {
-    return g_VxIntersectBoxDispatch.obbObb(box1, box2);
+    return GetVxIntersectBoxDispatchTable()->obbObb(box1, box2);
 }
 
 namespace {
@@ -1271,7 +1276,7 @@ static XBOOL OBBOBBCore(const VxOBB &box1, const VxOBB &box2) {
 
 // AABB - Face (triangle) intersection
 XBOOL VxIntersect::AABBFace(const VxBbox &box, const VxVector &A0, const VxVector &A1, const VxVector &A2, const VxVector &N) {
-    return g_VxIntersectBoxDispatch.aabbFace(box, A0, A1, A2, N);
+    return GetVxIntersectBoxDispatchTable()->aabbFace(box, A0, A1, A2, N);
 }
 
 namespace {

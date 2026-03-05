@@ -1,6 +1,6 @@
 #include "VxSIMDDispatchInternal.h"
 
-#include "VxAtomicOpsInternal.h"
+#include "VxAtomic.h"
 #include "VxBlitDispatchBridge.h"
 
 #include "VxMath.h"
@@ -14,13 +14,13 @@ struct SIMDDispatchState {
     volatile int requestedMode;
     volatile int effectiveMode;
     volatile int generation;
-    bool initialized;
+    volatile int initialized;
 
     SIMDDispatchState()
         : requestedMode(VX_SIMD_MODE_AUTO),
           effectiveMode(VX_SIMD_MODE_NONE),
           generation(0),
-          initialized(false) {}
+          initialized(0) {}
 };
 
 SIMDDispatchState &GetSIMDDispatchState() {
@@ -174,19 +174,19 @@ void RebuildAllLocked(SIMDDispatchState &state) {
 }
 
 void EnsureInitializedLocked(SIMDDispatchState &state) {
-    if (state.initialized) {
+    if (VxAtomicLoadInt(&state.initialized) != 0) {
         return;
     }
 
     const int requested = VxAtomicLoadInt(&state.requestedMode);
     const int effective = ResolveSIMDMode(requested, VxGetSIMDFeatures());
     VxAtomicStoreInt(&state.effectiveMode, effective);
-    state.initialized = true;
+    VxAtomicStoreInt(&state.initialized, 1);
 }
 
 void EnsureInitialized() {
     SIMDDispatchState &state = GetSIMDDispatchState();
-    if (state.initialized) {
+    if (VxAtomicLoadInt(&state.initialized) != 0) {
         return;
     }
     VxMutexLock lock(state.lock);

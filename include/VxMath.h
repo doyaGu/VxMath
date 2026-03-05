@@ -40,6 +40,7 @@
 #include "VxTimeProfiler.h"
 #include "VxImageDescEx.h"
 #include "VxSIMDMode.h"
+#include "VxAtomic.h"
 
 // Threads and Synchro
 #include "VxMutex.h"

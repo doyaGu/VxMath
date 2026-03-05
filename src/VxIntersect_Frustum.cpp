@@ -1,10 +1,13 @@
 #include "VxIntersect.h"
 
+#include <atomic>
+
 #include "VxVector.h"
 #include "VxRay.h"
 #include "VxPlane.h"
 #include "VxFrustum.h"
 #include "VxMatrix.h"
+#include "VxAtomic.h"
 #include "VxSIMD.h"
 #include "VxIntersectDispatchStateInternal.h"
 
@@ -106,11 +109,25 @@ struct VxIntersectFrustumDispatchTable {
     VxIntersectFrustumBoxDispatchFn frustumBox;
 };
 
-VxIntersectFrustumDispatchTable g_VxIntersectFrustumDispatch = {
+const VxIntersectFrustumDispatchTable kVxIntersectFrustumDispatchScalar = {
     FrustumFaceScalarCore,
     FrustumOBBScalarCore,
     FrustumBoxScalarCore
 };
+
+#if defined(VX_SIMD_SSE)
+const VxIntersectFrustumDispatchTable kVxIntersectFrustumDispatchSIMD = {
+    FrustumFaceSIMDCore,
+    FrustumOBBSIMDCore,
+    FrustumBoxSIMDCore
+};
+#endif
+
+std::atomic<const VxIntersectFrustumDispatchTable *> g_VxIntersectFrustumDispatch(&kVxIntersectFrustumDispatchScalar);
+
+const VxIntersectFrustumDispatchTable *GetVxIntersectFrustumDispatchTable() {
+    return g_VxIntersectFrustumDispatch.load(std::memory_order_acquire);
+}
 
 static XBOOL FrustumFaceScalarCore(const VxFrustum &frustum, const VxVector &pt0, const VxVector &pt1, const VxVector &pt2) {
     if (frustum.GetNearPlane().ClassifyFace(pt0, pt1, pt2) > 0.0f)
@@ -345,19 +362,16 @@ static XBOOL FrustumBoxSIMDCore(const VxFrustum &frustum, const VxBbox &box, con
 
 void VxIntersectFrustumDispatchRebuild(bool useSIMD) {
 #if defined(VX_SIMD_SSE)
-    g_VxIntersectFrustumDispatch.frustumFace = useSIMD ? FrustumFaceSIMDCore : FrustumFaceScalarCore;
-    g_VxIntersectFrustumDispatch.frustumOBB = useSIMD ? FrustumOBBSIMDCore : FrustumOBBScalarCore;
-    g_VxIntersectFrustumDispatch.frustumBox = useSIMD ? FrustumBoxSIMDCore : FrustumBoxScalarCore;
+    const VxIntersectFrustumDispatchTable *next = useSIMD ? &kVxIntersectFrustumDispatchSIMD : &kVxIntersectFrustumDispatchScalar;
 #else
     (void) useSIMD;
-    g_VxIntersectFrustumDispatch.frustumFace = FrustumFaceScalarCore;
-    g_VxIntersectFrustumDispatch.frustumOBB = FrustumOBBScalarCore;
-    g_VxIntersectFrustumDispatch.frustumBox = FrustumBoxScalarCore;
+    const VxIntersectFrustumDispatchTable *next = &kVxIntersectFrustumDispatchScalar;
 #endif
+    g_VxIntersectFrustumDispatch.store(next, std::memory_order_release);
 }
 
 XBOOL VxIntersect::FrustumFace(const VxFrustum &frustum, const VxVector &pt0, const VxVector &pt1, const VxVector &pt2) {
-    return g_VxIntersectFrustumDispatch.frustumFace(frustum, pt0, pt1, pt2);
+    return GetVxIntersectFrustumDispatchTable()->frustumFace(frustum, pt0, pt1, pt2);
 }
 
 // Intersection Frustum - AABB
@@ -368,12 +382,12 @@ XBOOL VxIntersect::FrustumAABB(const VxFrustum &frustum, const VxBbox &box) {
 }
 
 XBOOL VxIntersect::FrustumOBB(const VxFrustum &frustum, const VxBbox &box, const VxMatrix &mat) {
-    return g_VxIntersectFrustumDispatch.frustumOBB(frustum, box, mat);
+    return GetVxIntersectFrustumDispatchTable()->frustumOBB(frustum, box, mat);
 }
 
 // Intersection Frustum - Box (deprecated, alias for FrustumOBB)
 XBOOL VxIntersect::FrustumBox(const VxFrustum &frustum, const VxBbox &box, const VxMatrix &mat) {
-    return g_VxIntersectFrustumDispatch.frustumBox(frustum, box, mat);
+    return GetVxIntersectFrustumDispatchTable()->frustumBox(frustum, box, mat);
 }
 
 

@@ -1,8 +1,11 @@
 #include "VxIntersect.h"
 
+#include <atomic>
+
 #include "VxVector.h"
 #include "VxRay.h"
 #include "VxSphere.h"
+#include "VxAtomic.h"
 #include "VxSIMD.h"
 #include "VxIntersectDispatchStateInternal.h"
 
@@ -105,11 +108,25 @@ struct VxIntersectSphereDispatchTable {
     VxIntersectSphereAABBDispatchFn sphereAABB;
 };
 
-VxIntersectSphereDispatchTable g_VxIntersectSphereDispatch = {
+const VxIntersectSphereDispatchTable kVxIntersectSphereDispatchScalar = {
     SphereSphereScalarCore,
     RaySphereScalarCore,
     SphereAABBScalarCore
 };
+
+#if defined(VX_SIMD_SSE)
+const VxIntersectSphereDispatchTable kVxIntersectSphereDispatchSIMD = {
+    SphereSphereSIMDCore,
+    RaySphereSIMDCore,
+    SphereAABBMSIMDCore
+};
+#endif
+
+std::atomic<const VxIntersectSphereDispatchTable *> g_VxIntersectSphereDispatch(&kVxIntersectSphereDispatchScalar);
+
+const VxIntersectSphereDispatchTable *GetVxIntersectSphereDispatchTable() {
+    return g_VxIntersectSphereDispatch.load(std::memory_order_acquire);
+}
 
 static XBOOL SphereSphereScalarCore(const VxSphere &iS1, const VxVector &iP1, const VxSphere &iS2, const VxVector &iP2,
                                     float *oCollisionTime1, float *oCollisionTime2) {
@@ -315,30 +332,27 @@ static XBOOL SphereAABBMSIMDCore(const VxSphere &iSphere, const VxBbox &iBox) {
 
 void VxIntersectSphereDispatchRebuild(bool useSIMD) {
 #if defined(VX_SIMD_SSE)
-    g_VxIntersectSphereDispatch.sphereSphere = useSIMD ? SphereSphereSIMDCore : SphereSphereScalarCore;
-    g_VxIntersectSphereDispatch.raySphere = useSIMD ? RaySphereSIMDCore : RaySphereScalarCore;
-    g_VxIntersectSphereDispatch.sphereAABB = useSIMD ? SphereAABBMSIMDCore : SphereAABBScalarCore;
+    const VxIntersectSphereDispatchTable *next = useSIMD ? &kVxIntersectSphereDispatchSIMD : &kVxIntersectSphereDispatchScalar;
 #else
     (void) useSIMD;
-    g_VxIntersectSphereDispatch.sphereSphere = SphereSphereScalarCore;
-    g_VxIntersectSphereDispatch.raySphere = RaySphereScalarCore;
-    g_VxIntersectSphereDispatch.sphereAABB = SphereAABBScalarCore;
+    const VxIntersectSphereDispatchTable *next = &kVxIntersectSphereDispatchScalar;
 #endif
+    g_VxIntersectSphereDispatch.store(next, std::memory_order_release);
 }
 
 //--------- Spheres
 
 XBOOL VxIntersect::SphereSphere(const VxSphere &iS1, const VxVector &iP1, const VxSphere &iS2, const VxVector &iP2,
                                 float *oCollisionTime1, float *oCollisionTime2) {
-    return g_VxIntersectSphereDispatch.sphereSphere(iS1, iP1, iS2, iP2, oCollisionTime1, oCollisionTime2);
+    return GetVxIntersectSphereDispatchTable()->sphereSphere(iS1, iP1, iS2, iP2, oCollisionTime1, oCollisionTime2);
 }
 
 int VxIntersect::RaySphere(const VxRay &iRay, const VxSphere &iSphere, VxVector *oInter1, VxVector *oInter2) {
-    return g_VxIntersectSphereDispatch.raySphere(iRay, iSphere, oInter1, oInter2);
+    return GetVxIntersectSphereDispatchTable()->raySphere(iRay, iSphere, oInter1, oInter2);
 }
 
 XBOOL VxIntersect::SphereAABB(const VxSphere &iSphere, const VxBbox &iBox) {
-    return g_VxIntersectSphereDispatch.sphereAABB(iSphere, iBox);
+    return GetVxIntersectSphereDispatchTable()->sphereAABB(iSphere, iBox);
 }
 
 

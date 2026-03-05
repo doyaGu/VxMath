@@ -1,8 +1,11 @@
 #include "VxIntersect.h"
 
+#include <atomic>
+
 #include "VxVector.h"
 #include "VxRay.h"
 #include "VxPlane.h"
+#include "VxAtomic.h"
 #include "VxSIMD.h"
 #include "VxIntersectDispatchStateInternal.h"
 
@@ -72,7 +75,7 @@ struct VxIntersectPlaneDispatchTable {
     VxIntersectPlanesDispatchFn planes;
 };
 
-VxIntersectPlaneDispatchTable g_VxIntersectPlaneDispatch = {
+const VxIntersectPlaneDispatchTable kVxIntersectPlaneDispatchScalar = {
     RayPlaneScalarCore,
     RayPlaneCulledScalarCore,
     SegmentPlaneScalarCore,
@@ -82,6 +85,25 @@ VxIntersectPlaneDispatchTable g_VxIntersectPlaneDispatch = {
     BoxPlaneMatrixScalarCore,
     PlanesScalarCore
 };
+
+#if defined(VX_SIMD_SSE)
+const VxIntersectPlaneDispatchTable kVxIntersectPlaneDispatchSIMD = {
+    RayPlaneSIMDCore,
+    RayPlaneCulledSIMDCore,
+    SegmentPlaneSIMDCore,
+    SegmentPlaneCulledSIMDCore,
+    LinePlaneSIMDCore,
+    BoxPlaneSIMDCore,
+    BoxPlaneMatrixSIMDCore,
+    PlanesSIMDCore
+};
+#endif
+
+std::atomic<const VxIntersectPlaneDispatchTable *> g_VxIntersectPlaneDispatch(&kVxIntersectPlaneDispatchScalar);
+
+const VxIntersectPlaneDispatchTable *GetVxIntersectPlaneDispatchTable() {
+    return g_VxIntersectPlaneDispatch.load(std::memory_order_acquire);
+}
 
 static XBOOL RayPlaneScalarCore(const VxRay &ray, const VxPlane &plane, VxVector &point, float &dist) {
     float denom = DotProduct(plane.m_Normal, ray.m_Direction);
@@ -350,57 +372,44 @@ static XBOOL PlanesSIMDCore(const VxPlane &plane1, const VxPlane &plane2, const 
 
 void VxIntersectPlaneDispatchRebuild(bool useSIMD) {
 #if defined(VX_SIMD_SSE)
-    g_VxIntersectPlaneDispatch.rayPlane = useSIMD ? RayPlaneSIMDCore : RayPlaneScalarCore;
-    g_VxIntersectPlaneDispatch.rayPlaneCulled = useSIMD ? RayPlaneCulledSIMDCore : RayPlaneCulledScalarCore;
-    g_VxIntersectPlaneDispatch.segmentPlane = useSIMD ? SegmentPlaneSIMDCore : SegmentPlaneScalarCore;
-    g_VxIntersectPlaneDispatch.segmentPlaneCulled = useSIMD ? SegmentPlaneCulledSIMDCore : SegmentPlaneCulledScalarCore;
-    g_VxIntersectPlaneDispatch.linePlane = useSIMD ? LinePlaneSIMDCore : LinePlaneScalarCore;
-    g_VxIntersectPlaneDispatch.boxPlane = useSIMD ? BoxPlaneSIMDCore : BoxPlaneScalarCore;
-    g_VxIntersectPlaneDispatch.boxPlaneMatrix = useSIMD ? BoxPlaneMatrixSIMDCore : BoxPlaneMatrixScalarCore;
-    g_VxIntersectPlaneDispatch.planes = useSIMD ? PlanesSIMDCore : PlanesScalarCore;
+    const VxIntersectPlaneDispatchTable *next = useSIMD ? &kVxIntersectPlaneDispatchSIMD : &kVxIntersectPlaneDispatchScalar;
 #else
     (void) useSIMD;
-    g_VxIntersectPlaneDispatch.rayPlane = RayPlaneScalarCore;
-    g_VxIntersectPlaneDispatch.rayPlaneCulled = RayPlaneCulledScalarCore;
-    g_VxIntersectPlaneDispatch.segmentPlane = SegmentPlaneScalarCore;
-    g_VxIntersectPlaneDispatch.segmentPlaneCulled = SegmentPlaneCulledScalarCore;
-    g_VxIntersectPlaneDispatch.linePlane = LinePlaneScalarCore;
-    g_VxIntersectPlaneDispatch.boxPlane = BoxPlaneScalarCore;
-    g_VxIntersectPlaneDispatch.boxPlaneMatrix = BoxPlaneMatrixScalarCore;
-    g_VxIntersectPlaneDispatch.planes = PlanesScalarCore;
+    const VxIntersectPlaneDispatchTable *next = &kVxIntersectPlaneDispatchScalar;
 #endif
+    g_VxIntersectPlaneDispatch.store(next, std::memory_order_release);
 }
 
 //---------- Planes
 
 XBOOL VxIntersect::RayPlane(const VxRay &ray, const VxPlane &plane, VxVector &point, float &dist) {
-    return g_VxIntersectPlaneDispatch.rayPlane(ray, plane, point, dist);
+    return GetVxIntersectPlaneDispatchTable()->rayPlane(ray, plane, point, dist);
 }
 
 XBOOL VxIntersect::RayPlaneCulled(const VxRay &ray, const VxPlane &plane, VxVector &point, float &dist) {
-    return g_VxIntersectPlaneDispatch.rayPlaneCulled(ray, plane, point, dist);
+    return GetVxIntersectPlaneDispatchTable()->rayPlaneCulled(ray, plane, point, dist);
 }
 
 XBOOL VxIntersect::SegmentPlane(const VxRay &ray, const VxPlane &plane, VxVector &point, float &dist) {
-    return g_VxIntersectPlaneDispatch.segmentPlane(ray, plane, point, dist);
+    return GetVxIntersectPlaneDispatchTable()->segmentPlane(ray, plane, point, dist);
 }
 
 XBOOL VxIntersect::SegmentPlaneCulled(const VxRay &ray, const VxPlane &plane, VxVector &point, float &dist) {
-    return g_VxIntersectPlaneDispatch.segmentPlaneCulled(ray, plane, point, dist);
+    return GetVxIntersectPlaneDispatchTable()->segmentPlaneCulled(ray, plane, point, dist);
 }
 
 XBOOL VxIntersect::LinePlane(const VxRay &ray, const VxPlane &plane, VxVector &point, float &dist) {
-    return g_VxIntersectPlaneDispatch.linePlane(ray, plane, point, dist);
+    return GetVxIntersectPlaneDispatchTable()->linePlane(ray, plane, point, dist);
 }
 
 XBOOL VxIntersect::BoxPlane(const VxBbox &box, const VxPlane &plane) {
-    return g_VxIntersectPlaneDispatch.boxPlane(box, plane);
+    return GetVxIntersectPlaneDispatchTable()->boxPlane(box, plane);
 }
 
 XBOOL VxIntersect::BoxPlane(const VxBbox &box, const VxMatrix &mat, const VxPlane &plane) {
-    return g_VxIntersectPlaneDispatch.boxPlaneMatrix(box, mat, plane);
+    return GetVxIntersectPlaneDispatchTable()->boxPlaneMatrix(box, mat, plane);
 }
 
 XBOOL VxIntersect::Planes(const VxPlane &plane1, const VxPlane &plane2, const VxPlane &plane3, VxVector &p) {
-    return g_VxIntersectPlaneDispatch.planes(plane1, plane2, plane3, p);
+    return GetVxIntersectPlaneDispatchTable()->planes(plane1, plane2, plane3, p);
 }

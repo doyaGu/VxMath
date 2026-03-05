@@ -1,8 +1,11 @@
 #include "VxIntersect.h"
 
+#include <atomic>
+
 #include "VxVector.h"
 #include "VxMatrix.h"
 #include "VxPlane.h"
+#include "VxAtomic.h"
 #include "VxSIMD.h"
 #include "VxIntersectDispatchStateInternal.h"
 
@@ -95,11 +98,25 @@ struct VxIntersectFaceDispatchTable {
     VxIntersectFaceFaceDispatchFn faceFace;
 };
 
-VxIntersectFaceDispatchTable g_VxIntersectFaceDispatch = {
+const VxIntersectFaceDispatchTable kVxIntersectFaceDispatchScalar = {
     PointInFaceScalarCore,
     GetPointCoefficientsScalarCore,
     FaceFaceScalarCore
 };
+
+#if defined(VX_SIMD_SSE)
+const VxIntersectFaceDispatchTable kVxIntersectFaceDispatchSIMD = {
+    PointInFaceSIMDCore,
+    GetPointCoefficientsSIMDCore,
+    FaceFaceSIMDCore
+};
+#endif
+
+std::atomic<const VxIntersectFaceDispatchTable *> g_VxIntersectFaceDispatch(&kVxIntersectFaceDispatchScalar);
+
+const VxIntersectFaceDispatchTable *GetVxIntersectFaceDispatchTable() {
+    return g_VxIntersectFaceDispatch.load(std::memory_order_acquire);
+}
 
 static inline void SelectFaceProjectionAxes(const VxVector &norm, int &i1, int &i2) {
     float maxAbs = XAbs(norm.x);
@@ -157,7 +174,7 @@ static XBOOL PointInFaceSIMDCore(const VxVector &point, const VxVector &pt0, con
 // Is a point inside the boundary of a face
 XBOOL VxIntersect::PointInFace(const VxVector &point, const VxVector &pt0, const VxVector &pt1, const VxVector &pt2,
                                const VxVector &norm, int &i1, int &i2) {
-    return g_VxIntersectFaceDispatch.pointInFace(point, pt0, pt1, pt2, norm, i1, i2);
+    return GetVxIntersectFaceDispatchTable()->pointInFace(point, pt0, pt1, pt2, norm, i1, i2);
 }
 
 // Intersection Ray - Face
@@ -294,7 +311,7 @@ XBOOL VxIntersect::LineFace(const VxRay &ray, const VxVector &pt0, const VxVecto
 // Calculate barycentric coordinates for point in face
 void VxIntersect::GetPointCoefficients(const VxVector &pt, const VxVector &pt0, const VxVector &pt1, const VxVector &pt2,
                                        const int &i1, const int &i2, float &V0Coef, float &V1Coef, float &V2Coef) {
-    g_VxIntersectFaceDispatch.getPointCoefficients(pt, pt0, pt1, pt2, i1, i2, V0Coef, V1Coef, V2Coef);
+    GetVxIntersectFaceDispatchTable()->getPointCoefficients(pt, pt0, pt1, pt2, i1, i2, V0Coef, V1Coef, V2Coef);
 }
 
 namespace {
@@ -362,7 +379,7 @@ static void GetPointCoefficientsSIMDCore(const VxVector &pt, const VxVector &pt0
 // Intersection Face - Face
 XBOOL VxIntersect::FaceFace(const VxVector &A0, const VxVector &A1, const VxVector &A2, const VxVector &N0,
                             const VxVector &B0, const VxVector &B1, const VxVector &B2, const VxVector &N1) {
-    return g_VxIntersectFaceDispatch.faceFace(A0, A1, A2, N0, B0, B1, B2, N1);
+    return GetVxIntersectFaceDispatchTable()->faceFace(A0, A1, A2, N0, B0, B1, B2, N1);
 }
 
 namespace {
@@ -651,15 +668,10 @@ int coplanar_tri_tri(const VxVector &N, const VxVector &V0, const VxVector &V1, 
 
 void VxIntersectFaceDispatchRebuild(bool useSIMD) {
 #if defined(VX_SIMD_SSE)
-    if (useSIMD) {
-        g_VxIntersectFaceDispatch.pointInFace = PointInFaceSIMDCore;
-        g_VxIntersectFaceDispatch.getPointCoefficients = GetPointCoefficientsSIMDCore;
-        g_VxIntersectFaceDispatch.faceFace = FaceFaceSIMDCore;
-        return;
-    }
+    const VxIntersectFaceDispatchTable *next = useSIMD ? &kVxIntersectFaceDispatchSIMD : &kVxIntersectFaceDispatchScalar;
+#else
+    (void) useSIMD;
+    const VxIntersectFaceDispatchTable *next = &kVxIntersectFaceDispatchScalar;
 #endif
-
-    g_VxIntersectFaceDispatch.pointInFace = PointInFaceScalarCore;
-    g_VxIntersectFaceDispatch.getPointCoefficients = GetPointCoefficientsScalarCore;
-    g_VxIntersectFaceDispatch.faceFace = FaceFaceScalarCore;
+    g_VxIntersectFaceDispatch.store(next, std::memory_order_release);
 }

@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <cstring>
 #include <random>
+#include <vector>
 
 #include "VxMath.h"
 
@@ -862,6 +863,31 @@ TEST(SIMDDispatchTest, PtInRectHandlesNegativeAndBoundaryValues) {
     EXPECT_TRUE(VxPtInRect(&rect, &inside));
     EXPECT_TRUE(VxPtInRect(&rect, &onEdge));
     EXPECT_FALSE(VxPtInRect(&rect, &outside));
+}
+
+TEST(SIMDDispatchTest, ConvertToNormalMapSingleRowIsStable) {
+    constexpr int kWidth = 8;
+    constexpr int kHeight = 1;
+    std::vector<XDWORD> imagePixels(kWidth);
+    for (int i = 0; i < kWidth; ++i) {
+        imagePixels[static_cast<std::size_t>(i)] = 0xFF000000u | (static_cast<XDWORD>(i * 17) << 16) |
+                                                   (static_cast<XDWORD>(i * 9) << 8) | static_cast<XDWORD>(i * 3);
+    }
+    const std::vector<XDWORD> original = imagePixels;
+
+    VxImageDescEx image;
+    image.Width = kWidth;
+    image.Height = kHeight;
+    image.BytesPerLine = kWidth * 4;
+    image.BitsPerPixel = 32;
+    image.RedMask = 0x00FF0000u;
+    image.GreenMask = 0x0000FF00u;
+    image.BlueMask = 0x000000FFu;
+    image.AlphaMask = 0xFF000000u;
+    image.Image = reinterpret_cast<XBYTE *>(imagePixels.data());
+
+    ASSERT_TRUE(VxConvertToNormalMap(image, 0xFFFFFFFFu));
+    EXPECT_EQ(0, std::memcmp(imagePixels.data(), original.data(), original.size() * sizeof(XDWORD)));
 }
 
 TEST(SIMDDispatchTest, ComputeBestFitBBoxContainsInputPoints) {

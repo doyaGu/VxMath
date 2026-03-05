@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <atomic>
 
 #if defined(_WIN32)
 #ifndef WIN32_LEAN_AND_MEAN
@@ -9,6 +10,7 @@
 
 #include "VxMath.h"
 #include "VxEigenMatrix.h"
+#include "VxAtomic.h"
 #include "VxSIMDDispatchInternal.h"
 
 extern void InitializeTables();
@@ -190,10 +192,9 @@ struct VxMathDispatchTable {
     VxTransformBox2DCoreDispatchFn transformBox2DCore;
     VxProjectBoxZExtentsCoreDispatchFn projectBoxZExtentsCore;
     VxProjectPointsToAxesExtentsDispatchFn projectPointsToAxesExtents;
-    bool useSIMD;
 };
 
-VxMathDispatchTable g_VxMathDispatch = {
+const VxMathDispatchTable kVxMathDispatchScalar = {
     InterpolateFloatArray_ScalarImpl,
     InterpolateVectorArray_ScalarImpl,
     FillStructureScalarImpl,
@@ -202,35 +203,39 @@ VxMathDispatchTable g_VxMathDispatch = {
     PtInRectScalarImpl,
     TransformBox2DScalarCore,
     ProjectBoxZExtentsScalarCore,
-    ProjectPointsToAxesExtentsScalar,
-    false
+    ProjectPointsToAxesExtentsScalar
 };
+
+#if defined(VX_SIMD_SSE)
+const VxMathDispatchTable kVxMathDispatchSIMD = {
+    InterpolateFloatArray_SIMDImpl,
+    InterpolateVectorArray_SIMDImpl,
+    FillStructureSIMDImpl,
+    CopyStructureSIMDImpl,
+    IndexedCopySIMDImpl,
+    PtInRectSIMDImpl,
+    TransformBox2DSIMDCore,
+    ProjectBoxZExtentsSIMDCore,
+    ProjectPointsToAxesExtentsSIMD
+};
+#endif
+
+std::atomic<const VxMathDispatchTable *> g_VxMathDispatch(&kVxMathDispatchScalar);
+
+const VxMathDispatchTable *GetVxMathDispatchTable() {
+    return g_VxMathDispatch.load(std::memory_order_acquire);
+}
 }
 
 void VxMathDispatchRebuild(int effectiveMode) {
     const bool useSIMD = (effectiveMode != VX_SIMD_MODE_NONE);
-    g_VxMathDispatch.useSIMD = useSIMD;
 #if defined(VX_SIMD_SSE)
-    g_VxMathDispatch.interpolateFloatArray = useSIMD ? InterpolateFloatArray_SIMDImpl : InterpolateFloatArray_ScalarImpl;
-    g_VxMathDispatch.interpolateVectorArray = useSIMD ? InterpolateVectorArray_SIMDImpl : InterpolateVectorArray_ScalarImpl;
-    g_VxMathDispatch.fillStructure = useSIMD ? FillStructureSIMDImpl : FillStructureScalarImpl;
-    g_VxMathDispatch.copyStructure = useSIMD ? CopyStructureSIMDImpl : CopyStructureScalarImpl;
-    g_VxMathDispatch.indexedCopy = useSIMD ? IndexedCopySIMDImpl : IndexedCopyScalarImpl;
-    g_VxMathDispatch.ptInRect = useSIMD ? PtInRectSIMDImpl : PtInRectScalarImpl;
-    g_VxMathDispatch.transformBox2DCore = useSIMD ? TransformBox2DSIMDCore : TransformBox2DScalarCore;
-    g_VxMathDispatch.projectBoxZExtentsCore = useSIMD ? ProjectBoxZExtentsSIMDCore : ProjectBoxZExtentsScalarCore;
-    g_VxMathDispatch.projectPointsToAxesExtents = useSIMD ? ProjectPointsToAxesExtentsSIMD : ProjectPointsToAxesExtentsScalar;
+    const VxMathDispatchTable *next = useSIMD ? &kVxMathDispatchSIMD : &kVxMathDispatchScalar;
 #else
-    g_VxMathDispatch.interpolateFloatArray = InterpolateFloatArray_ScalarImpl;
-    g_VxMathDispatch.interpolateVectorArray = InterpolateVectorArray_ScalarImpl;
-    g_VxMathDispatch.fillStructure = FillStructureScalarImpl;
-    g_VxMathDispatch.copyStructure = CopyStructureScalarImpl;
-    g_VxMathDispatch.indexedCopy = IndexedCopyScalarImpl;
-    g_VxMathDispatch.ptInRect = PtInRectScalarImpl;
-    g_VxMathDispatch.transformBox2DCore = TransformBox2DScalarCore;
-    g_VxMathDispatch.projectBoxZExtentsCore = ProjectBoxZExtentsScalarCore;
-    g_VxMathDispatch.projectPointsToAxesExtents = ProjectPointsToAxesExtentsScalar;
+    (void) useSIMD;
+    const VxMathDispatchTable *next = &kVxMathDispatchScalar;
 #endif
+    g_VxMathDispatch.store(next, std::memory_order_release);
 }
 
 void InitVxMath() {
@@ -243,14 +248,14 @@ void InterpolateFloatArray(void *Res, void *array1, void *array2, float factor, 
     if (!Res || !array1 || !array2 || count == 0)
         return;
 
-    g_VxMathDispatch.interpolateFloatArray(Res, array1, array2, factor, count);
+    GetVxMathDispatchTable()->interpolateFloatArray(Res, array1, array2, factor, count);
 }
 
 void InterpolateVectorArray(void *Res, void *Inarray1, void *Inarray2, float factor, int count, XDWORD StrideRes, XDWORD StrideIn) {
     if (!Res || !Inarray1 || !Inarray2 || count == 0)
         return;
 
-    g_VxMathDispatch.interpolateVectorArray(Res, Inarray1, Inarray2, factor, count, StrideRes, StrideIn);
+    GetVxMathDispatchTable()->interpolateVectorArray(Res, Inarray1, Inarray2, factor, count, StrideRes, StrideIn);
 }
 
 static XBOOL TransformBox2DScalarCore(const VxMatrix &World_ProjectionMat, const VxBbox &box, VxRect *ScreenSize, VxRect *Extents, VXCLIP_FLAGS &OrClipFlags, VXCLIP_FLAGS &AndClipFlags) {
@@ -405,7 +410,7 @@ XBOOL VxTransformBox2D(const VxMatrix &World_ProjectionMat, const VxBbox &box, V
         Extents->bottom = 0.0f;
     }
 
-    return g_VxMathDispatch.transformBox2DCore(
+    return GetVxMathDispatchTable()->transformBox2DCore(
         World_ProjectionMat,
         box,
         ScreenSize,
@@ -504,7 +509,7 @@ void VxProjectBoxZExtents(const VxMatrix &World_ProjectionMat, const VxBbox &box
         return;
     }
 
-    g_VxMathDispatch.projectBoxZExtentsCore(World_ProjectionMat, box, ZhMin, ZhMax);
+    GetVxMathDispatchTable()->projectBoxZExtentsCore(World_ProjectionMat, box, ZhMin, ZhMax);
 }
 
 
@@ -859,19 +864,19 @@ static void ProjectPointsToAxesExtentsScalar(const XBYTE *Points, XDWORD Stride,
 }
 
 XBOOL VxFillStructure(int Count, void *Dst, XDWORD Stride, XDWORD SizeSrc, const void *Src) {
-    return g_VxMathDispatch.fillStructure(Count, Dst, Stride, SizeSrc, Src);
+    return GetVxMathDispatchTable()->fillStructure(Count, Dst, Stride, SizeSrc, Src);
 }
 
 XBOOL VxCopyStructure(int Count, void *Dst, XDWORD OutStride, XDWORD SizeSrc, const void *Src, XDWORD InStride) {
-    return g_VxMathDispatch.copyStructure(Count, Dst, OutStride, SizeSrc, Src, InStride);
+    return GetVxMathDispatchTable()->copyStructure(Count, Dst, OutStride, SizeSrc, Src, InStride);
 }
 
 XBOOL VxIndexedCopy(const VxStridedData &Dst, const VxStridedData &Src, XDWORD SizeSrc, const int *Indices, int IndexCount) {
-    return g_VxMathDispatch.indexedCopy(Dst, Src, SizeSrc, Indices, IndexCount);
+    return GetVxMathDispatchTable()->indexedCopy(Dst, Src, SizeSrc, Indices, IndexCount);
 }
 
 XBOOL VxPtInRect(CKRECT *rect, CKPOINT *pt) {
-    return g_VxMathDispatch.ptInRect(rect, pt);
+    return GetVxMathDispatchTable()->ptInRect(rect, pt);
 }
 
 XBOOL VxComputeBestFitBBox(const XBYTE *Points, XDWORD Stride, int Count, VxMatrix &BBoxMatrix, float AdditionalBorder) {
@@ -910,7 +915,7 @@ XBOOL VxComputeBestFitBBox(const XBYTE *Points, XDWORD Stride, int Count, VxMatr
         BBoxMatrix[2][3] = 0.0f;
 
         float minX, maxX, minY, maxY, minZ, maxZ;
-        g_VxMathDispatch.projectPointsToAxesExtents(
+        GetVxMathDispatchTable()->projectPointsToAxesExtents(
             Points,
             Stride,
             Count,

@@ -1,8 +1,10 @@
 #include "VxDistance.h"
 
+#include <atomic>
 #include <float.h>
 
 #include "VxRay.h"
+#include "VxAtomic.h"
 #include "VxSIMD.h"
 #include "VxSIMDDispatchInternal.h"
 #include "VxVector.h"
@@ -188,15 +190,30 @@ struct VxDistanceDispatchTable {
     PointDistanceDispatchFn pointSegmentSquareDistance;
 };
 
-VxDistanceDispatchTable g_VxDistanceDispatch = {
+const VxDistanceDispatchTable kVxDistanceDispatchScalar = {
     MakeRayPairTermsScalar,
     PointLineSquareDistanceScalarImpl,
     PointRaySquareDistanceScalarImpl,
     PointSegmentSquareDistanceScalarImpl
 };
 
+#if defined(VX_SIMD_SSE)
+const VxDistanceDispatchTable kVxDistanceDispatchSIMD = {
+    MakeRayPairTermsSIMD,
+    PointLineSquareDistanceSIMDImpl,
+    PointRaySquareDistanceSIMDImpl,
+    PointSegmentSquareDistanceSIMDImpl
+};
+#endif
+
+std::atomic<const VxDistanceDispatchTable *> g_VxDistanceDispatch(&kVxDistanceDispatchScalar);
+
+static inline const VxDistanceDispatchTable *GetVxDistanceDispatchTable() {
+    return g_VxDistanceDispatch.load(std::memory_order_acquire);
+}
+
 static inline RayPairTerms MakeRayPairTerms(const VxRay& r0, const VxRay& r1) {
-    return g_VxDistanceDispatch.makeRayPairTerms(r0, r1);
+    return GetVxDistanceDispatchTable()->makeRayPairTerms(r0, r1);
 }
 
 }
@@ -204,17 +221,12 @@ static inline RayPairTerms MakeRayPairTerms(const VxRay& r0, const VxRay& r1) {
 void VxDistanceDispatchRebuild(int effectiveMode) {
     const bool useSIMD = (effectiveMode != VX_SIMD_MODE_NONE);
 #if defined(VX_SIMD_SSE)
-    g_VxDistanceDispatch.makeRayPairTerms = useSIMD ? MakeRayPairTermsSIMD : MakeRayPairTermsScalar;
-    g_VxDistanceDispatch.pointLineSquareDistance = useSIMD ? PointLineSquareDistanceSIMDImpl : PointLineSquareDistanceScalarImpl;
-    g_VxDistanceDispatch.pointRaySquareDistance = useSIMD ? PointRaySquareDistanceSIMDImpl : PointRaySquareDistanceScalarImpl;
-    g_VxDistanceDispatch.pointSegmentSquareDistance = useSIMD ? PointSegmentSquareDistanceSIMDImpl : PointSegmentSquareDistanceScalarImpl;
+    const VxDistanceDispatchTable *next = useSIMD ? &kVxDistanceDispatchSIMD : &kVxDistanceDispatchScalar;
 #else
     (void) useSIMD;
-    g_VxDistanceDispatch.makeRayPairTerms = MakeRayPairTermsScalar;
-    g_VxDistanceDispatch.pointLineSquareDistance = PointLineSquareDistanceScalarImpl;
-    g_VxDistanceDispatch.pointRaySquareDistance = PointRaySquareDistanceScalarImpl;
-    g_VxDistanceDispatch.pointSegmentSquareDistance = PointSegmentSquareDistanceScalarImpl;
+    const VxDistanceDispatchTable *next = &kVxDistanceDispatchScalar;
 #endif
+    g_VxDistanceDispatch.store(next, std::memory_order_release);
 }
 
 // Matches the exact quadratic expansion used in the original implementation.
@@ -724,15 +736,15 @@ float VxDistance::SegmentSegmentSquareDistance(const VxRay &segment0, const VxRa
 // Point-Line distance calculations
 
 float VxDistance::PointLineSquareDistance(const VxVector &point, const VxRay &line, float *t0) {
-    return g_VxDistanceDispatch.pointLineSquareDistance(point, line, t0);
+    return GetVxDistanceDispatchTable()->pointLineSquareDistance(point, line, t0);
 }
 
 float VxDistance::PointRaySquareDistance(const VxVector &point, const VxRay &ray, float *t0) {
-    return g_VxDistanceDispatch.pointRaySquareDistance(point, ray, t0);
+    return GetVxDistanceDispatchTable()->pointRaySquareDistance(point, ray, t0);
 }
 
 float VxDistance::PointSegmentSquareDistance(const VxVector &point, const VxRay &segment, float *t0) {
-    return g_VxDistanceDispatch.pointSegmentSquareDistance(point, segment, t0);
+    return GetVxDistanceDispatchTable()->pointSegmentSquareDistance(point, segment, t0);
 }
 
 

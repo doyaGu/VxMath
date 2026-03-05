@@ -55,6 +55,7 @@ set(VXMATH_PUBLIC_HEADERS
         ${VX_INCLUDE_DIR}/VxColor.h
         ${VX_INCLUDE_DIR}/VxTimeProfiler.h
         ${VX_INCLUDE_DIR}/VxImageDescEx.h
+        ${VX_INCLUDE_DIR}/VxAtomic.h
         ${VX_INCLUDE_DIR}/VxMutex.h
         ${VX_INCLUDE_DIR}/VxThread.h
 )

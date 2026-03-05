@@ -1,6 +1,8 @@
 #include <limits>
+#include <atomic>
 
 #include "VxMath.h"
+#include "VxAtomic.h"
 #include "VxSIMD.h"
 #include "VxSIMDDispatchInternal.h"
 #include "VxBlitEngine.h"
@@ -46,25 +48,36 @@ struct VxGraphicDispatchTable {
     VxConvertToBumpMapDispatchFn convertToBumpMap;
 };
 
-VxGraphicDispatchTable g_VxGraphicDispatch = {
+const VxGraphicDispatchTable kVxGraphicDispatchScalar = {
     GenerateMipMapScalarDispatch,
     ConvertToNormalMapScalarDispatch,
     ConvertToBumpMapScalarDispatch
 };
+
+#if defined(VX_SIMD_SSE2)
+const VxGraphicDispatchTable kVxGraphicDispatchSIMD = {
+    GenerateMipMapSIMDDispatch,
+    ConvertToNormalMapSIMDDispatch,
+    ConvertToBumpMapSIMDDispatch
+};
+#endif
+
+std::atomic<const VxGraphicDispatchTable *> g_VxGraphicDispatch(&kVxGraphicDispatchScalar);
+
+const VxGraphicDispatchTable *GetVxGraphicDispatchTable() {
+    return g_VxGraphicDispatch.load(std::memory_order_acquire);
+}
 }
 
 void VxGraphicDispatchRebuild(int effectiveMode) {
     const bool useSIMD = (effectiveMode != VX_SIMD_MODE_NONE);
 #if defined(VX_SIMD_SSE2)
-    g_VxGraphicDispatch.generateMipMap = useSIMD ? GenerateMipMapSIMDDispatch : GenerateMipMapScalarDispatch;
-    g_VxGraphicDispatch.convertToNormalMap = useSIMD ? ConvertToNormalMapSIMDDispatch : ConvertToNormalMapScalarDispatch;
-    g_VxGraphicDispatch.convertToBumpMap = useSIMD ? ConvertToBumpMapSIMDDispatch : ConvertToBumpMapScalarDispatch;
+    const VxGraphicDispatchTable *next = useSIMD ? &kVxGraphicDispatchSIMD : &kVxGraphicDispatchScalar;
 #else
     (void) useSIMD;
-    g_VxGraphicDispatch.generateMipMap = GenerateMipMapScalarDispatch;
-    g_VxGraphicDispatch.convertToNormalMap = ConvertToNormalMapScalarDispatch;
-    g_VxGraphicDispatch.convertToBumpMap = ConvertToBumpMapScalarDispatch;
+    const VxGraphicDispatchTable *next = &kVxGraphicDispatchScalar;
 #endif
+    g_VxGraphicDispatch.store(next, std::memory_order_release);
 }
 
 //------------------------------------------------------------------------------
@@ -432,7 +445,7 @@ static void GenerateMipMapImpl(const VxImageDescEx &src_desc, XBYTE *Buffer, boo
 }
 
 void VxGenerateMipMap(const VxImageDescEx &src_desc, XBYTE *Buffer) {
-    g_VxGraphicDispatch.generateMipMap(src_desc, Buffer);
+    GetVxGraphicDispatchTable()->generateMipMap(src_desc, Buffer);
 }
 
 //------------------------------------------------------------------------------
@@ -660,18 +673,21 @@ static XBOOL ConvertToNormalMapImpl(const VxImageDescEx &image, XDWORD ColorMask
         }
     }
 
-    // Copy second-to-last row to last row
-    memcpy(
-        Image + (Height - 1) * image.BytesPerLine,
-        Image + (Height - 2) * image.BytesPerLine,
-        image.BytesPerLine
-    );
+    // Copy second-to-last row to last row.
+    // For single-row images there is no previous row, so keep row 0 as-is.
+    if (Height > 1) {
+        memcpy(
+            Image + (Height - 1) * image.BytesPerLine,
+            Image + (Height - 2) * image.BytesPerLine,
+            image.BytesPerLine
+        );
+    }
 
     return TRUE;
 }
 
 XBOOL VxConvertToNormalMap(const VxImageDescEx &image, XDWORD ColorMask) {
-    return g_VxGraphicDispatch.convertToNormalMap(image, ColorMask);
+    return GetVxGraphicDispatchTable()->convertToNormalMap(image, ColorMask);
 }
 
 #if defined(VX_SIMD_SSE2)
@@ -894,7 +910,7 @@ static XBOOL ConvertToBumpMapImpl(const VxImageDescEx &image, bool useSIMD) {
 }
 
 XBOOL VxConvertToBumpMap(const VxImageDescEx &image) {
-    return g_VxGraphicDispatch.convertToBumpMap(image);
+    return GetVxGraphicDispatchTable()->convertToBumpMap(image);
 }
 
 //------------------------------------------------------------------------------
