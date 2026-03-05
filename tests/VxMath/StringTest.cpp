@@ -371,6 +371,22 @@ TEST(XStringTest, ConcatenationClampsToMaxLength) {
     EXPECT_EQ(s.Length(), (XWORD) XString::MAX_LENGTH);
 }
 
+TEST(XStringTest, ConcatenationSupports64BitIntegers) {
+    const unsigned long long u64 = 4294967296ULL;
+    const long long i64 = -4294967296LL;
+
+    XString s;
+    s << u64 << "," << i64;
+    ExpectStringState(s, "4294967296,-4294967296", 22);
+
+    XString plusEq("n=");
+    plusEq += u64;
+    ExpectStringState(plusEq, "n=4294967296", 12);
+
+    XString plus = XString("i=") + i64;
+    ExpectStringState(plus, "i=-4294967296", 13);
+}
+
 TEST(XStringTest, Format) {
     XString s;
     s.Format("String: %s, Int: %d, Float: %.2f", "test", 123, 3.14159);
@@ -456,3 +472,8 @@ TEST(XStringTest, BaseStringConversions) {
     EXPECT_FLOAT_EQ(s_invalid.ToFloat(), 0.0f);
 }
 
+TEST(XStringTest, BaseStringConstructorClampsLengthToMax) {
+    std::string large((size_t) XString::MAX_LENGTH + 64u, 'x');
+    XBaseString base(large.c_str());
+    EXPECT_EQ(base.Length(), (XWORD) XString::MAX_LENGTH);
+}

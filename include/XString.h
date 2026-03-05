@@ -49,7 +49,8 @@ public:
     XBaseString(const char *iString) : m_Allocated(0) {
         if (iString) {
             m_Buffer = (char *) iString;
-            m_Length = (XWORD) strlen(iString);
+            const size_t length = strlen(iString);
+            m_Length = (XWORD) ((length > (size_t) 0xfffeu) ? 0xfffeu : length);
         } else {
             m_Buffer = NULL;
             m_Length = 0;
@@ -926,6 +927,20 @@ public:
     VX_EXPORT XString &operator<<(unsigned int iValue);
 
     /**
+     * @brief Appends a signed 64-bit integer.
+     * @param iValue The integer to append, converted to a string.
+     * @return A reference to this string.
+     */
+    VX_EXPORT XString &operator<<(long long iValue);
+
+    /**
+     * @brief Appends an unsigned 64-bit integer.
+     * @param iValue The integer to append, converted to a string.
+     * @return A reference to this string.
+     */
+    VX_EXPORT XString &operator<<(unsigned long long iValue);
+
+    /**
      * @brief Appends a float.
      * @param iValue The float to append, converted to a string.
      * @return A reference to this string.
@@ -1006,6 +1021,26 @@ public:
      * @return A new XString object.
      */
     XString operator+(unsigned int iValue) const {
+        XString tmp = *this;
+        return tmp << iValue;
+    }
+
+    /**
+     * @brief Creates a new string by concatenating this string with a signed 64-bit integer.
+     * @param iValue The integer to concatenate.
+     * @return A new XString object.
+     */
+    XString operator+(long long iValue) const {
+        XString tmp = *this;
+        return tmp << iValue;
+    }
+
+    /**
+     * @brief Creates a new string by concatenating this string with an unsigned 64-bit integer.
+     * @param iValue The integer to concatenate.
+     * @return A new XString object.
+     */
+    XString operator+(unsigned long long iValue) const {
         XString tmp = *this;
         return tmp << iValue;
     }
@@ -1114,6 +1149,10 @@ public:
     XString &operator+=(char v) { return (*this) << v; }
     /** @brief Appends an integer. Alias for `operator<<`. */
     XString &operator+=(int v) { return (*this) << v; }
+    /** @brief Appends a signed 64-bit integer. Alias for `operator<<`. */
+    XString &operator+=(long long v) { return (*this) << v; }
+    /** @brief Appends an unsigned 64-bit integer. Alias for `operator<<`. */
+    XString &operator+=(unsigned long long v) { return (*this) << v; }
     /** @brief Appends a float. Alias for `operator<<`. */
     XString &operator+=(float v) { return (*this) << v; }
     /** @brief Appends a double. Alias for `operator<<`. */

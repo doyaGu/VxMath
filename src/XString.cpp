@@ -70,7 +70,7 @@ XString &XString::operator=(const XString &iSrc) {
 // operator =
 XString &XString::operator=(const char *iSrc) {
     if (iSrc) {
-        Assign(iSrc, (int)strlen(iSrc));
+        Assign(iSrc, ClampLength(strlen(iSrc)));
     } else {
         m_Length = 0;
         if (m_Buffer)
@@ -500,6 +500,21 @@ XString &XString::operator<<(int iValue) {
 XString &XString::operator<<(unsigned int iValue) {
     char buf[32];  // Increased buffer size for safety
     if (snprintf(buf, sizeof(buf), "%u", iValue) > 0)
+        (*this) << buf;
+    return *this;
+}
+
+// Concatenation operator
+XString &XString::operator<<(long long iValue) {
+    char buf[32];
+    if (snprintf(buf, sizeof(buf), "%lld", iValue) > 0)
+        (*this) << buf;
+    return *this;
+}
+
+XString &XString::operator<<(unsigned long long iValue) {
+    char buf[32];
+    if (snprintf(buf, sizeof(buf), "%llu", iValue) > 0)
         (*this) << buf;
     return *this;
 }
