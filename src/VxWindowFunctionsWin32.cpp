@@ -340,20 +340,37 @@ INSTANCE_HANDLE VxGetModuleHandle(const char *filename) {
 }
 
 XBOOL VxCreateFileTree(const char *file) {
+    if (!file) {
+        return FALSE;
+    }
+
     XString filepath = file;
     if (filepath.Length() <= 2)
         return FALSE;
 
+    XBOOL success = TRUE;
     for (char *pch = &filepath[3]; *pch != '\0'; ++pch) {
         if (*pch != '/' && *pch != '\\')
             continue;
         *pch = '\0';
-        if (GetFileAttributesA(filepath.CStr()) == -1)
-            if (!CreateDirectoryA(filepath.CStr(), NULL))
-                break;
+        const DWORD attrs = GetFileAttributesA(filepath.CStr());
+        if (attrs == INVALID_FILE_ATTRIBUTES) {
+            if (!CreateDirectoryA(filepath.CStr(), NULL)) {
+                const DWORD retryAttrs = GetFileAttributesA(filepath.CStr());
+                if (retryAttrs == INVALID_FILE_ATTRIBUTES || (retryAttrs & FILE_ATTRIBUTE_DIRECTORY) == 0) {
+                    success = FALSE;
+                    *pch = '\\';
+                    break;
+                }
+            }
+        } else if ((attrs & FILE_ATTRIBUTE_DIRECTORY) == 0) {
+            success = FALSE;
+            *pch = '\\';
+            break;
+        }
         *pch = '\\';
     }
-    return TRUE;
+    return success;
 }
 
 XDWORD VxURLDownloadToCacheFile(const char *File, char *CachedFile, int szCachedFile) {
