@@ -29,8 +29,10 @@ INSTANCE_HANDLE VxSharedLibrary::Load(const char *LibraryName) {
 
 // Unloads the shared Library
 void VxSharedLibrary::ReleaseLibrary() {
-    if (m_LibraryHandle)
+    if (m_LibraryHandle) {
         FreeLibrary((HMODULE) m_LibraryHandle);
+        m_LibraryHandle = NULL;
+    }
 }
 
 // Retrieves a function pointer from the library
