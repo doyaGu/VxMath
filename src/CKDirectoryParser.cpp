@@ -320,7 +320,7 @@ void CKDirectoryParser::Reset(const char *dir, const char *fileMask, XBOOL recur
         delete[] oldStartDir;
         size_t dirLen = strlen(dir);
         m_StartDir = new char[dirLen + 1];
-        strcpy_s(m_StartDir, dirLen + 1, dir);
+        memcpy(m_StartDir, dir, dirLen + 1);
 
         if (dirLen > 0 && (m_StartDir[dirLen - 1] == '\\' || m_StartDir[dirLen - 1] == '/')) {
             m_StartDir[dirLen - 1] = '\0';
@@ -333,7 +333,7 @@ void CKDirectoryParser::Reset(const char *dir, const char *fileMask, XBOOL recur
         delete[] oldFileMask;
         size_t maskLen = strlen(fileMask);
         m_FileMask = new char[maskLen + 1];
-        strcpy_s(m_FileMask, maskLen + 1, fileMask);
+        memcpy(m_FileMask, fileMask, maskLen + 1);
     } else {
         m_FileMask = oldFileMask;
     }
