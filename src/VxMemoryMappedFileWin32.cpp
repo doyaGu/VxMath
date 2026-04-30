@@ -40,6 +40,7 @@ VxMemoryMappedFile::VxMemoryMappedFile(const char *pszFileName)
         CloseHandle(m_hFile);
         m_hFile = INVALID_HANDLE_VALUE;
         m_errCode = VxMMF_MapView;
+        return;
     }
 
     m_errCode = VxMMF_NoError;
