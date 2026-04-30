@@ -24,6 +24,7 @@ XBOOL VxThread::CreateThread(VxThreadFunction *func, void *args) {
     if (!m_Thread)
         return FALSE;
     m_ThreadID = static_cast<XUINTPTR>(threadId);
+    m_State |= VXTS_CREATED;
 
     if (m_Name.Length() == 0) {
         m_Name = "THREAD_";
@@ -50,8 +51,11 @@ void VxThread::SetName(const char *name) {
 }
 
 void VxThread::Close() {
-    if (m_Thread)
+    if (m_Thread) {
+        VxMutexLock lock(GetMutex());
+        GetHashThread().Remove(m_Thread);
         ::CloseHandle((HANDLE) m_Thread);
+    }
     m_ThreadID = 0;
     m_Thread = NULL;
     m_State = 0;
@@ -85,17 +89,19 @@ XBOOL VxThread::IsStarted() const {
 }
 
 VxThread *VxThread::GetCurrentVxThread() {
-    HANDLE currentThread = ::GetCurrentThread();
-    GetMutex().EnterMutex();
+    const XUINTPTR currentThreadId = GetCurrentVxThreadId();
+    VxMutexLock lock(GetMutex());
 
-    XHashTable<VxThread *, GENERIC_HANDLE>::Iterator it = GetHashThread().Find(currentThread);
-    if (it == GetHashThread().End()) {
-        GetMutex().LeaveMutex();
-        return NULL;
+    XHashTable<VxThread *, GENERIC_HANDLE>::Iterator it = GetHashThread().Begin();
+    while (it != GetHashThread().End()) {
+        VxThread *thread = *it;
+        if (thread && thread->m_ThreadID == currentThreadId) {
+            return thread;
+        }
+        ++it;
     }
 
-    GetMutex().LeaveMutex();
-    return *it;
+    return NULL;
 }
 
 int VxThread::Wait(unsigned int *status, unsigned int timeout) {
