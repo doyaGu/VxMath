@@ -7,15 +7,20 @@
 #define WIN32_LEAN_AND_MEAN
 #endif
 #include <Windows.h>
-#if defined(_M_IX86) || defined(_M_X64) || defined(__i386__) || defined(__x86_64__)
+#if defined(_MSC_VER) && (defined(_M_IX86) || defined(_M_X64))
 #include <intrin.h>
 #endif
 
 extern float g_MSecondsPerCycle;
 
 static inline DWORD64 VxReadCounter() {
-#if defined(_M_IX86) || defined(_M_X64) || defined(__i386__) || defined(__x86_64__)
+#if defined(_MSC_VER) && (defined(_M_IX86) || defined(_M_X64))
     return __rdtsc();
+#elif defined(__i386__) || defined(__x86_64__)
+    unsigned int lo = 0;
+    unsigned int hi = 0;
+    __asm__ volatile("rdtsc" : "=a"(lo), "=d"(hi));
+    return (static_cast<DWORD64>(hi) << 32) | lo;
 #else
     LARGE_INTEGER counter;
     ::QueryPerformanceCounter(&counter);
