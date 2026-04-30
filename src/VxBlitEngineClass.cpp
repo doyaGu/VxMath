@@ -1239,31 +1239,6 @@ void VxBlitEngine::ResizeBilinear32(const VxImageDescEx &src_desc, const VxImage
                 XDWORD p01 = srcRow1[srcX0];
                 XDWORD p11 = srcRow1[srcX1];
 
-                // Calculate bilinear weights for 4 corners
-                int weights[4] = {
-                    (wX0 * wY0 + 128) >> 8,
-                    (wX1 * wY0 + 128) >> 8,
-                    (wX0 * wY1 + 128) >> 8,
-                    (wX1 * wY1 + 128) >> 8
-                };
-
-                // Keep weights non-negative and normalized to 256.
-                const int sumW = weights[0] + weights[1] + weights[2] + weights[3];
-                if (sumW != 256) {
-                    int maxIdx = 0;
-                    for (int i = 1; i < 4; ++i) {
-                        if (weights[i] > weights[maxIdx]) {
-                            maxIdx = i;
-                        }
-                    }
-                    weights[maxIdx] += (256 - sumW);
-                }
-
-                const int w00 = weights[0];
-                const int w10 = weights[1];
-                const int w01 = weights[2];
-                const int w11 = weights[3];
-
                 // Unpack to 16-bit and multiply
                 __m128i px00 = _mm_cvtsi32_si128(p00);
                 __m128i px10 = _mm_cvtsi32_si128(p10);
@@ -1275,17 +1250,21 @@ void VxBlitEngine::ResizeBilinear32(const VxImageDescEx &src_desc, const VxImage
                 px01 = _mm_unpacklo_epi8(px01, zero);
                 px11 = _mm_unpacklo_epi8(px11, zero);
 
-                __m128i vw00 = _mm_set1_epi16((short)w00);
-                __m128i vw10 = _mm_set1_epi16((short)w10);
-                __m128i vw01 = _mm_set1_epi16((short)w01);
-                __m128i vw11 = _mm_set1_epi16((short)w11);
+                const __m128i vwX0 = _mm_set1_epi16((short)wX0);
+                const __m128i vwX1 = _mm_set1_epi16((short)wX1);
+                const __m128i vwY0 = _mm_set1_epi16((short)wY0);
+                const __m128i vwY1 = _mm_set1_epi16((short)wY1);
 
-                __m128i result = _mm_mullo_epi16(px00, vw00);
-                result = _mm_add_epi16(result, _mm_mullo_epi16(px10, vw10));
-                result = _mm_add_epi16(result, _mm_mullo_epi16(px01, vw01));
-                result = _mm_add_epi16(result, _mm_mullo_epi16(px11, vw11));
+                __m128i row0 = _mm_mullo_epi16(px00, vwX0);
+                row0 = _mm_add_epi16(row0, _mm_mullo_epi16(px10, vwX1));
+                row0 = _mm_srli_epi16(row0, 8);
 
-                // Shift right by 8 and pack back to bytes
+                __m128i row1 = _mm_mullo_epi16(px01, vwX0);
+                row1 = _mm_add_epi16(row1, _mm_mullo_epi16(px11, vwX1));
+                row1 = _mm_srli_epi16(row1, 8);
+
+                __m128i result = _mm_mullo_epi16(row0, vwY0);
+                result = _mm_add_epi16(result, _mm_mullo_epi16(row1, vwY1));
                 result = _mm_srli_epi16(result, 8);
                 result = _mm_packus_epi16(result, zero);
 
