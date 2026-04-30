@@ -34,7 +34,7 @@ public:
             m_BlockCount = 1; // At least one block per chunk.
 
         // Normalize page size to the actual chunk capacity.
-        if (m_BlockCount > (std::numeric_limits<size_t>::max() / m_BlockSize))
+        if (m_BlockCount > (SIZE_MAX / m_BlockSize))
             m_PageSize = m_BlockSize;
         else
             m_PageSize = m_BlockCount * m_BlockSize;
@@ -170,7 +170,7 @@ private:
                 return false;
             }
 
-            if (iBlockCount > (std::numeric_limits<size_t>::max() / iBlockSize))
+            if (iBlockCount > (SIZE_MAX / iBlockSize))
             {
                 m_BlockCount = 0;
                 m_BlockAvailables = 0;
