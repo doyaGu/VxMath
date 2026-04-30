@@ -598,6 +598,10 @@ BITMAP_HANDLE VxConvertBitmapTo24(BITMAP_HANDLE Bitmap) {
 }
 
 XBOOL VxCopyBitmap(BITMAP_HANDLE Bitmap, const VxImageDescEx &desc) {
+    if (!Bitmap || !desc.Image || desc.Width <= 0 || desc.Height <= 0) {
+        return FALSE;
+    }
+
     BITMAP_HANDLE bitmap24 = VxConvertBitmapTo24(Bitmap);
     if (!bitmap24) return FALSE;
 
@@ -641,7 +645,48 @@ XBOOL VxCopyBitmap(BITMAP_HANDLE Bitmap, const VxImageDescEx &desc) {
     // Copy from provided image -> bitmap.
     VxDoBlitUpsideDown(desc, dstDesc);
 
-    if (bitmap24 != Bitmap) DeleteObject(bitmap24);
+    if (bitmap24 != Bitmap) {
+        BITMAP targetBitmap;
+        if (!GetObjectA(Bitmap, sizeof(BITMAP), &targetBitmap)) {
+            DeleteObject(bitmap24);
+            return FALSE;
+        }
+
+        HDC srcDC = CreateCompatibleDC(NULL);
+        if (!srcDC) {
+            DeleteObject(bitmap24);
+            return FALSE;
+        }
+
+        HDC dstDC = CreateCompatibleDC(NULL);
+        if (!dstDC) {
+            DeleteDC(srcDC);
+            DeleteObject(bitmap24);
+            return FALSE;
+        }
+
+        HGDIOBJ oldSrcObj = SelectObject(srcDC, bitmap24);
+        HGDIOBJ oldDstObj = SelectObject(dstDC, Bitmap);
+        if (oldSrcObj == NULL || oldSrcObj == HGDI_ERROR || oldDstObj == NULL || oldDstObj == HGDI_ERROR) {
+            if (oldSrcObj != NULL && oldSrcObj != HGDI_ERROR) SelectObject(srcDC, oldSrcObj);
+            if (oldDstObj != NULL && oldDstObj != HGDI_ERROR) SelectObject(dstDC, oldDstObj);
+            DeleteDC(srcDC);
+            DeleteDC(dstDC);
+            DeleteObject(bitmap24);
+            return FALSE;
+        }
+
+        const int copyWidth = targetBitmap.bmWidth;
+        const int copyHeight = targetBitmap.bmHeight < 0 ? -targetBitmap.bmHeight : targetBitmap.bmHeight;
+        const XBOOL copyOk = BitBlt(dstDC, 0, 0, copyWidth, copyHeight, srcDC, 0, 0, SRCCOPY) ? TRUE : FALSE;
+
+        SelectObject(srcDC, oldSrcObj);
+        SelectObject(dstDC, oldDstObj);
+        DeleteDC(srcDC);
+        DeleteDC(dstDC);
+        DeleteObject(bitmap24);
+        return copyOk;
+    }
 
     return TRUE;
 }
