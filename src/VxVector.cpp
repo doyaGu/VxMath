@@ -7,18 +7,19 @@ static constexpr float SIN_TABLE_SCALE = SIN_TABLE_SIZE / (2.0f * PI);
 static float g_SinTable[SIN_TABLE_SIZE + 1];
 static float g_CosTable[SIN_TABLE_SIZE + 1];
 
-static bool g_TablesInitialized = false;
-
-void InitializeTables() {
-    if (g_TablesInitialized) return;
-
+static bool InitializeTrigTablesOnce() {
     for (int i = 0; i <= SIN_TABLE_SIZE; ++i) {
         const float angle = (2.0f * PI * static_cast<float>(i)) / SIN_TABLE_SIZE;
         g_SinTable[i] = sinf(angle);
         g_CosTable[i] = cosf(angle);
     }
+    return true;
+}
 
-    g_TablesInitialized = true;
+void InitializeTables() {
+    static const bool initialized = InitializeTrigTablesOnce();
+
+    (void) initialized;
 }
 
 inline float TableSin(float x) {
@@ -70,15 +71,15 @@ const VxVector VxVector::m_Axis0(0.0f, 0.0f, 0.0f);
 const VxVector VxVector::m_Axis1(1.0f, 1.0f, 1.0f);
 
 VxVector &VxVector::operator=(const VxCompressedVector &v) {
-    const float yaAngle = static_cast<float>(v.ya) * (1.0f / 32767.0f) * PI;
-    const float xaAngle = static_cast<float>(v.xa) * (1.0f / 32767.0f) * PI;
+    const int yaAngle = static_cast<int>(v.ya);
+    const int xaAngle = static_cast<int>(v.xa);
 
-    const float sinYa = TableSin(yaAngle);
-    const float cosYa = TableCos(yaAngle);
-    const float sinXa = TableSin(xaAngle);
-    const float cosXa = TableCos(xaAngle);
+    const float sinYa = Tsin(yaAngle);
+    const float cosYa = Tcos(yaAngle);
+    const float sinXa = Tsin(xaAngle);
+    const float cosXa = Tcos(xaAngle);
 
-    x = sinYa * sinXa;
+    x = sinYa * cosXa;
     y = -sinXa;
     z = cosYa * cosXa;
 
