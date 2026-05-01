@@ -41,6 +41,16 @@ typedef struct CpuIdRegs {
     XDWORD edx;
 } CpuIdRegs;
 
+struct X86RuntimeState {
+    bool avx;
+    bool avx512;
+    bool amx;
+};
+
+static bool HasBit(XDWORD value, int bit) {
+    return (value & (static_cast<XDWORD>(1) << bit)) != 0;
+}
+
 static CpuIdRegs cpuid(XDWORD eax) {
     CpuIdRegs regs;
 #if VX_HAS_X86_CPUID && defined(__GNUC__)
@@ -77,30 +87,39 @@ static inline CpuIdRegs cpuidex(XDWORD eax, XDWORD ecx) {
     return regs;
 }
 
-// CPU Vendor identification
-typedef enum {
-    CPU_VENDOR_UNKNOWN = 0,
-    CPU_VENDOR_INTEL,
-    CPU_VENDOR_AMD
-} CpuVendor;
-
-static CpuVendor GetCpuVendor() {
-#if !VX_HAS_X86_CPUID
-    return CPU_VENDOR_UNKNOWN;
+#if VX_HAS_X86_CPUID
+static uint64_t ReadXCR0() {
+#if defined(_MSC_VER)
+    return static_cast<uint64_t>(_xgetbv(0));
+#elif defined(__GNUC__) || defined(__clang__)
+    uint32_t eax = 0;
+    uint32_t edx = 0;
+    __asm__ volatile(".byte 0x0f, 0x01, 0xd0" : "=a"(eax), "=d"(edx) : "c"(0));
+    return (static_cast<uint64_t>(edx) << 32) | eax;
 #else
-    CpuIdRegs regs = cpuid(0);
-
-    // Intel: "GenuineIntel"
-    if (regs.ebx == 0x756E6547 && regs.edx == 0x49656E69 && regs.ecx == 0x6C65746E) {
-        return CPU_VENDOR_INTEL;
-    }
-    // AMD: "AuthenticAMD"
-    else if (regs.ebx == 0x68747541 && regs.edx == 0x69746E65 && regs.ecx == 0x444D4163) {
-        return CPU_VENDOR_AMD;
-    }
-
-    return CPU_VENDOR_UNKNOWN;
+    return 0;
 #endif
+}
+#endif
+
+static X86RuntimeState GetX86RuntimeState(const CpuIdRegs &regs1) {
+    X86RuntimeState state = {};
+#if VX_HAS_X86_CPUID
+    const bool osxsave = HasBit(regs1.ecx, 27);
+    const uint64_t xcr0 = osxsave ? ReadXCR0() : 0;
+    state.avx = osxsave && ((xcr0 & 0x6) == 0x6);
+    state.avx512 = osxsave && ((xcr0 & 0xE6) == 0xE6);
+    state.amx = osxsave && ((xcr0 & ((1ull << 17) | (1ull << 18))) == ((1ull << 17) | (1ull << 18)));
+#else
+    (void) regs1;
+#endif
+    return state;
+}
+
+static void AddInstructionSetFlag(bool supported, XDWORD flag) {
+    if (supported) {
+        g_InstructionSetExtensions |= flag;
+    }
 }
 
 static void GetProcessorNameFromCpuid(char *name, size_t maxLen) {
@@ -186,171 +205,57 @@ static void DetectInstructionSets() {
     return;
 #endif
 
-    // Check basic feature support from CPUID function 1
     CpuIdRegs regs1 = cpuid(1);
+    const X86RuntimeState runtimeState = GetX86RuntimeState(regs1);
 
-    // SSE support (bit 25 in EDX)
-    if (regs1.edx & (1 << 25)) {
-        g_InstructionSetExtensions |= ISEX_SSE;
-    }
-
-    // SSE2 support (bit 26 in EDX)
-    if (regs1.edx & (1 << 26)) {
-        g_InstructionSetExtensions |= ISEX_SSE2;
-    }
-
-    // SSE3 support (bit 0 in ECX)
-    if (regs1.ecx & (1 << 0)) {
-        g_InstructionSetExtensions |= ISEX_SSE3;
-    }
-
-    // PCLMULQDQ support (bit 1 in ECX)
-    if (regs1.ecx & (1 << 1)) {
-        g_InstructionSetExtensions |= ISEX_PCLMULQDQ;
-    }
-
-    // SSSE3 support (bit 9 in ECX)
-    if (regs1.ecx & (1 << 9)) {
-        g_InstructionSetExtensions |= ISEX_SSSE3;
-    }
-
-    // FMA3 support (bit 12 in ECX)
-    if (regs1.ecx & (1 << 12)) {
-        g_InstructionSetExtensions |= ISEX_FMA3;
-    }
-
-    // SSE4.1 support (bit 19 in ECX)
-    if (regs1.ecx & (1 << 19)) {
-        g_InstructionSetExtensions |= ISEX_SSE41;
-    }
-
-    // SSE4.2 support (bit 20 in ECX)
-    if (regs1.ecx & (1 << 20)) {
-        g_InstructionSetExtensions |= ISEX_SSE42;
-    }
-
-    // MOVBE support (bit 22 in ECX)
-    if (regs1.ecx & (1 << 22)) {
-        g_InstructionSetExtensions |= ISEX_MOVBE;
-    }
-
-    // POPCNT support (bit 23 in ECX)
-    if (regs1.ecx & (1 << 23)) {
-        g_InstructionSetExtensions |= ISEX_POPCNT;
-    }
-
-    // AES-NI support (bit 25 in ECX)
-    if (regs1.ecx & (1 << 25)) {
-        g_InstructionSetExtensions |= ISEX_AES;
-    }
-
-    // AVX support (bit 28 in ECX)
-    if (regs1.ecx & (1 << 28)) {
-        g_InstructionSetExtensions |= ISEX_AVX;
-    }
-
-    // F16C support (bit 29 in ECX)
-    if (regs1.ecx & (1 << 29)) {
-        g_InstructionSetExtensions |= ISEX_F16C;
-    }
-
-    // RDRAND support (bit 30 in ECX)
-    if (regs1.ecx & (1 << 30)) {
-        g_InstructionSetExtensions |= ISEX_RDRAND;
-    }
+    AddInstructionSetFlag(HasBit(regs1.edx, 25), ISEX_SSE);
+    AddInstructionSetFlag(HasBit(regs1.edx, 26), ISEX_SSE2);
+    AddInstructionSetFlag(HasBit(regs1.ecx, 0), ISEX_SSE3);
+    AddInstructionSetFlag(HasBit(regs1.ecx, 1), ISEX_PCLMULQDQ);
+    AddInstructionSetFlag(HasBit(regs1.ecx, 9), ISEX_SSSE3);
+    AddInstructionSetFlag(HasBit(regs1.ecx, 12) && runtimeState.avx, ISEX_FMA3);
+    AddInstructionSetFlag(HasBit(regs1.ecx, 19), ISEX_SSE41);
+    AddInstructionSetFlag(HasBit(regs1.ecx, 20), ISEX_SSE42);
+    AddInstructionSetFlag(HasBit(regs1.ecx, 22), ISEX_MOVBE);
+    AddInstructionSetFlag(HasBit(regs1.ecx, 23), ISEX_POPCNT);
+    AddInstructionSetFlag(HasBit(regs1.ecx, 25), ISEX_AES);
+    AddInstructionSetFlag(HasBit(regs1.ecx, 28) && runtimeState.avx, ISEX_AVX);
+    AddInstructionSetFlag(HasBit(regs1.ecx, 29) && runtimeState.avx, ISEX_F16C);
+    AddInstructionSetFlag(HasBit(regs1.ecx, 30), ISEX_RDRAND);
 
     // Check extended features from CPUID function 7
     CpuIdRegs regs0 = cpuid(0);
     if (regs0.eax >= 7) {
         CpuIdRegs regs7 = cpuidex(7, 0);
 
-        // BMI1 support (bit 3 in EBX)
-        if (regs7.ebx & (1 << 3)) {
-            g_InstructionSetExtensions |= ISEX_BMI1;
-        }
-
-        // AVX2 support (bit 5 in EBX)
-        if (regs7.ebx & (1 << 5)) {
-            g_InstructionSetExtensions |= ISEX_AVX2;
-        }
-
-        // BMI2 support (bit 8 in EBX)
-        if (regs7.ebx & (1 << 8)) {
-            g_InstructionSetExtensions |= ISEX_BMI2;
-        }
-
-        // AVX-512F support (bit 16 in EBX)
-        if (regs7.ebx & (1 << 16)) {
-            g_InstructionSetExtensions |= ISEX_AVX512F;
-        }
-
-        // AVX-512DQ support (bit 17 in EBX)
-        if (regs7.ebx & (1 << 17)) {
-            g_InstructionSetExtensions |= ISEX_AVX512DQ;
-        }
-
-        // RDSEED support (bit 18 in EBX)
-        if (regs7.ebx & (1 << 18)) {
-            g_InstructionSetExtensions |= ISEX_RDSEED;
-        }
-
-        // AVX-512CD support (bit 28 in EBX)
-        if (regs7.ebx & (1 << 28)) {
-            g_InstructionSetExtensions |= ISEX_AVX512CD;
-        }
-
-        // SHA support (bit 29 in EBX)
-        if (regs7.ebx & (1 << 29)) {
-            g_InstructionSetExtensions |= ISEX_SHA;
-        }
-
-        // AVX-512BW support (bit 30 in EBX)
-        if (regs7.ebx & (1 << 30)) {
-            g_InstructionSetExtensions |= ISEX_AVX512BW;
-        }
-
-        // AVX-512VL support (bit 31 in EBX)
-        if (regs7.ebx & (1 << 31)) {
-            g_InstructionSetExtensions |= ISEX_AVX512VL;
-        }
-
-        // AVX-512VNNI support (bit 11 in ECX)
-        if (regs7.ecx & (1 << 11)) {
-            g_InstructionSetExtensions |= ISEX_AVX512VNNI;
-        }
+        AddInstructionSetFlag(HasBit(regs7.ebx, 3), ISEX_BMI1);
+        AddInstructionSetFlag(HasBit(regs7.ebx, 5) && runtimeState.avx, ISEX_AVX2);
+        AddInstructionSetFlag(HasBit(regs7.ebx, 8), ISEX_BMI2);
+        AddInstructionSetFlag(HasBit(regs7.ebx, 16) && runtimeState.avx512, ISEX_AVX512F);
+        AddInstructionSetFlag(HasBit(regs7.ebx, 17) && runtimeState.avx512, ISEX_AVX512DQ);
+        AddInstructionSetFlag(HasBit(regs7.ebx, 18), ISEX_RDSEED);
+        AddInstructionSetFlag(HasBit(regs7.ebx, 28) && runtimeState.avx512, ISEX_AVX512CD);
+        AddInstructionSetFlag(HasBit(regs7.ebx, 29), ISEX_SHA);
+        AddInstructionSetFlag(HasBit(regs7.ebx, 30) && runtimeState.avx512, ISEX_AVX512BW);
+        AddInstructionSetFlag(HasBit(regs7.ebx, 31) && runtimeState.avx512, ISEX_AVX512VL);
+        AddInstructionSetFlag(HasBit(regs7.ecx, 11) && runtimeState.avx512, ISEX_AVX512VNNI);
 
         // AVXVNNI support (bit 4 in EAX from CPUID 7, subleaf 1)
         CpuIdRegs regs7_1 = cpuidex(7, 1);
-        if (regs7_1.eax & (1 << 4)) {
-            g_InstructionSetExtensions |= ISEX_AVXVNNI;
-        }
-
-        // AMX support (AMX-TILE bit 24 in EDX, AMX-INT8 bit 25 in EDX)
-        if ((regs7.edx & (1 << 24)) && (regs7.edx & (1 << 25))) {
-            g_InstructionSetExtensions |= ISEX_AMX;
-        }
+        AddInstructionSetFlag(HasBit(regs7_1.eax, 4) && runtimeState.avx, ISEX_AVXVNNI);
+        AddInstructionSetFlag(HasBit(regs7.edx, 24) && HasBit(regs7.edx, 25) && runtimeState.amx, ISEX_AMX);
     }
 
     // Check extended CPUID function 0x80000001 for AMD-specific features
     CpuIdRegs regs80000000 = cpuid(0x80000000);
     if (regs80000000.eax >= 0x80000001) {
         CpuIdRegs regs80000001 = cpuid(0x80000001);
-        // LZCNT support (bit 5 in ECX)
-        if (regs80000001.ecx & (1 << 5)) {
-            g_InstructionSetExtensions |= ISEX_LZCNT;
-        }
+        AddInstructionSetFlag(HasBit(regs80000001.ecx, 5), ISEX_LZCNT);
     }
 }
 
-void VxDetectProcessor() {
-    static XBOOL ProcessorDetected = FALSE;
-    if (ProcessorDetected)
-        return;
-
 #if defined(_WIN32)
-    ::OutputDebugString("VxMath: Detecting processor------------------------\n");
-
-    // Timing measurement (unchanged from original)
+static void MeasureProcessorTiming() {
     HANDLE hThread = ::GetCurrentThread();
     int priority = ::GetThreadPriority(hThread);
     ::SetThreadPriority(hThread, THREAD_PRIORITY_IDLE);
@@ -381,9 +286,9 @@ void VxDetectProcessor() {
     g_ProcessorFrequency = (int) ((double) freq.QuadPart / 1000000.0);
 #endif
     ::SetThreadPriority(hThread, priority);
+}
 #else
-    fprintf(stderr, "VxMath: Detecting processor------------------------\n");
-
+static void MeasureProcessorTiming() {
     auto start = std::chrono::steady_clock::now();
 #if VX_HAS_X86_CPUID
     uint64_t timeStamp1 = __rdtsc();
@@ -410,36 +315,49 @@ void VxDetectProcessor() {
             g_ProcessorFrequency = 1000;
         }
     }
+}
 #endif
 
-    // Determine processor type using CPUID
-    g_ProcessorType = DetermineProcessorType();
+static void FormatProcessorDescription() {
+    char processorName[sizeof(g_ProcDescription)];
+    strncpy(processorName, g_ProcDescription, sizeof(processorName) - 1);
+    processorName[sizeof(processorName) - 1] = '\0';
 
-    // Get processor name from CPUID
+    if (g_ProcessorFrequency < 1000) {
+        snprintf(g_ProcDescription, sizeof(g_ProcDescription) - 1, "%s %d MHz", processorName, g_ProcessorFrequency);
+    } else {
+        snprintf(g_ProcDescription, sizeof(g_ProcDescription) - 1, "%s %.2f GHz", processorName,
+                 g_ProcessorFrequency / 1000.0);
+    }
+    g_ProcDescription[sizeof(g_ProcDescription) - 1] = '\0';
+}
+
+static bool InitializeProcessorDetection() {
+#if defined(_WIN32)
+    ::OutputDebugString("VxMath: Detecting processor------------------------\n");
+#else
+    fprintf(stderr, "VxMath: Detecting processor------------------------\n");
+#endif
+
+    MeasureProcessorTiming();
+
+    g_ProcessorType = DetermineProcessorType();
     GetProcessorNameFromCpuid(g_ProcDescription, sizeof(g_ProcDescription));
 
-    // Determine processor features from CPUID function 1
     CpuIdRegs regs = cpuid(1);
     g_ProcessorFeatures = regs.edx; // Standard x86 features
     g_ProcessorFeatures |= PROC_HASFPU;
 
-    // Detect instruction set extensions
     DetectInstructionSets();
+    FormatProcessorDescription();
 
-    // Update processor description with frequency
-    char tempDesc[64];
-    strncpy(tempDesc, g_ProcDescription, sizeof(tempDesc) - 1);
-    tempDesc[sizeof(tempDesc) - 1] = '\0';
+    return true;
+}
 
-    if (g_ProcessorFrequency < 1000) {
-        snprintf(g_ProcDescription, sizeof(g_ProcDescription) - 1, "%s %d MHz", tempDesc, g_ProcessorFrequency);
-    } else {
-        snprintf(g_ProcDescription, sizeof(g_ProcDescription) - 1, "%s %.2f GHz", tempDesc,
-                 g_ProcessorFrequency / 1000.0);
-    }
-    g_ProcDescription[sizeof(g_ProcDescription) - 1] = '\0';
+void VxDetectProcessor() {
+    static const bool initialized = InitializeProcessorDetection();
 
-    ProcessorDetected = TRUE;
+    (void) initialized;
 }
 
 const char *GetProcessorDescription() {
