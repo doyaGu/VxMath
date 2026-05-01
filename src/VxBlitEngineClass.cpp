@@ -1483,6 +1483,22 @@ int ComparePixelByB(const void *a, const void *b) {
     return static_cast<int>(pa->b) - static_cast<int>(pb->b);
 }
 
+void RecalcColorBoxBounds(XArray<ColorPixel> &pixels, ColorBox &box) {
+    box.rMin = box.gMin = box.bMin = 255;
+    box.rMax = box.gMax = box.bMax = 0;
+    box.count = 0;
+    for (int i = 0; i < box.pixelCount; ++i) {
+        ColorPixel &cp = pixels[box.pixelStartIdx + i];
+        box.rMin = XMin(box.rMin, static_cast<int>(cp.r));
+        box.rMax = XMax(box.rMax, static_cast<int>(cp.r));
+        box.gMin = XMin(box.gMin, static_cast<int>(cp.g));
+        box.gMax = XMax(box.gMax, static_cast<int>(cp.g));
+        box.bMin = XMin(box.bMin, static_cast<int>(cp.b));
+        box.bMax = XMax(box.bMax, static_cast<int>(cp.b));
+        box.count += cp.count;
+    }
+}
+
 inline int ColorDistSq(int r1, int g1, int b1, int r2, int g2, int b2) {
     int dr = r1 - r2;
     int dg = g1 - g2;
@@ -1769,24 +1785,8 @@ XBOOL VxBlitEngine::QuantizeImageMedianCut(const VxImageDescEx &src_desc, const 
         box.pixelCount = splitPoint;
 
         // Recalculate bounds for both boxes
-        auto recalcBounds = [&pixels](ColorBox &b) {
-            b.rMin = b.gMin = b.bMin = 255;
-            b.rMax = b.gMax = b.bMax = 0;
-            b.count = 0;
-            for (int i = 0; i < b.pixelCount; ++i) {
-                ColorPixel &cp = pixels[b.pixelStartIdx + i];
-                b.rMin = XMin(b.rMin, (int)cp.r);
-                b.rMax = XMax(b.rMax, (int)cp.r);
-                b.gMin = XMin(b.gMin, (int)cp.g);
-                b.gMax = XMax(b.gMax, (int)cp.g);
-                b.bMin = XMin(b.bMin, (int)cp.b);
-                b.bMax = XMax(b.bMax, (int)cp.b);
-                b.count += cp.count;
-            }
-        };
-
-        recalcBounds(box);
-        recalcBounds(newBox);
+        RecalcColorBoxBounds(pixels, box);
+        RecalcColorBoxBounds(pixels, newBox);
 
         boxes[numBoxes++] = newBox;
     }

@@ -52,6 +52,11 @@ static inline XDWORD ConvertComponent(XDWORD value, int srcBits, int dstBits, in
     return value << dstShift;
 }
 
+static inline XWORD QuantizePaletteComponent(XBYTE value, int width, int shift) {
+    if (width <= 0) return 0;
+    return static_cast<XWORD>((value >> (8 - width)) << shift);
+}
+
 // Generic pixel conversion with proper bit width handling
 template<int SrcBpp, int DstBpp>
 static void CopyLineGeneric(const VxBlitInfo *info) {
@@ -647,11 +652,6 @@ void CopyLine_Paletted8_16Alpha(const VxBlitInfo *info) {
     };
     thread_local Pal16AlphaCache cache = {};
 
-    auto quantize = [](XBYTE v, int width, int shift) -> XWORD {
-        if (width <= 0) return 0;
-        return (XWORD)((v >> (8 - width)) << shift);
-    };
-
     if (!cache.valid ||
         cache.operationStamp != info->operationStamp ||
         cache.colorMap != colorMap ||
@@ -671,10 +671,10 @@ void CopyLine_Paletted8_16Alpha(const VxBlitInfo *info) {
             const XBYTE g_val = entry[1];
             const XBYTE r_val = entry[2];
             const XBYTE a_val = (bpc >= 4) ? entry[3] : 0xFF;
-            cache.palette16[i] = quantize(r_val, rWidth, rShift) |
-                                 quantize(g_val, gWidth, gShift) |
-                                 quantize(b_val, bWidth, bShift) |
-                                 quantize(a_val, aWidth, aShift);
+            cache.palette16[i] = QuantizePaletteComponent(r_val, rWidth, rShift) |
+                                 QuantizePaletteComponent(g_val, gWidth, gShift) |
+                                 QuantizePaletteComponent(b_val, bWidth, bShift) |
+                                 QuantizePaletteComponent(a_val, aWidth, aShift);
         }
         for (int i = entries; i < 256; ++i) {
             cache.palette16[i] = 0;
