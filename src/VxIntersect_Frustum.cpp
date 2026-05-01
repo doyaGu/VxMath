@@ -11,6 +11,45 @@
 #include "VxSIMD.h"
 #include "VxIntersectDispatchStateInternal.h"
 
+static inline XBOOL VxFrustumOBBAxisTest(
+    const VxVector &axis,
+    const VxVector &relCenter,
+    const VxVector &axis0,
+    const VxVector &axis1,
+    const VxVector &axis2,
+    const VxVector &halfSize,
+    const VxVector &frUp,
+    const VxVector &frRight,
+    const VxVector &frDir,
+    float uBound,
+    float rBound,
+    float dMin,
+    float dRatio
+) {
+    const float c = DotProduct(relCenter, axis);
+    const float r = XAbs(DotProduct(axis, axis0)) * halfSize.x +
+        XAbs(DotProduct(axis, axis1)) * halfSize.y +
+        XAbs(DotProduct(axis, axis2)) * halfSize.z;
+
+    const float frBound = XAbs(DotProduct(axis, frUp)) * uBound + XAbs(DotProduct(axis, frRight)) * rBound;
+
+    const float d = DotProduct(axis, frDir) * dMin;
+
+    float frMin = d - frBound;
+    if (frMin < 0.0f)
+        frMin *= dRatio;
+
+    float frMax = d + frBound;
+    if (frMax > 0.0f)
+        frMax *= dRatio;
+
+    if (c + r < frMin)
+        return FALSE;
+    if (c - r > frMax)
+        return FALSE;
+    return TRUE;
+}
+
 #if defined(VX_SIMD_SSE)
 static inline __m128 VxSIMDLoadVector3(const VxVector &v) {
     return VxSIMDLoadFloat3(&v.x);
@@ -184,42 +223,23 @@ static XBOOL FrustumOBBScalarCore(const VxFrustum &frustum, const VxBbox &box, c
     const float dMin = frustum.GetDMin();
     const float dRatio = frustum.GetDRatio();
 
-    auto axisTest = [&](const VxVector &axis) -> XBOOL {
-        const float c = DotProduct(relCenter, axis);
-        const float r = XAbs(DotProduct(axis, axis0)) * halfSize.x +
-            XAbs(DotProduct(axis, axis1)) * halfSize.y +
-            XAbs(DotProduct(axis, axis2)) * halfSize.z;
-
-        const float frBound = XAbs(DotProduct(axis, frUp)) * uBound + XAbs(DotProduct(axis, frRight)) * rBound;
-
-        const float d = DotProduct(axis, frDir) * dMin;
-
-        float frMin = d - frBound;
-        if (frMin < 0.0f)
-            frMin *= dRatio;
-
-        float frMax = d + frBound;
-        if (frMax > 0.0f)
-            frMax *= dRatio;
-
-        if (c + r < frMin)
-            return FALSE;
-        if (c - r > frMax)
-            return FALSE;
-        return TRUE;
+    const VxVector testAxes[] = {
+        axis0,
+        axis1,
+        axis2,
+        frustum.GetFarPlane().GetNormal(),
+        frustum.GetBottomPlane().GetNormal(),
+        frustum.GetUpPlane().GetNormal(),
+        frustum.GetLeftPlane().GetNormal(),
+        frustum.GetRightPlane().GetNormal()
     };
 
-    // Test along box axes.
-    if (!axisTest(axis0)) return FALSE;
-    if (!axisTest(axis1)) return FALSE;
-    if (!axisTest(axis2)) return FALSE;
-
-    // Test along frustum plane normals.
-    if (!axisTest(frustum.GetFarPlane().GetNormal())) return FALSE;
-    if (!axisTest(frustum.GetBottomPlane().GetNormal())) return FALSE;
-    if (!axisTest(frustum.GetUpPlane().GetNormal())) return FALSE;
-    if (!axisTest(frustum.GetLeftPlane().GetNormal())) return FALSE;
-    if (!axisTest(frustum.GetRightPlane().GetNormal())) return FALSE;
+    for (int i = 0; i < 8; ++i) {
+        if (!VxFrustumOBBAxisTest(testAxes[i], relCenter, axis0, axis1, axis2, halfSize,
+                                  frUp, frRight, frDir, uBound, rBound, dMin, dRatio)) {
+            return FALSE;
+        }
+    }
 
     return TRUE;
 }
