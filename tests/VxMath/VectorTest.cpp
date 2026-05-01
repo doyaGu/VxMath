@@ -1163,6 +1163,28 @@ TEST_F(VxCompressedVectorTest, AssignmentFromVxVector) {
     EXPECT_TRUE(std::isfinite(result2.z));
 }
 
+TEST_F(VxCompressedVectorTest, RoundTripPreservesDirection) {
+    const VxVector inputs[] = {
+        x_axis,
+        y_axis,
+        z_axis,
+        diagonal
+    };
+
+    for (const VxVector &input : inputs) {
+        VxCompressedVector cv;
+        cv = input;
+
+        VxVector decoded;
+        decoded = cv;
+
+        EXPECT_TRUE(std::isfinite(decoded.x));
+        EXPECT_TRUE(std::isfinite(decoded.y));
+        EXPECT_TRUE(std::isfinite(decoded.z));
+        EXPECT_GT(DotProduct(decoded, input), 0.999f);
+    }
+}
+
 TEST_F(VxCompressedVectorTest, SlerpBetweenVectors) {
     VxCompressedVector cv1, cv2, result;
     cv1 = x_axis;

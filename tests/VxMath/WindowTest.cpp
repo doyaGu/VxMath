@@ -154,6 +154,16 @@ TEST_F(VxWindowFunctionsTest, FilesystemOperations) {
     EXPECT_TRUE(std::filesystem::exists(treePath.parent_path()));
 }
 
+TEST_F(VxWindowFunctionsTest, CreateFileTreeFailsWhenIntermediateComponentIsAFile) {
+    const std::filesystem::path blocker = m_tempDir / "blocker";
+    CreateTempFile("blocker", "content");
+
+    const std::filesystem::path blockedTarget = blocker / "child" / "leaf.txt";
+    EXPECT_FALSE(VxCreateFileTree(blockedTarget.string().c_str()));
+    EXPECT_TRUE(std::filesystem::is_regular_file(blocker));
+    EXPECT_FALSE(std::filesystem::exists(blockedTarget.parent_path()));
+}
+
 TEST_F(VxWindowFunctionsTest, CurrentDirectory) {
     char originalDir[MAX_PATH];
     ASSERT_TRUE(VxGetCurrentDirectory(originalDir));

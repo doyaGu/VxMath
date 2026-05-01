@@ -1,18 +1,16 @@
 #include "gtest/gtest.h"
 #include "VxMath.h"
+#include <atomic>
+
+#ifdef _WIN32
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <Windows.h>
+#endif
 
 // Test Fixture for System and Info tests
-class SystemInfoTest : public ::testing::Test {
-protected:
-    // This function is called before each test is run.
-    // We call VxDetectProcessor() here to ensure the information is populated
-    // for all subsequent tests in this suite.
-    void SetUp() override {
-        // InitVxMath() is supposed to call VxDetectProcessor.
-        // If not, we call it explicitly to be safe.
-        // InitVxMath();
-    }
-};
+class SystemInfoTest : public ::testing::Test {};
 
 // Test to ensure processor description is not empty.
 TEST_F(SystemInfoTest, GetProcessorDescription_ReturnsNonEmptyString) {
@@ -124,19 +122,20 @@ TEST_F(SystemInfoTest, GetProcessorType_ReturnsValidEnum) {
     std::cout << "Processor Architecture: " << archName << " (enum " << type << ")" << std::endl;
 }
 
-// Test to ensure GetInstructionSetExtensions returns a set of flags.
-// TEST_F(SystemInfoTest, GetInstructionSetExtensions_ReturnsPlausibleFlags) {
-//     XDWORD extensions = GetInstructionSetExtensions();
-//     // Most modern x86/x64 CPUs will have at least SSE and SSE2.
-//     // This check is platform-dependent.
-// #if defined(VX_MSVC) || defined(VX_GCC)
-// #if defined(_M_IX86) || defined(_M_X64) || defined(__i386__) || defined(__x86_64__)
-//     EXPECT_TRUE(extensions & ISEX_SSE);
-//     EXPECT_TRUE(extensions & ISEX_SSE2);
-// #endif
-// #endif
-//     std::cout << "Instruction Set Extensions: 0x" << std::hex << extensions << std::dec << std::endl;
-// }
+TEST_F(SystemInfoTest, GetInstructionSetExtensions_RespectsRuntimeSIMDState) {
+    const VxSIMDFeatures &features = VxGetSIMDFeatures();
+    const XDWORD extensions = GetInstructionSetExtensions();
+
+    if (!features.AVX) {
+        EXPECT_EQ(extensions & (ISEX_AVX | ISEX_AVX2 | ISEX_FMA3 | ISEX_F16C | ISEX_AVXVNNI), 0u);
+    }
+    if (!features.AVX2) {
+        EXPECT_EQ(extensions & ISEX_AVX2, 0u);
+    }
+    if (!features.AVX512F) {
+        EXPECT_EQ(extensions & (ISEX_AVX512F | ISEX_AVX512DQ | ISEX_AVX512BW | ISEX_AVX512VL | ISEX_AVX512VNNI | ISEX_AVX512CD), 0u);
+    }
+}
 
 // Test OS and Platform detection.
 TEST_F(SystemInfoTest, GetOsAndPlatform_ReturnsValidEnums) {
@@ -262,6 +261,87 @@ TEST_F(SystemInfoTest, PtInRect) {
     CKPOINT pt_outside = {200, 200};
     EXPECT_FALSE(VxPtInRect(&rect, &pt_outside));
 }
+
+#ifdef _WIN32
+namespace {
+
+struct ThreadCaptureContext {
+    std::atomic<bool> started{false};
+    std::atomic<bool> release{false};
+    std::atomic<VxThread *> observed{nullptr};
+    std::atomic<XUINTPTR> observedId{0};
+};
+
+unsigned int CaptureCurrentThread(void *args) {
+    ThreadCaptureContext *context = static_cast<ThreadCaptureContext *>(args);
+    context->observed.store(VxThread::GetCurrentVxThread(), std::memory_order_relaxed);
+    context->observedId.store(VxThread::GetCurrentVxThreadId(), std::memory_order_relaxed);
+    context->started.store(true, std::memory_order_release);
+
+    while (!context->release.load(std::memory_order_acquire)) {
+        ::Sleep(1);
+    }
+
+    return 123u;
+}
+
+bool WaitForStart(const ThreadCaptureContext &context, DWORD timeoutMs) {
+    const DWORD deadline = ::GetTickCount() + timeoutMs;
+    while (!context.started.load(std::memory_order_acquire)) {
+        if (::GetTickCount() >= deadline) {
+            return false;
+        }
+        ::Sleep(1);
+    }
+    return true;
+}
+
+} // namespace
+
+TEST_F(SystemInfoTest, ThreadCreationMarksCreatedAndAllowsPostCreateUpdates) {
+    ThreadCaptureContext context;
+    VxThread thread;
+
+    EXPECT_FALSE(thread.IsCreated());
+    ASSERT_TRUE(thread.CreateThread(&CaptureCurrentThread, &context));
+    ASSERT_TRUE(WaitForStart(context, 5000));
+
+    EXPECT_TRUE(thread.IsCreated());
+
+    thread.SetPriority(VXTP_HIGHLEVEL);
+    EXPECT_EQ(thread.GetPriority(), static_cast<unsigned int>(VXTP_HIGHLEVEL));
+
+    thread.SetName("worker-thread");
+    EXPECT_STREQ(thread.GetName().CStr(), "worker-thread");
+
+    context.release.store(true, std::memory_order_release);
+
+    unsigned int status = 0;
+    ASSERT_EQ(thread.Wait(&status, 5000), VXT_OK);
+    EXPECT_EQ(status, 123u);
+
+    thread.Close();
+    EXPECT_FALSE(thread.IsCreated());
+}
+
+TEST_F(SystemInfoTest, GetCurrentVxThreadReturnsWorkerWrapper) {
+    ThreadCaptureContext context;
+    VxThread thread;
+
+    ASSERT_TRUE(thread.CreateThread(&CaptureCurrentThread, &context));
+    ASSERT_TRUE(WaitForStart(context, 5000));
+
+    EXPECT_EQ(context.observed.load(std::memory_order_relaxed), &thread);
+    EXPECT_EQ(context.observedId.load(std::memory_order_relaxed), thread.GetID());
+
+    context.release.store(true, std::memory_order_release);
+
+    unsigned int status = 0;
+    ASSERT_EQ(thread.Wait(&status, 5000), VXT_OK);
+    EXPECT_EQ(status, 123u);
+    thread.Close();
+}
+#endif
 
 // =============================================================================
 // Main function to run all tests
