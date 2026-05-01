@@ -717,13 +717,12 @@ VX_OSINFO VxGetOs() {
 }
 
 FONT_HANDLE VxCreateFont(const char *FontName, int FontSize, int Weight, XBOOL italic, XBOOL underline) {
-    if (!FontName || FontSize <= 0) return NULL;
+    if (!FontName || FontSize == 0) return NULL;
 
     HDC hDC = CreateCompatibleDC(NULL);
     if (!hDC) return NULL;
 
-    // Convert point size to logical units
-    int logicalHeight = -MulDiv(FontSize, GetDeviceCaps(hDC, LOGPIXELSY), 72);
+    int logicalHeight = FontSize < 0 ? FontSize : -MulDiv(FontSize, GetDeviceCaps(hDC, LOGPIXELSY), 72);
 
     HFONT hFont = CreateFontA(
         logicalHeight,               // Height
