@@ -22,13 +22,13 @@
 #       define VX_EXPORT
 #   else
 #       ifdef VX_API
-#           if defined(WIN32)
+#           if defined(_WIN32) || defined(WIN32)
 #               define VX_EXPORT __declspec(dllexport)
 #           else
 #               define VX_EXPORT
 #           endif
 #       else
-#           if defined(WIN32)
+#           if defined(_WIN32) || defined(WIN32)
 #               define VX_EXPORT __declspec(dllimport)
 #           else
 #               define VX_EXPORT
@@ -42,7 +42,7 @@
 // EXPORT DEFINES FOR LIB / DLL VERSIONS
 #ifndef CK_LIB
 #   ifdef CK_PRIVATE_VERSION_VIRTOOLS
-#       if defined(WIN32)
+#       if defined(_WIN32) || defined(WIN32)
 #           define DLL_EXPORT __declspec(dllexport)	// VC++ export option
 #       else
 #           define DLL_EXPORT
@@ -55,7 +55,7 @@
 #endif
 
 #ifndef CK_LIB
-#   if defined(WIN32)
+#   if defined(_WIN32) || defined(WIN32)
 #       define PLUGIN_EXPORT extern "C" __declspec(dllexport)
 #   else
 #       define PLUGIN_EXPORT extern "C"
