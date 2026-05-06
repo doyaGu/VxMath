@@ -87,7 +87,7 @@ struct VectorEdgeCases {
 
     /// Vector with denormalized float components
     static VxVector Denormalized() {
-        float denorm = std::numeric_limits<float>::min() / 2.0f;
+        float denorm = (std::numeric_limits<float>::min)() / 2.0f;
         return VxVector(denorm, denorm, denorm);
     }
 

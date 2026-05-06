@@ -97,7 +97,7 @@ inline bool AbsoluteNear(float a, float b, float tol = STANDARD_TOL) {
  */
 inline bool ScaleRelativeNear(float a, float b, float tol = STANDARD_TOL) {
     const float diff = std::fabs(a - b);
-    const float scale = 1.0f + std::max(std::fabs(a), std::fabs(b));
+    const float scale = 1.0f + (std::max)(std::fabs(a), std::fabs(b));
     return diff <= tol * scale;
 }
 

@@ -61,7 +61,7 @@ constexpr float SIMD_ANGLE_TOL = 1e-5f;
 
 inline bool NearEqual(float a, float b, float tol = SIMD_SCALAR_TOL) {
     const float diff = std::fabs(a - b);
-    const float scale = 1.0f + std::max(std::fabs(a), std::fabs(b));
+    const float scale = 1.0f + (std::max)(std::fabs(a), std::fabs(b));
     return diff <= tol * scale;
 }
 
@@ -194,15 +194,15 @@ inline void VectorReflect(VxVector& result, const VxVector& incident, const VxVe
 }
 
 inline void VectorMinimize(VxVector& result, const VxVector& a, const VxVector& b) {
-    result.x = std::min(a.x, b.x);
-    result.y = std::min(a.y, b.y);
-    result.z = std::min(a.z, b.z);
+    result.x = (std::min)(a.x, b.x);
+    result.y = (std::min)(a.y, b.y);
+    result.z = (std::min)(a.z, b.z);
 }
 
 inline void VectorMaximize(VxVector& result, const VxVector& a, const VxVector& b) {
-    result.x = std::max(a.x, b.x);
-    result.y = std::max(a.y, b.y);
-    result.z = std::max(a.z, b.z);
+    result.x = (std::max)(a.x, b.x);
+    result.y = (std::max)(a.y, b.y);
+    result.z = (std::max)(a.z, b.z);
 }
 
 inline void NormalizeVector(VxVector& v) {

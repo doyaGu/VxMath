@@ -278,7 +278,7 @@ TEST_F(PalettedBlitTest, ARGB32ToPaletted_WithExistingPalette) {
             int g = (palColor >> 8) & 0xFF;
             int b = palColor & 0xFF;
             double dist = std::sqrt(static_cast<double>(r*r + g*g + b*b));
-            maxDist = std::max(maxDist, dist);
+            maxDist = (std::max)(maxDist, dist);
         }
         EXPECT_LT(maxDist, 30.0) << "Black should map to near-black palette entry";
     }

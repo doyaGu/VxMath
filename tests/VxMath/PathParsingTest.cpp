@@ -200,9 +200,9 @@ TEST(FileExtensionTest, Comparison) {
     CKFileExtension ext3("tXt");
     CKFileExtension ext4("bmp");
 
-    ASSERT_TRUE(ext1 == ext2);
-    ASSERT_TRUE(ext2 == ext3);
-    ASSERT_FALSE(ext1 == ext4);
+    ASSERT_NE(ext1.operator==(ext2), 0);
+    ASSERT_NE(ext2.operator==(ext3), 0);
+    ASSERT_EQ(ext1.operator==(ext4), 0);
 }
 
 // --- CKDirectoryParser Tests ---

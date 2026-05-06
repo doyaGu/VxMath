@@ -108,7 +108,7 @@ TEST_F(QuantizeTest, SolidColor_SinglePaletteEntry) {
     for (int i = 0; i < 256; ++i) {
         XDWORD palColor = palette.GetColor(i);
         double dist = ColorDistance(palColor, 0xFF8040C0);
-        bestDist = std::min(bestDist, dist);
+        bestDist = (std::min)(bestDist, dist);
         if (dist < 50.0) {  // NeuQuant tolerance (was 5.0)
             found = true;
             break;
@@ -260,7 +260,7 @@ TEST_F(QuantizeTest, PaletteQuality_ColorAccuracy) {
         double minDist = 1e9;
         for (int i = 0; i < 256; ++i) {
             double dist = ColorDistance(testColor, paletteColors[i]);
-            minDist = std::min(minDist, dist);
+            minDist = (std::min)(minDist, dist);
         }
         EXPECT_LT(minDist, 60.0) << "Palette should have color close to " 
                                   << std::hex << testColor << " (best dist: " << minDist << ")";

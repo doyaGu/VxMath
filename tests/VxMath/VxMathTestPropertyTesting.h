@@ -185,7 +185,7 @@ inline ::testing::AssertionResult CrossProductIsOrthogonal(const VxVector& a, co
     float dot_b = DotProduct(cross, b);
 
     // Scale tolerance by the magnitude of the vectors (larger vectors = larger errors)
-    float scale = std::max(1.0f, std::max(a.Magnitude(), b.Magnitude()) * cross.Magnitude());
+    float scale = (std::max)(1.0f, (std::max)(a.Magnitude(), b.Magnitude()) * cross.Magnitude());
     float scaledTol = LOOSE_TOL * scale;
 
     if (!IsNearZero(dot_a, scaledTol) || !IsNearZero(dot_b, scaledTol)) {
