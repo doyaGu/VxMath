@@ -565,7 +565,7 @@ public:
 
         for (int y = 0; y < height; ++y) {
             for (int x = 0; x < width; ++x) {
-                int barIdx = std::min(x / (barWidth > 0 ? barWidth : 1), 7);
+                int barIdx = XMin(x / (barWidth > 0 ? barWidth : 1), 7);
                 pixels[y * width + x] = colors[barIdx];
             }
         }
