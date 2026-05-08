@@ -4,9 +4,8 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
-#include <filesystem>
-#include <string>
 
+#include <dirent.h>
 #include <dlfcn.h>
 #include <fcntl.h>
 #include <limits.h>
@@ -21,6 +20,7 @@
 #include <unistd.h>
 
 #include "VxImageDescEx.h"
+#include "XString.h"
 
 static size_t CopyModulePathToBuffer(const char *path, char *output, size_t outputSize) {
     if (!path || !output || outputSize == 0) {
@@ -35,6 +35,106 @@ static size_t CopyModulePathToBuffer(const char *path, char *output, size_t outp
     }
     output[copyLen] = '\0';
     return copyLen;
+}
+
+static XBOOL AppendPathComponent(XString &path, const char *name) {
+    if (!name || !*name) {
+        return FALSE;
+    }
+
+    if (path.Length() > 0 && path[path.Length() - 1] != '/') {
+        path << '/';
+    }
+    path << name;
+    return TRUE;
+}
+
+static XBOOL RemoveDirectoryTree(const char *path) {
+    struct stat st;
+    if (lstat(path, &st) != 0) {
+        return errno == ENOENT ? TRUE : FALSE;
+    }
+
+    if (!S_ISDIR(st.st_mode) || S_ISLNK(st.st_mode)) {
+        return unlink(path) == 0;
+    }
+
+    DIR *dir = opendir(path);
+    if (!dir) {
+        return FALSE;
+    }
+
+    XBOOL success = TRUE;
+    struct dirent *entry;
+    while ((entry = readdir(dir)) != NULL) {
+        if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) {
+            continue;
+        }
+
+        XString child(path);
+        AppendPathComponent(child, entry->d_name);
+        if (!RemoveDirectoryTree(child.CStr())) {
+            success = FALSE;
+            break;
+        }
+    }
+
+    closedir(dir);
+    if (!success) {
+        return FALSE;
+    }
+
+    return rmdir(path) == 0;
+}
+
+static XBOOL CreateDirectoryTree(const char *path) {
+    if (!path || !*path) {
+        return FALSE;
+    }
+
+    XString current(path);
+    for (XWORD i = 1; i < current.Length(); ++i) {
+        if (current[i] != '/') {
+            continue;
+        }
+
+        current[i] = '\0';
+        if (current.Length() > 0 && current.CStr()[0] != '\0') {
+            if (mkdir(current.CStr(), 0777) != 0 && errno != EEXIST) {
+                current[i] = '/';
+                return FALSE;
+            }
+        }
+        current[i] = '/';
+    }
+
+    if (mkdir(current.CStr(), 0777) != 0 && errno != EEXIST) {
+        return FALSE;
+    }
+
+    struct stat st;
+    return stat(current.CStr(), &st) == 0 && S_ISDIR(st.st_mode);
+}
+
+static XBOOL CopyParentPath(const char *file, XString &parent) {
+    if (!file || !*file) {
+        return FALSE;
+    }
+
+    const char *lastSlash = strrchr(file, '/');
+    if (!lastSlash) {
+        parent = "";
+        return TRUE;
+    }
+
+    const int parentLen = static_cast<int>(lastSlash - file);
+    if (parentLen <= 0) {
+        parent = "/";
+        return TRUE;
+    }
+
+    parent.Create(file, parentLen);
+    return TRUE;
 }
 
 char VxScanCodeToAscii(XDWORD scancode, unsigned char keystate[256]) {
@@ -269,16 +369,14 @@ XBOOL VxDeleteDirectory(const char *path) {
         return FALSE;
     }
 
-    std::error_code ec;
-    std::filesystem::remove_all(path, ec);
-    return !ec;
+    return RemoveDirectoryTree(path);
 }
 
 XBOOL VxGetCurrentDirectory(char *path) {
     if (!path) {
         return FALSE;
     }
-    return getcwd(path, MAX_PATH) != NULL;
+    return getcwd(path, _MAX_PATH) != NULL;
 }
 
 XBOOL VxSetCurrentDirectory(const char *path) {
@@ -297,7 +395,7 @@ XBOOL VxMakePath(char *fullpath, const char *path, const char *file) {
     const size_t fileLen = strlen(file);
     const bool needSep = (pathLen > 0 && path[pathLen - 1] != '/');
     const size_t totalLen = pathLen + (needSep ? 1 : 0) + fileLen;
-    if (totalLen >= MAX_PATH) {
+    if (totalLen >= _MAX_PATH) {
         return FALSE;
     }
 
@@ -394,15 +492,15 @@ XBOOL VxCreateFileTree(const char *file) {
         return FALSE;
     }
 
-    std::error_code ec;
-    std::filesystem::path p(file);
-    std::filesystem::path parent = p.parent_path();
-    if (parent.empty()) {
+    XString parent;
+    if (!CopyParentPath(file, parent)) {
+        return FALSE;
+    }
+    if (parent.Length() == 0) {
         return TRUE;
     }
 
-    std::filesystem::create_directories(parent, ec);
-    return !ec;
+    return CreateDirectoryTree(parent.CStr());
 }
 
 XDWORD VxURLDownloadToCacheFile(const char *File, char *CachedFile, int szCachedFile) {
@@ -442,17 +540,13 @@ XBOOL VxCopyBitmap(BITMAP_HANDLE Bitmap, const VxImageDescEx &desc) {
 
 VX_OSINFO VxGetOs() {
 #if defined(__APPLE__)
-#   if defined(TARGET_OS_IPHONE) && TARGET_OS_IPHONE
-    return VXOS_IOS;
-#   else
-    return VXOS_MACOS;
-#   endif
+    return VXOS_MACOSX;
 #elif defined(__ANDROID__)
-    return VXOS_ANDROID;
+    return VXOS_LINUXX86;
 #elif defined(__FreeBSD__)
-    return VXOS_FREEBSD;
+    return VXOS_LINUXX86;
 #elif defined(__linux__)
-    return VXOS_LINUX;
+    return VXOS_LINUXX86;
 #else
     return VXOS_UNKNOWN;
 #endif

@@ -7,8 +7,8 @@
 #endif
 #include <Windows.h>
 #else
-#include <chrono>
-#include <thread>
+#include <time.h>
+#include <unistd.h>
 #endif
 
 #include "VxMath.h"
@@ -289,17 +289,19 @@ static void MeasureProcessorTiming() {
 }
 #else
 static void MeasureProcessorTiming() {
-    auto start = std::chrono::steady_clock::now();
+    struct timespec start;
+    struct timespec end;
+    clock_gettime(CLOCK_MONOTONIC, &start);
 #if VX_HAS_X86_CPUID
     uint64_t timeStamp1 = __rdtsc();
 #endif
-    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    usleep(50000);
 #if VX_HAS_X86_CPUID
     uint64_t timeStamp2 = __rdtsc();
 #endif
-    auto end = std::chrono::steady_clock::now();
-    std::chrono::duration<double> elapsed = end - start;
-    const double t1 = elapsed.count();
+    clock_gettime(CLOCK_MONOTONIC, &end);
+    const double t1 = (double) (end.tv_sec - start.tv_sec) +
+                      (double) (end.tv_nsec - start.tv_nsec) / 1000000000.0;
 #if VX_HAS_X86_CPUID
     const double t2 = (double) (timeStamp2 - timeStamp1);
 #else
