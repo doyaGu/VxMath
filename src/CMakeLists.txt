@@ -326,6 +326,10 @@ if (VXMATH_BUILD_STATIC)
     target_compile_definitions(VxMathStatic PUBLIC VX_LIB)
 
     list(APPEND VXMATH_TARGETS VxMathStatic)
+
+    if (NOT TARGET VxMath)
+        add_library(VxMath ALIAS VxMathStatic)
+    endif ()
 endif ()
 
 # Build the exported-targets list locally *and* propagate to the parent scope.
