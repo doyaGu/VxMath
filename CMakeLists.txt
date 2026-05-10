@@ -169,6 +169,7 @@ if (VXMATH_INSTALL)
     install(EXPORT VxMathTargets
             FILE VxMathTargets.cmake
             DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/VxMath
+            COMPONENT Development
     )
 
     configure_package_config_file(
@@ -187,6 +188,7 @@ if (VXMATH_INSTALL)
             "${CMAKE_CURRENT_BINARY_DIR}/VxMathConfig.cmake"
             "${CMAKE_CURRENT_BINARY_DIR}/VxMathConfigVersion.cmake"
             DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/VxMath
+            COMPONENT Development
     )
 
     if (VXMATH_IS_TOP_LEVEL)

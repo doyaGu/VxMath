@@ -342,11 +342,11 @@ if (VXMATH_INSTALL)
     # Install libraries to Bin directory
     install(TARGETS ${VXMATH_EXPORTED_TARGETS}
             EXPORT VxMathTargets
-            RUNTIME DESTINATION Bin
-            LIBRARY DESTINATION Bin
-            ARCHIVE DESTINATION lib
+            RUNTIME DESTINATION Bin COMPONENT Runtime
+            LIBRARY DESTINATION Bin COMPONENT Runtime
+            ARCHIVE DESTINATION lib COMPONENT Development
     )
 
     # Install headers to include root
-    install(FILES ${VXMATH_PUBLIC_HEADERS} DESTINATION include)
+    install(FILES ${VXMATH_PUBLIC_HEADERS} DESTINATION include COMPONENT Development)
 endif ()
