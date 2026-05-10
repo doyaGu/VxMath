@@ -30,9 +30,7 @@ int GetQuantizationSamplingFactor();
 
 VxBlitEngine TheBlitter;
 
-namespace {
-
-int CollapseSIMDModeToBlitKernelTier(int mode) {
+static int CollapseSIMDModeToBlitKernelTier(int mode) {
     switch (mode) {
         case VX_SIMD_MODE_AVX2:
             return VX_SIMD_MODE_AVX2;
@@ -47,8 +45,6 @@ int CollapseSIMDModeToBlitKernelTier(int mode) {
             return VX_SIMD_MODE_NONE;
     }
 }
-
-} // namespace
 
 //==============================================================================
 //  VxBlitEngine -- Construction / Destruction
@@ -1482,8 +1478,6 @@ void VxBlitEngine::ResizeNearestNeighbor(const VxImageDescEx &src_desc, const Vx
 // Median-Cut Algorithm -- helper types (file-local)
 //------------------------------------------------------------------------------
 
-namespace {
-
 struct ColorBox {
     int rMin, rMax;
     int gMin, gMax;
@@ -1498,25 +1492,25 @@ struct ColorPixel {
     int count;
 };
 
-int ComparePixelByR(const void *a, const void *b) {
+static int ComparePixelByR(const void *a, const void *b) {
     const ColorPixel *pa = reinterpret_cast<const ColorPixel *>(a);
     const ColorPixel *pb = reinterpret_cast<const ColorPixel *>(b);
     return static_cast<int>(pa->r) - static_cast<int>(pb->r);
 }
 
-int ComparePixelByG(const void *a, const void *b) {
+static int ComparePixelByG(const void *a, const void *b) {
     const ColorPixel *pa = reinterpret_cast<const ColorPixel *>(a);
     const ColorPixel *pb = reinterpret_cast<const ColorPixel *>(b);
     return static_cast<int>(pa->g) - static_cast<int>(pb->g);
 }
 
-int ComparePixelByB(const void *a, const void *b) {
+static int ComparePixelByB(const void *a, const void *b) {
     const ColorPixel *pa = reinterpret_cast<const ColorPixel *>(a);
     const ColorPixel *pb = reinterpret_cast<const ColorPixel *>(b);
     return static_cast<int>(pa->b) - static_cast<int>(pb->b);
 }
 
-void RecalcColorBoxBounds(XArray<ColorPixel> &pixels, ColorBox &box) {
+static void RecalcColorBoxBounds(XArray<ColorPixel> &pixels, ColorBox &box) {
     box.rMin = box.gMin = box.bMin = 255;
     box.rMax = box.gMax = box.bMax = 0;
     box.count = 0;
@@ -1532,15 +1526,13 @@ void RecalcColorBoxBounds(XArray<ColorPixel> &pixels, ColorBox &box) {
     }
 }
 
-inline int ColorDistSq(int r1, int g1, int b1, int r2, int g2, int b2) {
+static inline int ColorDistSq(int r1, int g1, int b1, int r2, int g2, int b2) {
     int dr = r1 - r2;
     int dg = g1 - g2;
     int db = b1 - b2;
     // Weighted by human perception: green > red > blue
     return dr * dr * 2 + dg * dg * 4 + db * db;
 }
-
-} // anonymous namespace
 
 //------------------------------------------------------------------------------
 // NeuQuant-based Quantization (Default)
