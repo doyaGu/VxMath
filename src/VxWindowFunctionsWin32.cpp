@@ -1,18 +1,18 @@
 #include "VxWindowFunctions.h"
 
-#include <limits>
-
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
 #endif
 #include <Windows.h>
+
+#include <stdint.h>
+#include <limits.h>
 
 #if defined(_MSC_VER)
 #include <float.h>
 #endif
 
 #include <direct.h>
-#include <new>
 #include <shellapi.h>
 
 #include "XString.h"
@@ -24,9 +24,9 @@ extern void VxDoBlitUpsideDown(const VxImageDescEx &src_desc, const VxImageDescE
 extern void VxDoBlit(const VxImageDescEx &src_desc, const VxImageDescEx &dst_desc);
 
 static DWORD ClampSizeToDword(size_t value) {
-    const size_t maxDword = static_cast<size_t>((std::numeric_limits<DWORD>::max)());
+    const size_t maxDword = static_cast<size_t>(UINT32_MAX);
     if (value > maxDword) {
-        return (std::numeric_limits<DWORD>::max)();
+        return static_cast<DWORD>(UINT32_MAX);
     }
     return static_cast<DWORD>(value);
 }
@@ -409,7 +409,8 @@ BITMAP_HANDLE VxCreateBitmap(const VxImageDescEx &desc) {
     bmi.bmiHeader.biCompression = BI_RGB;
 
     // Create a DIB section
-    HBITMAP bitmap = CreateDIBSection(NULL, &bmi, DIB_RGB_COLORS, NULL, NULL, 0);
+    void *bitmapBits = NULL;
+    HBITMAP bitmap = CreateDIBSection(NULL, &bmi, DIB_RGB_COLORS, &bitmapBits, NULL, 0);
     if (!bitmap) return NULL;
 
     // Get bitmap information
@@ -425,13 +426,16 @@ BITMAP_HANDLE VxCreateBitmap(const VxImageDescEx &desc) {
         const long long signedHeight = static_cast<long long>(bmHeight);
         const size_t absHeight = static_cast<size_t>(signedHeight < 0 ? -signedHeight : signedHeight);
         const size_t expectedLineSize = static_cast<size_t>(dibSection.dsBmih.biSizeImage) / absHeight;
-        if (expectedLineSize <= static_cast<size_t>((std::numeric_limits<int>::max)()) &&
+        if (expectedLineSize <= static_cast<size_t>(INT_MAX) &&
             bytePerLine != static_cast<int>(expectedLineSize)) {
             bytePerLine = static_cast<int>(expectedLineSize);
         }
     }
 
-    if (!bm.bmBits) return NULL;
+    if (!bitmapBits) {
+        DeleteObject(bitmap);
+        return NULL;
+    }
 
     VxImageDescEx dstDesc;
     dstDesc.Width = desc.Width;
@@ -442,7 +446,7 @@ BITMAP_HANDLE VxCreateBitmap(const VxImageDescEx &desc) {
     dstDesc.GreenMask = G_MASK;
     dstDesc.BlueMask = B_MASK;
     dstDesc.AlphaMask = 0;
-    dstDesc.Image = static_cast<XBYTE *>(bm.bmBits);
+    dstDesc.Image = static_cast<XBYTE *>(bitmapBits);
 
     if (desc.Image)
         VxDoBlitUpsideDown(desc, dstDesc);
@@ -455,88 +459,65 @@ void VxDeleteBitmap(BITMAP_HANDLE Bitmap) {
 }
 
 XBYTE *VxConvertBitmap(BITMAP_HANDLE Bitmap, VxImageDescEx &desc) {
-    BITMAP_HANDLE bitmap24 = VxConvertBitmapTo24(Bitmap);
-    if (!bitmap24) return NULL;
+    if (!Bitmap) return NULL;
 
-    // Get bitmap info
-    DIBSECTION dibSection;
-    if (!GetObjectA(bitmap24, sizeof(DIBSECTION), &dibSection)) {
-        if (bitmap24 != Bitmap)
-            DeleteObject(bitmap24);
+    BITMAP bm;
+    if (!GetObjectA(Bitmap, sizeof(BITMAP), &bm) || bm.bmWidth <= 0 || bm.bmHeight == 0) {
         return NULL;
     }
 
-    if (!dibSection.dsBm.bmBits) {
-        if (bitmap24 != Bitmap)
-            DeleteObject(bitmap24);
+    const int absHeight = bm.bmHeight < 0 ? -bm.bmHeight : bm.bmHeight;
+    if (static_cast<size_t>(bm.bmWidth) > (SIZE_MAX / 4u)) {
         return NULL;
     }
 
-    const int rawHeight = (dibSection.dsBmih.biHeight != 0) ? dibSection.dsBmih.biHeight : dibSection.dsBm.bmHeight;
-    if (dibSection.dsBm.bmWidth <= 0 || rawHeight == 0) {
-        if (bitmap24 != Bitmap)
-            DeleteObject(bitmap24);
+    const size_t dstBytesPerLine = static_cast<size_t>(bm.bmWidth) * 4u;
+    if (static_cast<size_t>(absHeight) > (SIZE_MAX / dstBytesPerLine) ||
+        dstBytesPerLine > static_cast<size_t>(INT_MAX)) {
         return NULL;
     }
-    const bool topDown = rawHeight < 0;
-    const int absHeight = topDown ? -rawHeight : rawHeight;
 
-    // Create source desc
-    VxImageDescEx srcDesc;
-    srcDesc.Width = dibSection.dsBm.bmWidth;
-    srcDesc.Height = absHeight;
-    srcDesc.BytesPerLine = dibSection.dsBm.bmWidthBytes;
-    srcDesc.BitsPerPixel = dibSection.dsBm.bmBitsPixel;
-    srcDesc.RedMask = R_MASK;
-    srcDesc.GreenMask = G_MASK;
-    srcDesc.BlueMask = B_MASK;
-    srcDesc.AlphaMask = 0;
-    srcDesc.Image = static_cast<XBYTE *>(dibSection.dsBm.bmBits);
+    const size_t totalBytes = dstBytesPerLine * static_cast<size_t>(absHeight);
+    XBYTE *newImage = new XBYTE[totalBytes];
 
-    // Create destination desc (32-bit ARGB)
+    BITMAPINFO bmi;
+    memset(&bmi, 0, sizeof(bmi));
+    bmi.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+    bmi.bmiHeader.biWidth = bm.bmWidth;
+    bmi.bmiHeader.biHeight = -absHeight;
+    bmi.bmiHeader.biPlanes = 1;
+    bmi.bmiHeader.biBitCount = 32;
+    bmi.bmiHeader.biCompression = BI_RGB;
+
+    HDC dc = CreateCompatibleDC(NULL);
+    if (!dc) {
+        delete[] newImage;
+        return NULL;
+    }
+
+    const int copiedLines = GetDIBits(dc, static_cast<HBITMAP>(Bitmap), 0, absHeight, newImage, &bmi, DIB_RGB_COLORS);
+    DeleteDC(dc);
+    if (copiedLines != absHeight) {
+        delete[] newImage;
+        return NULL;
+    }
+
+    XDWORD *pixels = reinterpret_cast<XDWORD *>(newImage);
+    const size_t pixelCount = static_cast<size_t>(bm.bmWidth) * static_cast<size_t>(absHeight);
+    for (size_t i = 0; i < pixelCount; ++i) {
+        pixels[i] |= 0xFF000000u;
+    }
+
     VxImageDescEx dstDesc;
-    dstDesc.Width = srcDesc.Width;
-    dstDesc.Height = srcDesc.Height;
-    if (srcDesc.Width > static_cast<int>((std::numeric_limits<size_t>::max)() / 4u)) {
-        if (bitmap24 != Bitmap)
-            DeleteObject(bitmap24);
-        return NULL;
-    }
-    const size_t dstBytesPerLine = static_cast<size_t>(srcDesc.Width) * 4u;
-    if (static_cast<size_t>(srcDesc.Height) > ((std::numeric_limits<size_t>::max)() / dstBytesPerLine)) {
-        if (bitmap24 != Bitmap)
-            DeleteObject(bitmap24);
-        return NULL;
-    }
-    if (dstBytesPerLine > static_cast<size_t>((std::numeric_limits<int>::max)())) {
-        if (bitmap24 != Bitmap)
-            DeleteObject(bitmap24);
-        return NULL;
-    }
+    dstDesc.Width = bm.bmWidth;
+    dstDesc.Height = absHeight;
     dstDesc.BytesPerLine = static_cast<int>(dstBytesPerLine);
     dstDesc.BitsPerPixel = 32;
     dstDesc.RedMask = R_MASK;
     dstDesc.GreenMask = G_MASK;
     dstDesc.BlueMask = B_MASK;
     dstDesc.AlphaMask = A_MASK;
-
-    const size_t totalBytes = dstBytesPerLine * static_cast<size_t>(dstDesc.Height);
-    XBYTE *newImage = new (std::nothrow) XBYTE[totalBytes];
-    if (!newImage) {
-        if (bitmap24 != Bitmap)
-            DeleteObject(bitmap24);
-        return NULL;
-    }
     dstDesc.Image = newImage;
-
-    if (topDown) {
-        VxDoBlit(srcDesc, dstDesc);
-    } else {
-        VxDoBlitUpsideDown(srcDesc, dstDesc);
-    }
-
-    if (bitmap24 != Bitmap)
-        DeleteObject(bitmap24);
 
     desc = dstDesc;
     desc.Image = newImage;
@@ -568,10 +549,17 @@ BITMAP_HANDLE VxConvertBitmapTo24(BITMAP_HANDLE Bitmap) {
     bmi.bmiHeader.biBitCount = 24;
     bmi.bmiHeader.biCompression = BI_RGB;
 
-    HBITMAP bitmap24 = CreateDIBSection(NULL, &bmi, DIB_RGB_COLORS, NULL, NULL, 0);
+    void *bitmapBits = NULL;
+    HBITMAP bitmap24 = CreateDIBSection(NULL, &bmi, DIB_RGB_COLORS, &bitmapBits, NULL, 0);
     if (!bitmap24) {
         SelectObject(srcDC, oldSrcObj);
         DeleteDC(srcDC);
+        return NULL;
+    }
+    if (!bitmapBits) {
+        SelectObject(srcDC, oldSrcObj);
+        DeleteDC(srcDC);
+        DeleteObject(bitmap24);
         return NULL;
     }
 
@@ -624,7 +612,7 @@ XBOOL VxCopyBitmap(BITMAP_HANDLE Bitmap, const VxImageDescEx &desc) {
         const long long signedHeight = static_cast<long long>(bmHeight);
         const size_t absHeight = static_cast<size_t>(signedHeight < 0 ? -signedHeight : signedHeight);
         const size_t expectedLineSize = static_cast<size_t>(dibSection.dsBmih.biSizeImage) / absHeight;
-        if (expectedLineSize <= static_cast<size_t>((std::numeric_limits<int>::max)()) &&
+        if (expectedLineSize <= static_cast<size_t>(INT_MAX) &&
             bytePerLine != static_cast<int>(expectedLineSize)) {
             bytePerLine = static_cast<int>(expectedLineSize);
         }
