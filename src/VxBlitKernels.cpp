@@ -8,9 +8,6 @@
  *
  *   FuncName(const VxBlitInfo *)        -- dispatch-table entry (full scanline)
  *   FuncName_Scalar(info, startX, ...)  -- SIMD tail-loop entry (partial)
- *
- * Only ASCII characters are used in this file (no extended Unicode) to avoid
- * MSVC C4819 warnings on CJK code pages.
  */
 
 #include "VxBlitInternal.h"

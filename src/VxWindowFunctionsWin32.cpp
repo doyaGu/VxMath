@@ -172,8 +172,13 @@ XBOOL VxGetEnvironmentVariable(const char *envName, XString &envValue) {
         return FALSE;
     }
 
+    if (required - 1 > UINT16_MAX) {
+        envValue = "";
+        return FALSE;
+    }
+
     XString buffer;
-    buffer.Resize(required - 1);
+    buffer.Resize(static_cast<XWORD>(required - 1));
     DWORD written = GetEnvironmentVariableA(envName, const_cast<char *>(buffer.CStr()), required);
     if (written == 0 || written >= required) {
         envValue = "";

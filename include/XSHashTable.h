@@ -979,7 +979,7 @@ public:
      * @return `TRUE` if the key was found, `FALSE` otherwise.
      */
     int IsHere(const K &key) const {
-        return (int) XFindIndex(key);
+        return XFindIndex(key) != 0;
     }
 
     /**

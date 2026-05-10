@@ -4,7 +4,6 @@
 #include <cstdint>
 #include <cstring>
 #include <ctype.h>
-#include <type_traits>
 
 #include "VxMathDefines.h"
 #include "XString.h"
@@ -78,16 +77,22 @@ template <class K>
 struct XHashFun {
     /// @brief Default hash function.
     int operator()(const K &iK) const {
-        if constexpr (std::is_pointer<K>::value) {
-            const uintptr_t pointerValue = reinterpret_cast<uintptr_t>(iK);
-#if UINTPTR_MAX > 0xFFFFFFFFu
-                return static_cast<int>(pointerValue ^ (pointerValue >> 32));
-#else
-            return static_cast<int>(pointerValue);
-#endif
-        }
         return static_cast<int>(iK);
     }
+};
+
+inline int XHashPointerValue(const void *_p) {
+    const uintptr_t pointerValue = reinterpret_cast<uintptr_t>(_p);
+#if UINTPTR_MAX > 0xFFFFFFFFu
+    return static_cast<int>(pointerValue ^ (pointerValue >> 32));
+#else
+    return static_cast<int>(pointerValue);
+#endif
+}
+
+template <class K>
+struct XHashFun<K *> {
+    int operator()(K *const &_p) const { return XHashPointerValue(_p); }
 };
 
 /**
@@ -145,14 +150,7 @@ struct XHashFun<float> {
 /// @brief Specialization of `XHashFun` for `void*` keys.
 template <>
 struct XHashFun<void *> {
-    int operator()(const void *_x) const {
-        const uintptr_t pointerValue = reinterpret_cast<uintptr_t>(_x);
-#if UINTPTR_MAX > 0xFFFFFFFFu
-            return static_cast<int>(pointerValue ^ (pointerValue >> 32));
-#else
-        return static_cast<int>(pointerValue);
-#endif
-    }
+    int operator()(const void *_x) const { return XHashPointerValue(_x); }
 };
 
 /// @brief Specialization of `XHashFun` for `XGUID` keys.
