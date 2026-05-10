@@ -7,7 +7,7 @@ project(VxMath
         VERSION 0.1.0
         DESCRIPTION "Virtools Math Library"
         HOMEPAGE_URL "https://github.com/doyaGu/VxMath"
-        LANGUAGES CXX
+        LANGUAGES C CXX
 )
 
 # =============================================================================

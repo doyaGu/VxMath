@@ -1,0 +1,144 @@
+{
+  "version": 6,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 25,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "msvc-win32-base",
+      "hidden": true,
+      "generator": "Visual Studio 17 2022",
+      "architecture": "Win32",
+      "binaryDir": "${sourceDir}/build/${presetName}"
+    },
+    {
+      "name": "msvc-x64-base",
+      "hidden": true,
+      "generator": "Visual Studio 17 2022",
+      "architecture": "x64",
+      "binaryDir": "${sourceDir}/build/${presetName}"
+    },
+    {
+      "name": "vxmath-runtime-msvc-win32",
+      "displayName": "VxMath Runtime (MSVC Win32)",
+      "description": "Build the VxMath shared runtime library.",
+      "inherits": "msvc-win32-base",
+      "cacheVariables": {
+        "VXMATH_BUILD_SHARED": "ON",
+        "VXMATH_BUILD_STATIC": "OFF",
+        "VXMATH_BUILD_TESTS": "OFF"
+      }
+    },
+    {
+      "name": "vxmath-runtime-msvc-x64",
+      "displayName": "VxMath Runtime (MSVC x64)",
+      "description": "Build the x64 VxMath shared runtime library.",
+      "inherits": "msvc-x64-base",
+      "cacheVariables": {
+        "VXMATH_BUILD_SHARED": "ON",
+        "VXMATH_BUILD_STATIC": "OFF",
+        "VXMATH_BUILD_TESTS": "OFF"
+      }
+    },
+    {
+      "name": "vxmath-static-msvc-win32",
+      "displayName": "VxMath Static (MSVC Win32)",
+      "description": "Build the VxMath static library.",
+      "inherits": "msvc-win32-base",
+      "cacheVariables": {
+        "VXMATH_BUILD_SHARED": "OFF",
+        "VXMATH_BUILD_STATIC": "ON",
+        "VXMATH_BUILD_TESTS": "OFF"
+      }
+    },
+    {
+      "name": "vxmath-static-msvc-x64",
+      "displayName": "VxMath Static (MSVC x64)",
+      "description": "Build the x64 VxMath static library.",
+      "inherits": "msvc-x64-base",
+      "cacheVariables": {
+        "VXMATH_BUILD_SHARED": "OFF",
+        "VXMATH_BUILD_STATIC": "ON",
+        "VXMATH_BUILD_TESTS": "OFF"
+      }
+    },
+    {
+      "name": "vxmath-tests-msvc-win32",
+      "displayName": "VxMath Tests (MSVC Win32)",
+      "description": "Build VxMath with unit tests enabled.",
+      "inherits": "vxmath-runtime-msvc-win32",
+      "cacheVariables": {
+        "VXMATH_BUILD_TESTS": "ON"
+      }
+    },
+    {
+      "name": "vxmath-tests-msvc-x64",
+      "displayName": "VxMath Tests (MSVC x64)",
+      "description": "Build x64 VxMath with unit tests enabled.",
+      "inherits": "vxmath-runtime-msvc-x64",
+      "cacheVariables": {
+        "VXMATH_BUILD_TESTS": "ON"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "vxmath-runtime-win32-release",
+      "displayName": "VxMath Runtime Win32 Release",
+      "configurePreset": "vxmath-runtime-msvc-win32",
+      "configuration": "Release"
+    },
+    {
+      "name": "vxmath-runtime-x64-release",
+      "displayName": "VxMath Runtime x64 Release",
+      "configurePreset": "vxmath-runtime-msvc-x64",
+      "configuration": "Release"
+    },
+    {
+      "name": "vxmath-static-win32-release",
+      "displayName": "VxMath Static Win32 Release",
+      "configurePreset": "vxmath-static-msvc-win32",
+      "configuration": "Release"
+    },
+    {
+      "name": "vxmath-static-x64-release",
+      "displayName": "VxMath Static x64 Release",
+      "configurePreset": "vxmath-static-msvc-x64",
+      "configuration": "Release"
+    },
+    {
+      "name": "vxmath-tests-win32-release",
+      "displayName": "VxMath Tests Win32 Release",
+      "configurePreset": "vxmath-tests-msvc-win32",
+      "configuration": "Release"
+    },
+    {
+      "name": "vxmath-tests-x64-release",
+      "displayName": "VxMath Tests x64 Release",
+      "configurePreset": "vxmath-tests-msvc-x64",
+      "configuration": "Release"
+    }
+  ],
+  "testPresets": [
+    {
+      "name": "vxmath-tests-win32-release",
+      "displayName": "VxMath Tests Win32 Release",
+      "configurePreset": "vxmath-tests-msvc-win32",
+      "configuration": "Release",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "vxmath-tests-x64-release",
+      "displayName": "VxMath Tests x64 Release",
+      "configurePreset": "vxmath-tests-msvc-x64",
+      "configuration": "Release",
+      "output": {
+        "outputOnFailure": true
+      }
+    }
+  ]
+}
