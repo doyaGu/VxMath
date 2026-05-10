@@ -433,6 +433,14 @@ TEST(PixelFormatTests, FormatStringConversion) {
     EXPECT_STREQ(invalid_str, "");
 }
 
+TEST(PixelFormatTests, FormatStringParsing) {
+    EXPECT_EQ(VxString2PixelFormat("_16_ARGB1555"), _16_ARGB1555);
+    EXPECT_EQ(VxString2PixelFormat("_DXT5"), _DXT5);
+    EXPECT_EQ(VxString2PixelFormat("16 bits ARGB 1555"), _16_ARGB1555);
+    EXPECT_EQ(VxString2PixelFormat("not a format"), UNKNOWN_PF);
+    EXPECT_EQ(VxString2PixelFormat(nullptr), UNKNOWN_PF);
+}
+
 TEST(PixelFormatTests, BitCountsAndShifts) {
     struct FormatTest {
         VX_PIXELFORMAT format;

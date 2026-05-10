@@ -275,6 +275,13 @@ VX_EXPORT void VxPixelFormat2ImageDesc(VX_PIXELFORMAT Pf, VxImageDescEx &desc);
 VX_EXPORT const char *VxPixelFormat2String(VX_PIXELFORMAT Pf);
 
 /**
+ * @brief Converts a pixel format string to its enum value.
+ * @param Name Canonical enum token (for example "_16_ARGB1555") or VxPixelFormat2String description.
+ * @return The corresponding pixel format, or UNKNOWN_PF if not recognized.
+ */
+VX_EXPORT VX_PIXELFORMAT VxString2PixelFormat(const char *Name);
+
+/**
  * @brief Fills the color masks in an image description based on its bits-per-pixel value.
  * @param desc The image description to modify.
  */

@@ -372,6 +372,39 @@ const char *VxBlitEngine::PixelFormat2String(VX_PIXELFORMAT Pf) {
     return s_PixelFormats[Pf].Description;
 }
 
+static char VxPixelFormatLower(char c) {
+    return (c >= 'A' && c <= 'Z') ? static_cast<char>(c - 'A' + 'a') : c;
+}
+
+static bool VxPixelFormatStringEquals(const char *a, const char *b) {
+    if (!a || !b)
+        return false;
+
+    while (*a && *b) {
+        if (VxPixelFormatLower(*a) != VxPixelFormatLower(*b))
+            return false;
+        ++a;
+        ++b;
+    }
+    return *a == '\0' && *b == '\0';
+}
+
+VX_PIXELFORMAT VxString2PixelFormat(const char *Name) {
+    if (!Name || Name[0] == '\0')
+        return UNKNOWN_PF;
+
+    for (int i = 0; i < NUM_PIXEL_FORMATS; ++i) {
+        const VX_PIXELFORMAT format = static_cast<VX_PIXELFORMAT>(i);
+        const PixelFormatDef &fmt = s_PixelFormats[i];
+        if (VxPixelFormatStringEquals(Name, fmt.Token) ||
+            VxPixelFormatStringEquals(Name, fmt.Description)) {
+            return format;
+        }
+    }
+
+    return UNKNOWN_PF;
+}
+
 void VxBlitEngine::SetupBlitInfo(VxBlitInfo &info, const VxImageDescEx &src_desc,
                                   const VxImageDescEx &dst_desc) {
     info.srcBytesPerPixel = src_desc.BitsPerPixel / 8;
