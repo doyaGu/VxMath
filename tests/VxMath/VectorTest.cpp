@@ -997,13 +997,12 @@ TEST_F(VxBboxAdvancedTest, ClassifyBox) {
 }
 
 TEST_F(VxBboxAdvancedTest, ClassifyBoxWithViewpoint) {
-    // Test box classification with viewpoint
-    VxVector viewpoint(-5.0f, 0.0f, 0.0f);
+    VxBbox containing_box(VxVector(-5.0f, -5.0f, -5.0f), VxVector(5.0f, 5.0f, 5.0f));
 
-    int result = unit_box.Classify(offset_box, viewpoint);
-    // Result should indicate relative position
-    EXPECT_GE(result, 0);
-    EXPECT_LE(result, 2);
+    EXPECT_EQ(unit_box.Classify(containing_box, VxVector(10.0f, 0.0f, 0.0f)), 1);
+    EXPECT_EQ(unit_box.Classify(containing_box, VxVector(2.0f, 0.0f, 0.0f)), -1);
+    EXPECT_EQ(unit_box.Classify(containing_box, VxVector(-5.0f, 0.0f, 0.0f)), -1);
+    EXPECT_EQ(unit_box.Classify(containing_box, VxVector(0.0f, 0.0f, 0.0f)), 1);
 }
 
 TEST_F(VxBboxAdvancedTest, ClassifyVertices) {

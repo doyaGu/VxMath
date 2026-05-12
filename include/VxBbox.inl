@@ -198,9 +198,7 @@ inline int VxBbox::Classify(const VxBbox &box2, const VxVector &pt) const {
                 box2.Max.x<=Max.x && box2.Max.y<=Max.y && box2.Max.z<=Max.z) return -1;
             if (Min.x>=box2.Min.x && Min.y>=box2.Min.y && Min.z>=box2.Min.z &&
                 Max.x<=box2.Max.x && Max.y<=box2.Max.y && Max.z<=box2.Max.z) {
-                if (pt.x<box2.Min.x || pt.x>box2.Max.x ||
-                    pt.y<box2.Min.y || pt.y>box2.Max.y ||
-                    pt.z<box2.Min.z || pt.z>box2.Max.z) return 1;
+                return box2.VectorIn(pt) ? -1 : 1;
             }
         }
     } else {
@@ -398,9 +396,7 @@ VX_SIMD_INLINE int VxSIMDBboxClassify(const VxBbox *self, const VxBbox *other, c
                 __m128 ptLessThanOtherMin = _mm_cmplt_ps(ptVec, otherMin);
                 __m128 ptGreaterThanOtherMax = _mm_cmpgt_ps(ptVec, otherMax);
                 __m128 ptOutside = _mm_or_ps(ptLessThanOtherMin, ptGreaterThanOtherMax);
-                if (_mm_movemask_ps(ptOutside) & 0x7) {
-                    return 1;
-                }
+                return (_mm_movemask_ps(ptOutside) & 0x7) ? 1 : -1;
             }
         }
     } else {
