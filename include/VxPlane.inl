@@ -17,6 +17,7 @@ VX_SIMD_INLINE float VxSIMDPlaneClassifyPoint(const VxPlane *plane, const VxVect
 VX_SIMD_INLINE float VxSIMDPlaneClassifyAABB(const VxPlane *plane, const VxBbox *box) noexcept;
 VX_SIMD_INLINE float VxSIMDPlaneDistance(const VxPlane *plane, const VxVector *point) noexcept;
 VX_SIMD_INLINE void VxSIMDPlaneNearestPoint(VxVector *outPoint, const VxPlane *plane, const VxVector *point) noexcept;
+VX_SIMD_INLINE float VxSIMDPlaneXClassify(const VxPlane *plane, __m128 axis0V, __m128 axis1V, __m128 axis2V, __m128 centerV) noexcept;
 VX_SIMD_INLINE float VxSIMDPlaneXClassify(const VxPlane *plane, const VxVector boxAxis[4]) noexcept;
 #endif
 
@@ -174,10 +175,10 @@ inline float VxPlane::XClassify(const VxVector boxaxis[4]) const {
 
     const float centerDist = DotProduct(m_Normal, boxaxis[3]) + m_D;
     if (centerDist > radius) {
-        return centerDist - radius;
+        return centerDist;
     }
     if (centerDist < -radius) {
-        return centerDist + radius;
+        return centerDist;
     }
     return 0.0f;
 #endif
@@ -274,13 +275,13 @@ VX_SIMD_INLINE void VxSIMDPlaneNearestPoint(VxVector *outPoint, const VxPlane *p
     VxSIMDStoreFloat3(&outPoint->x, projected);
 }
 
-VX_SIMD_INLINE float VxSIMDPlaneXClassify(const VxPlane *plane, const VxVector boxAxis[4]) noexcept {
+VX_SIMD_INLINE float VxSIMDPlaneXClassify(const VxPlane *plane, __m128 axis0V, __m128 axis1V, __m128 axis2V, __m128 centerV) noexcept {
     const __m128 n = VxSIMDLoadFloat3(&plane->m_Normal.x);
-    __m128 radius = _mm_and_ps(VxSIMDDotProduct3(n, VxSIMDLoadFloat3(&boxAxis[0].x)), VX_SIMD_ABS_MASK);
-    radius = _mm_add_ss(radius, _mm_and_ps(VxSIMDDotProduct3(n, VxSIMDLoadFloat3(&boxAxis[1].x)), VX_SIMD_ABS_MASK));
-    radius = _mm_add_ss(radius, _mm_and_ps(VxSIMDDotProduct3(n, VxSIMDLoadFloat3(&boxAxis[2].x)), VX_SIMD_ABS_MASK));
+    __m128 radius = _mm_and_ps(VxSIMDDotProduct3(n, axis0V), VX_SIMD_ABS_MASK);
+    radius = _mm_add_ss(radius, _mm_and_ps(VxSIMDDotProduct3(n, axis1V), VX_SIMD_ABS_MASK));
+    radius = _mm_add_ss(radius, _mm_and_ps(VxSIMDDotProduct3(n, axis2V), VX_SIMD_ABS_MASK));
 
-    __m128 centerDist = _mm_add_ss(VxSIMDDotProduct3(n, VxSIMDLoadFloat3(&boxAxis[3].x)), _mm_set_ss(plane->m_D));
+    __m128 centerDist = _mm_add_ss(VxSIMDDotProduct3(n, centerV), _mm_set_ss(plane->m_D));
 
     float r;
     float d;
@@ -288,12 +289,22 @@ VX_SIMD_INLINE float VxSIMDPlaneXClassify(const VxPlane *plane, const VxVector b
     _mm_store_ss(&d, centerDist);
 
     if (d > r) {
-        return d - r;
+        return d;
     }
     if (d < -r) {
-        return d + r;
+        return d;
     }
     return 0.0f;
+}
+
+VX_SIMD_INLINE float VxSIMDPlaneXClassify(const VxPlane *plane, const VxVector boxAxis[4]) noexcept {
+    return VxSIMDPlaneXClassify(
+        plane,
+        VxSIMDLoadFloat3(&boxAxis[0].x),
+        VxSIMDLoadFloat3(&boxAxis[1].x),
+        VxSIMDLoadFloat3(&boxAxis[2].x),
+        VxSIMDLoadFloat3(&boxAxis[3].x)
+    );
 }
 
 #endif // VX_SIMD_SSE

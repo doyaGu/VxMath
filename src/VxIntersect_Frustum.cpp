@@ -50,6 +50,18 @@ static inline XBOOL VxFrustumOBBAxisTest(
     return TRUE;
 }
 
+static inline XBOOL VxFrustumBoxResolveEarlyPlane(float result, XBOOL &resolved) {
+    if (result < 0.0f) {
+        resolved = TRUE;
+        return TRUE;
+    }
+    if (result > 0.0f) {
+        resolved = FALSE;
+        return TRUE;
+    }
+    return FALSE;
+}
+
 #if defined(VX_SIMD_SSE)
 static inline __m128 VxSIMDLoadVector3(const VxVector &v) {
     return VxSIMDLoadFloat3(&v.x);
@@ -245,8 +257,6 @@ static XBOOL FrustumOBBScalarCore(const VxFrustum &frustum, const VxBbox &box, c
 }
 
 static XBOOL FrustumBoxScalarCore(const VxFrustum &frustum, const VxBbox &box, const VxMatrix &mat) {
-    // Build a transformed oriented box representation (3 scaled axes + transformed center)
-    // and reject if it lies strictly outside any frustum plane.
     VxVector axis[4];
     axis[0] = mat[0] * ((box.Max.x - box.Min.x) * 0.5f);
     axis[1] = mat[1] * ((box.Max.y - box.Min.y) * 0.5f);
@@ -255,13 +265,14 @@ static XBOOL FrustumBoxScalarCore(const VxFrustum &frustum, const VxBbox &box, c
     VxVector center = box.GetCenter();
     Vx3DMultiplyMatrixVector(axis + 3, mat, &center);
 
-    if (frustum.GetNearPlane().XClassify(axis) > 0.0f) return FALSE;
-    if (frustum.GetFarPlane().XClassify(axis) > 0.0f) return FALSE;
-    if (frustum.GetLeftPlane().XClassify(axis) > 0.0f) return FALSE;
-    if (frustum.GetRightPlane().XClassify(axis) > 0.0f) return FALSE;
-    if (frustum.GetBottomPlane().XClassify(axis) > 0.0f) return FALSE;
-    if (frustum.GetUpPlane().XClassify(axis) > 0.0f) return FALSE;
+    XBOOL resolved = FALSE;
+    if (VxFrustumBoxResolveEarlyPlane(frustum.GetNearPlane().XClassify(axis), resolved)) return resolved;
+    if (VxFrustumBoxResolveEarlyPlane(frustum.GetFarPlane().XClassify(axis), resolved)) return resolved;
+    if (VxFrustumBoxResolveEarlyPlane(frustum.GetLeftPlane().XClassify(axis), resolved)) return resolved;
+    if (VxFrustumBoxResolveEarlyPlane(frustum.GetRightPlane().XClassify(axis), resolved)) return resolved;
 
+    if (frustum.GetUpPlane().XClassify(axis) >= 0.0f) return FALSE;
+    if (frustum.GetBottomPlane().XClassify(axis) >= 0.0f) return FALSE;
     return TRUE;
 }
 
@@ -323,30 +334,29 @@ static XBOOL FrustumOBBSIMDCore(const VxFrustum &frustum, const VxBbox &box, con
     const __m128 frRightV = VxSIMDLoadVector3(frustum.GetRight());
     const __m128 frDirV = VxSIMDLoadVector3(frustum.GetDir());
 
-    if (!VxSIMDFrustumOBBAxisTest(axis0N, relCenterV, axis0N, axis1N, axis2N, halfSize.x, halfSize.y, halfSize.z, frUpV, frRightV, frDirV, uBound, rBound, dMin, dRatio))
-        return FALSE;
-    if (!VxSIMDFrustumOBBAxisTest(axis1N, relCenterV, axis0N, axis1N, axis2N, halfSize.x, halfSize.y, halfSize.z, frUpV, frRightV, frDirV, uBound, rBound, dMin, dRatio))
-        return FALSE;
-    if (!VxSIMDFrustumOBBAxisTest(axis2N, relCenterV, axis0N, axis1N, axis2N, halfSize.x, halfSize.y, halfSize.z, frUpV, frRightV, frDirV, uBound, rBound, dMin, dRatio))
-        return FALSE;
+    const __m128 testAxes[] = {
+        axis0N,
+        axis1N,
+        axis2N,
+        VxSIMDLoadVector3(frustum.GetFarPlane().GetNormal()),
+        VxSIMDLoadVector3(frustum.GetBottomPlane().GetNormal()),
+        VxSIMDLoadVector3(frustum.GetUpPlane().GetNormal()),
+        VxSIMDLoadVector3(frustum.GetLeftPlane().GetNormal()),
+        VxSIMDLoadVector3(frustum.GetRightPlane().GetNormal())
+    };
 
-    if (!VxSIMDFrustumOBBAxisTest(VxSIMDLoadVector3(frustum.GetFarPlane().GetNormal()), relCenterV, axis0N, axis1N, axis2N, halfSize.x, halfSize.y, halfSize.z, frUpV, frRightV, frDirV, uBound, rBound, dMin, dRatio))
-        return FALSE;
-    if (!VxSIMDFrustumOBBAxisTest(VxSIMDLoadVector3(frustum.GetBottomPlane().GetNormal()), relCenterV, axis0N, axis1N, axis2N, halfSize.x, halfSize.y, halfSize.z, frUpV, frRightV, frDirV, uBound, rBound, dMin, dRatio))
-        return FALSE;
-    if (!VxSIMDFrustumOBBAxisTest(VxSIMDLoadVector3(frustum.GetUpPlane().GetNormal()), relCenterV, axis0N, axis1N, axis2N, halfSize.x, halfSize.y, halfSize.z, frUpV, frRightV, frDirV, uBound, rBound, dMin, dRatio))
-        return FALSE;
-    if (!VxSIMDFrustumOBBAxisTest(VxSIMDLoadVector3(frustum.GetLeftPlane().GetNormal()), relCenterV, axis0N, axis1N, axis2N, halfSize.x, halfSize.y, halfSize.z, frUpV, frRightV, frDirV, uBound, rBound, dMin, dRatio))
-        return FALSE;
-    if (!VxSIMDFrustumOBBAxisTest(VxSIMDLoadVector3(frustum.GetRightPlane().GetNormal()), relCenterV, axis0N, axis1N, axis2N, halfSize.x, halfSize.y, halfSize.z, frUpV, frRightV, frDirV, uBound, rBound, dMin, dRatio))
-        return FALSE;
+    for (int i = 0; i < 8; ++i) {
+        if (!VxSIMDFrustumOBBAxisTest(testAxes[i], relCenterV, axis0N, axis1N, axis2N,
+                                      halfSize.x, halfSize.y, halfSize.z,
+                                      frUpV, frRightV, frDirV, uBound, rBound, dMin, dRatio)) {
+            return FALSE;
+        }
+    }
 
     return TRUE;
 }
 
 static XBOOL FrustumBoxSIMDCore(const VxFrustum &frustum, const VxBbox &box, const VxMatrix &mat) {
-    VxVector axis[4];
-
     const __m128 minV = VxSIMDLoadVector3(box.Min);
     const __m128 maxV = VxSIMDLoadVector3(box.Max);
     const __m128 half = _mm_mul_ps(_mm_sub_ps(maxV, minV), _mm_set1_ps(0.5f));
@@ -359,21 +369,29 @@ static XBOOL FrustumBoxSIMDCore(const VxFrustum &frustum, const VxBbox &box, con
     const __m128 axis1 = _mm_mul_ps(VxSIMDLoadVector3(mat[1]), _mm_set1_ps(halfY));
     const __m128 axis2 = _mm_mul_ps(VxSIMDLoadVector3(mat[2]), _mm_set1_ps(halfZ));
 
-    VxSIMDStoreFloat3(&axis[0].x, axis0);
-    VxSIMDStoreFloat3(&axis[1].x, axis1);
-    VxSIMDStoreFloat3(&axis[2].x, axis2);
-
     const __m128 center = _mm_mul_ps(_mm_add_ps(minV, maxV), _mm_set1_ps(0.5f));
     const __m128 worldCenter = VxSIMDMatrixMultiplyVector3(&mat[0][0], center);
-    VxSIMDStoreFloat3(&axis[3].x, worldCenter);
 
-    if (frustum.GetNearPlane().XClassify(axis) > 0.0f) return FALSE;
-    if (frustum.GetFarPlane().XClassify(axis) > 0.0f) return FALSE;
-    if (frustum.GetLeftPlane().XClassify(axis) > 0.0f) return FALSE;
-    if (frustum.GetRightPlane().XClassify(axis) > 0.0f) return FALSE;
-    if (frustum.GetBottomPlane().XClassify(axis) > 0.0f) return FALSE;
-    if (frustum.GetUpPlane().XClassify(axis) > 0.0f) return FALSE;
+    XBOOL resolved = FALSE;
+    if (VxFrustumBoxResolveEarlyPlane(
+        VxSIMDPlaneXClassify(&frustum.GetNearPlane(), axis0, axis1, axis2, worldCenter),
+        resolved
+    )) return resolved;
+    if (VxFrustumBoxResolveEarlyPlane(
+        VxSIMDPlaneXClassify(&frustum.GetFarPlane(), axis0, axis1, axis2, worldCenter),
+        resolved
+    )) return resolved;
+    if (VxFrustumBoxResolveEarlyPlane(
+        VxSIMDPlaneXClassify(&frustum.GetLeftPlane(), axis0, axis1, axis2, worldCenter),
+        resolved
+    )) return resolved;
+    if (VxFrustumBoxResolveEarlyPlane(
+        VxSIMDPlaneXClassify(&frustum.GetRightPlane(), axis0, axis1, axis2, worldCenter),
+        resolved
+    )) return resolved;
 
+    if (VxSIMDPlaneXClassify(&frustum.GetUpPlane(), axis0, axis1, axis2, worldCenter) >= 0.0f) return FALSE;
+    if (VxSIMDPlaneXClassify(&frustum.GetBottomPlane(), axis0, axis1, axis2, worldCenter) >= 0.0f) return FALSE;
     return TRUE;
 }
 #endif
