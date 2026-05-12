@@ -171,10 +171,10 @@ float ScalarPlaneXClassify(const VxPlane &plane, const VxVector boxAxis[4]) {
         std::fabs(DotProduct(plane.m_Normal, boxAxis[2]));
     const float centerDist = DotProduct(plane.m_Normal, boxAxis[3]) + plane.m_D;
     if (centerDist > radius) {
-        return centerDist - radius;
+        return centerDist;
     }
     if (centerDist < -radius) {
-        return centerDist + radius;
+        return centerDist;
     }
     return 0.0f;
 }
@@ -348,6 +348,103 @@ XBOOL ScalarTransformBox2DReference(const VxMatrix &worldProjection, const VxBbo
     return !(allVerticesFlagsAnded & VXCLIP_ALL);
 }
 
+XBOOL ProjectedTransformBox2DReference(const VxMatrix &worldProjection, const VxBbox &box, const VxRect *screenSize, VxRect *extents, VXCLIP_FLAGS &orClipFlags, VXCLIP_FLAGS &andClipFlags) {
+    VxVector4 transformedVertices[8];
+    Vx3DMultiplyMatrixVector4(&transformedVertices[0], worldProjection, &box.Min);
+
+    const VxVector boxSize = box.Max - box.Min;
+    const float dx = boxSize.x;
+    const float dy = boxSize.y;
+    const float dz = boxSize.z;
+
+    const VxVector4 &matRow0 = worldProjection[0];
+    const VxVector4 &matRow1 = worldProjection[1];
+    const VxVector4 &matRow2 = worldProjection[2];
+    const VxVector4 deltaX(matRow0[0] * dx, matRow0[1] * dx, matRow0[2] * dx, matRow0[3] * dx);
+    const VxVector4 deltaY(matRow1[0] * dy, matRow1[1] * dy, matRow1[2] * dy, matRow1[3] * dy);
+
+    int vertexCount;
+    if (dz == 0.0f) {
+        vertexCount = 4;
+        transformedVertices[1] = transformedVertices[0] + deltaX;
+        transformedVertices[2] = transformedVertices[0] + deltaY;
+        transformedVertices[3] = transformedVertices[1] + deltaY;
+    } else {
+        vertexCount = 8;
+        const VxVector4 deltaZ(matRow2[0] * dz, matRow2[1] * dz, matRow2[2] * dz, matRow2[3] * dz);
+        transformedVertices[1] = transformedVertices[0] + deltaZ;
+        transformedVertices[2] = transformedVertices[0] + deltaY;
+        transformedVertices[3] = transformedVertices[1] + deltaY;
+        transformedVertices[4] = transformedVertices[0] + deltaX;
+        transformedVertices[5] = transformedVertices[4] + deltaZ;
+        transformedVertices[6] = transformedVertices[4] + deltaY;
+        transformedVertices[7] = transformedVertices[5] + deltaY;
+    }
+
+    XDWORD allVerticesFlags = 0;
+    XDWORD allVerticesFlagsAnded = 0xFFFFFFFFu;
+    for (int i = 0; i < vertexCount; ++i) {
+        XDWORD vertexFlags = 0;
+        const VxVector4 &vertex = transformedVertices[i];
+        if (-vertex.w > vertex.x) vertexFlags |= VXCLIP_LEFT;
+        if (vertex.x > vertex.w) vertexFlags |= VXCLIP_RIGHT;
+        if (-vertex.w > vertex.y) vertexFlags |= VXCLIP_BOTTOM;
+        if (vertex.y > vertex.w) vertexFlags |= VXCLIP_TOP;
+        if (vertex.z < 0.0f) vertexFlags |= VXCLIP_FRONT;
+        if (vertex.z > vertex.w) vertexFlags |= VXCLIP_BACK;
+        allVerticesFlags |= vertexFlags;
+        allVerticesFlagsAnded &= vertexFlags;
+    }
+
+    if (extents && screenSize) {
+        extents->left = 1.0e10f;
+        extents->top = 1.0e10f;
+        extents->right = -1.0e10f;
+        extents->bottom = -1.0e10f;
+    }
+
+    if (extents && screenSize && !(allVerticesFlagsAnded & VXCLIP_ALL)) {
+        float minX = 1.0e10f;
+        float minY = 1.0e10f;
+        float maxX = -1.0e10f;
+        float maxY = -1.0e10f;
+
+        const float halfWidth = (screenSize->right - screenSize->left) * 0.5f;
+        const float halfHeight = (screenSize->bottom - screenSize->top) * 0.5f;
+        const float centerX = halfWidth + screenSize->left;
+        const float centerY = halfHeight + screenSize->top;
+
+        for (int i = 0; i < vertexCount; ++i) {
+            const VxVector4 &vertex = transformedVertices[i];
+            __m128 reciprocal = _mm_rcp_ss(_mm_set_ss(vertex.w));
+            reciprocal = _mm_and_ps(_mm_shuffle_ps(reciprocal, reciprocal, _MM_SHUFFLE(0, 0, 0, 0)), VX_SIMD_ABS_MASK);
+            const float invAbsW = _mm_cvtss_f32(reciprocal);
+            const float screenX = (vertex.x * halfWidth) * invAbsW + centerX;
+            const float screenY = centerY - ((vertex.y * halfHeight) * invAbsW);
+            if (screenX < minX) minX = screenX;
+            if (screenY < minY) minY = screenY;
+            if (screenX > maxX) maxX = screenX;
+            if (screenY > maxY) maxY = screenY;
+        }
+
+        extents->left = minX;
+        extents->top = minY;
+        extents->right = maxX;
+        extents->bottom = maxY;
+    }
+
+    if ((allVerticesFlags & VXCLIP_FRONT) && extents && screenSize) {
+        if (allVerticesFlags & VXCLIP_LEFT) extents->left = screenSize->left;
+        if (allVerticesFlags & VXCLIP_RIGHT) extents->right = screenSize->right;
+        if (allVerticesFlags & VXCLIP_TOP) extents->top = screenSize->top;
+        if (allVerticesFlags & VXCLIP_BOTTOM) extents->bottom = screenSize->bottom;
+    }
+
+    orClipFlags = static_cast<VXCLIP_FLAGS>(allVerticesFlags);
+    andClipFlags = static_cast<VXCLIP_FLAGS>(allVerticesFlagsAnded);
+    return !(allVerticesFlagsAnded & VXCLIP_ALL);
+}
+
 void ScalarRectTransform(VxRect &rect, const VxRect &destScreen, const VxRect &srcScreen) {
     const float srcInvW = 1.0f / (srcScreen.right - srcScreen.left);
     const float srcInvH = 1.0f / (srcScreen.bottom - srcScreen.top);
@@ -458,11 +555,21 @@ void ScalarProjectBoxZExtents(const VxMatrix &worldProjection, const VxBbox &box
     const VxVector4 deltaZ(matRow2[0] * dz, matRow2[1] * dz, matRow2[2] * dz, matRow2[3] * dz);
 
     int vertexCount = 8;
-    if (std::fabs(dz) < EPSILON) {
+    if (dz <= EPSILON) {
         vertexCount = 4;
         corners[1] = corners[0] + deltaX;
         corners[2] = corners[0] + deltaY;
         corners[3] = corners[1] + deltaY;
+    } else if (dx <= EPSILON) {
+        vertexCount = 4;
+        corners[1] = corners[0] + deltaZ;
+        corners[2] = corners[0] + deltaY;
+        corners[3] = corners[1] + deltaY;
+    } else if (dy <= EPSILON) {
+        vertexCount = 4;
+        corners[1] = corners[0] + deltaZ;
+        corners[2] = corners[0] + deltaX;
+        corners[3] = corners[1] + deltaX;
     } else {
         corners[1] = corners[0] + deltaZ;
         corners[2] = corners[0] + deltaY;
@@ -475,16 +582,11 @@ void ScalarProjectBoxZExtents(const VxMatrix &worldProjection, const VxBbox &box
 
     for (int i = 0; i < vertexCount; ++i) {
         const float w = corners[i].w;
-        if (w <= EPSILON) {
-            continue;
-        }
-        const float projZ = corners[i].z / w;
+        float projZ = 0.0f;
+        if (w >= 0.0f)
+            projZ = corners[i].z / w;
         if (projZ < zhMin) zhMin = projZ;
         if (projZ > zhMax) zhMax = projZ;
-    }
-    if (zhMin > zhMax) {
-        zhMin = 0.0f;
-        zhMax = 1.0f;
     }
 }
 
@@ -765,16 +867,18 @@ TEST(SIMDDispatchTest, TransformBox2DFlatBoxProjectsToScreenBounds) {
     VXCLIP_FLAGS orFlags = static_cast<VXCLIP_FLAGS>(0);
     VXCLIP_FLAGS andFlags = static_cast<VXCLIP_FLAGS>(0);
 
-    const XBOOL visible = VxTransformBox2D(worldProjection, box, &screen, &extents, orFlags, andFlags);
+    const XBOOL visible = VxSIMDTransformBox2D(&worldProjection, &box, &extents, &screen, &orFlags, &andFlags);
 
     EXPECT_TRUE(visible);
-    EXPECT_NEAR(extents.left, 0.0f, 1.0e-4f);
-    EXPECT_NEAR(extents.top, 0.0f, 1.0e-4f);
-    EXPECT_NEAR(extents.right, 800.0f, 1.0e-4f);
-    EXPECT_NEAR(extents.bottom, 600.0f, 1.0e-4f);
+    EXPECT_EQ(orFlags, static_cast<VXCLIP_FLAGS>(0));
+    EXPECT_EQ(andFlags, static_cast<VXCLIP_FLAGS>(0));
+    EXPECT_NEAR(extents.left, 0.09765625f, 1.0e-7f);
+    EXPECT_NEAR(extents.top, 0.0732421875f, 1.0e-7f);
+    EXPECT_NEAR(extents.right, 799.90234375f, 1.0e-5f);
+    EXPECT_NEAR(extents.bottom, 599.9267578125f, 1.0e-5f);
 }
 
-TEST(SIMDDispatchTest, ProjectBoxZExtentsInvalidBoxKeepsLegacyDefaults) {
+TEST(SIMDDispatchTest, ProjectBoxZExtentsInvalidBoxKeepsDefaults) {
     VxMatrix worldProjection;
     worldProjection.SetIdentity();
 
@@ -873,7 +977,7 @@ TEST(SIMDDispatchTest, ConvertToNormalMapSingleRowIsStable) {
         imagePixels[static_cast<std::size_t>(i)] = 0xFF000000u | (static_cast<XDWORD>(i * 17) << 16) |
                                                    (static_cast<XDWORD>(i * 9) << 8) | static_cast<XDWORD>(i * 3);
     }
-    const std::vector<XDWORD> original = imagePixels;
+    const std::vector<XDWORD> baseline = imagePixels;
 
     VxImageDescEx image;
     image.Width = kWidth;
@@ -887,7 +991,7 @@ TEST(SIMDDispatchTest, ConvertToNormalMapSingleRowIsStable) {
     image.Image = reinterpret_cast<XBYTE *>(imagePixels.data());
 
     ASSERT_TRUE(VxConvertToNormalMap(image, 0xFFFFFFFFu));
-    EXPECT_EQ(0, std::memcmp(imagePixels.data(), original.data(), original.size() * sizeof(XDWORD)));
+    EXPECT_EQ(0, std::memcmp(imagePixels.data(), baseline.data(), baseline.size() * sizeof(XDWORD)));
 }
 
 TEST(SIMDDispatchTest, ComputeBestFitBBoxContainsInputPoints) {
@@ -923,6 +1027,56 @@ TEST(SIMDDispatchTest, ComputeBestFitBBoxContainsInputPoints) {
             EXPECT_LE(std::fabs(local), 1.01f);
         }
     }
+}
+
+TEST(SIMDDispatchTest, ComputeBestFitBBoxSIMDMatchesScalarDispatch) {
+    struct PointWithPad {
+        float x, y, z, pad0, pad1;
+    };
+
+    constexpr int kCount = 37;
+    PointWithPad points[kCount];
+
+    std::mt19937 rng(20260512u);
+    for (int i = 0; i < kCount; ++i) {
+        points[i].x = RandomRange(rng, -20.0f, 15.0f);
+        points[i].y = RandomRange(rng, -12.0f, 18.0f);
+        points[i].z = RandomRange(rng, -8.0f, 25.0f);
+        points[i].pad0 = -777.0f;
+        points[i].pad1 = 333.0f;
+    }
+
+    const int previousMode = VxGetSIMDOverride();
+
+    ASSERT_TRUE(VxSetSIMDOverride(VX_SIMD_MODE_NONE));
+    VxMatrix scalarBBox;
+    ASSERT_TRUE(VxComputeBestFitBBox(
+        reinterpret_cast<const XBYTE *>(points),
+        static_cast<XDWORD>(sizeof(PointWithPad)),
+        kCount,
+        scalarBBox,
+        0.125f
+    ));
+
+    ASSERT_TRUE(VxSetSIMDOverride(VX_SIMD_MODE_SSE2));
+    if (VxGetSIMDEffectiveBackend() != VX_SIMD_MODE_NONE) {
+        VxMatrix simdBBox;
+        ASSERT_TRUE(VxComputeBestFitBBox(
+            reinterpret_cast<const XBYTE *>(points),
+            static_cast<XDWORD>(sizeof(PointWithPad)),
+            kCount,
+            simdBBox,
+            0.125f
+        ));
+
+        for (int row = 0; row < 4; ++row) {
+            for (int col = 0; col < 4; ++col) {
+                EXPECT_NEAR(simdBBox[row][col], scalarBBox[row][col], 1.0e-4f);
+            }
+        }
+    }
+
+    ASSERT_TRUE(VxSetSIMDOverride(previousMode));
 }
 
 TEST(SIMDDispatchTest, InterpolateVectorArrayContiguousMatchesScalarReference) {
@@ -1225,7 +1379,7 @@ TEST(SIMDDispatchTest, FrustumSIMDComputeVerticesAndTransformMatchScalarReferenc
     }
 }
 
-TEST(SIMDDispatchTest, TransformBox2DSIMDMatchesScalarReference) {
+TEST(SIMDDispatchTest, TransformBox2DSIMDMatchesProjectedReference) {
     std::mt19937 rng(42u);
     const VxRect screen(0.0f, 0.0f, 1920.0f, 1080.0f);
 
@@ -1258,24 +1412,124 @@ TEST(SIMDDispatchTest, TransformBox2DSIMDMatchesScalarReference) {
             worldProjection[3][3] = 0.0f;
         }
 
-        VxRect scalarExtents(0.0f, 0.0f, 0.0f, 0.0f);
+        VxRect expectedExtents(0.0f, 0.0f, 0.0f, 0.0f);
         VxRect simdExtents(0.0f, 0.0f, 0.0f, 0.0f);
-        VXCLIP_FLAGS scalarOr = static_cast<VXCLIP_FLAGS>(0);
-        VXCLIP_FLAGS scalarAnd = static_cast<VXCLIP_FLAGS>(0);
+        VXCLIP_FLAGS expectedOr = static_cast<VXCLIP_FLAGS>(0);
+        VXCLIP_FLAGS expectedAnd = static_cast<VXCLIP_FLAGS>(0);
         VXCLIP_FLAGS simdOr = static_cast<VXCLIP_FLAGS>(0);
         VXCLIP_FLAGS simdAnd = static_cast<VXCLIP_FLAGS>(0);
 
-        const XBOOL scalarVisible = ScalarTransformBox2DReference(worldProjection, box, &screen, &scalarExtents, scalarOr, scalarAnd);
+        const XBOOL expectedVisible = ProjectedTransformBox2DReference(worldProjection, box, &screen, &expectedExtents, expectedOr, expectedAnd);
         const XBOOL simdVisible = VxSIMDTransformBox2D(&worldProjection, &box, &simdExtents, &screen, &simdOr, &simdAnd);
 
-        EXPECT_EQ(simdVisible, scalarVisible);
-        EXPECT_EQ(simdOr, scalarOr);
-        EXPECT_EQ(simdAnd, scalarAnd);
-        EXPECT_NEAR(simdExtents.left, scalarExtents.left, 1.0e-3f);
-        EXPECT_NEAR(simdExtents.top, scalarExtents.top, 1.0e-3f);
-        EXPECT_NEAR(simdExtents.right, scalarExtents.right, 1.0e-3f);
-        EXPECT_NEAR(simdExtents.bottom, scalarExtents.bottom, 1.0e-3f);
+        EXPECT_EQ(simdVisible, expectedVisible);
+        EXPECT_EQ(simdOr, expectedOr);
+        EXPECT_EQ(simdAnd, expectedAnd);
+        EXPECT_NEAR(simdExtents.left, expectedExtents.left, 1.0e-3f);
+        EXPECT_NEAR(simdExtents.top, expectedExtents.top, 1.0e-3f);
+        EXPECT_NEAR(simdExtents.right, expectedExtents.right, 1.0e-3f);
+        EXPECT_NEAR(simdExtents.bottom, expectedExtents.bottom, 1.0e-3f);
     }
+}
+
+TEST(SIMDDispatchTest, PlaneXClassifyReturnsSignedDistance) {
+    VxPlane plane;
+    plane.m_Normal = VxVector(1.0f, 0.0f, 0.0f);
+    plane.m_D = 0.0f;
+
+    VxVector boxAxis[4];
+    boxAxis[0] = VxVector(2.0f, 0.0f, 0.0f);
+    boxAxis[1] = VxVector(0.0f, 0.5f, 0.0f);
+    boxAxis[2] = VxVector(0.0f, 0.0f, 0.25f);
+    boxAxis[3] = VxVector(5.0f, 0.0f, 0.0f);
+
+    EXPECT_FLOAT_EQ(plane.XClassify(boxAxis), 5.0f);
+    EXPECT_FLOAT_EQ(VxSIMDPlaneXClassify(&plane, boxAxis), 5.0f);
+
+    boxAxis[3] = VxVector(-5.0f, 0.0f, 0.0f);
+    EXPECT_FLOAT_EQ(plane.XClassify(boxAxis), -5.0f);
+    EXPECT_FLOAT_EQ(VxSIMDPlaneXClassify(&plane, boxAxis), -5.0f);
+
+    boxAxis[3] = VxVector(1.5f, 0.0f, 0.0f);
+    EXPECT_FLOAT_EQ(plane.XClassify(boxAxis), 0.0f);
+    EXPECT_FLOAT_EQ(VxSIMDPlaneXClassify(&plane, boxAxis), 0.0f);
+}
+
+TEST(SIMDDispatchTest, TransformBox2DSIMDProjectsNegativeWVertices) {
+    VxMatrix worldProjection;
+    worldProjection.SetIdentity();
+    worldProjection[2][0] = 2.0f;
+    worldProjection[2][3] = -1.0f;
+    worldProjection[3][2] = 1.0f;
+    worldProjection[3][3] = 0.0f;
+
+    const VxBbox box(VxVector(-0.25f, -0.25f, -0.5f), VxVector(0.75f, 0.25f, 0.5f));
+    const VxRect screen(0.0f, 0.0f, 800.0f, 600.0f);
+
+    VxRect scalarExtents(0.0f, 0.0f, 0.0f, 0.0f);
+    VxRect expectedExtents(0.0f, 0.0f, 0.0f, 0.0f);
+    VxRect simdExtents(0.0f, 0.0f, 0.0f, 0.0f);
+    VXCLIP_FLAGS scalarOr = static_cast<VXCLIP_FLAGS>(0);
+    VXCLIP_FLAGS scalarAnd = static_cast<VXCLIP_FLAGS>(0);
+    VXCLIP_FLAGS expectedOr = static_cast<VXCLIP_FLAGS>(0);
+    VXCLIP_FLAGS expectedAnd = static_cast<VXCLIP_FLAGS>(0);
+    VXCLIP_FLAGS simdOr = static_cast<VXCLIP_FLAGS>(0);
+    VXCLIP_FLAGS simdAnd = static_cast<VXCLIP_FLAGS>(0);
+
+    const XBOOL scalarVisible = ScalarTransformBox2DReference(worldProjection, box, &screen, &scalarExtents, scalarOr, scalarAnd);
+    const XBOOL expectedVisible = ProjectedTransformBox2DReference(worldProjection, box, &screen, &expectedExtents, expectedOr, expectedAnd);
+    const XBOOL simdVisible = VxSIMDTransformBox2D(&worldProjection, &box, &simdExtents, &screen, &simdOr, &simdAnd);
+
+    EXPECT_EQ(scalarVisible, expectedVisible);
+    EXPECT_EQ(simdVisible, expectedVisible);
+    EXPECT_EQ(simdOr, expectedOr);
+    EXPECT_EQ(simdAnd, expectedAnd);
+    EXPECT_NEAR(simdExtents.left, expectedExtents.left, 1.0e-3f);
+    EXPECT_NEAR(simdExtents.top, expectedExtents.top, 1.0e-3f);
+    EXPECT_NEAR(simdExtents.right, expectedExtents.right, 1.0e-3f);
+    EXPECT_NEAR(simdExtents.bottom, expectedExtents.bottom, 1.0e-3f);
+    EXPECT_GT(simdExtents.right, scalarExtents.right + 700.0f);
+}
+
+TEST(SIMDDispatchTest, TransformBox2DSIMDKeepsSentinelExtentsWhenFullyCulled) {
+    VxMatrix worldProjection;
+    worldProjection.SetIdentity();
+    worldProjection[3][2] = 2.0f;
+
+    const VxBbox box(VxVector(-0.5f, -0.5f, 0.25f), VxVector(0.5f, 0.5f, 1.0f));
+    const VxRect screen(0.0f, 0.0f, 1.0f, 1.0f);
+    VxRect extents(100000000.0f, 100000000.0f, -100000000.0f, -100000000.0f);
+    VXCLIP_FLAGS orFlags = static_cast<VXCLIP_FLAGS>(0);
+    VXCLIP_FLAGS andFlags = static_cast<VXCLIP_FLAGS>(0);
+
+    EXPECT_FALSE(VxSIMDTransformBox2D(&worldProjection, &box, &extents, &screen, &orFlags, &andFlags));
+    EXPECT_FLOAT_EQ(extents.left, 1.0e10f);
+    EXPECT_FLOAT_EQ(extents.top, 1.0e10f);
+    EXPECT_FLOAT_EQ(extents.right, -1.0e10f);
+    EXPECT_FLOAT_EQ(extents.bottom, -1.0e10f);
+}
+
+TEST(SIMDDispatchTest, TransformBox2DSIMDMatchesReciprocalRegression) {
+    VxMatrix worldProjection;
+    worldProjection[0] = VxVector4(-3.368487f, 0.2355946f, 0.004631328f, -0.09115571f);
+    worldProjection[1] = VxVector4(-0.2346917f, 3.249751f, -0.0268865f, -0.1143637f);
+    worldProjection[2] = VxVector4(-0.04232885f, -0.2515729f, 2.130886f, -0.4095705f);
+    worldProjection[3] = VxVector4(-4.42333f, 4.443379f, -1.773529f, 1.63018f);
+
+    const VxBbox box(VxVector(-3.876503f, -1.070864f, 0.9142249f), VxVector(-1.56507f, -1.037998f, 3.8699f));
+    const VxRect screen(0.0f, 0.0f, 1.0f, 1.0f);
+
+    VxRect extents(0.0f, 0.0f, 0.0f, 0.0f);
+    VXCLIP_FLAGS orFlags = static_cast<VXCLIP_FLAGS>(0);
+    VXCLIP_FLAGS andFlags = static_cast<VXCLIP_FLAGS>(0);
+
+    EXPECT_TRUE(VxSIMDTransformBox2D(&worldProjection, &box, &extents, &screen, &orFlags, &andFlags));
+    EXPECT_EQ(orFlags, static_cast<VXCLIP_FLAGS>(0x2A0));
+    EXPECT_EQ(andFlags, static_cast<VXCLIP_FLAGS>(0));
+    EXPECT_NEAR(extents.left, 0.8471585f, 1.0e-6f);
+    EXPECT_NEAR(extents.top, 0.3446510f, 1.0e-6f);
+    EXPECT_NEAR(extents.right, 8.92401f, 1.0e-5f);
+    EXPECT_NEAR(extents.bottom, 1.38608015f, 1.0e-6f);
 }
 
 TEST(SIMDDispatchTest, ProjectBoxZExtentsSIMDMatchesScalarReference) {
@@ -1307,6 +1561,51 @@ TEST(SIMDDispatchTest, ProjectBoxZExtentsSIMDMatchesScalarReference) {
         EXPECT_NEAR(simdMin, scalarMin, 1.0e-5f);
         EXPECT_NEAR(simdMax, scalarMax, 1.0e-5f);
     }
+}
+
+TEST(SIMDDispatchTest, ProjectBoxZExtentsSIMDKeepsBehindViewerCornersAsZero) {
+    VxMatrix m;
+    m.SetIdentity();
+    m[3][3] = -1.0f;
+
+    const VxBbox box(VxVector(-1.0f, -1.0f, 1.0f), VxVector(1.0f, 1.0f, 3.0f));
+
+    float simdMin = 1.0e10f;
+    float simdMax = -1.0e10f;
+    VxSIMDProjectBoxZExtents(&m, &box, &simdMin, &simdMax);
+
+    EXPECT_FLOAT_EQ(simdMin, 0.0f);
+    EXPECT_FLOAT_EQ(simdMax, 0.0f);
+}
+
+TEST(SIMDDispatchTest, ProjectBoxZExtentsSIMDUsesFourCornersForAnyFlatAxis) {
+    VxMatrix m;
+    m.SetIdentity();
+    m[0][2] = 0.25f;
+    m[1][2] = 0.5f;
+    m[2][2] = 1.0f;
+    m[0][3] = 0.1f;
+    m[1][3] = 0.2f;
+    m[2][3] = 0.3f;
+    m[3][3] = 1.0f;
+
+    const VxBbox xFlat(VxVector(2.0f, -1.0f, 1.0f), VxVector(2.0f, 3.0f, 5.0f));
+    const VxBbox yFlat(VxVector(-2.0f, 4.0f, 1.0f), VxVector(3.0f, 4.0f, 5.0f));
+
+    float scalarMin = 0.0f;
+    float scalarMax = 0.0f;
+    float simdMin = 0.0f;
+    float simdMax = 0.0f;
+
+    ScalarProjectBoxZExtents(m, xFlat, scalarMin, scalarMax);
+    VxSIMDProjectBoxZExtents(&m, &xFlat, &simdMin, &simdMax);
+    EXPECT_NEAR(simdMin, scalarMin, 1.0e-5f);
+    EXPECT_NEAR(simdMax, scalarMax, 1.0e-5f);
+
+    ScalarProjectBoxZExtents(m, yFlat, scalarMin, scalarMax);
+    VxSIMDProjectBoxZExtents(&m, &yFlat, &simdMin, &simdMax);
+    EXPECT_NEAR(simdMin, scalarMin, 1.0e-5f);
+    EXPECT_NEAR(simdMax, scalarMax, 1.0e-5f);
 }
 #endif
 

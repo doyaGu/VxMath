@@ -446,8 +446,6 @@ VX_SIMD_INLINE XBOOL VxSIMDTransformBox2D(const VxMatrix *worldProjection, const
     }
 
     __m128 verts[8];
-    verts[0] = VxSIMDMatrixMultiplyVector3((const float *) &(*worldProjection)[0][0], VxSIMDLoadFloat3(&box->Min.x));
-
     const float dx = box->Max.x - box->Min.x;
     const float dy = box->Max.y - box->Min.y;
     const float dz = box->Max.z - box->Min.z;
@@ -455,6 +453,16 @@ VX_SIMD_INLINE XBOOL VxSIMDTransformBox2D(const VxMatrix *worldProjection, const
     const __m128 col0 = _mm_loadu_ps((const float *) &(*worldProjection)[0][0]);
     const __m128 col1 = _mm_loadu_ps((const float *) &(*worldProjection)[1][0]);
     const __m128 col2 = _mm_loadu_ps((const float *) &(*worldProjection)[2][0]);
+    const __m128 col3 = _mm_loadu_ps((const float *) &(*worldProjection)[3][0]);
+
+    const __m128 minX = _mm_shuffle_ps(_mm_set_ss(box->Min.x), _mm_set_ss(box->Min.x), _MM_SHUFFLE(0, 0, 0, 0));
+    const __m128 minY = _mm_shuffle_ps(_mm_set_ss(box->Min.y), _mm_set_ss(box->Min.y), _MM_SHUFFLE(0, 0, 0, 0));
+    const __m128 minZ = _mm_shuffle_ps(_mm_set_ss(box->Min.z), _mm_set_ss(box->Min.z), _MM_SHUFFLE(0, 0, 0, 0));
+    verts[0] = _mm_add_ps(
+        _mm_add_ps(
+            _mm_add_ps(_mm_mul_ps(minX, col0), _mm_mul_ps(minY, col1)),
+            col3),
+        _mm_mul_ps(minZ, col2));
 
     const __m128 deltaX = _mm_mul_ps(col0, _mm_set1_ps(dx));
     const __m128 deltaY = _mm_mul_ps(col1, _mm_set1_ps(dy));
@@ -500,10 +508,16 @@ VX_SIMD_INLINE XBOOL VxSIMDTransformBox2D(const VxMatrix *worldProjection, const
         allAnd &= flags;
     }
 
+    if (extents && screenSize) {
+        extents->left = 1.0e10f;
+        extents->top = 1.0e10f;
+        extents->right = -1.0e10f;
+        extents->bottom = -1.0e10f;
+    }
+
     if (extents && screenSize && (allAnd & VXCLIP_ALL) == 0) {
-        __m128 minXY = _mm_set1_ps(1000000.0f);
-        __m128 maxXY = _mm_set1_ps(-1000000.0f);
-        bool hasProjected = false;
+        __m128 minXY = _mm_set1_ps(1.0e10f);
+        __m128 maxXY = _mm_set1_ps(-1.0e10f);
 
         const float halfWidth = (screenSize->right - screenSize->left) * 0.5f;
         const float halfHeight = (screenSize->bottom - screenSize->top) * 0.5f;
@@ -516,32 +530,22 @@ VX_SIMD_INLINE XBOOL VxSIMDTransformBox2D(const VxMatrix *worldProjection, const
         for (int i = 0; i < vertexCount; ++i) {
             __m128 v = verts[i];
             __m128 w = _mm_shuffle_ps(v, v, _MM_SHUFFLE(3, 3, 3, 3));
+            __m128 invW = _mm_rcp_ss(w);
+            invW = _mm_and_ps(_mm_shuffle_ps(invW, invW, _MM_SHUFFLE(0, 0, 0, 0)), VX_SIMD_ABS_MASK);
 
-            float wf;
-            _mm_store_ss(&wf, w);
-            if (wf <= 0.0f) continue;
-
-            __m128 rcp = _mm_rcp_ss(w);
-            __m128 two = _mm_set_ss(2.0f);
-            rcp = _mm_mul_ss(rcp, _mm_sub_ss(two, _mm_mul_ss(w, rcp)));
-            __m128 invW = _mm_shuffle_ps(rcp, rcp, _MM_SHUFFLE(0, 0, 0, 0));
-
-            __m128 projected = _mm_add_ps(_mm_mul_ps(_mm_mul_ps(v, invW), viewScale), viewOffset);
+            __m128 projected = _mm_add_ps(_mm_mul_ps(_mm_mul_ps(v, viewScale), invW), viewOffset);
             minXY = _mm_min_ps(minXY, projected);
             maxXY = _mm_max_ps(maxXY, projected);
-            hasProjected = true;
         }
 
-        if (hasProjected) {
-            alignas(16) float minf[4], maxf[4];
-            _mm_store_ps(minf, minXY);
-            _mm_store_ps(maxf, maxXY);
+        alignas(16) float minf[4], maxf[4];
+        _mm_store_ps(minf, minXY);
+        _mm_store_ps(maxf, maxXY);
 
-            extents->left = minf[0];
-            extents->bottom = maxf[1];
-            extents->right = maxf[0];
-            extents->top = minf[1];
-        }
+        extents->left = minf[0];
+        extents->bottom = maxf[1];
+        extents->right = maxf[0];
+        extents->top = minf[1];
     }
 
     if ((allOr & VXCLIP_FRONT) != 0 && extents && screenSize) {
@@ -580,11 +584,21 @@ VX_SIMD_INLINE void VxSIMDProjectBoxZExtents(const VxMatrix *worldProjection, co
     const __m128 deltaZ = _mm_mul_ps(col2, _mm_set1_ps(dz));
 
     int vertexCount;
-    if (fabsf(dz) < EPSILON) {
+    if (dz <= EPSILON) {
         vertexCount = 4;
         corners[1] = _mm_add_ps(corners[0], deltaX);
         corners[2] = _mm_add_ps(corners[0], deltaY);
         corners[3] = _mm_add_ps(corners[1], deltaY);
+    } else if (dx <= EPSILON) {
+        vertexCount = 4;
+        corners[1] = _mm_add_ps(corners[0], deltaZ);
+        corners[2] = _mm_add_ps(corners[0], deltaY);
+        corners[3] = _mm_add_ps(corners[1], deltaY);
+    } else if (dy <= EPSILON) {
+        vertexCount = 4;
+        corners[1] = _mm_add_ps(corners[0], deltaZ);
+        corners[2] = _mm_add_ps(corners[0], deltaX);
+        corners[3] = _mm_add_ps(corners[1], deltaX);
     } else {
         vertexCount = 8;
         corners[1] = _mm_add_ps(corners[0], deltaZ);
@@ -599,18 +613,14 @@ VX_SIMD_INLINE void VxSIMDProjectBoxZExtents(const VxMatrix *worldProjection, co
     for (int i = 0; i < vertexCount; ++i) {
         const __m128 v = corners[i];
         const float w = _mm_cvtss_f32(_mm_shuffle_ps(v, v, _MM_SHUFFLE(3, 3, 3, 3)));
-        if (w <= EPSILON) {
-            continue;
-        }
         const float z = _mm_cvtss_f32(_mm_shuffle_ps(v, v, _MM_SHUFFLE(2, 2, 2, 2)));
-        const float projZ = z / w;
+
+        float projZ = 0.0f;
+        if (w >= 0.0f)
+            projZ = z / w;
+
         if (projZ < *zhMin) *zhMin = projZ;
         if (projZ > *zhMax) *zhMax = projZ;
-    }
-
-    if (*zhMin > *zhMax) {
-        *zhMin = 0.0f;
-        *zhMax = 1.0f;
     }
 }
 

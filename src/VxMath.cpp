@@ -44,6 +44,16 @@ static XBOOL TransformBox2DScalarCore(const VxMatrix &World_ProjectionMat, const
 static void ProjectBoxZExtentsScalarCore(const VxMatrix &World_ProjectionMat, const VxBbox &box, float &ZhMin, float &ZhMax);
 static void ProjectPointsToAxesExtentsScalar(const XBYTE *Points, XDWORD Stride, int Count, const VxMatrix &BBoxMatrix, float &minX, float &maxX, float &minY, float &maxY, float &minZ, float &maxZ);
 
+static inline float VxScreenReciprocalAbs(float w) {
+#if defined(VX_SIMD_SSE)
+    __m128 reciprocal = _mm_rcp_ss(_mm_set_ss(w));
+    reciprocal = _mm_and_ps(reciprocal, VX_SIMD_ABS_MASK);
+    return _mm_cvtss_f32(reciprocal);
+#else
+    return 1.0f / XAbs(w);
+#endif
+}
+
 #if defined(VX_SIMD_SSE)
 static XBOOL FillStructureSIMDImpl(int Count, void *Dst, XDWORD Stride, XDWORD SizeSrc, const void *Src) {
     return VxSIMDFillStructure(Count, Dst, Stride, SizeSrc, Src);
@@ -78,10 +88,6 @@ static void ProjectBoxZExtentsSIMDCore(const VxMatrix &World_ProjectionMat, cons
     }
 
     VxSIMDProjectBoxZExtents(&World_ProjectionMat, &box, &ZhMin, &ZhMax);
-    if (ZhMin > ZhMax) {
-        ZhMin = 0.0f;
-        ZhMax = 1.0f;
-    }
 }
 
 static void ProjectPointsToAxesExtentsSIMD(const XBYTE *Points, XDWORD Stride, int Count, const VxMatrix &BBoxMatrix, float &minX, float &maxX, float &minY, float &maxY, float &minZ, float &maxZ) {
@@ -99,7 +105,7 @@ static void ProjectPointsToAxesExtentsSIMD(const XBYTE *Points, XDWORD Stride, i
     minY = maxY = projY;
     minZ = maxZ = projZ;
 
-    // Keep scalar-style comparisons so NaN handling stays consistent with legacy code.
+    // Keep scalar-style comparisons so NaN handling and floating-point order stay consistent.
     for (int i = 0; i < Count; ++i) {
         const float *p = reinterpret_cast<const float *>(Points + i * Stride);
         float x, y, z;
@@ -288,7 +294,7 @@ static XBOOL TransformBox2DScalarCore(const VxMatrix &World_ProjectionMat, const
         // Box is flat in Z dimension - only need 4 vertices
         vertexCount = 4;
 
-        // Calculate corners - order matches original binary
+        // Calculate corners in stable traversal order.
         transformedVertices[1] = transformedVertices[0] + deltaX;              // Min + (dx, 0, 0)
         transformedVertices[2] = transformedVertices[0] + deltaY;              // Min + (0, dy, 0)
         transformedVertices[3] = transformedVertices[1] + deltaY;              // Min + (dx, dy, 0)
@@ -298,7 +304,7 @@ static XBOOL TransformBox2DScalarCore(const VxMatrix &World_ProjectionMat, const
 
         VxVector4 deltaZ(matRow2[0] * dz, matRow2[1] * dz, matRow2[2] * dz, matRow2[3] * dz);
 
-        // Calculate all 8 corners - order matches original binary exactly
+        // Calculate all 8 corners in stable traversal order.
         transformedVertices[1] = transformedVertices[0] + deltaZ;              // Min + (0, 0, dz)
         transformedVertices[2] = transformedVertices[0] + deltaY;              // Min + (0, dy, 0)
         transformedVertices[3] = transformedVertices[1] + deltaY;              // Min + (0, dy, dz)
@@ -314,7 +320,7 @@ static XBOOL TransformBox2DScalarCore(const VxMatrix &World_ProjectionMat, const
         const VxVector4 &vertex = transformedVertices[i];
 
         // Check against frustum planes using homogeneous coordinates
-        // Order and semantics match original binary exactly
+        // Preserve the corner traversal order used by the projection code.
         if (-vertex.w > vertex.x) vertexFlags |= VXCLIP_LEFT;    // bit 4 (0x10)
         if (vertex.x > vertex.w) vertexFlags |= VXCLIP_RIGHT;    // bit 5 (0x20)
         if (-vertex.w > vertex.y) vertexFlags |= VXCLIP_BOTTOM;  // bit 7 (0x80)
@@ -329,11 +335,10 @@ static XBOOL TransformBox2DScalarCore(const VxMatrix &World_ProjectionMat, const
 
     // Calculate screen coordinates if box is at least partially visible and screen extents are requested
     if (Extents && ScreenSize && !(allVerticesFlagsAnded & VXCLIP_ALL)) {
-        float minX = 1.0e6f;
-        float minY = 1.0e6f;
-        float maxX = -1.0e6f;
-        float maxY = -1.0e6f;
-        bool hasProjected = false;
+        float minX = 1.0e10f;
+        float minY = 1.0e10f;
+        float maxX = -1.0e10f;
+        float maxY = -1.0e10f;
 
         // Calculate viewport parameters
         float halfWidth = (ScreenSize->right - ScreenSize->left) * 0.5f;
@@ -345,19 +350,14 @@ static XBOOL TransformBox2DScalarCore(const VxMatrix &World_ProjectionMat, const
         for (int i = 0; i < vertexCount; i++) {
             VxVector4 &vertex = transformedVertices[i];
 
-            // Skip points behind viewer or at viewer position (w <= 0)
-            if (vertex.w <= 0.0f)
-                continue;
-
-            // Perform perspective division
-            float invW = 1.0f / vertex.w;
-            vertex.w = invW;  // Store invW back (matches original binary)
+            float invW = VxScreenReciprocalAbs(vertex.w);
+            vertex.w = invW;
 
             // Convert to screen coordinates
             float screenX = vertex.x * invW * halfWidth + centerX;
             float screenY = centerY - vertex.y * invW * halfHeight;
 
-            // Store back into vertex (matches original binary behavior)
+            // Store back into vertex for downstream screen conversion.
             vertex.x = screenX;
             vertex.y = screenY;
 
@@ -366,16 +366,13 @@ static XBOOL TransformBox2DScalarCore(const VxMatrix &World_ProjectionMat, const
             if (screenY < minY) minY = screenY;
             if (screenX > maxX) maxX = screenX;
             if (screenY > maxY) maxY = screenY;
-            hasProjected = true;
         }
 
-        if (hasProjected) {
-            // Set rectangle extents
-            Extents->left = minX;
-            Extents->top = minY;
-            Extents->right = maxX;
-            Extents->bottom = maxY;
-        }
+        // Set rectangle extents
+        Extents->left = minX;
+        Extents->top = minY;
+        Extents->right = maxX;
+        Extents->bottom = maxY;
     }
 
     // Clamp to screen bounds only when some vertices are behind near plane (VXCLIP_FRONT set)
@@ -402,14 +399,6 @@ XBOOL VxTransformBox2D(const VxMatrix &World_ProjectionMat, const VxBbox &box, V
         return FALSE;
     }
 
-    // Initialize extents to zero for deterministic output
-    if (Extents) {
-        Extents->left = 0.0f;
-        Extents->top = 0.0f;
-        Extents->right = 0.0f;
-        Extents->bottom = 0.0f;
-    }
-
     return GetVxMathDispatchTable()->transformBox2DCore(
         World_ProjectionMat,
         box,
@@ -421,7 +410,7 @@ XBOOL VxTransformBox2D(const VxMatrix &World_ProjectionMat, const VxBbox &box, V
 }
 
 static void ProjectBoxZExtentsScalarCore(const VxMatrix &World_ProjectionMat, const VxBbox &box, float &ZhMin, float &ZhMax) {
-    // Validate input (keep legacy behavior for invalid boxes)
+    // Validate input before backend dispatch.
     if (!box.IsValid()) {
         return;
     }
@@ -447,24 +436,30 @@ static void ProjectBoxZExtentsScalarCore(const VxMatrix &World_ProjectionMat, co
     int vertexCount;
 
     corners[0] = transformedVertex;  // Min corner
+    VxVector4 deltaX(matRow0[0] * dx, matRow0[1] * dx, matRow0[2] * dx, matRow0[3] * dx);
+    VxVector4 deltaY(matRow1[0] * dy, matRow1[1] * dy, matRow1[2] * dy, matRow1[3] * dy);
+    VxVector4 deltaZ(matRow2[0] * dz, matRow2[1] * dz, matRow2[2] * dz, matRow2[3] * dz);
 
-    if (XAbs(dz) < EPSILON) {
-        // Box is flat in Z dimension - only need 4 corners
+    if (dz <= EPSILON) {
         vertexCount = 4;
-
-        VxVector4 deltaX(matRow0[0] * dx, matRow0[1] * dx, matRow0[2] * dx, matRow0[3] * dx);
-        VxVector4 deltaY(matRow1[0] * dy, matRow1[1] * dy, matRow1[2] * dy, matRow1[3] * dy);
 
         corners[1] = corners[0] + deltaX;      // Min + (dx, 0, 0)
         corners[2] = corners[0] + deltaY;      // Min + (0, dy, 0)
         corners[3] = corners[1] + deltaY;      // Min + (dx, dy, 0)
-    } else {
-        // Full 3D box - need all 8 corners
-        vertexCount = 8;
+    } else if (dx <= EPSILON) {
+        vertexCount = 4;
 
-        VxVector4 deltaX(matRow0[0] * dx, matRow0[1] * dx, matRow0[2] * dx, matRow0[3] * dx);
-        VxVector4 deltaY(matRow1[0] * dy, matRow1[1] * dy, matRow1[2] * dy, matRow1[3] * dy);
-        VxVector4 deltaZ(matRow2[0] * dz, matRow2[1] * dz, matRow2[2] * dz, matRow2[3] * dz);
+        corners[1] = corners[0] + deltaZ;      // Min + (0, 0, dz)
+        corners[2] = corners[0] + deltaY;      // Min + (0, dy, 0)
+        corners[3] = corners[1] + deltaY;      // Min + (0, dy, dz)
+    } else if (dy <= EPSILON) {
+        vertexCount = 4;
+
+        corners[1] = corners[0] + deltaZ;      // Min + (0, 0, dz)
+        corners[2] = corners[0] + deltaX;      // Min + (dx, 0, 0)
+        corners[3] = corners[1] + deltaX;      // Min + (dx, 0, dz)
+    } else {
+        vertexCount = 8;
 
         corners[1] = corners[0] + deltaZ;      // Min + (0, 0, dz)
         corners[2] = corners[0] + deltaY;      // Min + (0, dy, 0)
@@ -475,27 +470,18 @@ static void ProjectBoxZExtentsScalarCore(const VxMatrix &World_ProjectionMat, co
         corners[7] = corners[5] + deltaY;      // Min + (dx, dy, dz)
     }
 
-    // Find min and max projected Z values
+    // Find min and max projected Z values.
     for (int i = 0; i < vertexCount; i++) {
         float z = corners[i].z;
         float w = corners[i].w;
 
-        // Skip if w is zero or negative (behind viewer)
-        if (w <= EPSILON)
-            continue;
-
-        // Calculate perspective-divided Z
-        float projZ = z / w;
+        float projZ = 0.0f;
+        if (w >= 0.0f)
+            projZ = z / w;
 
         // Update min/max
         if (projZ < ZhMin) ZhMin = projZ;
         if (projZ > ZhMax) ZhMax = projZ;
-    }
-
-    // Handle case where all vertices are behind the viewer
-    if (ZhMin > ZhMax) {
-        ZhMin = 0.0f;
-        ZhMax = 1.0f;
     }
 }
 
@@ -504,7 +490,7 @@ void VxProjectBoxZExtents(const VxMatrix &World_ProjectionMat, const VxBbox &box
     ZhMin = 1.0e10f;
     ZhMax = -1.0e10f;
 
-    // Preserve legacy contract for invalid boxes before backend dispatch.
+    // Preserve invalid-box defaults before backend dispatch.
     if (!box.IsValid()) {
         return;
     }
