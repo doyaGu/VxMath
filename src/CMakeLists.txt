@@ -293,6 +293,10 @@ set(VXMATH_TARGETS)
 if (VXMATH_BUILD_SHARED)
     add_library(VxMath SHARED)
     vx_configure_target(VxMath)
+    if (COMMAND ballance_configure_version_resource AND DEFINED BALLANCE_MODULE_VERSION_OVERRIDE)
+        ballance_configure_version_resource(_vxmath_version_resource VxMath "VxMath Runtime Library" "VxMath.dll")
+        target_sources(VxMath PRIVATE "${_vxmath_version_resource}")
+    endif ()
 
     # Shared library specific settings
     set_target_properties(VxMath PROPERTIES
