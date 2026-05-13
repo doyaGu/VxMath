@@ -26,6 +26,7 @@ BEGIN
             VALUE "FileDescription", "@VXMATH_RC_DESCRIPTION@"
             VALUE "FileVersion", "@VXMATH_RC_VERSION_STRING@\0"
             VALUE "InternalName", "@VXMATH_RC_TARGET@\0"
+            VALUE "LegalCopyright", "Copyright (C) 2026\0"
             VALUE "OriginalFilename", "@VXMATH_RC_ORIGINAL_FILENAME@\0"
             VALUE "ProductName", "Ballanced"
             VALUE "ProductVersion", "@VXMATH_RC_VERSION_STRING@\0"
