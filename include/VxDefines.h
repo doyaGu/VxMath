@@ -711,6 +711,7 @@ typedef enum CKRST_TEXTUREARG {
     CKRST_TA_TFACTOR        = 0x00000003UL, ///< Use the color from the RENDERSTATE_TEXTUREFACTOR.
     CKRST_TA_SPECULAR       = 0x00000004UL, ///< Use specular color from vertex/material.
     CKRST_TA_TEMP           = 0x00000005UL, ///< Use a temporary register.
+    CKRST_TA_CONSTANT       = 0x00000006UL, ///< Use per-stage constant color (DirectX Usage Only).
     CKRST_TA_COMPLEMENT     = 0x00000010UL, ///< Take 1.0 - x of the argument.
     CKRST_TA_ALPHAREPLICATE = 0x00000020UL  ///< Replicate alpha to all color components (A,A,A).
 } CKRST_TEXTUREARG;
@@ -770,6 +771,7 @@ typedef enum CKRST_TEXTURESTAGESTATETYPE {
     CKRST_TSS_COLORARG0  = 26UL, ///< CKRST_TEXTUREARG (DirectX Usage Only)
     CKRST_TSS_ALPHAARG0  = 27UL, ///< CKRST_TEXTUREARG (DirectX Usage Only)
     CKRST_TSS_RESULTARG0 = 28UL, ///< CKRST_TEXTUREARG (DirectX Usage Only)
+    CKRST_TSS_CONSTANT   = 32UL, ///< DWORD ARGB per-stage constant color (DirectX Usage Only)
 
     CKRST_TSS_TEXTUREMAPBLEND = 39UL, ///< VXTEXTURE_BLENDMODE, legacy texture blend mode
     CKRST_TSS_STAGEBLEND      = 40UL, ///< Use STAGEBLEND macro for mono-pass multitexturing test.
