@@ -290,11 +290,37 @@ endfunction()
 # Track created targets for export
 set(VXMATH_TARGETS)
 
+function(vx_configure_version_resource OUT_VAR TARGET_NAME FILE_DESCRIPTION ORIGINAL_FILENAME)
+    if (NOT VXMATH_VERSION_OVERRIDE MATCHES "^[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+$")
+        message(FATAL_ERROR "VXMATH_VERSION_OVERRIDE must be a numeric four-part version")
+    endif ()
+
+    string(REPLACE "." ";" _vx_version_parts "${VXMATH_VERSION_OVERRIDE}")
+    list(GET _vx_version_parts 0 VXMATH_RC_VERSION_MAJOR)
+    list(GET _vx_version_parts 1 VXMATH_RC_VERSION_MINOR)
+    list(GET _vx_version_parts 2 VXMATH_RC_VERSION_PATCH)
+    list(GET _vx_version_parts 3 VXMATH_RC_VERSION_TWEAK)
+
+    set(VXMATH_RC_VERSION_STRING "${VXMATH_VERSION_OVERRIDE}")
+    set(VXMATH_RC_TARGET "${TARGET_NAME}")
+    set(VXMATH_RC_DESCRIPTION "${FILE_DESCRIPTION}")
+    set(VXMATH_RC_ORIGINAL_FILENAME "${ORIGINAL_FILENAME}")
+    set(_vx_version_resource "${CMAKE_CURRENT_BINARY_DIR}/${TARGET_NAME}Version.generated.rc")
+
+    configure_file(
+            "${CMAKE_CURRENT_SOURCE_DIR}/Version.rc.in"
+            "${_vx_version_resource}"
+            @ONLY
+    )
+
+    set(${OUT_VAR} "${_vx_version_resource}" PARENT_SCOPE)
+endfunction()
+
 if (VXMATH_BUILD_SHARED)
     add_library(VxMath SHARED)
     vx_configure_target(VxMath)
-    if (COMMAND ballance_configure_version_resource AND DEFINED BALLANCE_MODULE_VERSION_OVERRIDE)
-        ballance_configure_version_resource(_vxmath_version_resource VxMath "VxMath Runtime Library" "VxMath.dll")
+    if (DEFINED VXMATH_VERSION_OVERRIDE)
+        vx_configure_version_resource(_vxmath_version_resource VxMath "VxMath Runtime Library" "VxMath.dll")
         target_sources(VxMath PRIVATE "${_vxmath_version_resource}")
     endif ()
 
