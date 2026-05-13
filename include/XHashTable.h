@@ -498,7 +498,7 @@ public:
             initialize = 4;
 
         m_Table.Resize(initialize);
-        m_Table.Fill(0);
+        m_Table.Memset(0);
         m_Pool.Reserve((int) (initialize * LOAD_FACTOR));
     }
 
@@ -1171,6 +1171,9 @@ private:
      * @param iSize The new number of buckets for the table.
      */
     void Rehash(int iSize) {
+        if (iSize < 4)
+            iSize = 4;
+
         int oldsize = m_Table.Size();
 
         // we create a new pool
@@ -1180,7 +1183,7 @@ private:
         // Temporary table
         XArray<tEntry> tmp;
         tmp.Resize(iSize);
-        tmp.Fill(0);
+        tmp.Memset(0);
 
         for (int index = 0; index < oldsize; ++index) {
             tEntry first = m_Table[index];

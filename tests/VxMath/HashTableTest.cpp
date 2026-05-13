@@ -216,6 +216,24 @@ TEST(XHashTable, RehashTriggeredByPoolFullPreservesAllElementsAcrossManyRounds) 
     EXPECT_EQ((int)keys.size(), t.Size());
 }
 
+TEST(XHashTable, RehashPreservesPointerPayloads) {
+    int values[64];
+    XHashTable<int*, int> t(4);
+
+    for (int i = 0; i < 64; ++i) {
+        values[i] = i * 5;
+        t.Insert(i, &values[i]);
+    }
+
+    EXPECT_EQ(t.Size(), 64);
+    for (int i = 0; i < 64; ++i) {
+        int** p = t.FindPtr(i);
+        ASSERT_NE(p, nullptr) << "Missing key " << i;
+        ASSERT_NE(*p, nullptr);
+        EXPECT_EQ(**p, i * 5);
+    }
+}
+
 TEST(XHashTable, RehashWithAllKeysInSingleBucketDoesNotCorruptChains) {
     // Force worst-case chaining: all keys land in same bucket.
     XHashTable<int, int, IntHashConstantZero> t(4);
