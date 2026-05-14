@@ -171,6 +171,7 @@ typedef enum CKRST_DPFLAGS {
     CKRST_DP_WEIGHTS5   = 0x01000000UL, ///< 5 Weights data are added to each vertex for HW vertex skinning or blending
     CKRST_DP_MATRIXPAL  = 0x02000000UL,
     ///< The last weight is a DWORD which contains the indices of matrix to which the weights are associated.
+    CKRST_DP_PSIZE      = 0x04000000UL, ///< Point size data is added to each vertex.
 
     CKRST_DP_VBUFFER = 0x10000000UL,
     ///< If a Vertex Buffer can be created, the returned structure should directly point to it.
@@ -772,6 +773,7 @@ typedef enum CKRST_TEXTURESTAGESTATETYPE {
     CKRST_TSS_ALPHAARG0  = 27UL, ///< CKRST_TEXTUREARG (DirectX Usage Only)
     CKRST_TSS_RESULTARG0 = 28UL, ///< CKRST_TEXTUREARG (DirectX Usage Only)
     CKRST_TSS_CONSTANT   = 32UL, ///< DWORD ARGB per-stage constant color (DirectX Usage Only)
+    CKRST_TSS_COMPAREFUNC = 33UL, ///< CK_COMPARE_MODE depth compare function (DirectX Usage Only)
 
     CKRST_TSS_TEXTUREMAPBLEND = 39UL, ///< VXTEXTURE_BLENDMODE, legacy texture blend mode
     CKRST_TSS_STAGEBLEND      = 40UL, ///< Use STAGEBLEND macro for mono-pass multitexturing test.
