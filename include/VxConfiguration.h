@@ -340,6 +340,18 @@ char *Shrink(char *str);
 /**
  * @brief A simplified configuration class, possibly for interacting with a specific system registry or format.
  */
+typedef enum VxConfigRoot {
+    VXCONFIG_ROOT_CURRENT_USER = 0,
+    VXCONFIG_ROOT_LOCAL_MACHINE = 1
+} VxConfigRoot;
+
+typedef enum VxConfigValueType {
+    VXCONFIG_VALUE_STRING = 1,
+    VXCONFIG_VALUE_INTEGER = 2,
+    VXCONFIG_VALUE_FLOAT = 3,
+    VXCONFIG_VALUE_BOOLEAN = 4
+} VxConfigValueType;
+
 class VxConfig {
 public:
     /// @brief Defines the access mode for opening a configuration section.
@@ -350,8 +362,11 @@ public:
 
     /// @brief Default constructor.
     VX_EXPORT VxConfig();
+    VX_EXPORT VxConfig(VxConfigRoot root, const char *baseSection);
     /// @brief Destructor.
     VX_EXPORT ~VxConfig();
+
+    VX_EXPORT XBOOL OpenRoot(VxConfigRoot root, const char *baseSection);
 
     /// @brief Opens a section with a specified access mode.
     VX_EXPORT void OpenSection(const char *iSection, Mode iOpeningMode);
@@ -361,13 +376,33 @@ public:
 
     /// @brief Writes a string value to a key in the current section.
     VX_EXPORT void WriteStringEntry(const char *iKey, const char *iValue);
+    VX_EXPORT void WriteIntegerEntry(const char *iKey, int iValue);
+    VX_EXPORT void WriteFloatEntry(const char *iKey, float iValue);
+    VX_EXPORT void WriteBooleanEntry(const char *iKey, XBOOL iValue);
 
     /// @brief Reads a string value from a key in the current section.
     VX_EXPORT XDWORD ReadStringEntry(const char *iKey, char *oData);
+    VX_EXPORT XBOOL ReadStringEntry(const char *iKey, char *oData, size_t iSize);
+    VX_EXPORT XBOOL ReadIntegerEntry(const char *iKey, int *oData);
+    VX_EXPORT XBOOL ReadFloatEntry(const char *iKey, float *oData);
+    VX_EXPORT XBOOL ReadBooleanEntry(const char *iKey, XBOOL *oData);
+
+    VX_EXPORT XBOOL DeleteEntry(const char *iKey);
+    VX_EXPORT XBOOL DeleteSection(const char *iSection);
+    VX_EXPORT XBOOL EntryExists(const char *iKey);
+    VX_EXPORT XBOOL GetEntryType(const char *iKey, VxConfigValueType *oType);
+    VX_EXPORT static XBOOL GetRegistryFilePath(char *oPath, size_t iSize);
 
 private:
+    XBOOL WriteRawEntry(const char *iKey, const char *iValue, VxConfigValueType iType);
+    XBOOL ReadRawEntry(const char *iKey, char *oData, size_t iSize, VxConfigValueType *oType);
+
     void *m_VirtoolsSection; ///< A handle or key to the main "Virtools" section, likely in the system registry.
     void *m_CurrentSection;  ///< A handle or key to the currently open section.
+    VxConfigRoot m_Root;
+    XString m_BaseSection;
+    XString m_CurrentSectionName;
+    Mode m_CurrentMode;
 };
 
 #endif // VXCONFIGURATION_H
