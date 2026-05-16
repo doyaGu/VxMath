@@ -34,15 +34,7 @@ if (VXMATH_IS_TOP_LEVEL AND PROJECT_SOURCE_DIR STREQUAL PROJECT_BINARY_DIR)
     message(FATAL_ERROR "In-source builds not allowed. Run CMake from a separate directory: cmake -B build")
 endif ()
 
-option(VXMATH_ENABLE_SDL3 "Use SDL3 platform backend" OFF)
-
-if (VXMATH_ENABLE_SDL3)
-    set(VXMATH_PLATFORM "SDL3")
-elseif (WIN32)
-    set(VXMATH_PLATFORM "Windows")
-else ()
-    set(VXMATH_PLATFORM "POSIX")
-endif ()
+set(VXMATH_PLATFORM "SDL3")
 
 # =============================================================================
 # C++ standard
@@ -102,7 +94,7 @@ include(GenerateExportHeader)
 include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
 
-if (VXMATH_ENABLE_SDL3 AND NOT TARGET SDL3::SDL3)
+if (NOT TARGET SDL3::SDL3)
     find_package(SDL3 CONFIG REQUIRED)
 endif ()
 
