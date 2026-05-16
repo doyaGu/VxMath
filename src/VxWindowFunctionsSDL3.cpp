@@ -228,6 +228,10 @@ XBOOL VxSetEnvironmentVariable(const char *envName, const char *envValue) {
 // Window Functions (minimal stubs - SDL windows are managed differently)
 // ============================================================================
 
+static SDL_Window *VxAsSDLWindow(WIN_HANDLE Win) {
+    return (SDL_Window *)Win;
+}
+
 WIN_HANDLE VxWindowFromPoint(CKPOINT pt) {
     (void)pt;
     // SDL doesn't provide this functionality
@@ -238,12 +242,7 @@ XBOOL VxGetClientRect(WIN_HANDLE Win, CKRECT *rect) {
     if (!rect)
         return FALSE;
 
-#ifdef _WIN32
-    if (Win) {
-        return GetClientRect((HWND)Win, (LPRECT)rect) != 0;
-    }
-#else
-    SDL_Window *window = (SDL_Window *)Win;
+    SDL_Window *window = VxAsSDLWindow(Win);
     if (window) {
         int w, h;
         if (SDL_GetWindowSize(window, &w, &h)) {
@@ -254,7 +253,6 @@ XBOOL VxGetClientRect(WIN_HANDLE Win, CKRECT *rect) {
             return TRUE;
         }
     }
-#endif
     
     memset(rect, 0, sizeof(CKRECT));
     return FALSE;
@@ -264,12 +262,7 @@ XBOOL VxGetWindowRect(WIN_HANDLE Win, CKRECT *rect) {
     if (!rect)
         return FALSE;
 
-#ifdef _WIN32
-    if (Win) {
-        return GetWindowRect((HWND)Win, (LPRECT)rect) != 0;
-    }
-#else
-    SDL_Window *window = (SDL_Window *)Win;
+    SDL_Window *window = VxAsSDLWindow(Win);
     if (window) {
         int x, y, w, h;
         if (SDL_GetWindowPosition(window, &x, &y) && SDL_GetWindowSize(window, &w, &h)) {
@@ -280,7 +273,6 @@ XBOOL VxGetWindowRect(WIN_HANDLE Win, CKRECT *rect) {
             return TRUE;
         }
     }
-#endif
     
     memset(rect, 0, sizeof(CKRECT));
     return FALSE;
@@ -290,12 +282,7 @@ XBOOL VxScreenToClient(WIN_HANDLE Win, CKPOINT *pt) {
     if (!pt)
         return FALSE;
 
-#ifdef _WIN32
-    if (Win) {
-        return ScreenToClient((HWND)Win, (LPPOINT)pt) != 0;
-    }
-#else
-    SDL_Window *window = (SDL_Window *)Win;
+    SDL_Window *window = VxAsSDLWindow(Win);
     if (window) {
         int wx, wy;
         if (SDL_GetWindowPosition(window, &wx, &wy)) {
@@ -304,7 +291,6 @@ XBOOL VxScreenToClient(WIN_HANDLE Win, CKPOINT *pt) {
             return TRUE;
         }
     }
-#endif
     return FALSE;
 }
 
@@ -312,12 +298,7 @@ XBOOL VxClientToScreen(WIN_HANDLE Win, CKPOINT *pt) {
     if (!pt)
         return FALSE;
 
-#ifdef _WIN32
-    if (Win) {
-        return ClientToScreen((HWND)Win, (LPPOINT)pt) != 0;
-    }
-#else
-    SDL_Window *window = (SDL_Window *)Win;
+    SDL_Window *window = VxAsSDLWindow(Win);
     if (window) {
         int wx, wy;
         if (SDL_GetWindowPosition(window, &wx, &wy)) {
@@ -326,19 +307,12 @@ XBOOL VxClientToScreen(WIN_HANDLE Win, CKPOINT *pt) {
             return TRUE;
         }
     }
-#endif
     return FALSE;
 }
 
 WIN_HANDLE VxSetParent(WIN_HANDLE Child, WIN_HANDLE Parent) {
-#ifdef _WIN32
-    if (Child) {
-        return (WIN_HANDLE)SetParent((HWND)Child, (HWND)Parent);
-    }
-    return NULL;
-#else
-    SDL_Window *child = (SDL_Window *)Child;
-    SDL_Window *parent = (SDL_Window *)Parent;
+    SDL_Window *child = VxAsSDLWindow(Child);
+    SDL_Window *parent = VxAsSDLWindow(Parent);
     
     if (child) {
         if (SDL_SetWindowParent(child, parent)) {
@@ -346,38 +320,26 @@ WIN_HANDLE VxSetParent(WIN_HANDLE Child, WIN_HANDLE Parent) {
         }
     }
     return NULL;
-#endif
 }
 
 WIN_HANDLE VxGetParent(WIN_HANDLE Win) {
-#ifdef _WIN32
-    if (Win) {
-        return (WIN_HANDLE)GetParent((HWND)Win);
-    }
-    return NULL;
-#else
-    SDL_Window *window = (SDL_Window *)Win;
+    SDL_Window *window = VxAsSDLWindow(Win);
     if (window) {
         return (WIN_HANDLE)SDL_GetWindowParent(window);
     }
     return NULL;
-#endif
 }
 
 XBOOL VxMoveWindow(WIN_HANDLE Win, int x, int y, int Width, int Height, XBOOL Repaint) {
-#ifdef _WIN32
-    return Win && MoveWindow((HWND)Win, x, y, Width, Height, Repaint) != 0;
-#else
     (void)Repaint;
     
-    SDL_Window *window = (SDL_Window *)Win;
+    SDL_Window *window = VxAsSDLWindow(Win);
     if (window) {
         SDL_SetWindowPosition(window, x, y);
         SDL_SetWindowSize(window, Width, Height);
         return TRUE;
     }
     return FALSE;
-#endif
 }
 
 // ============================================================================
