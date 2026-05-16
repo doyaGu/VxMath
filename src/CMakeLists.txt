@@ -133,7 +133,16 @@ if (VXMATH_ENABLE_SIMD AND NOT VXMATH_SIMD_LEVEL STREQUAL "NONE")
     endif ()
 endif ()
 
-if (WIN32)
+if (VXMATH_ENABLE_SDL3)
+    set(VXMATH_PLATFORM_SOURCES
+            VxSharedLibrarySDL3.cpp
+            VxMemoryMappedFileSDL3.cpp
+            VxWindowFunctionsSDL3.cpp
+            VxTimeProfilerSDL3.cpp
+            VxMutexSDL3.cpp
+            VxThreadSDL3.cpp
+    )
+elseif (WIN32)
     set(VXMATH_PLATFORM_SOURCES
             VxSharedLibraryWin32.cpp
             VxMemoryMappedFileWin32.cpp
@@ -184,6 +193,10 @@ function(vx_configure_target TARGET_NAME)
 
     if (NOT WIN32)
         target_link_libraries(${TARGET_NAME} PRIVATE ${CMAKE_DL_LIBS} pthread)
+    endif ()
+    if (VXMATH_ENABLE_SDL3)
+        target_link_libraries(${TARGET_NAME} PUBLIC SDL3::SDL3)
+        target_compile_definitions(${TARGET_NAME} PUBLIC VX_BACKEND_SDL3=1)
     endif ()
 
     set_target_properties(${TARGET_NAME} PROPERTIES

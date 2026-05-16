@@ -34,7 +34,11 @@ if (VXMATH_IS_TOP_LEVEL AND PROJECT_SOURCE_DIR STREQUAL PROJECT_BINARY_DIR)
     message(FATAL_ERROR "In-source builds not allowed. Run CMake from a separate directory: cmake -B build")
 endif ()
 
-if (WIN32)
+option(VXMATH_ENABLE_SDL3 "Use SDL3 platform backend" OFF)
+
+if (VXMATH_ENABLE_SDL3)
+    set(VXMATH_PLATFORM "SDL3")
+elseif (WIN32)
     set(VXMATH_PLATFORM "Windows")
 else ()
     set(VXMATH_PLATFORM "POSIX")
@@ -57,6 +61,7 @@ endif ()
 # Project options
 # =============================================================================
 option(VXMATH_BUILD_TESTS "Build the test suite" OFF)
+option(VXMATH_BUILD_PERF "Build performance benchmark tools" OFF)
 option(VXMATH_BUILD_SHARED "Build shared library" ON)
 option(VXMATH_BUILD_STATIC "Build static library" OFF)
 option(VXMATH_INSTALL "Generate install target" ${VXMATH_IS_TOP_LEVEL})
@@ -96,6 +101,10 @@ list(PREPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 include(GenerateExportHeader)
 include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
+
+if (VXMATH_ENABLE_SDL3 AND NOT TARGET SDL3::SDL3)
+    find_package(SDL3 CONFIG REQUIRED)
+endif ()
 
 # =============================================================================
 # Top-level project settings
@@ -155,6 +164,10 @@ if (VXMATH_BUILD_TESTS)
     add_subdirectory(tests)
 endif ()
 
+if (VXMATH_BUILD_PERF)
+    add_subdirectory(perf)
+endif ()
+
 # =============================================================================
 # Export and packaging
 # =============================================================================
@@ -209,6 +222,7 @@ if (VXMATH_IS_TOP_LEVEL)
     message(STATUS "  Build Shared:         ${VXMATH_BUILD_SHARED}")
     message(STATUS "  Build Static:         ${VXMATH_BUILD_STATIC}")
     message(STATUS "  Build Tests:          ${VXMATH_BUILD_TESTS}")
+    message(STATUS "  Build Perf Tools:     ${VXMATH_BUILD_PERF}")
     message(STATUS "  SIMD Enabled:         ${VXMATH_ENABLE_SIMD}")
     message(STATUS "  SIMD Level:           ${VXMATH_SIMD_LEVEL}")
     message(STATUS "  Platform:             ${VXMATH_PLATFORM}")
