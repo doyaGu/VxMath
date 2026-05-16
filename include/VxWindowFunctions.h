@@ -6,6 +6,22 @@
 
 struct VxImageDescEx;
 
+typedef struct VxDirectoryEntry {
+    char Name[_MAX_PATH];
+    XBOOL IsDirectory;
+    size_t Size;
+} VxDirectoryEntry;
+
+typedef XBOOL (*VxDirectoryEntryCallback)(const VxDirectoryEntry *entry, void *userData);
+
+typedef struct VxMemoryStatus {
+    XDWORD MemoryLoad;
+    uint64_t TotalPhysical;
+    uint64_t AvailablePhysical;
+    uint64_t TotalVirtual;
+    uint64_t AvailableVirtual;
+} VxMemoryStatus;
+
 // KeyBoard Functions
 
 /**
@@ -104,8 +120,22 @@ VX_EXPORT XBOOL VxMakeDirectory(const char *path);
 VX_EXPORT XBOOL VxRemoveDirectory(const char *path);
 /// @brief Deletes a directory and all its contents recursively.
 VX_EXPORT XBOOL VxDeleteDirectory(const char *path);
+/// @brief Checks whether a regular file exists.
+VX_EXPORT XBOOL VxFileExists(const char *path);
+/// @brief Checks whether a directory exists.
+VX_EXPORT XBOOL VxDirectoryExists(const char *path);
+/// @brief Copies a file.
+VX_EXPORT XBOOL VxCopyFile(const char *src, const char *dst, XBOOL failIfExists);
+/// @brief Deletes a regular file.
+VX_EXPORT XBOOL VxDeleteFile(const char *path);
+/// @brief Lists directory entries matching an optional wildcard mask.
+VX_EXPORT XBOOL VxListDirectory(const char *dir, const char *mask, XBOOL includeDirectories, VxDirectoryEntryCallback callback, void *userData);
 /// @brief Gets the current working directory for the application.
 VX_EXPORT XBOOL VxGetCurrentDirectory(char *path);
+/// @brief Gets the executable/application base path.
+VX_EXPORT XBOOL VxGetApplicationBasePath(char *path);
+/// @brief Gets a user-writable configuration directory for an application.
+VX_EXPORT XBOOL VxGetUserConfigPath(const char *appName, char *path, size_t pathSize);
 /// @brief Sets the current working directory for the application.
 VX_EXPORT XBOOL VxSetCurrentDirectory(const char *path);
 /// @brief Combines a path and a filename into a full path string.
@@ -144,6 +174,8 @@ VX_EXPORT XBOOL VxCopyBitmap(BITMAP_HANDLE Bitmap, const VxImageDescEx &desc);
 
 /// @brief Gets information about the current operating system.
 VX_EXPORT VX_OSINFO VxGetOs();
+/// @brief Gets physical and virtual memory statistics.
+VX_EXPORT XBOOL VxGetMemoryStatus(VxMemoryStatus *status);
 
 /**
  * @struct VXFONTINFO

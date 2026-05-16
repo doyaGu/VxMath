@@ -6,14 +6,6 @@
 #include <string>
 #include <vector>
 
-// Platform-specific includes for creating a temporary window for tests
-#ifdef _WIN32
-#include <Windows.h>
-#else
-// Define WIN_HANDLE as a void pointer on non-Windows platforms for compilation
-using WIN_HANDLE = void*;
-#endif
-
 // A test fixture to manage temporary resources like files and windows.
 class VxWindowFunctionsTest : public ::testing::Test {
 protected:
@@ -22,33 +14,12 @@ protected:
         m_tempDir = std::filesystem::temp_directory_path() / "VxMath_Test_Temp";
         std::filesystem::create_directories(m_tempDir);
 
-        // Create a temporary native window to get a valid handle for windowing function tests
-#ifdef _WIN32
-        WNDCLASS wc = {};
-        wc.lpfnWndProc = DefWindowProc;
-        wc.hInstance = GetModuleHandle(nullptr);
-        wc.lpszClassName = "VxTestWindow";
-        RegisterClass(&wc);
-
-        m_testWindow = CreateWindowEx(
-            0, "VxTestWindow", "VxMath Test Window", WS_OVERLAPPED,
-            CW_USEDEFAULT, CW_USEDEFAULT, 200, 200,
-            nullptr, nullptr, GetModuleHandle(nullptr), nullptr
-        );
-#endif
     }
 
     void TearDown() override {
         // Clean up the temporary directory
         std::filesystem::remove_all(m_tempDir);
 
-        // Clean up the temporary window
-#ifdef _WIN32
-        if (m_testWindow) {
-            DestroyWindow(static_cast<HWND>(m_testWindow));
-        }
-        UnregisterClass("VxTestWindow", GetModuleHandle(nullptr));
-#endif
     }
 
     // Helper to create a file with specific content in our temp directory
@@ -61,7 +32,6 @@ protected:
     }
 
     std::filesystem::path m_tempDir;
-    WIN_HANDLE m_testWindow = nullptr;
 };
 
 // --- Keyboard and Input Tests ---
@@ -69,24 +39,22 @@ protected:
 TEST_F(VxWindowFunctionsTest, ScanCodeToAscii) {
     // Test without shift key
     unsigned char keyState[256] = {0};
-    // Scan code for 'A' key (VK_A) on a US keyboard is often 0x1E
-    XDWORD scanCodeA = 0x1E;
+    XDWORD scanCodeA = 4; // SDL_SCANCODE_A
     EXPECT_EQ(VxScanCodeToAscii(scanCodeA, keyState), 'a');
 
-    // Test with shift key pressed
-    keyState[VK_SHIFT] = 0x80; // Set high bit to indicate key is down
+    keyState[42] = 0x80; // SDL_SCANCODE_LSHIFT
     EXPECT_EQ(VxScanCodeToAscii(scanCodeA, keyState), 'a');
 
     // Test a non-printable key
-    keyState[VK_SHIFT] = 0;
-    XDWORD scanCodeF1 = 0x3B; // Scan code for F1
+    keyState[42] = 0;
+    XDWORD scanCodeF1 = 58; // SDL_SCANCODE_F1
     EXPECT_EQ(VxScanCodeToAscii(scanCodeF1, keyState), 0);
 }
 
 TEST_F(VxWindowFunctionsTest, ScanCodeToName) {
     char keyName[256];
     // This is highly layout-dependent, but we can test special keys
-    XDWORD scanCodeLeft = 0xCB;
+    XDWORD scanCodeLeft = 80; // SDL_SCANCODE_LEFT
     EXPECT_GT(VxScanCodeToName(scanCodeLeft, keyName), 0);
     // The exact name can vary, but it should be something like "Left" or "Left Arrow"
     std::string name(keyName);
@@ -246,131 +214,12 @@ TEST_F(VxWindowFunctionsTest, ModuleFunctions) {
     EXPECT_TRUE(std::filesystem::exists(modulePath));
 }
 
-// --- Windowing Function Tests (Windows-specific) ---
-
-#ifdef _WIN32
-TEST_F(VxWindowFunctionsTest, WindowRectFunctions) {
-    ASSERT_NE(m_testWindow, nullptr);
-
-    CKRECT rect;
-    ASSERT_TRUE(VxGetClientRect(m_testWindow, &rect));
-    // Client rect top-left should be (0,0) and size should be positive
-    EXPECT_EQ(rect.left, 0);
-    EXPECT_EQ(rect.top, 0);
-    EXPECT_GT(rect.right, rect.left);
-    EXPECT_GT(rect.bottom, rect.top);
-
-    ASSERT_TRUE(VxGetWindowRect(m_testWindow, &rect));
-    // Window rect should have positive size, but not necessarily at (0,0)
-    EXPECT_GT(rect.right, rect.left);
-    EXPECT_GT(rect.bottom, rect.top);
-}
-
-TEST_F(VxWindowFunctionsTest, WindowCoordinateConversion) {
-    ASSERT_NE(m_testWindow, nullptr);
-
-    CKPOINT pt = {10, 15};
-    CKPOINT originalPt = pt;
-    CKPOINT screenPt;
-
-    // Test ClientToScreen
-    ASSERT_TRUE(VxClientToScreen(m_testWindow, &pt));
-    screenPt = pt; // Save screen coordinates
-    // Screen coordinates should not be the same as original client coordinates
-    EXPECT_TRUE(screenPt.x != originalPt.x || screenPt.y != originalPt.y);
-
-    // Test ScreenToClient (round-trip)
-    ASSERT_TRUE(VxScreenToClient(m_testWindow, &pt));
-    EXPECT_EQ(pt.x, originalPt.x);
-    EXPECT_EQ(pt.y, originalPt.y);
-}
-
-TEST_F(VxWindowFunctionsTest, WindowHierarchyAndMovement) {
-    ASSERT_NE(m_testWindow, nullptr);
-
-    // Test GetParent (should be NULL for a top-level window)
-    EXPECT_EQ(VxGetParent(m_testWindow), nullptr);
-
-    // Test MoveWindow
-    int newX = 100, newY = 150, newW = 300, newH = 250;
-    ASSERT_TRUE(VxMoveWindow(m_testWindow, newX, newY, newW, newH, TRUE));
-
-    CKRECT rect;
-    ASSERT_TRUE(VxGetWindowRect(m_testWindow, &rect));
-    // Allow for small discrepancies due to window borders/title bar
-    EXPECT_NEAR(rect.left, newX, 10);
-    EXPECT_NEAR(rect.top, newY, 40);
-    EXPECT_NEAR(rect.right - rect.left, newW, 20);
-    EXPECT_NEAR(rect.bottom - rect.top, newH, 50);
-}
-#endif
-
-// --- GDI and Font Tests (Windows-specific) ---
-
-#ifdef _WIN32
-TEST_F(VxWindowFunctionsTest, FontLifecycleAndInfo) {
-    // Create a font
-    FONT_HANDLE hFont = VxCreateFont((char *) "Arial", 16, 400, FALSE, FALSE);
-    ASSERT_NE(hFont, nullptr);
-
-    // Get font info and verify
-    VXFONTINFO fontInfo;
-    ASSERT_TRUE(VxGetFontInfo(hFont, fontInfo));
-    EXPECT_STREQ(fontInfo.FaceName.CStr(), "Arial");
-    EXPECT_EQ(fontInfo.Height, 21);
-    EXPECT_EQ(fontInfo.Weight, 400);
-    EXPECT_FALSE(fontInfo.Italic);
-    EXPECT_FALSE(fontInfo.Underline);
-
-    // Delete the font
-    EXPECT_NO_THROW(VxDeleteFont(hFont));
-}
-
-TEST_F(VxWindowFunctionsTest, BitmapOperations) {
-    // 1. Create a bitmap description for a 2x2 32-bit image
-    VxImageDescEx desc;
-    desc.Width = 2;
-    desc.Height = 2;
-    desc.BitsPerPixel = 32;
-    VxBppToMask(desc); // Sets standard ARGB masks
-
-    // 2. Create the GDI bitmap object
-    BITMAP_HANDLE hBitmap = VxCreateBitmap(desc);
-    ASSERT_NE(hBitmap, nullptr);
-
-    // 3. Create source pixel data to copy into the bitmap
-    std::vector<XDWORD> pixels = {0xFFFF0000, 0xFF00FF00, 0xFF0000FF, 0xFFFFFFFF};
-    desc.Image = (XBYTE *) pixels.data();
-    desc.BytesPerLine = 2 * 4;
-
-    // 4. Copy the data into the GDI bitmap
-    ASSERT_TRUE(VxCopyBitmap(hBitmap, desc));
-
-    // 5. Convert the GDI bitmap back to a raw buffer
-    VxImageDescEx outDesc;
-    XBYTE *outPixels = VxConvertBitmap(hBitmap, outDesc);
-    ASSERT_NE(outPixels, nullptr);
-
-    // 6. Verify the round-trip data
-    EXPECT_EQ(outDesc.Width, desc.Width);
-    EXPECT_EQ(outDesc.Height, desc.Height);
-    EXPECT_EQ(outDesc.BitsPerPixel, desc.BitsPerPixel);
-    EXPECT_EQ(memcmp(outPixels, pixels.data(), pixels.size() * sizeof(XDWORD)), 0);
-
-    // Clean up
-    delete[] outPixels;
-    VxDeleteBitmap(hBitmap);
-}
-#endif
-
 // --- Tests for functions that are not easily automated ---
 
 // A message box test will block execution, so it's disabled by default.
 // To run it, rename the test to remove the "DISABLED_" prefix.
 TEST_F(VxWindowFunctionsTest, DISABLED_MessageBox) {
-#ifdef _WIN32
     // This test just ensures the function can be called.
     // It will pop up a message box during the test run.
-    VxMessageBox(m_testWindow, (char *) "Test Message", (char *) "VxMath Test", 0);
-#endif
+    VxMessageBox(NULL, (char *) "Test Message", (char *) "VxMath Test", 0);
 }

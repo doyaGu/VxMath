@@ -110,6 +110,7 @@ set(VXMATH_TEST_SOURCES
         HashTableTest.cpp
         StringTest.cpp
         ConfigurationTest.cpp
+        PlatformCompatibilityTest.cpp
         PathParsingTest.cpp
         URLTest.cpp
         MemoryMappedFileTest.cpp
