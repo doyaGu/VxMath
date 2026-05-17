@@ -15,6 +15,10 @@
 #include <sys/stat.h>
 #endif
 
+#ifndef MAX_PATH
+#define MAX_PATH _MAX_PATH
+#endif
+
 #if !defined(_WIN32)
 static bool IsDirectory(const char *path) {
     struct stat st;
