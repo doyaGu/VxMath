@@ -103,7 +103,7 @@
 #ifndef VX_CDECL
 #   if defined(_MSC_VER)
 #       define VX_CDECL __cdecl
-#   elif defined(__GNUC__)
+#   elif defined(__GNUC__) && defined(__i386__)
 #       define VX_CDECL __attribute__((cdecl))
 #   else
 #       define VX_CDECL
@@ -113,7 +113,7 @@
 #ifndef VX_FASTCALL
 #   if defined(_MSC_VER)
 #       define VX_FASTCALL __fastcall
-#   elif defined(__GNUC__)
+#   elif defined(__GNUC__) && defined(__i386__)
 #       define VX_FASTCALL __attribute__((fastcall))
 #   else
 #       define VX_FASTCALL
@@ -123,7 +123,7 @@
 #ifndef VX_STDCALL
 #   if defined(_MSC_VER)
 #       define VX_STDCALL __stdcall
-#   elif defined(__GNUC__)
+#   elif defined(__GNUC__) && defined(__i386__)
 #       define VX_STDCALL __attribute__((stdcall))
 #   else
 #       define VX_STDCALL
@@ -133,7 +133,7 @@
 #ifndef VX_THISCALL
 #   if defined(_MSC_VER)
 #       define VX_THISCALL __thiscall
-#   elif defined(__GNUC__)
+#   elif defined(__GNUC__) && defined(__i386__)
 #       define VX_THISCALL __attribute__((thiscall))
 #   else
 #       define VX_THISCALL
