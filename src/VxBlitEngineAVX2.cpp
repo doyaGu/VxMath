@@ -11,7 +11,6 @@
 #if defined(VX_SIMD_AVX2)
 
 #include <cstdint>
-#include <immintrin.h>
 
 static inline __m128i Pack32x8To16x8_AVX2(const __m256i packed32) {
     const __m128i lo = _mm256_castsi256_si128(packed32);
@@ -788,7 +787,7 @@ void CopyAlpha_32_AVX2(const VxBlitInfo *info) {
     for (; x + 8 <= width; x += 8) {
         const __m128i a8 = _mm_loadl_epi64((const __m128i *)(src + x));
         __m256i a32 = _mm256_cvtepu8_epi32(a8);
-        a32 = _mm256_slli_epi32(a32, alphaShift);
+        a32 = _mm256_sll_epi32(a32, _mm_cvtsi32_si128(alphaShift));
 
         __m256i pixels = _mm256_loadu_si256((const __m256i *)(dst + x));
         pixels = _mm256_and_si256(pixels, vAlphaMaskInv);

@@ -52,16 +52,14 @@
 #define VX_SIMD_ARM 1
 #endif
 
-/* x86/x64 SIMD feature detection */
-#if defined(VX_SIMD_X86) && !defined(VX_SIMD_FORCE_DISABLED)
+/* x86/x64 intrinsic API.  Native builds expose the real x86 headers on x86
+ * targets; SIMDe builds expose the same API portably on non-x86 targets. */
+#if (defined(VX_SIMD_X86) || defined(VX_SIMD_USE_SIMDE)) && !defined(VX_SIMD_FORCE_DISABLED)
 
-/*
- * Use SIMDe for portable SIMD intrinsics.
- *
- * MinGW headers pull in GCC intrinsic declarations from WinSDK headers
- * (for example through windows.h -> x86intrin.h). Enabling SIMDe native
- * aliases there causes macro collisions with intrinsic function names.
- */
+/* Use SIMDe native aliases only for the explicit portable provider.  MinGW
+ * headers can expose GCC intrinsic declarations through WinSDK headers; native
+ * aliases there may collide with intrinsic function names. */
+#if defined(VX_SIMD_USE_SIMDE)
 #if !defined(__MINGW32__) && !defined(__MINGW64__)
 #define SIMDE_ENABLE_NATIVE_ALIASES
 #endif
@@ -86,24 +84,35 @@
 #define SIMDE_FAST_EXCEPTIONS
 #endif
 #endif
+#endif // VX_SIMD_USE_SIMDE
 
 /* SSE (x64 implies SSE2 baseline; for 32-bit MSVC use _M_IX86_FP) */
-#if defined(VX_SIMD_X64) \
+#if defined(VX_SIMD_USE_SIMDE) \
+      || defined(VX_SIMD_X64) \
       || (defined(_MSC_VER) && defined(_M_IX86_FP) && _M_IX86_FP >= 1) \
       || defined(__SSE__)
 #define VX_SIMD_SSE 1
-#include <simde/x86/sse.h>
+#  if defined(VX_SIMD_USE_SIMDE)
+#    include <simde/x86/sse.h>
+#  else
+#    include <xmmintrin.h>
+#  endif
 #endif
 
 /* SSE2 */
-#if defined(VX_SIMD_X64) \
+#if defined(VX_SIMD_USE_SIMDE) \
+      || defined(VX_SIMD_X64) \
       || (defined(_MSC_VER) && defined(_M_IX86_FP) && _M_IX86_FP >= 2) \
       || defined(__SSE2__)
 #define VX_SIMD_SSE2 1
-#include <simde/x86/sse2.h>
+#  if defined(VX_SIMD_USE_SIMDE)
+#    include <simde/x86/sse2.h>
+#  else
+#    include <emmintrin.h>
+#  endif
 #endif
 
-#if defined(VX_SIMD_X86) && !defined(VX_SIMD_SSE2)
+#if defined(VX_SIMD_X86) && !defined(VX_SIMD_USE_SIMDE) && !defined(VX_SIMD_SSE2)
 #error "VxMath requires SSE2 on x86/x64 builds."
 #endif
 
@@ -124,7 +133,11 @@
 #  ifndef VX_SIMD_SSE3
 #    define VX_SIMD_SSE3 1
 #  endif
-#  include <simde/x86/sse3.h>
+#  if defined(VX_SIMD_USE_SIMDE)
+#    include <simde/x86/sse3.h>
+#  else
+#    include <pmmintrin.h>
+#  endif
 #endif
 
 /* SSSE3 */
@@ -132,12 +145,21 @@
 #  ifndef VX_SIMD_SSSE3
 #    define VX_SIMD_SSSE3 1
 #  endif
-#  include <simde/x86/ssse3.h>
-#elif defined(VX_SIMD_SSE2)
+#  if defined(VX_SIMD_USE_SIMDE)
+#    include <simde/x86/ssse3.h>
+#  else
+#    include <tmmintrin.h>
+#  endif
+#elif defined(VX_SIMD_SSE2) && defined(_MSC_VER) && !defined(VX_SIMD_USE_SIMDE)
+/* MSVC exposes SSSE3 intrinsic declarations without a separate /arch:SSSE3
+ * switch.  Keep the declarations available for runtime-dispatched kernels
+ * without advertising SSSE3 as a compile-time target capability. */
+#  include <tmmintrin.h>
+#elif defined(VX_SIMD_SSE2) && defined(VX_SIMD_USE_SIMDE)
 /* Always pull in ssse3.h via SIMDe emulation: blit kernels use
  * _mm_shuffle_epi8 at SSE2 baseline and rely on SIMDe to emulate it
- * on CPUs that do not have native SSSE3.  The runtime dispatcher
- * (VxBlitEngineClass.cpp) gates the SSSE3 kernels behind hasSSSE3. */
+ * when the requested provider can execute it portably.  The runtime
+ * dispatcher still keeps SSSE3 kernels disabled unless that mode is selected. */
 #  include <simde/x86/ssse3.h>
 #endif
 
@@ -146,7 +168,11 @@
 #  ifndef VX_SIMD_SSE4_1
 #    define VX_SIMD_SSE4_1 1
 #  endif
-#  include <simde/x86/sse4.1.h>
+#  if defined(VX_SIMD_USE_SIMDE)
+#    include <simde/x86/sse4.1.h>
+#  else
+#    include <smmintrin.h>
+#  endif
 #endif
 
 /* SSE4.2 */
@@ -154,7 +180,35 @@
 #  ifndef VX_SIMD_SSE4_2
 #    define VX_SIMD_SSE4_2 1
 #  endif
-#  include <simde/x86/sse4.2.h>
+#  if defined(VX_SIMD_USE_SIMDE)
+#    include <simde/x86/sse4.2.h>
+#  else
+#    include <nmmintrin.h>
+#  endif
+#endif
+
+/* AVX */
+#if defined(__AVX__) || defined(VX_SIMD_AVX) || defined(VX_SIMD_AVX2)
+#  ifndef VX_SIMD_AVX
+#    define VX_SIMD_AVX 1
+#  endif
+#  if defined(VX_SIMD_USE_SIMDE)
+#    include <simde/x86/avx.h>
+#  else
+#    include <immintrin.h>
+#  endif
+#endif
+
+/* AVX2 */
+#if defined(__AVX2__) || defined(VX_SIMD_AVX2)
+#  ifndef VX_SIMD_AVX2
+#    define VX_SIMD_AVX2 1
+#  endif
+#  if defined(VX_SIMD_USE_SIMDE)
+#    include <simde/x86/avx2.h>
+#  else
+#    include <immintrin.h>
+#  endif
 #endif
 
 /* FMA (used for the VX_FMADD_PS / VX_FNMADD_PS macro fallbacks) */
@@ -162,10 +216,14 @@
 #  ifndef VX_SIMD_FMA
 #    define VX_SIMD_FMA 1
 #  endif
-#  include <simde/x86/fma.h>
+#  if defined(VX_SIMD_USE_SIMDE)
+#    include <simde/x86/fma.h>
+#  else
+#    include <immintrin.h>
+#  endif
 #endif
 
-#endif // VX_SIMD_X86 && !VX_SIMD_FORCE_DISABLED
+#endif // (VX_SIMD_X86 || VX_SIMD_USE_SIMDE) && !VX_SIMD_FORCE_DISABLED
 
 // ============================================================================
 // FMA Macros (like DirectXMath XM_FMADD_PS)

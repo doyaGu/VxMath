@@ -128,20 +128,28 @@ VX_SIMD_INLINE __m128 VxSIMDReciprocalSqrt(__m128 v) noexcept {
  * @brief Accurate reciprocal square root (Newton-Raphson refinement).
  */
 VX_SIMD_INLINE __m128 VxSIMDReciprocalSqrtAccurate(__m128 v) noexcept {
+#if defined(VX_SIMD_USE_SIMDE)
+    return _mm_div_ps(VX_SIMD_ONE, _mm_sqrt_ps(v));
+#else
     __m128 rsqrt = _mm_rsqrt_ps(v);
     __m128 halfV = _mm_mul_ps(VX_SIMD_NR_HALF, v);
     __m128 rsqrt_sq = _mm_mul_ps(rsqrt, rsqrt);
     __m128 correction = VX_FNMADD_PS(halfV, rsqrt_sq, VX_SIMD_NR_THREE_HALF);
     return _mm_mul_ps(rsqrt, correction);
+#endif
 }
 
 /**
  * @brief Accurate reciprocal (1/x) with Newton-Raphson refinement.
  */
 VX_SIMD_INLINE __m128 VxSIMDReciprocalAccurate(__m128 v) noexcept {
+#if defined(VX_SIMD_USE_SIMDE)
+    return _mm_div_ps(VX_SIMD_ONE, v);
+#else
     __m128 rcp = _mm_rcp_ps(v);
     __m128 two = _mm_set1_ps(2.0f);
     return _mm_mul_ps(rcp, VX_FNMADD_PS(v, rcp, two));
+#endif
 }
 
 // ============================================================================

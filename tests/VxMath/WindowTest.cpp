@@ -165,14 +165,14 @@ TEST_F(VxWindowFunctionsTest, CreateFileTreeFailsWhenIntermediateComponentIsAFil
 }
 
 TEST_F(VxWindowFunctionsTest, CurrentDirectory) {
-    char originalDir[MAX_PATH];
+    char originalDir[_MAX_PATH];
     ASSERT_TRUE(VxGetCurrentDirectory(originalDir));
 
     // Set current directory to our temp path
     ASSERT_TRUE(VxSetCurrentDirectory(m_tempDir.string().c_str()));
 
     // Verify it was set
-    char newDir[MAX_PATH];
+    char newDir[_MAX_PATH];
     ASSERT_TRUE(VxGetCurrentDirectory(newDir));
     EXPECT_EQ(std::filesystem::path(newDir), m_tempDir);
 
@@ -181,7 +181,7 @@ TEST_F(VxWindowFunctionsTest, CurrentDirectory) {
 }
 
 TEST_F(VxWindowFunctionsTest, MakePath) {
-    char fullPath[MAX_PATH];
+    char fullPath[_MAX_PATH];
 #ifdef _WIN32
     const char *path = "C:\\Temp";
 #else
@@ -240,8 +240,8 @@ TEST_F(VxWindowFunctionsTest, ModuleFunctions) {
     ASSERT_NE(hMod, nullptr);
 
     // Get the file name of the current executable
-    char modulePath[MAX_PATH];
-    size_t pathLen = VxGetModuleFileName(hMod, modulePath, MAX_PATH);
+    char modulePath[_MAX_PATH];
+    size_t pathLen = VxGetModuleFileName(hMod, modulePath, _MAX_PATH);
     ASSERT_GT(pathLen, 0);
     EXPECT_TRUE(std::filesystem::exists(modulePath));
 }
