@@ -111,7 +111,7 @@ if (VXMATH_ENABLE_SIMD AND NOT VXMATH_EFFECTIVE_SIMD_LEVEL STREQUAL "NONE")
         else ()
             set_source_files_properties(
                     VxBlitEngineAVX2.cpp
-                    PROPERTIES COMPILE_OPTIONS "-mavx2;-mfma"
+                    PROPERTIES COMPILE_OPTIONS "-mavx2"
             )
         endif ()
     elseif (VXMATH_EFFECTIVE_SIMD_LEVEL STREQUAL "AVX2")
@@ -232,15 +232,14 @@ function(vx_apply_simd_flags TARGET_NAME)
     # Each level promotes all macros from every lower level (cumulative).
     if (_level STREQUAL "AVX2")
         set(_msvc_flag  "/arch:AVX2")
-        set(_gcc_flags  "-mavx2;-mfma")
-        # AVX2 implies the full SSE family + FMA3.
+        set(_gcc_flags  "-mavx2")
+        # AVX2 implies the full SSE family, but not FMA3.
         target_compile_definitions(${TARGET_NAME} ${_simd_defs_visibility}
                 VX_SIMD_AVX=1
                 VX_SIMD_SSE3=1
                 VX_SIMD_SSSE3=1
                 VX_SIMD_SSE4_1=1
                 VX_SIMD_SSE4_2=1
-                VX_SIMD_FMA=1
         )
     elseif (_level STREQUAL "AVX")
         set(_msvc_flag  "/arch:AVX")
