@@ -45,35 +45,67 @@ bool IsSIMDModeAvailable(int mode, const VxSIMDFeatures &features) {
 
         case VX_SIMD_MODE_SSE2:
 #if defined(VX_SIMD_SSE2)
+#if defined(VX_SIMD_USE_SIMDE)
+            return true;
+#else
             return features.SSE2;
+#endif
 #else
             return false;
 #endif
 
         case VX_SIMD_MODE_SSSE3:
 #if defined(VX_SIMD_SSE2)
+#if defined(VX_SIMD_USE_SIMDE)
+#if defined(VX_SIMD_SSSE3)
+            return true;
+#else
+            return false;
+#endif
+#else
             return features.SSE2 && features.SSSE3;
+#endif
 #else
             return false;
 #endif
 
         case VX_SIMD_MODE_SSE4_1:
 #if defined(VX_SIMD_SSE2)
+#if defined(VX_SIMD_USE_SIMDE)
+#if defined(VX_SIMD_SSE4_1)
+            return true;
+#else
+            return false;
+#endif
+#else
             return features.SSE2 && features.SSE4_1;
+#endif
 #else
             return false;
 #endif
 
         case VX_SIMD_MODE_AVX:
 #if defined(VX_SIMD_SSE2)
+#if defined(VX_SIMD_USE_SIMDE)
+#if defined(VX_SIMD_AVX)
+            return true;
+#else
+            return false;
+#endif
+#else
             return features.SSE2 && features.AVX;
+#endif
 #else
             return false;
 #endif
 
         case VX_SIMD_MODE_AVX2:
 #if defined(VX_SIMD_AVX2)
+#if defined(VX_SIMD_USE_SIMDE)
+            return true;
+#else
             return features.AVX2;
+#endif
 #else
             return false;
 #endif

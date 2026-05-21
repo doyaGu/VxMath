@@ -69,6 +69,31 @@ TEST(SIMDFeatureDetection, VxGetSIMDFeatures_ReturnsCachedValue) {
     EXPECT_EQ(ref1.FMA, ref2.FMA);
 }
 
+TEST(SIMDProvider, SIMDeProviderKeepsHardwareFeaturesSeparateFromExecutableModes) {
+#if defined(VX_SIMD_USE_SIMDE)
+#if defined(VX_SIMD_SSE2)
+    SUCCEED() << "SIMDe provider exposes the portable SSE2 intrinsic API";
+#else
+    ADD_FAILURE() << "SIMDe provider must expose the portable SSE2 intrinsic API";
+#endif
+
+#if !defined(VX_SIMD_X86)
+    const VxSIMDFeatures features = VxDetectSIMDFeatures();
+    EXPECT_FALSE(features.SSE);
+    EXPECT_FALSE(features.SSE2);
+    EXPECT_FALSE(features.SSSE3);
+    EXPECT_FALSE(features.SSE4_1);
+    EXPECT_FALSE(features.AVX);
+    EXPECT_FALSE(features.AVX2);
+#endif
+
+    EXPECT_NE(VX_SIMD_MODE_NONE, VxGetSIMDEffectiveBackend())
+        << "SIMDe provider should dispatch to a compiled portable SIMD mode";
+#else
+    GTEST_SKIP() << "SIMDe provider is not enabled for this build";
+#endif
+}
+
 //=============================================================================
 // Aligned Memory Tests
 //=============================================================================

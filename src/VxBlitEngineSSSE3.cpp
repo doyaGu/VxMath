@@ -12,17 +12,6 @@
 
 #if defined(VX_SIMD_SSE2)
 
-#include <emmintrin.h>  // SSE2
-#if defined(__SSSE3__) || defined(_MSC_VER)
-/* Include the native SSSE3 header only when the compiler generates real SSSE3
- * instructions (GCC/Clang with at least -mssse3, or any MSVC version which
- * always exposes intrinsic declarations regardless of /arch).
- * On GCC/Clang without -mssse3 the SSSE3 intrinsics are already reachable
- * through the SIMDe native aliases pulled in via
- * VxBlitInternal.h -> VxBlitEngine.h -> VxSIMD.h. */
-#include <tmmintrin.h>  // SSSE3 (_mm_shuffle_epi8, _mm_alignr_epi8)
-#endif
-
 #include "VxMath.h"
 
 //==============================================================================

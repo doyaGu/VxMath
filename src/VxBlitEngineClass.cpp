@@ -20,10 +20,6 @@
 
 int GetQuantizationSamplingFactor();
 
-#if defined(VX_SIMD_SSE2)
-#include <emmintrin.h>
-#endif
-
 //------------------------------------------------------------------------------
 // Global Blitter Instance
 //------------------------------------------------------------------------------
@@ -224,9 +220,6 @@ void VxBlitEngine::ApplySSSE3Overrides() {
 #if defined(VX_SIMD_SSE2)
     if (m_EffectiveBlitKernelMode != VX_SIMD_MODE_SSSE3 &&
         m_EffectiveBlitKernelMode != VX_SIMD_MODE_AVX2) {
-        return;
-    }
-    if (!VxGetSIMDFeatures().SSSE3) {
         return;
     }
 

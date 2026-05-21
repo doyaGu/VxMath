@@ -96,8 +96,8 @@ set(VXMATH_COMMON_SOURCES
 
 set(VX_SIMD_AVX2 OFF)
 set(VXMATH_RUNTIME_DISPATCH_SOURCES)
-if (VXMATH_ENABLE_SIMD AND NOT VXMATH_SIMD_LEVEL STREQUAL "NONE")
-    if (NOT CMAKE_SYSTEM_PROCESSOR MATCHES "ARM|arm|aarch64|AARCH64")
+if (VXMATH_ENABLE_SIMD AND NOT VXMATH_EFFECTIVE_SIMD_LEVEL STREQUAL "NONE")
+    if (VXMATH_EFFECTIVE_SIMD_PROVIDER STREQUAL "NATIVE")
         list(APPEND VXMATH_RUNTIME_DISPATCH_SOURCES
                 VxBlitEngineAVX2.cpp
         )
@@ -114,6 +114,11 @@ if (VXMATH_ENABLE_SIMD AND NOT VXMATH_SIMD_LEVEL STREQUAL "NONE")
                     PROPERTIES COMPILE_OPTIONS "-mavx2;-mfma"
             )
         endif ()
+    elseif (VXMATH_EFFECTIVE_SIMD_LEVEL STREQUAL "AVX2")
+        list(APPEND VXMATH_RUNTIME_DISPATCH_SOURCES
+                VxBlitEngineAVX2.cpp
+        )
+        set(VX_SIMD_AVX2 ON)
     endif ()
 
     # VxBlitEngineSSSE3.cpp uses SSSE3 intrinsics directly.
@@ -121,8 +126,7 @@ if (VXMATH_ENABLE_SIMD AND NOT VXMATH_SIMD_LEVEL STREQUAL "NONE")
     #  1) target architecture is x86-family, and
     #  2) the compiler front-end actually accepts -mssse3.
     # Use APPEND so we don't clobber other per-file compile options.
-    string(TOLOWER "${CMAKE_SYSTEM_PROCESSOR}" _vxmath_processor_lc)
-    if (NOT MSVC AND _vxmath_processor_lc MATCHES "^(x86_64|amd64|x64|i[3-6]86|x86)$")
+    if (VXMATH_EFFECTIVE_SIMD_PROVIDER STREQUAL "NATIVE" AND NOT MSVC AND VXMATH_TARGET_IS_X86)
         check_cxx_compiler_flag("-mssse3" VXMATH_HAS_MSSSE3_FLAG)
         if (VXMATH_HAS_MSSSE3_FLAG)
             set_property(
@@ -167,7 +171,7 @@ function(vx_configure_target TARGET_NAME)
             PUBLIC
             stb
     )
-    if (VXMATH_ENABLE_SIMD AND NOT VXMATH_SIMD_LEVEL STREQUAL "NONE" AND TARGET simde)
+    if (VXMATH_SIMDE_ENABLED AND TARGET simde)
         target_link_libraries(${TARGET_NAME} PUBLIC simde)
     endif ()
 
@@ -192,24 +196,22 @@ function(vx_configure_target TARGET_NAME)
 endfunction()
 
 # ===========================================================================
-# SIMD flag helper - maps VXMATH_ENABLE_SIMD / VXMATH_SIMD_LEVEL to
-# per-target compile definitions and /arch:-mXXX flags.
+# SIMD flag helper - maps VXMATH_ENABLE_SIMD / VXMATH_SIMD_LEVEL /
+# VXMATH_SIMD_PROVIDER to compile definitions and native ISA flags.
 # ===========================================================================
 function(vx_apply_simd_flags TARGET_NAME)
-    if (NOT VXMATH_ENABLE_SIMD OR VXMATH_SIMD_LEVEL STREQUAL "NONE")
+    if (NOT VXMATH_ENABLE_SIMD OR VXMATH_EFFECTIVE_SIMD_LEVEL STREQUAL "NONE")
         target_compile_definitions(${TARGET_NAME} PUBLIC VX_SIMD_NONE=1)
         return()
     endif ()
 
-    set(_level "${VXMATH_SIMD_LEVEL}")
-
-    # AUTO: pick a safe default.
-    # MinGW builds include source files using SSSE3/SSE4.1 intrinsics directly.
-    if (_level STREQUAL "AUTO")
-        if (MINGW)
-            set(_level "SSSE3")
-        else ()
-            set(_level "SSE2")
+    set(_level "${VXMATH_EFFECTIVE_SIMD_LEVEL}")
+    set(_simd_defs_visibility PRIVATE)
+    if (VXMATH_EFFECTIVE_SIMD_PROVIDER STREQUAL "SIMDE")
+        target_compile_definitions(${TARGET_NAME} PUBLIC VX_SIMD_USE_SIMDE=1)
+        set(_simd_defs_visibility PUBLIC)
+        if (NOT MSVC)
+            target_compile_options(${TARGET_NAME} PUBLIC -ffp-contract=off)
         endif ()
     endif ()
 
@@ -223,7 +225,8 @@ function(vx_apply_simd_flags TARGET_NAME)
         set(_msvc_flag  "/arch:AVX2")
         set(_gcc_flags  "-mavx2;-mfma")
         # AVX2 implies the full SSE family + FMA3.
-        target_compile_definitions(${TARGET_NAME} PRIVATE
+        target_compile_definitions(${TARGET_NAME} ${_simd_defs_visibility}
+                VX_SIMD_AVX=1
                 VX_SIMD_SSE3=1
                 VX_SIMD_SSSE3=1
                 VX_SIMD_SSE4_1=1
@@ -234,7 +237,8 @@ function(vx_apply_simd_flags TARGET_NAME)
         set(_msvc_flag  "/arch:AVX")
         set(_gcc_flags  "-mavx")
         # AVX implies SSE4.2 and the full SSE family; FMA is a separate extension.
-        target_compile_definitions(${TARGET_NAME} PRIVATE
+        target_compile_definitions(${TARGET_NAME} ${_simd_defs_visibility}
+                VX_SIMD_AVX=1
                 VX_SIMD_SSE3=1
                 VX_SIMD_SSSE3=1
                 VX_SIMD_SSE4_1=1
@@ -246,18 +250,18 @@ function(vx_apply_simd_flags TARGET_NAME)
             set(_msvc_flag "")
         endif ()
         set(_gcc_flags  "-msse4.1")
-        target_compile_definitions(${TARGET_NAME} PRIVATE
+        target_compile_definitions(${TARGET_NAME} ${_simd_defs_visibility}
                 VX_SIMD_SSE3=1
                 VX_SIMD_SSSE3=1
                 VX_SIMD_SSE4_1=1
         )
     elseif (_level STREQUAL "SSSE3")
-        # MSVC has no /arch:SSSE3; intrinsics are always available via SIMDe.
+        # MSVC has no /arch:SSSE3; intrinsic declarations are provided by headers.
         if (MSVC)
             set(_msvc_flag "")
         endif ()
         set(_gcc_flags  "-mssse3")
-        target_compile_definitions(${TARGET_NAME} PRIVATE
+        target_compile_definitions(${TARGET_NAME} ${_simd_defs_visibility}
                 VX_SIMD_SSE3=1
                 VX_SIMD_SSSE3=1
         )
@@ -268,6 +272,10 @@ function(vx_apply_simd_flags TARGET_NAME)
             set(_msvc_flag "")
         endif ()
         set(_gcc_flags  "-msse2")
+    endif ()
+
+    if (VXMATH_EFFECTIVE_SIMD_PROVIDER STREQUAL "SIMDE")
+        return()
     endif ()
 
     # Apply flags (PRIVATE - consumers set their own /arch if they want intrinsics)

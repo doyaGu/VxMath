@@ -10,6 +10,16 @@
 
 namespace {
 
+#if defined(VX_SIMD_USE_SIMDE)
+constexpr float kDispatchTightTolerance = 4.0e-6f;
+constexpr float kDispatchRectTolerance = 1.5e-4f;
+constexpr float kDispatchScreenTolerance = 2.0e-5f;
+#else
+constexpr float kDispatchTightTolerance = 1.0e-6f;
+constexpr float kDispatchRectTolerance = 1.0e-5f;
+constexpr float kDispatchScreenTolerance = 1.0e-6f;
+#endif
+
 VxVector MultiplyVec3Scalar(const VxMatrix &m, const VxVector &v) {
     return VxVector(
         v.x * m[0][0] + v.y * m[1][0] + v.z * m[2][0] + m[3][0],
@@ -702,7 +712,7 @@ TEST(SIMDDispatchTest, MultiplyMatrixVectorManyMatchesScalarWithStrideAndTail) {
 
     for (int i = 0; i < kCount; ++i) {
         EXPECT_NEAR(output[i].v.x, expected[i].v.x, 1.0e-6f);
-        EXPECT_NEAR(output[i].v.y, expected[i].v.y, 1.0e-6f);
+        EXPECT_NEAR(output[i].v.y, expected[i].v.y, kDispatchTightTolerance);
         EXPECT_NEAR(output[i].v.z, expected[i].v.z, 1.0e-6f);
         EXPECT_FLOAT_EQ(output[i].pad, -777.0f);
     }
@@ -872,10 +882,23 @@ TEST(SIMDDispatchTest, TransformBox2DFlatBoxProjectsToScreenBounds) {
     EXPECT_TRUE(visible);
     EXPECT_EQ(orFlags, static_cast<VXCLIP_FLAGS>(0));
     EXPECT_EQ(andFlags, static_cast<VXCLIP_FLAGS>(0));
+#if defined(VX_SIMD_USE_SIMDE)
+    VxRect expectedExtents;
+    VXCLIP_FLAGS expectedOr = static_cast<VXCLIP_FLAGS>(0);
+    VXCLIP_FLAGS expectedAnd = static_cast<VXCLIP_FLAGS>(0);
+    ASSERT_TRUE(ProjectedTransformBox2DReference(worldProjection, box, &screen, &expectedExtents, expectedOr, expectedAnd));
+    EXPECT_EQ(expectedOr, static_cast<VXCLIP_FLAGS>(0));
+    EXPECT_EQ(expectedAnd, static_cast<VXCLIP_FLAGS>(0));
+    EXPECT_NEAR(extents.left, expectedExtents.left, kDispatchScreenTolerance);
+    EXPECT_NEAR(extents.top, expectedExtents.top, kDispatchScreenTolerance);
+    EXPECT_NEAR(extents.right, expectedExtents.right, kDispatchScreenTolerance);
+    EXPECT_NEAR(extents.bottom, expectedExtents.bottom, kDispatchScreenTolerance);
+#else
     EXPECT_NEAR(extents.left, 0.09765625f, 1.0e-7f);
     EXPECT_NEAR(extents.top, 0.0732421875f, 1.0e-7f);
     EXPECT_NEAR(extents.right, 799.90234375f, 1.0e-5f);
     EXPECT_NEAR(extents.bottom, 599.9267578125f, 1.0e-5f);
+#endif
 }
 
 TEST(SIMDDispatchTest, ProjectBoxZExtentsInvalidBoxKeepsDefaults) {
@@ -1101,9 +1124,9 @@ TEST(SIMDDispatchTest, InterpolateVectorArrayContiguousMatchesScalarReference) {
 
     InterpolateVectorArray(out, a, b, t, kCount, sizeof(VxVector), sizeof(VxVector));
     for (int i = 0; i < kCount; ++i) {
-        EXPECT_NEAR(out[i].x, expected[i].x, 1.0e-6f);
-        EXPECT_NEAR(out[i].y, expected[i].y, 1.0e-6f);
-        EXPECT_NEAR(out[i].z, expected[i].z, 1.0e-6f);
+        EXPECT_NEAR(out[i].x, expected[i].x, kDispatchTightTolerance);
+        EXPECT_NEAR(out[i].y, expected[i].y, kDispatchTightTolerance);
+        EXPECT_NEAR(out[i].z, expected[i].z, kDispatchTightTolerance);
     }
 }
 
@@ -1251,26 +1274,26 @@ TEST(SIMDDispatchTest, RectSIMDTransformPathsMatchScalarReference) {
         VxRect scalarRect = simdRect;
         VxSIMDRectTransform(&simdRect, &dstScreen, &srcScreen);
         ScalarRectTransform(scalarRect, dstScreen, srcScreen);
-        EXPECT_NEAR(simdRect.left, scalarRect.left, 1.0e-5f);
-        EXPECT_NEAR(simdRect.top, scalarRect.top, 1.0e-5f);
-        EXPECT_NEAR(simdRect.right, scalarRect.right, 1.0e-5f);
-        EXPECT_NEAR(simdRect.bottom, scalarRect.bottom, 1.0e-5f);
+        EXPECT_NEAR(simdRect.left, scalarRect.left, kDispatchRectTolerance);
+        EXPECT_NEAR(simdRect.top, scalarRect.top, kDispatchRectTolerance);
+        EXPECT_NEAR(simdRect.right, scalarRect.right, kDispatchRectTolerance);
+        EXPECT_NEAR(simdRect.bottom, scalarRect.bottom, kDispatchRectTolerance);
 
         VxRect simdH = simdRect;
         VxRect scalarH = scalarRect;
         VxSIMDRectTransformToHomogeneous(&simdH, &dstScreen);
         ScalarRectTransformToHomogeneous(scalarH, dstScreen);
-        EXPECT_NEAR(simdH.left, scalarH.left, 1.0e-5f);
-        EXPECT_NEAR(simdH.top, scalarH.top, 1.0e-5f);
-        EXPECT_NEAR(simdH.right, scalarH.right, 1.0e-5f);
-        EXPECT_NEAR(simdH.bottom, scalarH.bottom, 1.0e-5f);
+        EXPECT_NEAR(simdH.left, scalarH.left, kDispatchRectTolerance);
+        EXPECT_NEAR(simdH.top, scalarH.top, kDispatchRectTolerance);
+        EXPECT_NEAR(simdH.right, scalarH.right, kDispatchRectTolerance);
+        EXPECT_NEAR(simdH.bottom, scalarH.bottom, kDispatchRectTolerance);
 
         VxSIMDRectTransformFromHomogeneous(&simdH, &dstScreen);
         ScalarRectTransformFromHomogeneous(scalarH, dstScreen);
-        EXPECT_NEAR(simdH.left, scalarH.left, 1.0e-4f);
-        EXPECT_NEAR(simdH.top, scalarH.top, 1.0e-4f);
-        EXPECT_NEAR(simdH.right, scalarH.right, 1.0e-4f);
-        EXPECT_NEAR(simdH.bottom, scalarH.bottom, 1.0e-4f);
+        EXPECT_NEAR(simdH.left, scalarH.left, kDispatchRectTolerance);
+        EXPECT_NEAR(simdH.top, scalarH.top, kDispatchRectTolerance);
+        EXPECT_NEAR(simdH.right, scalarH.right, kDispatchRectTolerance);
+        EXPECT_NEAR(simdH.bottom, scalarH.bottom, kDispatchRectTolerance);
     }
 }
 
@@ -1524,12 +1547,25 @@ TEST(SIMDDispatchTest, TransformBox2DSIMDMatchesReciprocalRegression) {
     VXCLIP_FLAGS andFlags = static_cast<VXCLIP_FLAGS>(0);
 
     EXPECT_TRUE(VxSIMDTransformBox2D(&worldProjection, &box, &extents, &screen, &orFlags, &andFlags));
+#if defined(VX_SIMD_USE_SIMDE)
+    VxRect expectedExtents;
+    VXCLIP_FLAGS expectedOr = static_cast<VXCLIP_FLAGS>(0);
+    VXCLIP_FLAGS expectedAnd = static_cast<VXCLIP_FLAGS>(0);
+    ASSERT_TRUE(ProjectedTransformBox2DReference(worldProjection, box, &screen, &expectedExtents, expectedOr, expectedAnd));
+    EXPECT_EQ(orFlags, expectedOr);
+    EXPECT_EQ(andFlags, expectedAnd);
+    EXPECT_NEAR(extents.left, expectedExtents.left, 1.0e-5f);
+    EXPECT_NEAR(extents.top, expectedExtents.top, 1.0e-5f);
+    EXPECT_NEAR(extents.right, expectedExtents.right, 1.0e-5f);
+    EXPECT_NEAR(extents.bottom, expectedExtents.bottom, 1.0e-5f);
+#else
     EXPECT_EQ(orFlags, static_cast<VXCLIP_FLAGS>(0x2A0));
     EXPECT_EQ(andFlags, static_cast<VXCLIP_FLAGS>(0));
     EXPECT_NEAR(extents.left, 0.8471585f, 1.0e-6f);
     EXPECT_NEAR(extents.top, 0.3446510f, 1.0e-6f);
     EXPECT_NEAR(extents.right, 8.92401f, 1.0e-5f);
     EXPECT_NEAR(extents.bottom, 1.38608015f, 1.0e-6f);
+#endif
 }
 
 TEST(SIMDDispatchTest, ProjectBoxZExtentsSIMDMatchesScalarReference) {

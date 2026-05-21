@@ -65,6 +65,9 @@ option(VXMATH_ENABLE_SIMD "Enable SIMD optimizations" ON)
 set(VXMATH_SIMD_LEVEL "AUTO" CACHE STRING "SIMD instruction set level")
 set_property(CACHE VXMATH_SIMD_LEVEL PROPERTY STRINGS
         AUTO NONE SSE2 SSSE3 SSE4_1 AVX AVX2)
+set(VXMATH_SIMD_PROVIDER "AUTO" CACHE STRING "SIMD implementation provider")
+set_property(CACHE VXMATH_SIMD_PROVIDER PROPERTY STRINGS
+        AUTO NATIVE SIMDE)
 
 set(_vx_simd_level_allowed
         AUTO
@@ -79,6 +82,72 @@ if (NOT VXMATH_SIMD_LEVEL IN_LIST _vx_simd_level_allowed)
     message(FATAL_ERROR
             "Invalid VXMATH_SIMD_LEVEL='${VXMATH_SIMD_LEVEL}'. "
             "Expected one of: AUTO, NONE, SSE2, SSSE3, SSE4_1, AVX, AVX2.")
+endif ()
+
+set(_vx_simd_provider_allowed
+        AUTO
+        NATIVE
+        SIMDE
+)
+if (NOT VXMATH_SIMD_PROVIDER IN_LIST _vx_simd_provider_allowed)
+    message(FATAL_ERROR
+            "Invalid VXMATH_SIMD_PROVIDER='${VXMATH_SIMD_PROVIDER}'. "
+            "Expected one of: AUTO, NATIVE, SIMDE.")
+endif ()
+
+if (APPLE AND CMAKE_OSX_ARCHITECTURES)
+    set(_vxmath_target_architectures ${CMAKE_OSX_ARCHITECTURES})
+else ()
+    set(_vxmath_target_architectures ${CMAKE_SYSTEM_PROCESSOR})
+endif ()
+list(JOIN _vxmath_target_architectures ", " VXMATH_TARGET_ARCHITECTURES)
+
+set(VXMATH_TARGET_IS_X86 ON)
+foreach (_vxmath_arch IN LISTS _vxmath_target_architectures)
+    string(TOLOWER "${_vxmath_arch}" _vxmath_arch_lc)
+    if (NOT _vxmath_arch_lc MATCHES "^(x86_64|amd64|x64|i[3-6]86|x86)$")
+        set(VXMATH_TARGET_IS_X86 OFF)
+    endif ()
+endforeach ()
+if (NOT _vxmath_target_architectures)
+    set(VXMATH_TARGET_IS_X86 OFF)
+endif ()
+
+set(VXMATH_EFFECTIVE_SIMD_PROVIDER "${VXMATH_SIMD_PROVIDER}")
+if (VXMATH_EFFECTIVE_SIMD_PROVIDER STREQUAL "AUTO")
+    if (VXMATH_TARGET_IS_X86)
+        set(VXMATH_EFFECTIVE_SIMD_PROVIDER "NATIVE")
+    else ()
+        set(VXMATH_EFFECTIVE_SIMD_PROVIDER "SIMDE")
+    endif ()
+endif ()
+
+if (VXMATH_ENABLE_SIMD AND NOT VXMATH_SIMD_LEVEL STREQUAL "NONE" AND
+        VXMATH_EFFECTIVE_SIMD_PROVIDER STREQUAL "NATIVE" AND NOT VXMATH_TARGET_IS_X86)
+    message(FATAL_ERROR
+            "VXMATH_SIMD_PROVIDER=NATIVE requires an x86/x64 target; "
+            "use AUTO or SIMDE for '${VXMATH_TARGET_ARCHITECTURES}'.")
+endif ()
+
+set(VXMATH_EFFECTIVE_SIMD_LEVEL "${VXMATH_SIMD_LEVEL}")
+if (NOT VXMATH_ENABLE_SIMD OR VXMATH_SIMD_LEVEL STREQUAL "NONE")
+    set(VXMATH_EFFECTIVE_SIMD_LEVEL "NONE")
+elseif (VXMATH_SIMD_LEVEL STREQUAL "AUTO")
+    if (VXMATH_EFFECTIVE_SIMD_PROVIDER STREQUAL "SIMDE")
+        set(VXMATH_EFFECTIVE_SIMD_LEVEL "SSE2")
+    elseif (MINGW)
+        set(VXMATH_EFFECTIVE_SIMD_LEVEL "SSSE3")
+    else ()
+        set(VXMATH_EFFECTIVE_SIMD_LEVEL "SSE2")
+    endif ()
+endif ()
+
+set(VXMATH_TARGET_IS_X86 ${VXMATH_TARGET_IS_X86} CACHE INTERNAL "Whether VxMath target architecture is x86/x64")
+set(VXMATH_EFFECTIVE_SIMD_PROVIDER ${VXMATH_EFFECTIVE_SIMD_PROVIDER} CACHE INTERNAL "Resolved SIMD implementation provider")
+set(VXMATH_EFFECTIVE_SIMD_LEVEL ${VXMATH_EFFECTIVE_SIMD_LEVEL} CACHE INTERNAL "Resolved SIMD instruction set level")
+set(VXMATH_EFFECTIVE_SIMD_IMPL "${VXMATH_EFFECTIVE_SIMD_PROVIDER}")
+if (VXMATH_EFFECTIVE_SIMD_LEVEL STREQUAL "NONE")
+    set(VXMATH_EFFECTIVE_SIMD_IMPL "NONE")
 endif ()
 
 if (NOT VXMATH_BUILD_SHARED AND NOT VXMATH_BUILD_STATIC)
@@ -217,6 +286,9 @@ if (VXMATH_IS_TOP_LEVEL)
     message(STATUS "  Build Perf Tools:     ${VXMATH_BUILD_PERF}")
     message(STATUS "  SIMD Enabled:         ${VXMATH_ENABLE_SIMD}")
     message(STATUS "  SIMD Level:           ${VXMATH_SIMD_LEVEL}")
+    message(STATUS "  SIMD Provider:        ${VXMATH_SIMD_PROVIDER}")
+    message(STATUS "  SIMD Effective Level: ${VXMATH_EFFECTIVE_SIMD_LEVEL}")
+    message(STATUS "  SIMD Effective Impl:  ${VXMATH_EFFECTIVE_SIMD_IMPL}")
     message(STATUS "  Platform:             ${VXMATH_PLATFORM}")
     message(STATUS "  Install:              ${VXMATH_INSTALL}")
     message(STATUS "  Install Prefix:       ${CMAKE_INSTALL_PREFIX}")
