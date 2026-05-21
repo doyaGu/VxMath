@@ -453,24 +453,6 @@ TEST_F(XArrayPerformanceTest, SortLargeArray) {
     }
 }
 
-TEST_F(XArrayTest, AttachDetach) {
-    int external_data[5] = {1, 2, 3, 4, 5};
-    
-    XArray<int> arr;
-    arr.Attach(external_data, 5);
-    
-    EXPECT_EQ(arr.Size(), 5);
-    EXPECT_EQ(arr[0], 1);
-    EXPECT_EQ(arr[4], 5);
-    
-    // Modify through array
-    arr[2] = 99;
-    EXPECT_EQ(external_data[2], 99);
-    
-    arr.Detach();
-    EXPECT_EQ(arr.Size(), 0);
-}
-
 TEST_F(XArrayTest, BinaryFind) {
     XArray<int> arr;
     arr.PushBack(10);

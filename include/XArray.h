@@ -743,27 +743,6 @@ public:
     }
 
     /**
-     * @brief Attaches the array to a pre-existing C-style array without taking ownership.
-     * @param iArray Pointer to the external array.
-     * @param iCount The number of elements in the external array.
-     */
-    void Attach(T *iArray, int iCount) {
-        Clear();
-        m_Begin = iArray;
-        m_End = m_Begin + iCount;
-        m_AllocatedEnd = m_End; // No extra allocation
-    }
-
-    /**
-     * @brief Detaches the array from any external data it was attached to.
-     */
-    void Detach() {
-        m_Begin = NULL;
-        m_End = NULL;
-        m_AllocatedEnd = NULL;
-    }
-
-    /**
      * @brief Returns a reference to the first element.
      * @remarks Behavior is undefined if the array is empty.
      */
