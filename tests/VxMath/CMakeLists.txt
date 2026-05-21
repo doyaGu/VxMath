@@ -154,6 +154,7 @@ foreach (TEST_SOURCE ${VXMATH_TEST_SOURCES})
                 ${CMAKE_CURRENT_SOURCE_DIR}  # For SIMDTestCommon.h
         )
     endif()
+    vx_copy_runtime_dependencies(${TEST_NAME})
 endforeach ()
 
 vx_add_test(
@@ -168,6 +169,7 @@ target_include_directories(SIMDDispatchTest PRIVATE
         ${PROJECT_SOURCE_DIR}/deps/simde
         ${CMAKE_CURRENT_SOURCE_DIR}
 )
+vx_copy_runtime_dependencies(SIMDDispatchTest)
 
 vx_add_test(
         BlitEngineSIMDBackendDiffTest
@@ -176,6 +178,7 @@ vx_add_test(
         BlitSIMDBackendTestMain.cpp
         NO_GTEST_MAIN
 )
+vx_copy_runtime_dependencies(BlitEngineSIMDBackendDiffTest)
 
 foreach(_backend none sse2 ssse3 sse4_1 avx avx2 auto)
     add_test(

@@ -167,6 +167,30 @@ if (NOT TARGET SDL3::SDL3)
     find_package(SDL3 CONFIG REQUIRED)
 endif ()
 
+function(vx_copy_runtime_dependencies TARGET_NAME)
+    if (NOT WIN32)
+        return()
+    endif ()
+
+    if (CMAKE_VERSION VERSION_GREATER_EQUAL "3.21")
+        add_custom_command(TARGET ${TARGET_NAME} POST_BUILD
+                COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                $<TARGET_RUNTIME_DLLS:${TARGET_NAME}>
+                $<TARGET_FILE_DIR:${TARGET_NAME}>
+                COMMAND_EXPAND_LISTS
+        )
+        return()
+    endif ()
+
+    if (TARGET SDL3::SDL3)
+        add_custom_command(TARGET ${TARGET_NAME} POST_BUILD
+                COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                $<TARGET_FILE:SDL3::SDL3>
+                $<TARGET_FILE_DIR:${TARGET_NAME}>
+        )
+    endif ()
+endfunction()
+
 # =============================================================================
 # Top-level project settings
 # =============================================================================

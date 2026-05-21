@@ -337,6 +337,7 @@ if (VXMATH_BUILD_SHARED)
             $<$<CXX_COMPILER_ID:MSVC>:/UVX_LIB>
             $<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-UVX_LIB>
     )
+    vx_copy_runtime_dependencies(VxMath)
 
     list(APPEND VXMATH_TARGETS VxMath)
 endif ()
