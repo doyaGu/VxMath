@@ -679,10 +679,20 @@ XBOOL VxGetUserConfigPath(const char *appName, char *path, size_t pathSize) {
 
 XBOOL VxSetCurrentDirectory(const char *path) {
     // SDL3 doesn't provide this, use platform-specific
+    if (!path)
+        return FALSE;
 #ifdef _WIN32
     return SetCurrentDirectoryA(path);
 #else
-    return chdir(path) == 0;
+    char normalized[_MAX_PATH];
+    size_t len = strlen(path);
+    if (len >= sizeof(normalized))
+        return FALSE;
+
+    for (size_t i = 0; i <= len; ++i)
+        normalized[i] = (path[i] == '\\') ? '/' : path[i];
+
+    return chdir(normalized) == 0;
 #endif
 }
 

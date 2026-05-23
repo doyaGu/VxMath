@@ -148,6 +148,30 @@ TEST_F(VxWindowFunctionsTest, CurrentDirectory) {
     ASSERT_TRUE(VxSetCurrentDirectory(originalDir));
 }
 
+#ifndef _WIN32
+TEST_F(VxWindowFunctionsTest, CurrentDirectoryAcceptsWindowsSeparators) {
+    char originalDir[_MAX_PATH];
+    ASSERT_TRUE(VxGetCurrentDirectory(originalDir));
+
+    std::filesystem::path childDir = m_tempDir / "3D Entities" / "Level";
+    std::filesystem::create_directories(childDir);
+
+    std::string windowsStylePath = childDir.string();
+    for (char &ch : windowsStylePath) {
+        if (ch == '/')
+            ch = '\\';
+    }
+
+    ASSERT_TRUE(VxSetCurrentDirectory(windowsStylePath.c_str()));
+
+    char newDir[_MAX_PATH];
+    ASSERT_TRUE(VxGetCurrentDirectory(newDir));
+    EXPECT_EQ(std::filesystem::path(newDir), childDir);
+
+    ASSERT_TRUE(VxSetCurrentDirectory(originalDir));
+}
+#endif
+
 TEST_F(VxWindowFunctionsTest, MakePath) {
     char fullPath[_MAX_PATH];
 #ifdef _WIN32

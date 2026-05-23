@@ -383,7 +383,18 @@ XBOOL VxSetCurrentDirectory(const char *path) {
     if (!path) {
         return FALSE;
     }
-    return chdir(path) == 0;
+
+    char normalized[_MAX_PATH];
+    size_t len = strlen(path);
+    if (len >= sizeof(normalized)) {
+        return FALSE;
+    }
+
+    for (size_t i = 0; i <= len; ++i) {
+        normalized[i] = (path[i] == '\\') ? '/' : path[i];
+    }
+
+    return chdir(normalized) == 0;
 }
 
 XBOOL VxMakePath(char *fullpath, const char *path, const char *file) {
