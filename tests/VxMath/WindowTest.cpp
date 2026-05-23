@@ -39,26 +39,46 @@ protected:
 TEST_F(VxWindowFunctionsTest, ScanCodeToAscii) {
     // Test without shift key
     unsigned char keyState[256] = {0};
-    XDWORD scanCodeA = 4; // SDL_SCANCODE_A
+    XDWORD scanCodeA = 0x1E; // CKKEY_A / DirectInput-style A
     EXPECT_EQ(VxScanCodeToAscii(scanCodeA, keyState), 'a');
 
-    keyState[42] = 0x80; // SDL_SCANCODE_LSHIFT
+    keyState[0x2A] = 0x80; // CKKEY_LSHIFT
+    EXPECT_EQ(VxScanCodeToAscii(scanCodeA, keyState), 'A');
+
+    keyState[0x2A] = 0;
+    keyState[0x3A] = 0x01; // CKKEY_CAPITAL toggle bit
+    EXPECT_EQ(VxScanCodeToAscii(scanCodeA, keyState), 'A');
+
+    keyState[0x2A] = 0x80;
     EXPECT_EQ(VxScanCodeToAscii(scanCodeA, keyState), 'a');
+
+    keyState[0x3A] = 0;
+    EXPECT_EQ(VxScanCodeToAscii(0x02, keyState), '!');
 
     // Test a non-printable key
-    keyState[42] = 0;
-    XDWORD scanCodeF1 = 58; // SDL_SCANCODE_F1
+    keyState[0x2A] = 0;
+    XDWORD scanCodeF1 = 0x3B; // CKKEY_F1 / DirectInput-style F1
     EXPECT_EQ(VxScanCodeToAscii(scanCodeF1, keyState), 0);
 }
 
 TEST_F(VxWindowFunctionsTest, ScanCodeToName) {
     char keyName[256];
     // This is highly layout-dependent, but we can test special keys
-    XDWORD scanCodeLeft = 80; // SDL_SCANCODE_LEFT
+    XDWORD scanCodeLeft = 0xCB; // CKKEY_LEFT / DirectInput-style Left
     EXPECT_GT(VxScanCodeToName(scanCodeLeft, keyName), 0);
-    // The exact name can vary, but it should be something like "Left" or "Left Arrow"
-    std::string name(keyName);
-    EXPECT_NE(name.find("Left"), std::string::npos);
+    EXPECT_STREQ(keyName, "Left Arrow");
+
+    EXPECT_GT(VxScanCodeToName(0xC9, keyName), 0);
+    EXPECT_STREQ(keyName, "PREVIOUS");
+
+    EXPECT_GT(VxScanCodeToName(0xD1, keyName), 0);
+    EXPECT_STREQ(keyName, "NEXT");
+
+    EXPECT_GT(VxScanCodeToName(0x4A, keyName), 0);
+    EXPECT_STREQ(keyName, "Numpad -");
+
+    EXPECT_GT(VxScanCodeToName(0x4E, keyName), 0);
+    EXPECT_STREQ(keyName, "Numpad +");
 }
 
 // --- Cursor Management Tests ---

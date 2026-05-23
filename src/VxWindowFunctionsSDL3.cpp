@@ -51,30 +51,355 @@
 // Keyboard Functions
 // ============================================================================
 
-char VxScanCodeToAscii(XDWORD scancode, unsigned char keystate[256]) {
-    // SDL3 scancode to ASCII conversion
-    // This is a simplified implementation - SDL3's key handling is event-based
-    (void)keystate;
-    
-    SDL_Scancode sc = (SDL_Scancode)scancode;
-    SDL_Keycode keycode = SDL_GetKeyFromScancode(sc, SDL_KMOD_NONE, false);
-    
-    // Only return printable ASCII characters
-    if (keycode >= 32 && keycode <= 126) {
-        return (char)keycode;
+static SDL_Scancode VxScanCodeToSdlScancode(XDWORD scancode) {
+    switch (scancode) {
+    case 0x01: return SDL_SCANCODE_ESCAPE;
+    case 0x02: return SDL_SCANCODE_1;
+    case 0x03: return SDL_SCANCODE_2;
+    case 0x04: return SDL_SCANCODE_3;
+    case 0x05: return SDL_SCANCODE_4;
+    case 0x06: return SDL_SCANCODE_5;
+    case 0x07: return SDL_SCANCODE_6;
+    case 0x08: return SDL_SCANCODE_7;
+    case 0x09: return SDL_SCANCODE_8;
+    case 0x0A: return SDL_SCANCODE_9;
+    case 0x0B: return SDL_SCANCODE_0;
+    case 0x0C: return SDL_SCANCODE_MINUS;
+    case 0x0D: return SDL_SCANCODE_EQUALS;
+    case 0x0E: return SDL_SCANCODE_BACKSPACE;
+    case 0x0F: return SDL_SCANCODE_TAB;
+    case 0x10: return SDL_SCANCODE_Q;
+    case 0x11: return SDL_SCANCODE_W;
+    case 0x12: return SDL_SCANCODE_E;
+    case 0x13: return SDL_SCANCODE_R;
+    case 0x14: return SDL_SCANCODE_T;
+    case 0x15: return SDL_SCANCODE_Y;
+    case 0x16: return SDL_SCANCODE_U;
+    case 0x17: return SDL_SCANCODE_I;
+    case 0x18: return SDL_SCANCODE_O;
+    case 0x19: return SDL_SCANCODE_P;
+    case 0x1A: return SDL_SCANCODE_LEFTBRACKET;
+    case 0x1B: return SDL_SCANCODE_RIGHTBRACKET;
+    case 0x1C: return SDL_SCANCODE_RETURN;
+    case 0x1D: return SDL_SCANCODE_LCTRL;
+    case 0x1E: return SDL_SCANCODE_A;
+    case 0x1F: return SDL_SCANCODE_S;
+    case 0x20: return SDL_SCANCODE_D;
+    case 0x21: return SDL_SCANCODE_F;
+    case 0x22: return SDL_SCANCODE_G;
+    case 0x23: return SDL_SCANCODE_H;
+    case 0x24: return SDL_SCANCODE_J;
+    case 0x25: return SDL_SCANCODE_K;
+    case 0x26: return SDL_SCANCODE_L;
+    case 0x27: return SDL_SCANCODE_SEMICOLON;
+    case 0x28: return SDL_SCANCODE_APOSTROPHE;
+    case 0x29: return SDL_SCANCODE_GRAVE;
+    case 0x2A: return SDL_SCANCODE_LSHIFT;
+    case 0x2B: return SDL_SCANCODE_BACKSLASH;
+    case 0x2C: return SDL_SCANCODE_Z;
+    case 0x2D: return SDL_SCANCODE_X;
+    case 0x2E: return SDL_SCANCODE_C;
+    case 0x2F: return SDL_SCANCODE_V;
+    case 0x30: return SDL_SCANCODE_B;
+    case 0x31: return SDL_SCANCODE_N;
+    case 0x32: return SDL_SCANCODE_M;
+    case 0x33: return SDL_SCANCODE_COMMA;
+    case 0x34: return SDL_SCANCODE_PERIOD;
+    case 0x35: return SDL_SCANCODE_SLASH;
+    case 0x36: return SDL_SCANCODE_RSHIFT;
+    case 0x37: return SDL_SCANCODE_KP_MULTIPLY;
+    case 0x38: return SDL_SCANCODE_LALT;
+    case 0x39: return SDL_SCANCODE_SPACE;
+    case 0x3A: return SDL_SCANCODE_CAPSLOCK;
+    case 0x3B: return SDL_SCANCODE_F1;
+    case 0x3C: return SDL_SCANCODE_F2;
+    case 0x3D: return SDL_SCANCODE_F3;
+    case 0x3E: return SDL_SCANCODE_F4;
+    case 0x3F: return SDL_SCANCODE_F5;
+    case 0x40: return SDL_SCANCODE_F6;
+    case 0x41: return SDL_SCANCODE_F7;
+    case 0x42: return SDL_SCANCODE_F8;
+    case 0x43: return SDL_SCANCODE_F9;
+    case 0x44: return SDL_SCANCODE_F10;
+    case 0x45: return SDL_SCANCODE_NUMLOCKCLEAR;
+    case 0x46: return SDL_SCANCODE_SCROLLLOCK;
+    case 0x47: return SDL_SCANCODE_KP_7;
+    case 0x48: return SDL_SCANCODE_KP_8;
+    case 0x49: return SDL_SCANCODE_KP_9;
+    case 0x4A: return SDL_SCANCODE_KP_MINUS;
+    case 0x4B: return SDL_SCANCODE_KP_4;
+    case 0x4C: return SDL_SCANCODE_KP_5;
+    case 0x4D: return SDL_SCANCODE_KP_6;
+    case 0x4E: return SDL_SCANCODE_KP_PLUS;
+    case 0x4F: return SDL_SCANCODE_KP_1;
+    case 0x50: return SDL_SCANCODE_KP_2;
+    case 0x51: return SDL_SCANCODE_KP_3;
+    case 0x52: return SDL_SCANCODE_KP_0;
+    case 0x53: return SDL_SCANCODE_KP_PERIOD;
+    case 0x57: return SDL_SCANCODE_F11;
+    case 0x58: return SDL_SCANCODE_F12;
+    case 0x8D: return SDL_SCANCODE_KP_EQUALS;
+    case 0x9C: return SDL_SCANCODE_KP_ENTER;
+    case 0x9D: return SDL_SCANCODE_RCTRL;
+    case 0xB3: return SDL_SCANCODE_KP_COMMA;
+    case 0xB5: return SDL_SCANCODE_KP_DIVIDE;
+    case 0xB7: return SDL_SCANCODE_PRINTSCREEN;
+    case 0xB8: return SDL_SCANCODE_RALT;
+    case 0xC7: return SDL_SCANCODE_HOME;
+    case 0xC8: return SDL_SCANCODE_UP;
+    case 0xC9: return SDL_SCANCODE_PAGEUP;
+    case 0xCB: return SDL_SCANCODE_LEFT;
+    case 0xCD: return SDL_SCANCODE_RIGHT;
+    case 0xCF: return SDL_SCANCODE_END;
+    case 0xD0: return SDL_SCANCODE_DOWN;
+    case 0xD1: return SDL_SCANCODE_PAGEDOWN;
+    case 0xD2: return SDL_SCANCODE_INSERT;
+    case 0xD3: return SDL_SCANCODE_DELETE;
+    case 0xDB: return SDL_SCANCODE_LGUI;
+    case 0xDC: return SDL_SCANCODE_RGUI;
+    case 0xDD: return SDL_SCANCODE_APPLICATION;
+    default: return SDL_SCANCODE_UNKNOWN;
     }
-    return '\0';
+}
+
+static XBOOL VxKeyStateActive(unsigned char keystate[256], XDWORD key) {
+    return keystate && key < 256 && (keystate[key] & 0x81) != 0;
+}
+
+char VxScanCodeToAscii(XDWORD scancode, unsigned char keystate[256]) {
+    const XBOOL shift = VxKeyStateActive(keystate, 0x2A) || VxKeyStateActive(keystate, 0x36);
+    const XBOOL caps = keystate && (keystate[0x3A] & 0x01) != 0;
+    const XBOOL upper = shift != caps;
+
+    switch (scancode) {
+    case 0x02: return shift ? '!' : '1';
+    case 0x03: return shift ? '@' : '2';
+    case 0x04: return shift ? '#' : '3';
+    case 0x05: return shift ? '$' : '4';
+    case 0x06: return shift ? '%' : '5';
+    case 0x07: return shift ? '^' : '6';
+    case 0x08: return shift ? '&' : '7';
+    case 0x09: return shift ? '*' : '8';
+    case 0x0A: return shift ? '(' : '9';
+    case 0x0B: return shift ? ')' : '0';
+    case 0x0C: return shift ? '_' : '-';
+    case 0x0D: return shift ? '+' : '=';
+    case 0x10: return upper ? 'Q' : 'q';
+    case 0x11: return upper ? 'W' : 'w';
+    case 0x12: return upper ? 'E' : 'e';
+    case 0x13: return upper ? 'R' : 'r';
+    case 0x14: return upper ? 'T' : 't';
+    case 0x15: return upper ? 'Y' : 'y';
+    case 0x16: return upper ? 'U' : 'u';
+    case 0x17: return upper ? 'I' : 'i';
+    case 0x18: return upper ? 'O' : 'o';
+    case 0x19: return upper ? 'P' : 'p';
+    case 0x1A: return shift ? '{' : '[';
+    case 0x1B: return shift ? '}' : ']';
+    case 0x1E: return upper ? 'A' : 'a';
+    case 0x1F: return upper ? 'S' : 's';
+    case 0x20: return upper ? 'D' : 'd';
+    case 0x21: return upper ? 'F' : 'f';
+    case 0x22: return upper ? 'G' : 'g';
+    case 0x23: return upper ? 'H' : 'h';
+    case 0x24: return upper ? 'J' : 'j';
+    case 0x25: return upper ? 'K' : 'k';
+    case 0x26: return upper ? 'L' : 'l';
+    case 0x27: return shift ? ':' : ';';
+    case 0x28: return shift ? '"' : '\'';
+    case 0x29: return shift ? '~' : '`';
+    case 0x2B: return shift ? '|' : '\\';
+    case 0x2C: return upper ? 'Z' : 'z';
+    case 0x2D: return upper ? 'X' : 'x';
+    case 0x2E: return upper ? 'C' : 'c';
+    case 0x2F: return upper ? 'V' : 'v';
+    case 0x30: return upper ? 'B' : 'b';
+    case 0x31: return upper ? 'N' : 'n';
+    case 0x32: return upper ? 'M' : 'm';
+    case 0x33: return shift ? '<' : ',';
+    case 0x34: return shift ? '>' : '.';
+    case 0x35: return shift ? '?' : '/';
+    case 0x39: return ' ';
+    default: return '\0';
+    }
 }
 
 int VxScanCodeToName(XDWORD scancode, char *keyName) {
-    SDL_Scancode sc = (SDL_Scancode)scancode;
+    if (!keyName)
+        return 0;
+
+    const char ascii = VxScanCodeToAscii(scancode, nullptr);
+    if (ascii >= 33 && ascii <= 126) {
+        keyName[0] = (char)toupper((unsigned char)ascii);
+        keyName[1] = '\0';
+        return 2;
+    }
+
+    switch (scancode) {
+    case 0x0E:
+        strcpy(keyName, "Backspace");
+        return 10;
+    case 0x0F:
+        strcpy(keyName, "Tab");
+        return 4;
+    case 0x1C:
+        strcpy(keyName, "Enter");
+        return 6;
+    case 0x2A:
+        strcpy(keyName, "Left Shift");
+        return 11;
+    case 0x36:
+        strcpy(keyName, "Right Shift");
+        return 12;
+    case 0x1D:
+        strcpy(keyName, "Left Ctrl");
+        return 10;
+    case 0x9D:
+        strcpy(keyName, "Right Ctrl");
+        return 11;
+    case 0x38:
+        strcpy(keyName, "Left Alt");
+        return 9;
+    case 0xB8:
+        strcpy(keyName, "Right Alt");
+        return 10;
+    case 0x39:
+        strcpy(keyName, "Space");
+        return 6;
+    case 0x01:
+        strcpy(keyName, "Escape");
+        return 7;
+    case 0x3B:
+        strcpy(keyName, "F1");
+        return 3;
+    case 0x3C:
+        strcpy(keyName, "F2");
+        return 3;
+    case 0x3D:
+        strcpy(keyName, "F3");
+        return 3;
+    case 0x3E:
+        strcpy(keyName, "F4");
+        return 3;
+    case 0x3F:
+        strcpy(keyName, "F5");
+        return 3;
+    case 0x40:
+        strcpy(keyName, "F6");
+        return 3;
+    case 0x41:
+        strcpy(keyName, "F7");
+        return 3;
+    case 0x42:
+        strcpy(keyName, "F8");
+        return 3;
+    case 0x43:
+        strcpy(keyName, "F9");
+        return 3;
+    case 0x44:
+        strcpy(keyName, "F10");
+        return 4;
+    case 0x57:
+        strcpy(keyName, "F11");
+        return 4;
+    case 0x58:
+        strcpy(keyName, "F12");
+        return 4;
+    case 0x37:
+        strcpy(keyName, "Numpad *");
+        return 9;
+    case 0x47:
+        strcpy(keyName, "Numpad 7");
+        return 9;
+    case 0x48:
+        strcpy(keyName, "Numpad 8");
+        return 9;
+    case 0x49:
+        strcpy(keyName, "Numpad 9");
+        return 9;
+    case 0x4A:
+        strcpy(keyName, "Numpad -");
+        return 9;
+    case 0x4B:
+        strcpy(keyName, "Numpad 4");
+        return 9;
+    case 0x4C:
+        strcpy(keyName, "Numpad 5");
+        return 9;
+    case 0x4D:
+        strcpy(keyName, "Numpad 6");
+        return 9;
+    case 0x4E:
+        strcpy(keyName, "Numpad +");
+        return 9;
+    case 0x4F:
+        strcpy(keyName, "Numpad 1");
+        return 9;
+    case 0x50:
+        strcpy(keyName, "Numpad 2");
+        return 9;
+    case 0x51:
+        strcpy(keyName, "Numpad 3");
+        return 9;
+    case 0x52:
+        strcpy(keyName, "Numpad 0");
+        return 9;
+    case 0x53:
+        strcpy(keyName, "Numpad .");
+        return 9;
+    case 0x8D:
+        strcpy(keyName, "Numpad =");
+        return 9;
+    case 0x9C:
+        strcpy(keyName, "Numpad Enter");
+        return 13;
+    case 0xB3:
+        strcpy(keyName, "Numpad ,");
+        return 9;
+    case 0xB5:
+        strcpy(keyName, "Numpad /");
+        return 9;
+    case 0xC7:
+        strcpy(keyName, "Home");
+        return 5;
+    case 0xCF:
+        strcpy(keyName, "End");
+        return 4;
+    case 0xC9:
+        strcpy(keyName, "PREVIOUS");
+        return 9;
+    case 0xD1:
+        strcpy(keyName, "NEXT");
+        return 5;
+    case 0xD2:
+        strcpy(keyName, "Insert");
+        return 7;
+    case 0xD3:
+        strcpy(keyName, "Delete");
+        return 7;
+    case 0xCB:
+        strcpy(keyName, "Left Arrow");
+        return 11;
+    case 0xCD:
+        strcpy(keyName, "Right Arrow");
+        return 12;
+    case 0xC8:
+        strcpy(keyName, "Up Arrow");
+        return 9;
+    case 0xD0:
+        strcpy(keyName, "Down Arrow");
+        return 11;
+    default:
+        break;
+    }
+
+    SDL_Scancode sc = VxScanCodeToSdlScancode(scancode);
     const char *name = SDL_GetScancodeName(sc);
-    
-    if (name && keyName) {
+    if (name && *name) {
         strcpy(keyName, name);
         return (int)strlen(name) + 1;
     }
-    
+
     if (keyName)
         keyName[0] = '\0';
     return 1;
