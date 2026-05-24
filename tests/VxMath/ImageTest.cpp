@@ -666,6 +666,36 @@ TEST_F(ImageManipulationTest, VxDoBlit_DifferentSizes) {
     EXPECT_EQ(dst_ptr[15], src_ptr[3]); // Bottom-right
 }
 
+TEST_F(ImageManipulationTest, VxDoBlit_24BitDifferentSizes) {
+    VxImageDescEx src_desc, dst_desc;
+    VxPixelFormat2ImageDesc(_24_RGB888, src_desc);
+    VxPixelFormat2ImageDesc(_24_RGB888, dst_desc);
+
+    src_desc.Width = 2;
+    src_desc.Height = 2;
+    src_desc.BytesPerLine = 2 * 3;
+    dst_desc.Width = 4;
+    dst_desc.Height = 4;
+    dst_desc.BytesPerLine = 4 * 3;
+
+    src_desc.Image = AllocateBuffer(2 * 2 * 3);
+    dst_desc.Image = AllocateBuffer(4 * 4 * 3);
+
+    uint8_t *src = src_desc.Image;
+    src[0] = 0x00; src[1] = 0x00; src[2] = 0xFF;
+    src[3] = 0x00; src[4] = 0xFF; src[5] = 0x00;
+    src[6] = 0xFF; src[7] = 0x00; src[8] = 0x00;
+    src[9] = 0xFF; src[10] = 0xFF; src[11] = 0xFF;
+
+    VxDoBlit(src_desc, dst_desc);
+
+    uint8_t *dst = dst_desc.Image;
+    EXPECT_EQ(memcmp(dst + 0 * 3, src + 0 * 3, 3), 0);
+    EXPECT_EQ(memcmp(dst + 3 * 3, src + 1 * 3, 3), 0);
+    EXPECT_EQ(memcmp(dst + 12 * 3, src + 2 * 3, 3), 0);
+    EXPECT_EQ(memcmp(dst + 15 * 3, src + 3 * 3, 3), 0);
+}
+
 TEST_F(ImageManipulationTest, VxDoBlitUpsideDown) {
     VxImageDescEx src_desc, dst_desc;
     VxPixelFormat2ImageDesc(_32_ARGB8888, src_desc);
