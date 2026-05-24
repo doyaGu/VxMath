@@ -147,6 +147,7 @@ bool ReadBoolEnv(const char *name, bool fallback) {
 struct ProgramOptions {
     bool singleBackend = false;
     bool sweepBackends = false;
+    bool gateImageAuto = false;
     bool printHeader = true;
     bool hasRequestedBackend = false;
     int requestedBackend = VX_SIMD_MODE_AUTO;
@@ -215,6 +216,11 @@ bool ParseProgramOptions(int argc, char **argv, ProgramOptions &options) {
             continue;
         }
 
+        if (strcmp(arg, "--gate-image-auto") == 0) {
+            options.gateImageAuto = true;
+            continue;
+        }
+
         if (strcmp(arg, "--no-header") == 0) {
             options.printHeader = false;
             continue;
@@ -245,6 +251,118 @@ bool ParseProgramOptions(int argc, char **argv, ProgramOptions &options) {
         }
     }
     return true;
+}
+
+struct ImagePerfGateCase {
+    const char *Name;
+    double NoneNs;
+    double AutoNs;
+};
+
+static ImagePerfGateCase g_ImagePerfGateCases[] = {
+    {"mipmap_argb32_1024", 0.0, 0.0},
+    {"mipmap_rgb24_1024", 0.0, 0.0},
+    {"mipmap_rgb565_1024", 0.0, 0.0},
+    {"bump_rgb24_1024", 0.0, 0.0},
+    {"normal_argb32_1024", 0.0, 0.0},
+    {"normal_rgb24_1024", 0.0, 0.0}
+};
+
+int FindImagePerfGateCase(const char *name) {
+    for (int i = 0; i < (int) (sizeof(g_ImagePerfGateCases) / sizeof(g_ImagePerfGateCases[0])); ++i) {
+        if (strcmp(name, g_ImagePerfGateCases[i].Name) == 0) return i;
+    }
+    return -1;
+}
+
+FILE *OpenPerfPipe(const char *command) {
+#if defined(_WIN32)
+    return _popen(command, "r");
+#else
+    return popen(command, "r");
+#endif
+}
+
+int ClosePerfPipe(FILE *pipe) {
+#if defined(_WIN32)
+    return _pclose(pipe);
+#else
+    return pclose(pipe);
+#endif
+}
+
+bool ReadImagePerfGateRun(const char *selfPath, const char *backend, bool isAuto) {
+    char command[1024];
+#if defined(_MSC_VER)
+    _snprintf_s(
+        command,
+        sizeof(command),
+        _TRUNCATE,
+        "\"%s\" --single-backend --no-header --simd-backend=%s",
+        (selfPath && *selfPath) ? selfPath : "VxMathPerf",
+        backend
+    );
+#else
+    snprintf(
+        command,
+        sizeof(command),
+        "\"%s\" --single-backend --no-header --simd-backend=%s",
+        (selfPath && *selfPath) ? selfPath : "VxMathPerf",
+        backend
+    );
+#endif
+
+    FILE *pipe = OpenPerfPipe(command);
+    if (!pipe) return false;
+
+    char line[512];
+    while (fgets(line, sizeof(line), pipe)) {
+        char caseName[128];
+        char backendName[64];
+        double ns = 0.0;
+        double mb = 0.0;
+        if (sscanf(line, "%127[^,],%63[^,],%lf,%lf", caseName, backendName, &ns, &mb) != 4) {
+            continue;
+        }
+
+        const int index = FindImagePerfGateCase(caseName);
+        if (index < 0) continue;
+        if (isAuto) {
+            g_ImagePerfGateCases[index].AutoNs = ns;
+        } else {
+            g_ImagePerfGateCases[index].NoneNs = ns;
+        }
+    }
+
+    return ClosePerfPipe(pipe) == 0;
+}
+
+int RunImagePerfGate(const char *selfPath) {
+    if (!ReadImagePerfGateRun(selfPath, "none", false)) {
+        fprintf(stderr, "Failed to run image perf gate NONE backend\n");
+        return 1;
+    }
+    if (!ReadImagePerfGateRun(selfPath, "auto", true)) {
+        fprintf(stderr, "Failed to run image perf gate AUTO backend\n");
+        return 1;
+    }
+
+    int failures = 0;
+    printf("case,none_ns,auto_ns,status\n");
+    for (int i = 0; i < (int) (sizeof(g_ImagePerfGateCases) / sizeof(g_ImagePerfGateCases[0])); ++i) {
+        const ImagePerfGateCase &gateCase = g_ImagePerfGateCases[i];
+        const bool passed = gateCase.NoneNs > 0.0 && gateCase.AutoNs > 0.0 && gateCase.AutoNs <= gateCase.NoneNs;
+        if (!passed) ++failures;
+        printf(
+            "%s,%.3f,%.3f,%s\n",
+            gateCase.Name,
+            gateCase.NoneNs,
+            gateCase.AutoNs,
+            passed ? "PASS" : "FAIL"
+        );
+    }
+
+    return failures == 0 ? 0 : 1;
 }
 
 int RunBackendSweep(const char *selfPath) {
@@ -339,9 +457,14 @@ int main(int argc, char **argv) {
     ProgramOptions options;
     if (!ParseProgramOptions(argc, argv, options)) {
         fprintf(stderr, "Usage: %s [--single-backend] [--sweep-backends] [--no-header] "
+                        "[--gate-image-auto] "
                         "[--simd-backend <auto|none|sse2|ssse3|sse4_1|avx|avx2>]\n",
                 (argc > 0 && argv[0]) ? argv[0] : "VxMathPerf");
         return 2;
+    }
+
+    if (options.gateImageAuto) {
+        return RunImagePerfGate((argc > 0 && argv[0]) ? argv[0] : "VxMathPerf");
     }
 
     const bool shouldSweep = options.sweepBackends ||
