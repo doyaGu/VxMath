@@ -251,8 +251,11 @@ add_subdirectory(src)
 set(VXMATH_SIMDE_ENABLED ${VXMATH_SIMDE_ENABLED} CACHE INTERNAL "Whether VxMath configured bundled SIMDe")
 set(VXMATH_SIMDE_INCLUDE_DIR "${VXMATH_SIMDE_INCLUDE_DIR}" CACHE INTERNAL "Bundled SIMDe include directory exported by VxMath")
 
-if (VXMATH_BUILD_TESTS)
+if (VXMATH_BUILD_TESTS OR (VXMATH_BUILD_PERF AND VXMATH_ENABLE_PERF_GATES))
     enable_testing()
+endif ()
+
+if (VXMATH_BUILD_TESTS)
     add_subdirectory(tests)
 endif ()
 
