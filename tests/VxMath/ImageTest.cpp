@@ -1079,6 +1079,29 @@ TEST_F(ImageManipulationTest, VxConvertToBumpMap) {
     // Note: VxConvertToBumpMap might not modify if it's just calling VxConvertToNormalMap
 }
 
+TEST_F(ImageManipulationTest, VxConvertToBumpMap_24Bit) {
+    VxImageDescEx desc;
+    VxPixelFormat2ImageDesc(_24_RGB888, desc);
+    desc.Width = 4;
+    desc.Height = 4;
+    desc.BytesPerLine = 4 * 3;
+    desc.Image = AllocateBuffer(4 * 4 * 3);
+
+    for (int y = 0; y < desc.Height; ++y) {
+        for (int x = 0; x < desc.Width; ++x) {
+            uint8_t *pixel = desc.Image + y * desc.BytesPerLine + x * 3;
+            pixel[0] = 0x40;
+            pixel[1] = static_cast<uint8_t>(y * 40);
+            pixel[2] = static_cast<uint8_t>(x * 40);
+        }
+    }
+
+    std::vector<uint8_t> original(desc.Image, desc.Image + desc.Height * desc.BytesPerLine);
+
+    EXPECT_TRUE(VxConvertToBumpMap(desc));
+    EXPECT_NE(memcmp(desc.Image, original.data(), original.size()), 0);
+}
+
 //--- Utility Function Tests ---
 
 class UtilityFunctionTest : public ::testing::Test {
