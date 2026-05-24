@@ -124,7 +124,15 @@ static XWORD AveragePixel16(const PixelLayout16 &layout, XWORD p0, XWORD p1, XWO
     return result;
 }
 
-static void GenerateMipMap16(const VxImageDescEx &src_desc, XBYTE *Buffer, bool useSIMD) {
+static XBOOL IsRgb565Layout(const VxImageDescEx &desc) {
+    return desc.BitsPerPixel == 16 &&
+        desc.RedMask == 0xF800 &&
+        desc.GreenMask == 0x07E0 &&
+        desc.BlueMask == 0x001F &&
+        desc.AlphaMask == 0;
+}
+
+static void GenerateMipMap16(const VxImageDescEx &src_desc, XBYTE *Buffer) {
     const int height = src_desc.Height;
     const int bytesPerLine = src_desc.BytesPerLine;
     XBYTE *image = src_desc.Image;
@@ -132,10 +140,6 @@ static void GenerateMipMap16(const VxImageDescEx &src_desc, XBYTE *Buffer, bool 
     const int dstWidth = src_desc.Width >> 1;
     const int dstHeight = height >> 1;
     const PixelLayout16 layout = BuildPixelLayout16(src_desc);
-
-    if (useSIMD && VxGenerateMipMap16Rgb565SSE2(src_desc, Buffer)) {
-        return;
-    }
 
     if (dstWidth == 0) {
         if (dstHeight) {
@@ -176,20 +180,8 @@ static void GenerateMipMap16(const VxImageDescEx &src_desc, XBYTE *Buffer, bool 
     }
 }
 
-void VxGenerateMipMapKernel(const VxImageDescEx &src_desc, XBYTE *Buffer, bool useSIMD) {
-    if (src_desc.BitsPerPixel == 24) {
-        if (useSIMD && VxGenerateMipMap24Rgb888SSSE3(src_desc, Buffer)) {
-            return;
-        }
-        GenerateMipMap24(src_desc, Buffer);
-        return;
-    }
-
-    if (src_desc.BitsPerPixel == 16) {
-        GenerateMipMap16(src_desc, Buffer, useSIMD);
-        return;
-    }
-
+static XBOOL GenerateMipMap32Scalar(const VxImageDescEx &src_desc, XBYTE *Buffer) {
+    const bool useSIMD = false;
     int Height = src_desc.Height;
     int BytesPerLine = src_desc.BytesPerLine;
     XBYTE *Image = src_desc.Image;
@@ -243,7 +235,7 @@ void VxGenerateMipMapKernel(const VxImageDescEx &src_desc, XBYTE *Buffer, bool u
                 --h;
             }
         }
-        return;
+        return TRUE;
     }
 
     if (dstHeight == 0) {
@@ -315,7 +307,7 @@ void VxGenerateMipMapKernel(const VxImageDescEx &src_desc, XBYTE *Buffer, bool u
                 --w;
             } while (w);
         }
-        return;
+        return TRUE;
     }
 
     // Both width and height > 0, 2D averaging
@@ -413,6 +405,103 @@ void VxGenerateMipMapKernel(const VxImageDescEx &src_desc, XBYTE *Buffer, bool u
             --h;
         } while (h);
     }
+    return TRUE;
+}
+
+typedef XBOOL (*VxImageMipMapKernelFn)(const VxImageDescEx &, XBYTE *);
+typedef XBOOL (*VxImageNormalKernelFn)(const VxImageDescEx &, XDWORD);
+typedef XBOOL (*VxImageBumpKernelFn)(const VxImageDescEx &);
+
+struct VxImageKernelBackend {
+    VxImageMipMapKernelFn MipMap32;
+    VxImageMipMapKernelFn MipMap24;
+    VxImageMipMapKernelFn MipMapRgb565;
+    VxImageNormalKernelFn Normal32;
+    VxImageNormalKernelFn Normal24;
+    VxImageBumpKernelFn Bump32;
+    VxImageBumpKernelFn Bump24;
+};
+
+static XBOOL GenerateMipMap24ScalarKernel(const VxImageDescEx &src_desc, XBYTE *Buffer) {
+    if (src_desc.BitsPerPixel != 24) return FALSE;
+    GenerateMipMap24(src_desc, Buffer);
+    return TRUE;
+}
+
+static XBOOL GenerateMipMap16Rgb565ScalarKernel(const VxImageDescEx &src_desc, XBYTE *Buffer) {
+    if (!IsRgb565Layout(src_desc)) return FALSE;
+    GenerateMipMap16(src_desc, Buffer);
+    return TRUE;
+}
+
+static const VxImageKernelBackend kVxImageBackendScalar = {
+    GenerateMipMap32Scalar,
+    GenerateMipMap24ScalarKernel,
+    GenerateMipMap16Rgb565ScalarKernel,
+    NULL,
+    NULL,
+    NULL,
+    NULL
+};
+
+static const VxImageKernelBackend kVxImageBackendSSE2 = {
+    VxGenerateMipMap32SSE2,
+    GenerateMipMap24ScalarKernel,
+    VxGenerateMipMap16Rgb565SSE2,
+    NULL,
+    NULL,
+    NULL,
+    NULL
+};
+
+static const VxImageKernelBackend kVxImageBackendSSSE3 = {
+    VxGenerateMipMap32SSE2,
+    VxGenerateMipMap24Rgb888SSSE3,
+    VxGenerateMipMap16Rgb565SSE2,
+    NULL,
+    NULL,
+    NULL,
+    NULL
+};
+
+static const VxImageKernelBackend kVxImageBackendAVX2 = {
+    VxGenerateMipMap32SSE2,
+    GenerateMipMap24ScalarKernel,
+    VxGenerateMipMap16Rgb565SSE2,
+    NULL,
+    NULL,
+    NULL,
+    NULL
+};
+
+static const VxImageKernelBackend *GetVxImageBackend(int simdMode) {
+    if (simdMode == VX_SIMD_MODE_AVX2) return &kVxImageBackendAVX2;
+    if (simdMode == VX_SIMD_MODE_SSSE3 ||
+        simdMode == VX_SIMD_MODE_SSE4_1 ||
+        simdMode == VX_SIMD_MODE_AVX) {
+        return &kVxImageBackendSSSE3;
+    }
+    if (simdMode == VX_SIMD_MODE_SSE2) return &kVxImageBackendSSE2;
+    return &kVxImageBackendScalar;
+}
+
+void VxGenerateMipMapKernel(const VxImageDescEx &src_desc, XBYTE *Buffer, int simdMode) {
+    const VxImageKernelBackend *backend = GetVxImageBackend(simdMode);
+
+    if (src_desc.BitsPerPixel == 24) {
+        if (backend->MipMap24 && backend->MipMap24(src_desc, Buffer)) return;
+        GenerateMipMap24(src_desc, Buffer);
+        return;
+    }
+
+    if (src_desc.BitsPerPixel == 16) {
+        if (IsRgb565Layout(src_desc) && backend->MipMapRgb565 && backend->MipMapRgb565(src_desc, Buffer)) return;
+        GenerateMipMap16(src_desc, Buffer);
+        return;
+    }
+
+    if (backend->MipMap32 && backend->MipMap32(src_desc, Buffer)) return;
+    GenerateMipMap32Scalar(src_desc, Buffer);
 }
 
 
@@ -494,10 +583,11 @@ static __m128 CalculateLuminanceSSE4(const XDWORD *pixels, const __m128 &scale) 
 }
 #endif
 
-XBOOL VxConvertToNormalMapKernel(const VxImageDescEx &image, XDWORD ColorMask, bool useSIMD) {
+XBOOL VxConvertToNormalMapKernel(const VxImageDescEx &image, XDWORD ColorMask, int simdMode) {
     if (image.BitsPerPixel != 32 && image.BitsPerPixel != 24) return FALSE;
     if (image.Width == 0 || image.Height == 0) return FALSE;
     if (image.Image == nullptr) return FALSE;
+    const bool useSIMD = simdMode != VX_SIMD_MODE_NONE;
 
     XBYTE *Image = image.Image;
     int Width = image.Width;
@@ -734,7 +824,7 @@ static inline int SseLuminance(XDWORD pixel) {
 }
 #endif
 
-static XBOOL ConvertToBumpMap24(const VxImageDescEx &image, bool useSIMD) {
+static XBOOL ConvertToBumpMap24(const VxImageDescEx &image, int simdMode) {
     if (image.Image == nullptr) return FALSE;
     if (image.Width < 2 || image.Height <= 0 || image.BytesPerLine <= 0) return FALSE;
 
@@ -756,18 +846,19 @@ static XBOOL ConvertToBumpMap24(const VxImageDescEx &image, bool useSIMD) {
     TheBlitter.DoBlit(image, image32);
     // The 24-bit path gets its SIMD win from the 24<->32 blit kernels; the
     // existing 32-bit bump SSE2 loop is slower than scalar on this conversion.
-    if (!VxConvertToBumpMapKernel(image32, false)) {
+    if (!VxConvertToBumpMapKernel(image32, VX_SIMD_MODE_NONE)) {
         return FALSE;
     }
     TheBlitter.DoBlit(image32, image);
     return TRUE;
 }
 
-XBOOL VxConvertToBumpMapKernel(const VxImageDescEx &image, bool useSIMD) {
-    if (image.BitsPerPixel == 24) return ConvertToBumpMap24(image, useSIMD);
+XBOOL VxConvertToBumpMapKernel(const VxImageDescEx &image, int simdMode) {
+    if (image.BitsPerPixel == 24) return ConvertToBumpMap24(image, simdMode);
     if (image.BitsPerPixel != 32) return FALSE;
     if (image.Image == nullptr) return FALSE;
     if (image.Width < 2 || image.Height <= 0 || image.BytesPerLine <= 0) return FALSE;
+    const bool useSIMD = simdMode != VX_SIMD_MODE_NONE;
 
     // Allocate temporary copy of the image
     const size_t bytesPerLine = static_cast<size_t>(image.BytesPerLine);

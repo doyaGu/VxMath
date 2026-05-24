@@ -30,6 +30,56 @@ static XWORD AverageRgb565(XWORD p0, XWORD p1, XWORD p2, XWORD p3) {
 }
 
 #if defined(VX_SIMD_SSE2)
+static XDWORD Average32HorizontalScalar(XDWORD p0, XDWORD p1) {
+    const XDWORD rb0 = p0 & 0x00FF00FFu;
+    const XDWORD rb1 = p1 & 0x00FF00FFu;
+    const XDWORD ag0 = (p0 & 0xFF00FF00u) >> 8;
+    const XDWORD ag1 = (p1 & 0xFF00FF00u) >> 8;
+    const XDWORD rbAvg = ((rb0 + rb1) >> 1) & 0x00FF00FFu;
+    const XDWORD agAvg = ((ag0 + ag1) << 7) & 0xFF00FF00u;
+    return rbAvg | agAvg;
+}
+
+static XDWORD Average32BlockScalar(XDWORD p0, XDWORD p1, XDWORD p2, XDWORD p3) {
+    const XDWORD rb = (p0 & 0x00FF00FFu) + (p1 & 0x00FF00FFu) +
+        (p2 & 0x00FF00FFu) + (p3 & 0x00FF00FFu);
+    const XDWORD ag = ((p0 & 0xFF00FF00u) >> 8) + ((p1 & 0xFF00FF00u) >> 8) +
+        ((p2 & 0xFF00FF00u) >> 8) + ((p3 & 0xFF00FF00u) >> 8);
+    const XDWORD rbAvg = (rb >> 2) & 0x00FF00FFu;
+    const XDWORD agAvg = ((ag >> 2) << 8) & 0xFF00FF00u;
+    return rbAvg | agAvg;
+}
+
+static void Average32Horizontal2(const XDWORD *src, XBYTE *dst) {
+    const __m128i zero = _mm_setzero_si128();
+    const __m128i pixels = _mm_loadu_si128((const __m128i *) src);
+    const __m128i lo = _mm_unpacklo_epi8(pixels, zero);
+    const __m128i hi = _mm_unpackhi_epi8(pixels, zero);
+    const __m128i p0 = _mm_unpacklo_epi64(lo, hi);
+    const __m128i p1 = _mm_unpackhi_epi64(lo, hi);
+    const __m128i avg = _mm_srli_epi16(_mm_add_epi16(p0, p1), 1);
+    const __m128i result = _mm_packus_epi16(avg, zero);
+    _mm_storel_epi64((__m128i *) dst, result);
+}
+
+static void Average32Block2(const XDWORD *row0, const XBYTE *row1Bytes, XBYTE *dst) {
+    const __m128i zero = _mm_setzero_si128();
+    const __m128i src0 = _mm_loadu_si128((const __m128i *) row0);
+    const __m128i src1 = _mm_loadu_si128((const __m128i *) row1Bytes);
+    const __m128i lo0 = _mm_unpacklo_epi8(src0, zero);
+    const __m128i hi0 = _mm_unpackhi_epi8(src0, zero);
+    const __m128i lo1 = _mm_unpacklo_epi8(src1, zero);
+    const __m128i hi1 = _mm_unpackhi_epi8(src1, zero);
+    const __m128i p0 = _mm_unpacklo_epi64(lo0, hi0);
+    const __m128i p1 = _mm_unpackhi_epi64(lo0, hi0);
+    const __m128i p2 = _mm_unpacklo_epi64(lo1, hi1);
+    const __m128i p3 = _mm_unpackhi_epi64(lo1, hi1);
+    const __m128i sum = _mm_add_epi16(_mm_add_epi16(_mm_add_epi16(p0, p1), p2), p3);
+    const __m128i avg = _mm_srli_epi16(sum, 2);
+    const __m128i result = _mm_packus_epi16(avg, zero);
+    _mm_storel_epi64((__m128i *) dst, result);
+}
+
 static void StoreRgb565Averages4(XWORD *dst, __m128i red, __m128i green, __m128i blue) {
     __m128i pixels = _mm_or_si128(_mm_slli_epi32(red, 11), _mm_slli_epi32(green, 5));
     pixels = _mm_or_si128(pixels, blue);
@@ -108,6 +158,82 @@ static void AverageRgb24Scalar(XBYTE *dst, const XBYTE *p0, const XBYTE *p1, con
     dst[2] = (XBYTE) (((int) p0[2] + p1[2] + p2[2] + p3[2]) >> 2);
 }
 #endif
+
+XBOOL VxGenerateMipMap32SSE2(const VxImageDescEx &src_desc, XBYTE *Buffer) {
+#if defined(VX_SIMD_SSE2)
+    if (src_desc.BitsPerPixel != 32) return FALSE;
+
+    const int dstWidth = src_desc.Width >> 1;
+    const int dstHeight = src_desc.Height >> 1;
+    const int bytesPerLine = src_desc.BytesPerLine;
+    XBYTE *image = src_desc.Image;
+
+    if (dstWidth == 0) {
+        if (dstHeight) {
+            XBYTE *dst = Buffer;
+            XBYTE *src = image;
+            int h = dstHeight;
+            while (h > 0) {
+                *(XDWORD *) dst = Average32HorizontalScalar(*(XDWORD *) src, *(XDWORD *) (src + bytesPerLine));
+                dst += bytesPerLine;
+                src += bytesPerLine * 2;
+                --h;
+            }
+        }
+        return TRUE;
+    }
+
+    if (dstHeight == 0) {
+        XBYTE *dst = Buffer;
+        XDWORD *src = (XDWORD *) image;
+        int w = dstWidth;
+        while (w >= 2) {
+            Average32Horizontal2(src, dst);
+            src += 4;
+            dst += 8;
+            w -= 2;
+        }
+        while (w > 0) {
+            *(XDWORD *) dst = Average32HorizontalScalar(src[0], src[1]);
+            src += 2;
+            dst += 4;
+            --w;
+        }
+        return TRUE;
+    }
+
+    XBYTE *dst = Buffer;
+    XDWORD *src = (XDWORD *) image;
+    int h = dstHeight;
+    while (h > 0) {
+        XDWORD *rowStart = src;
+        int w = dstWidth;
+        while (w >= 2) {
+            Average32Block2(src, (const XBYTE *) src + bytesPerLine, dst);
+            src += 4;
+            dst += 8;
+            w -= 2;
+        }
+        while (w > 0) {
+            const XDWORD p0 = src[0];
+            const XDWORD p1 = src[1];
+            const XDWORD p2 = *(XDWORD *) ((XBYTE *) src + bytesPerLine);
+            const XDWORD p3 = *(XDWORD *) ((XBYTE *) src + bytesPerLine + 4);
+            *(XDWORD *) dst = Average32BlockScalar(p0, p1, p2, p3);
+            src += 2;
+            dst += 4;
+            --w;
+        }
+        src = (XDWORD *) ((XBYTE *) rowStart + bytesPerLine * 2);
+        --h;
+    }
+    return TRUE;
+#else
+    (void) src_desc;
+    (void) Buffer;
+    return FALSE;
+#endif
+}
 
 XBOOL VxGenerateMipMap16Rgb565SSE2(const VxImageDescEx &src_desc, XBYTE *Buffer) {
 #if defined(VX_SIMD_SSE2)

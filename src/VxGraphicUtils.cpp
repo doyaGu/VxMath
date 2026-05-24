@@ -10,28 +10,52 @@ typedef XBOOL (*VxConvertToNormalMapDispatchFn)(const VxImageDescEx &, XDWORD);
 typedef XBOOL (*VxConvertToBumpMapDispatchFn)(const VxImageDescEx &);
 
 static void GenerateMipMapScalarDispatch(const VxImageDescEx &src_desc, XBYTE *Buffer) {
-    VxGenerateMipMapKernel(src_desc, Buffer, false);
+    VxGenerateMipMapKernel(src_desc, Buffer, VX_SIMD_MODE_NONE);
 }
 
 static XBOOL ConvertToNormalMapScalarDispatch(const VxImageDescEx &image, XDWORD ColorMask) {
-    return VxConvertToNormalMapKernel(image, ColorMask, false);
+    return VxConvertToNormalMapKernel(image, ColorMask, VX_SIMD_MODE_NONE);
 }
 
 static XBOOL ConvertToBumpMapScalarDispatch(const VxImageDescEx &image) {
-    return VxConvertToBumpMapKernel(image, false);
+    return VxConvertToBumpMapKernel(image, VX_SIMD_MODE_NONE);
 }
 
 #if defined(VX_SIMD_SSE2)
-static void GenerateMipMapSIMDDispatch(const VxImageDescEx &src_desc, XBYTE *Buffer) {
-    VxGenerateMipMapKernel(src_desc, Buffer, true);
+static void GenerateMipMapSSE2Dispatch(const VxImageDescEx &src_desc, XBYTE *Buffer) {
+    VxGenerateMipMapKernel(src_desc, Buffer, VX_SIMD_MODE_SSE2);
 }
 
-static XBOOL ConvertToNormalMapSIMDDispatch(const VxImageDescEx &image, XDWORD ColorMask) {
-    return VxConvertToNormalMapKernel(image, ColorMask, true);
+static XBOOL ConvertToNormalMapSSE2Dispatch(const VxImageDescEx &image, XDWORD ColorMask) {
+    return VxConvertToNormalMapKernel(image, ColorMask, VX_SIMD_MODE_SSE2);
 }
 
-static XBOOL ConvertToBumpMapSIMDDispatch(const VxImageDescEx &image) {
-    return VxConvertToBumpMapKernel(image, true);
+static XBOOL ConvertToBumpMapSSE2Dispatch(const VxImageDescEx &image) {
+    return VxConvertToBumpMapKernel(image, VX_SIMD_MODE_SSE2);
+}
+
+static void GenerateMipMapSSSE3Dispatch(const VxImageDescEx &src_desc, XBYTE *Buffer) {
+    VxGenerateMipMapKernel(src_desc, Buffer, VX_SIMD_MODE_SSSE3);
+}
+
+static XBOOL ConvertToNormalMapSSSE3Dispatch(const VxImageDescEx &image, XDWORD ColorMask) {
+    return VxConvertToNormalMapKernel(image, ColorMask, VX_SIMD_MODE_SSSE3);
+}
+
+static XBOOL ConvertToBumpMapSSSE3Dispatch(const VxImageDescEx &image) {
+    return VxConvertToBumpMapKernel(image, VX_SIMD_MODE_SSSE3);
+}
+
+static void GenerateMipMapAVX2Dispatch(const VxImageDescEx &src_desc, XBYTE *Buffer) {
+    VxGenerateMipMapKernel(src_desc, Buffer, VX_SIMD_MODE_AVX2);
+}
+
+static XBOOL ConvertToNormalMapAVX2Dispatch(const VxImageDescEx &image, XDWORD ColorMask) {
+    return VxConvertToNormalMapKernel(image, ColorMask, VX_SIMD_MODE_AVX2);
+}
+
+static XBOOL ConvertToBumpMapAVX2Dispatch(const VxImageDescEx &image) {
+    return VxConvertToBumpMapKernel(image, VX_SIMD_MODE_AVX2);
 }
 #endif
 
@@ -48,10 +72,22 @@ const VxGraphicDispatchTable kVxGraphicDispatchScalar = {
 };
 
 #if defined(VX_SIMD_SSE2)
-const VxGraphicDispatchTable kVxGraphicDispatchSIMD = {
-    GenerateMipMapSIMDDispatch,
-    ConvertToNormalMapSIMDDispatch,
-    ConvertToBumpMapSIMDDispatch
+const VxGraphicDispatchTable kVxGraphicDispatchSSE2 = {
+    GenerateMipMapSSE2Dispatch,
+    ConvertToNormalMapSSE2Dispatch,
+    ConvertToBumpMapSSE2Dispatch
+};
+
+const VxGraphicDispatchTable kVxGraphicDispatchSSSE3 = {
+    GenerateMipMapSSSE3Dispatch,
+    ConvertToNormalMapSSSE3Dispatch,
+    ConvertToBumpMapSSSE3Dispatch
+};
+
+const VxGraphicDispatchTable kVxGraphicDispatchAVX2 = {
+    GenerateMipMapAVX2Dispatch,
+    ConvertToNormalMapAVX2Dispatch,
+    ConvertToBumpMapAVX2Dispatch
 };
 #endif
 
@@ -64,7 +100,18 @@ static const VxGraphicDispatchTable *GetVxGraphicDispatchTable() {
 void VxGraphicDispatchRebuild(int effectiveMode) {
     const bool useSIMD = (effectiveMode != VX_SIMD_MODE_NONE);
 #if defined(VX_SIMD_SSE2)
-    const VxGraphicDispatchTable *next = useSIMD ? &kVxGraphicDispatchSIMD : &kVxGraphicDispatchScalar;
+    const VxGraphicDispatchTable *next = &kVxGraphicDispatchScalar;
+    if (useSIMD) {
+        if (effectiveMode == VX_SIMD_MODE_AVX2) {
+            next = &kVxGraphicDispatchAVX2;
+        } else if (effectiveMode == VX_SIMD_MODE_SSSE3 ||
+            effectiveMode == VX_SIMD_MODE_SSE4_1 ||
+            effectiveMode == VX_SIMD_MODE_AVX) {
+            next = &kVxGraphicDispatchSSSE3;
+        } else {
+            next = &kVxGraphicDispatchSSE2;
+        }
+    }
 #else
     (void) useSIMD;
     const VxGraphicDispatchTable *next = &kVxGraphicDispatchScalar;
