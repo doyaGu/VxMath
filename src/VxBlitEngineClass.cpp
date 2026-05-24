@@ -64,6 +64,10 @@ static XDWORD Pack8BitColorToMask(XDWORD value, XDWORD mask) {
     return (packed << shift) & mask;
 }
 
+static XDWORD MultiplyBlend8(XDWORD src, XDWORD dst) {
+    return (src * dst + 127u) / 255u;
+}
+
 //==============================================================================
 //  VxBlitEngine -- Construction / Destruction
 //==============================================================================
@@ -1107,9 +1111,54 @@ void VxBlitEngine::MultiplyBlend(const VxImageDescEx &src_desc, const VxImageDes
     VxMutexLock lock(m_Lock);
 
     if (!src_desc.Image || !dst_desc.Image) return;
-    if (src_desc.BitsPerPixel != 32 || dst_desc.BitsPerPixel != 32) return;
     if (src_desc.Width != dst_desc.Width || src_desc.Height != dst_desc.Height) return;
     if (src_desc.Width <= 0 || src_desc.Height <= 0) return;
+
+    if (src_desc.BitsPerPixel != 32 || dst_desc.BitsPerPixel != 32) {
+        const bool srcSupported = (src_desc.BitsPerPixel == 24 || src_desc.BitsPerPixel == 16);
+        const bool dstSupported = (dst_desc.BitsPerPixel == 24 || dst_desc.BitsPerPixel == 16);
+        if (!srcSupported || !dstSupported) return;
+
+        const int srcBytesPerPixel = src_desc.BitsPerPixel / 8;
+        const int dstBytesPerPixel = dst_desc.BitsPerPixel / 8;
+        const XDWORD dstColorMask = dst_desc.RedMask | dst_desc.GreenMask | dst_desc.BlueMask;
+        const XDWORD dstAlphaMask = dst_desc.AlphaMask;
+
+        const XBYTE *srcRow = src_desc.Image;
+        XBYTE *dstRow = dst_desc.Image;
+        for (int y = 0; y < src_desc.Height; ++y) {
+            const XBYTE *src = srcRow;
+            XBYTE *dst = dstRow;
+            for (int x = 0; x < src_desc.Width; ++x) {
+                const XDWORD s = ReadPixel(src, srcBytesPerPixel);
+                const XDWORD d = ReadPixel(dst, dstBytesPerPixel);
+                const XDWORD r = MultiplyBlend8(
+                    ExpandMaskedColorTo8Bit(s, src_desc.RedMask),
+                    ExpandMaskedColorTo8Bit(d, dst_desc.RedMask));
+                const XDWORD g = MultiplyBlend8(
+                    ExpandMaskedColorTo8Bit(s, src_desc.GreenMask),
+                    ExpandMaskedColorTo8Bit(d, dst_desc.GreenMask));
+                const XDWORD b = MultiplyBlend8(
+                    ExpandMaskedColorTo8Bit(s, src_desc.BlueMask),
+                    ExpandMaskedColorTo8Bit(d, dst_desc.BlueMask));
+                const XDWORD a = dstAlphaMask
+                    ? MultiplyBlend8(src_desc.AlphaMask ? ExpandMaskedColorTo8Bit(s, src_desc.AlphaMask) : 255u,
+                                     ExpandMaskedColorTo8Bit(d, dstAlphaMask))
+                    : 0u;
+                const XDWORD result = (d & ~(dstColorMask | dstAlphaMask)) |
+                    Pack8BitColorToMask(r, dst_desc.RedMask) |
+                    Pack8BitColorToMask(g, dst_desc.GreenMask) |
+                    Pack8BitColorToMask(b, dst_desc.BlueMask) |
+                    Pack8BitColorToMask(a, dstAlphaMask);
+                WritePixel(dst, dstBytesPerPixel, result);
+                src += srcBytesPerPixel;
+                dst += dstBytesPerPixel;
+            }
+            srcRow += src_desc.BytesPerLine;
+            dstRow += dst_desc.BytesPerLine;
+        }
+        return;
+    }
 
     VxBlitInfo info = {};
     info.width = src_desc.Width;

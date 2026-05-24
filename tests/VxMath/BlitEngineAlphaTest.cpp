@@ -1310,3 +1310,78 @@ TEST_F(AlphaBlitTest, MultiplyBlend_HalfValues) {
     }
 }
 
+TEST_F(AlphaBlitTest, MultiplyBlend_24BitRGB) {
+    const int width = 1;
+    const int height = 1;
+    ImageBuffer srcBuffer(width * height * 3);
+    ImageBuffer dstBuffer(width * height * 3);
+    auto srcDesc = ImageDescFactory::Create24BitRGB(width, height, srcBuffer.Data());
+    auto dstDesc = ImageDescFactory::Create24BitRGB(width, height, dstBuffer.Data());
+
+    PatternGenerator::FillSolid24(srcBuffer.Data(), width, height, 0x80, 0xFF, 0x40);
+    PatternGenerator::FillSolid24(dstBuffer.Data(), width, height, 0x80, 0x40, 0xFF);
+
+    blitter.MultiplyBlend(srcDesc, dstDesc);
+
+    EXPECT_EQ(dstBuffer[0], 0x40u);
+    EXPECT_EQ(dstBuffer[1], 0x40u);
+    EXPECT_EQ(dstBuffer[2], 0x40u);
+}
+
+TEST_F(AlphaBlitTest, MultiplyBlend_16BitFormats) {
+    const int width = 2;
+    const int height = 1;
+
+    ImageBuffer src565Buffer(width * height * 2);
+    ImageBuffer dst565Buffer(width * height * 2);
+    auto src565 = ImageDescFactory::Create16Bit565(width, height, src565Buffer.Data());
+    auto dst565 = ImageDescFactory::Create16Bit565(width, height, dst565Buffer.Data());
+    XWORD *srcPixels565 = reinterpret_cast<XWORD *>(src565Buffer.Data());
+    XWORD *dstPixels565 = reinterpret_cast<XWORD *>(dst565Buffer.Data());
+    srcPixels565[0] = 0xF800;
+    srcPixels565[1] = 0xFFFF;
+    dstPixels565[0] = 0x001F;
+    dstPixels565[1] = 0x7BEF;
+
+    blitter.MultiplyBlend(src565, dst565);
+
+    EXPECT_EQ(dstPixels565[0], 0x0000u);
+    EXPECT_EQ(dstPixels565[1], 0x7BEFu);
+
+    ImageBuffer src1555Buffer(2 * 2);
+    ImageBuffer dst1555Buffer(2 * 2);
+    auto src1555 = ImageDescFactory::Create16Bit1555(2, 1, src1555Buffer.Data());
+    auto dst1555 = ImageDescFactory::Create16Bit1555(2, 1, dst1555Buffer.Data());
+    XWORD *srcPixels1555 = reinterpret_cast<XWORD *>(src1555Buffer.Data());
+    XWORD *dstPixels1555 = reinterpret_cast<XWORD *>(dst1555Buffer.Data());
+    srcPixels1555[0] = 0x8000;
+    srcPixels1555[1] = 0x7C00;
+    dstPixels1555[0] = 0xFFFF;
+    dstPixels1555[1] = 0xFC00;
+
+    blitter.MultiplyBlend(src1555, dst1555);
+
+    EXPECT_EQ(dstPixels1555[0], 0x8000u)
+        << "ARGB1555 alpha should blend while color channels multiply";
+    EXPECT_EQ(dstPixels1555[1], 0x7C00u)
+        << "ARGB1555 transparent source alpha should clear destination alpha";
+
+    ImageBuffer src4444Buffer(2 * 2);
+    ImageBuffer dst4444Buffer(2 * 2);
+    auto src4444 = ImageDescFactory::Create16Bit4444(2, 1, src4444Buffer.Data());
+    auto dst4444 = ImageDescFactory::Create16Bit4444(2, 1, dst4444Buffer.Data());
+    XWORD *srcPixels4444 = reinterpret_cast<XWORD *>(src4444Buffer.Data());
+    XWORD *dstPixels4444 = reinterpret_cast<XWORD *>(dst4444Buffer.Data());
+    srcPixels4444[0] = 0xF0F0;
+    srcPixels4444[1] = 0x00F0;
+    dstPixels4444[0] = 0xFF0F;
+    dstPixels4444[1] = 0xF0F0;
+
+    blitter.MultiplyBlend(src4444, dst4444);
+
+    EXPECT_EQ(dstPixels4444[0], 0xF000u)
+        << "ARGB4444 channels should multiply independently";
+    EXPECT_EQ(dstPixels4444[1], 0x00F0u)
+        << "ARGB4444 zero source alpha should clear destination alpha";
+}
+
