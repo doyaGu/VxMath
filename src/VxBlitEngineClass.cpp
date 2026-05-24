@@ -855,8 +855,22 @@ void VxBlitEngine::ClearAlpha(const VxImageDescEx &desc) {
     VxMutexLock lock(m_Lock);
 
     if (!desc.Image) return;
-    if (desc.BitsPerPixel != 32) return;
+    if (desc.BitsPerPixel != 32 && desc.BitsPerPixel != 16) return;
+    if (desc.AlphaMask == 0) return;
     if (desc.Width <= 0 || desc.Height <= 0) return;
+
+    if (desc.BitsPerPixel == 16) {
+        const XWORD alphaMaskInv = static_cast<XWORD>(~desc.AlphaMask);
+        XBYTE *row = desc.Image;
+        for (int y = 0; y < desc.Height; ++y) {
+            XWORD *dst = (XWORD *)row;
+            for (int x = 0; x < desc.Width; ++x) {
+                dst[x] &= alphaMaskInv;
+            }
+            row += desc.BytesPerLine;
+        }
+        return;
+    }
 
     VxBlitInfo info = {};
     info.width = desc.Width;
@@ -880,8 +894,22 @@ void VxBlitEngine::SetFullAlpha(const VxImageDescEx &desc) {
     VxMutexLock lock(m_Lock);
 
     if (!desc.Image) return;
-    if (desc.BitsPerPixel != 32) return;
+    if (desc.BitsPerPixel != 32 && desc.BitsPerPixel != 16) return;
+    if (desc.AlphaMask == 0) return;
     if (desc.Width <= 0 || desc.Height <= 0) return;
+
+    if (desc.BitsPerPixel == 16) {
+        const XWORD alphaMask = static_cast<XWORD>(desc.AlphaMask);
+        XBYTE *row = desc.Image;
+        for (int y = 0; y < desc.Height; ++y) {
+            XWORD *dst = (XWORD *)row;
+            for (int x = 0; x < desc.Width; ++x) {
+                dst[x] |= alphaMask;
+            }
+            row += desc.BytesPerLine;
+        }
+        return;
+    }
 
     VxBlitInfo info = {};
     info.width = desc.Width;
