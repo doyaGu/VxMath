@@ -1017,6 +1017,107 @@ TEST(SIMDDispatchTest, ConvertToNormalMapSingleRowIsStable) {
     EXPECT_EQ(0, std::memcmp(imagePixels.data(), baseline.data(), baseline.size() * sizeof(XDWORD)));
 }
 
+TEST(SIMDDispatchTest, ConvertToNormalMapImageBackendsMatchScalar) {
+    struct ScopedSIMDOverride {
+        ScopedSIMDOverride() : previousMode(VxGetSIMDOverride()) {}
+        ~ScopedSIMDOverride() { VxSetSIMDOverride(previousMode); }
+        int previousMode;
+    } scopedOverride;
+
+    struct NormalCase {
+        VX_PIXELFORMAT format;
+        int width;
+        int height;
+        int padding;
+    };
+
+    const NormalCase cases[] = {
+        {_32_ARGB8888, 1, 8, 0},
+        {_32_ARGB8888, 8, 1, 0},
+        {_32_ARGB8888, 17, 11, 8},
+        {_32_ARGB8888, 18, 12, 12},
+        {_24_RGB888, 1, 8, 0},
+        {_24_RGB888, 8, 1, 0},
+        {_24_RGB888, 17, 11, 5},
+        {_24_RGB888, 18, 12, 7}
+    };
+
+    for (int caseIndex = 0; caseIndex < (int) (sizeof(cases) / sizeof(cases[0])); ++caseIndex) {
+        const VX_PIXELFORMAT format = cases[caseIndex].format;
+        const int width = cases[caseIndex].width;
+        const int height = cases[caseIndex].height;
+        VxImageDescEx probe;
+        VxPixelFormat2ImageDesc(format, probe);
+        const int bytesPerPixel = probe.BitsPerPixel / 8;
+        const int pitch = width * bytesPerPixel + cases[caseIndex].padding;
+        const int imageSize = pitch * height;
+
+        XArray<XBYTE> source;
+        source.Resize(imageSize);
+        for (int y = 0; y < height; ++y) {
+            for (int x = 0; x < pitch; ++x) {
+                source[y * pitch + x] = (XBYTE) ((x * 17 + y * 29 + caseIndex * 13) & 0xFF);
+            }
+        }
+
+        XArray<XBYTE> scalar;
+        XArray<XBYTE> sse2;
+        XArray<XBYTE> ssse3;
+        XArray<XBYTE> automatic;
+        scalar.Resize(imageSize);
+        sse2.Resize(imageSize);
+        ssse3.Resize(imageSize);
+        automatic.Resize(imageSize);
+        memcpy(scalar.Begin(), source.Begin(), imageSize);
+        memcpy(sse2.Begin(), source.Begin(), imageSize);
+        memcpy(ssse3.Begin(), source.Begin(), imageSize);
+        memcpy(automatic.Begin(), source.Begin(), imageSize);
+
+        ASSERT_TRUE(VxSetSIMDOverride(VX_SIMD_MODE_NONE));
+        VxImageDescEx scalarDesc;
+        VxPixelFormat2ImageDesc(format, scalarDesc);
+        scalarDesc.Width = width;
+        scalarDesc.Height = height;
+        scalarDesc.BytesPerLine = pitch;
+        scalarDesc.Image = scalar.Begin();
+        ASSERT_TRUE(VxConvertToNormalMap(scalarDesc, 0xFFFFFFFFu));
+
+        ASSERT_TRUE(VxSetSIMDOverride(VX_SIMD_MODE_SSE2));
+        VxImageDescEx sse2Desc;
+        VxPixelFormat2ImageDesc(format, sse2Desc);
+        sse2Desc.Width = width;
+        sse2Desc.Height = height;
+        sse2Desc.BytesPerLine = pitch;
+        sse2Desc.Image = sse2.Begin();
+        ASSERT_TRUE(VxConvertToNormalMap(sse2Desc, 0xFFFFFFFFu));
+
+        ASSERT_TRUE(VxSetSIMDOverride(VX_SIMD_MODE_SSSE3));
+        VxImageDescEx ssse3Desc;
+        VxPixelFormat2ImageDesc(format, ssse3Desc);
+        ssse3Desc.Width = width;
+        ssse3Desc.Height = height;
+        ssse3Desc.BytesPerLine = pitch;
+        ssse3Desc.Image = ssse3.Begin();
+        ASSERT_TRUE(VxConvertToNormalMap(ssse3Desc, 0xFFFFFFFFu));
+
+        ASSERT_TRUE(VxSetSIMDOverride(VX_SIMD_MODE_AUTO));
+        VxImageDescEx autoDesc;
+        VxPixelFormat2ImageDesc(format, autoDesc);
+        autoDesc.Width = width;
+        autoDesc.Height = height;
+        autoDesc.BytesPerLine = pitch;
+        autoDesc.Image = automatic.Begin();
+        ASSERT_TRUE(VxConvertToNormalMap(autoDesc, 0xFFFFFFFFu));
+
+        EXPECT_EQ(0, memcmp(scalar.Begin(), sse2.Begin(), imageSize))
+            << "SSE2 mismatch for " << VxPixelFormat2String(format);
+        EXPECT_EQ(0, memcmp(scalar.Begin(), ssse3.Begin(), imageSize))
+            << "SSSE3 mismatch for " << VxPixelFormat2String(format);
+        EXPECT_EQ(0, memcmp(scalar.Begin(), automatic.Begin(), imageSize))
+            << "AUTO mismatch for " << VxPixelFormat2String(format);
+    }
+}
+
 TEST(SIMDDispatchTest, GenerateMipMapImageBackendsMatchScalar) {
     struct ScopedSIMDOverride {
         ScopedSIMDOverride() : previousMode(VxGetSIMDOverride()) {}
