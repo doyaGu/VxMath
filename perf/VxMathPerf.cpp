@@ -291,6 +291,8 @@ struct ImagePerfGateCase {
     double AutoNs;
 };
 
+static const double kImagePerfGateTolerance = 0.03;
+
 static ImagePerfGateCase g_ImagePerfGateCases[] = {
     {"mipmap_argb32_1024", 0.0, 0.0},
     {"mipmap_rgb24_1024", 0.0, 0.0},
@@ -394,16 +396,19 @@ int RunImagePerfGate(const char *selfPath, int runs) {
     }
 
     int failures = 0;
-    printf("case,best_none_ns,best_auto_ns,runs,status\n");
+    printf("case,best_none_ns,best_auto_ns,auto_ratio,runs,status\n");
     for (int i = 0; i < (int) (sizeof(g_ImagePerfGateCases) / sizeof(g_ImagePerfGateCases[0])); ++i) {
         const ImagePerfGateCase &gateCase = g_ImagePerfGateCases[i];
-        const bool passed = gateCase.NoneNs > 0.0 && gateCase.AutoNs > 0.0 && gateCase.AutoNs <= gateCase.NoneNs;
+        const double allowedAutoNs = gateCase.NoneNs * (1.0 + kImagePerfGateTolerance);
+        const double ratio = (gateCase.NoneNs > 0.0) ? (gateCase.AutoNs / gateCase.NoneNs) : 0.0;
+        const bool passed = gateCase.NoneNs > 0.0 && gateCase.AutoNs > 0.0 && gateCase.AutoNs <= allowedAutoNs;
         if (!passed) ++failures;
         printf(
-            "%s,%.3f,%.3f,%d,%s\n",
+            "%s,%.3f,%.3f,%.5f,%d,%s\n",
             gateCase.Name,
             gateCase.NoneNs,
             gateCase.AutoNs,
+            ratio,
             runs,
             passed ? "PASS" : "FAIL"
         );

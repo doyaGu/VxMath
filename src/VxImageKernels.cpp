@@ -332,7 +332,7 @@ static const VxImageKernelBackend kVxImageBackendSSE2 = {
 
 static const VxImageKernelBackend kVxImageBackendSSSE3 = {
     VxGenerateMipMap32SSE2,
-    VxGenerateMipMap24Rgb888SSSE3,
+    GenerateMipMap24ScalarKernel,
     VxGenerateMipMap16Rgb565SSE2,
     ConvertToNormalMap32CachedSSE2Kernel,
     ConvertToNormalMap24CachedSSSE3Kernel,
@@ -342,7 +342,7 @@ static const VxImageKernelBackend kVxImageBackendSSSE3 = {
 
 static const VxImageKernelBackend kVxImageBackendAVX2 = {
     VxGenerateMipMap32SSE2,
-    VxGenerateMipMap24Rgb888SSSE3,
+    GenerateMipMap24ScalarKernel,
     VxGenerateMipMap16Rgb565SSE2,
     ConvertToNormalMap32CachedSSE2Kernel,
     ConvertToNormalMap24CachedSSSE3Kernel,
