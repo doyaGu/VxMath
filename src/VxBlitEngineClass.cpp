@@ -558,18 +558,33 @@ VxBlitLineFunc VxBlitEngine::GetCopyAlphaFunction(const VxImageDescEx &dst_desc)
 void VxBlitEngine::DoBlit(const VxImageDescEx &src_desc, const VxImageDescEx &dst_desc) {
     VxMutexLock lock(m_Lock);
 
-    // Original binary precondition: only allow if 32-bit OR same dimensions.
-    // Non-32-bit images with different dimensions are rejected.
-    if (src_desc.BitsPerPixel != 32) {
-        if (dst_desc.Width != src_desc.Width || dst_desc.Height != src_desc.Height) {
-            return;
-        }
-    }
-
     if (!src_desc.Image) return;
     if (!dst_desc.Image) return;
     if (src_desc.Width <= 0 || src_desc.Height <= 0) return;
     if (dst_desc.Width <= 0 || dst_desc.Height <= 0) return;
+
+    const bool sizeMismatch = (dst_desc.Width != src_desc.Width || dst_desc.Height != src_desc.Height);
+    if (sizeMismatch && src_desc.BitsPerPixel != 32) {
+        const bool sameFormat = (src_desc.BitsPerPixel == dst_desc.BitsPerPixel &&
+            src_desc.RedMask == dst_desc.RedMask &&
+            src_desc.GreenMask == dst_desc.GreenMask &&
+            src_desc.BlueMask == dst_desc.BlueMask &&
+            src_desc.AlphaMask == dst_desc.AlphaMask);
+        if (!sameFormat) {
+            return;
+        }
+
+        const int bytesPerPixel = src_desc.BitsPerPixel / 8;
+        if (bytesPerPixel == 3) {
+            ResizeBilinear24(src_desc, dst_desc);
+            return;
+        }
+        if (bytesPerPixel > 0 && bytesPerPixel != 4) {
+            ResizeNearestNeighbor(src_desc, dst_desc);
+            return;
+        }
+        return;
+    }
 
     // Truecolor -> paletted conversion goes through quantization and is complete.
     // Do not continue with a second blit pass (it would overwrite palette indices).
