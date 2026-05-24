@@ -907,6 +907,39 @@ TEST_F(ImageManipulationTest, VxGenerateMipMap_16Bit565SimplePattern) {
     EXPECT_EQ(dst_buffer[3], 0xCD);
 }
 
+TEST_F(ImageManipulationTest, VxGenerateMipMap_16Bit565WideBlocks) {
+    VxImageDescEx src_desc;
+    VxPixelFormat2ImageDesc(_16_RGB565, src_desc);
+    src_desc.Width = 8;
+    src_desc.Height = 2;
+    src_desc.BytesPerLine = 8 * 2;
+    src_desc.Image = AllocateBuffer(8 * 2 * 2);
+
+    uint16_t *src = reinterpret_cast<uint16_t *>(src_desc.Image);
+    const uint16_t blocks[4][4] = {
+        {0xF800, 0xF800, 0xF800, 0xF800},
+        {0x07E0, 0x07E0, 0x07E0, 0x07E0},
+        {0x001F, 0x001F, 0x001F, 0x001F},
+        {0x0000, 0xFFFF, 0x0000, 0xFFFF}
+    };
+
+    for (int block = 0; block < 4; ++block) {
+        src[block * 2 + 0] = blocks[block][0];
+        src[block * 2 + 1] = blocks[block][1];
+        src[8 + block * 2 + 0] = blocks[block][2];
+        src[8 + block * 2 + 1] = blocks[block][3];
+    }
+
+    uint8_t *dst_buffer = AllocateBuffer(4 * 2);
+    VxGenerateMipMap(src_desc, dst_buffer);
+
+    uint16_t *dst = reinterpret_cast<uint16_t *>(dst_buffer);
+    EXPECT_EQ(dst[0], 0xF800u);
+    EXPECT_EQ(dst[1], 0x07E0u);
+    EXPECT_EQ(dst[2], 0x001Fu);
+    EXPECT_EQ(dst[3], 0x7BEFu);
+}
+
 TEST_F(ImageManipulationTest, VxResizeImage32_UpScale) {
     VxImageDescEx src_desc, dst_desc;
     VxPixelFormat2ImageDesc(_32_ARGB8888, src_desc);
