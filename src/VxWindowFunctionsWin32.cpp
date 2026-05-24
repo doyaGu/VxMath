@@ -271,7 +271,7 @@ XBOOL VxDeleteDirectory(const char *path) {
 }
 
 XBOOL VxGetCurrentDirectory(char *path) {
-    return getcwd(path, MAX_PATH) != NULL;
+    return getcwd(path, _MAX_PATH) != NULL;
 }
 
 XBOOL VxSetCurrentDirectory(const char *path) {
@@ -284,12 +284,12 @@ XBOOL VxMakePath(char *fullpath, const char *path, const char *file) {
 
     const size_t pathLen = strlen(path);
     const size_t fileLen = strlen(file);
-    if (pathLen >= MAX_PATH)
+    if (pathLen >= _MAX_PATH)
         return FALSE;
 
     const bool needSep = (pathLen > 0 && path[pathLen - 1] != '\\' && path[pathLen - 1] != '/');
     const size_t totalLen = pathLen + (needSep ? 1 : 0) + fileLen;
-    if (totalLen >= MAX_PATH)
+    if (totalLen >= _MAX_PATH)
         return FALSE;
 
     if (pathLen)
