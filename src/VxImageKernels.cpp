@@ -4,7 +4,42 @@
 
 #include "VxImageKernels.h"
 #include "VxBlitEngine.h"
+#include "VxMemory.h"
 #include "VxSIMD.h"
+
+struct VxImageTempBuffer {
+    VxImageTempBuffer() : Data(nullptr), Size(0) {}
+
+    ~VxImageTempBuffer() {
+        Release();
+    }
+
+    XBOOL Allocate(size_t size) {
+        Release();
+        if (size == 0) return FALSE;
+
+        Data = (XBYTE *) VxNewAligned(size, 16);
+        if (!Data) return FALSE;
+
+        Size = size;
+        return TRUE;
+    }
+
+    void Release() {
+        if (Data) {
+            VxDeleteAligned(Data);
+            Data = nullptr;
+        }
+        Size = 0;
+    }
+
+    XBYTE *Data;
+    size_t Size;
+
+private:
+    VxImageTempBuffer(const VxImageTempBuffer &);
+    VxImageTempBuffer &operator=(const VxImageTempBuffer &);
+};
 
 static void AveragePixel24(XBYTE *dst, const XBYTE *p0, const XBYTE *p1) {
     dst[0] = (XBYTE) (((int) p0[0] + p1[0]) >> 1);
@@ -770,6 +805,33 @@ static void WriteBumpMap24Row(
     dst[2] = (XBYTE) (currentLum[width - 2] - currentLum[0]);
 }
 
+static void WriteBumpMap32Row(
+    XBYTE *dstRow,
+    int width,
+    const int *aboveLum,
+    const int *currentLum,
+    const int *belowLum
+) {
+    dstRow[0] = (XBYTE) ((currentLum[0] <= 1) ? 127 : 63);
+    dstRow[1] = (XBYTE) (aboveLum[0] - belowLum[0] + currentLum[width - 1] - belowLum[1]);
+    dstRow[2] = (XBYTE) (currentLum[width - 1] - currentLum[0]);
+    dstRow[3] = 0;
+
+    for (int x = 1; x < width - 1; ++x) {
+        XBYTE *dst = dstRow + x * 4;
+        dst[0] = (XBYTE) ((currentLum[x] <= 1) ? 127 : 63);
+        dst[1] = (XBYTE) (aboveLum[x] - belowLum[x]);
+        dst[2] = (XBYTE) (currentLum[x - 1] - currentLum[x + 1]);
+        dst[3] = 0;
+    }
+
+    XBYTE *dst = dstRow + (width - 1) * 4;
+    dst[0] = (XBYTE) ((currentLum[width - 1] <= 1) ? 127 : 63);
+    dst[1] = (XBYTE) (aboveLum[width - 1] - belowLum[width - 1]);
+    dst[2] = (XBYTE) (currentLum[width - 2] - currentLum[0]);
+    dst[3] = 0;
+}
+
 
 static XBOOL ConvertToBumpMap24Cached(const VxImageDescEx &image) {
     if (image.Image == nullptr) return FALSE;
@@ -782,9 +844,9 @@ static XBOOL ConvertToBumpMap24Cached(const VxImageDescEx &image) {
     }
 
     const size_t imageSize = bytesPerLine * imageHeight;
-    XArray<XBYTE> tempImage;
-    tempImage.Resize(static_cast<int>(imageSize));
-    memcpy(tempImage.Begin(), image.Image, imageSize);
+    VxImageTempBuffer tempImage;
+    if (!tempImage.Allocate(imageSize)) return FALSE;
+    memcpy(tempImage.Data, image.Image, imageSize);
 
     const int Width = image.Width;
     const int Height = image.Height;
@@ -797,10 +859,10 @@ static XBOOL ConvertToBumpMap24Cached(const VxImageDescEx &image) {
     int *belowLum = rows.Row2.Begin();
 
     XBYTE *dstRow = image.Image;
-    XBYTE *lastRow = tempImage.Begin() + BytesPerLine * (Height - 1);
+    XBYTE *lastRow = tempImage.Data + BytesPerLine * (Height - 1);
     FillCachedLuminanceRow(lastRow, Width, 3, aboveLum, NULL);
-    FillCachedLuminanceRow(tempImage.Begin(), Width, 3, currentLum, NULL);
-    FillCachedLuminanceRow((Height > 1) ? (tempImage.Begin() + BytesPerLine) : tempImage.Begin(), Width, 3, belowLum, NULL);
+    FillCachedLuminanceRow(tempImage.Data, Width, 3, currentLum, NULL);
+    FillCachedLuminanceRow((Height > 1) ? (tempImage.Data + BytesPerLine) : tempImage.Data, Width, 3, belowLum, NULL);
 
     for (int y = 0; y < Height; ++y) {
         const int *actualBelowLum = (y != Height - 1) ? belowLum : currentLum;
@@ -810,7 +872,7 @@ static XBOOL ConvertToBumpMap24Cached(const VxImageDescEx &image) {
         if (y + 1 < Height) {
             RotateLuminanceRowsForward(aboveLum, currentLum, belowLum);
             if (y + 2 < Height) {
-                FillCachedLuminanceRow(tempImage.Begin() + (y + 2) * BytesPerLine, Width, 3, belowLum, NULL);
+                FillCachedLuminanceRow(tempImage.Data + (y + 2) * BytesPerLine, Width, 3, belowLum, NULL);
             }
         }
     }
@@ -829,16 +891,16 @@ static XBOOL ConvertToBumpMap24(const VxImageDescEx &image) {
     }
 
     const size_t imageSize = bytesPerLine * imageHeight;
-    XArray<XBYTE> tempImage;
-    tempImage.Resize(static_cast<int>(imageSize));
-    memcpy(tempImage.Begin(), image.Image, imageSize);
+    VxImageTempBuffer tempImage;
+    if (!tempImage.Allocate(imageSize)) return FALSE;
+    memcpy(tempImage.Data, image.Image, imageSize);
 
     const int Width = image.Width;
     const int Height = image.Height;
     const int BytesPerLine = image.BytesPerLine;
-    XBYTE *srcPtr = tempImage.Begin();
+    XBYTE *srcPtr = tempImage.Data;
     XBYTE *dstPtr = image.Image;
-    XBYTE *lastRowPtr = tempImage.Begin() + BytesPerLine * (Height - 1);
+    XBYTE *lastRowPtr = tempImage.Data + BytesPerLine * (Height - 1);
 
     for (int y = 0; y < Height; ++y) {
         XBYTE *abovePtr = (y == 0) ? lastRowPtr : srcPtr - BytesPerLine;
@@ -913,135 +975,44 @@ static XBOOL ConvertToBumpMap32(const VxImageDescEx &image) {
     if (image.Image == nullptr) return FALSE;
     if (image.Width < 2 || image.Height <= 0 || image.BytesPerLine <= 0) return FALSE;
 
-    // Allocate temporary copy of the image
     const size_t bytesPerLine = static_cast<size_t>(image.BytesPerLine);
     const size_t imageHeight = static_cast<size_t>(image.Height);
     if (bytesPerLine > (static_cast<size_t>(-1) / imageHeight)) {
         return FALSE;
     }
 
-    if (bytesPerLine > (static_cast<size_t>(INT_MAX) / imageHeight)) {
-        return FALSE;
-    }
-
     const size_t imageSize = bytesPerLine * imageHeight;
-    XArray<XBYTE> tempImage;
-    tempImage.Resize(static_cast<int>(imageSize));
-    memcpy(tempImage.Begin(), image.Image, imageSize);
+    VxImageTempBuffer tempImage;
+    if (!tempImage.Allocate(imageSize)) return FALSE;
+    memcpy(tempImage.Data, image.Image, imageSize);
 
-    XBYTE *srcPtr = tempImage.Begin();
-    XBYTE *dstPtr = image.Image;
-    int Width = image.Width;
-    int Height = image.Height;
-    int BytesPerLine = image.BytesPerLine;
+    const int Width = image.Width;
+    const int Height = image.Height;
+    const int BytesPerLine = image.BytesPerLine;
 
-    // Calculate pointer to last row of source (for wrap-around)
-    XBYTE *lastRowPtr = tempImage.Begin() + BytesPerLine * (Height - 1);
+    VxLuminanceRowBuffers rows;
+    AllocateLuminanceRows(rows, Width, 3);
+    int *aboveLum = rows.Row0.Begin();
+    int *currentLum = rows.Row1.Begin();
+    int *belowLum = rows.Row2.Begin();
 
-    for (int y = 0; y < Height; y++) {
-        // Get pointer to row above (wrap to last row if at top)
-        XBYTE *abovePtr;
-        if (y == 0) {
-            abovePtr = lastRowPtr;
-        } else {
-            abovePtr = srcPtr - BytesPerLine;
-        }
+    XBYTE *dstRow = image.Image;
+    XBYTE *lastRow = tempImage.Data + BytesPerLine * (Height - 1);
+    FillCachedLuminanceRow(lastRow, Width, 4, aboveLum, NULL);
+    FillCachedLuminanceRow(tempImage.Data, Width, 4, currentLum, NULL);
+    FillCachedLuminanceRow((Height > 1) ? (tempImage.Data + BytesPerLine) : tempImage.Data, Width, 4, belowLum, NULL);
 
-        // Get pointer to row below (use current row if at bottom)
-        XBYTE *belowPtr;
-        if (y != Height - 1) {
-            belowPtr = srcPtr + BytesPerLine;
-        } else {
-            belowPtr = srcPtr; // At last row, reuse current
-        }
+    for (int y = 0; y < Height; ++y) {
+        const int *actualBelowLum = (y != Height - 1) ? belowLum : currentLum;
+        WriteBumpMap32Row(dstRow, Width, aboveLum, currentLum, actualBelowLum);
+        dstRow += BytesPerLine;
 
-        XBYTE *currentPtr = srcPtr + 4; // Point to second pixel in row
-
-        // Calculate left pixel luminance (last pixel of row for wrap)
-        int leftPixel = *(int *) (srcPtr + (Width - 1) * 4);
-        int leftLum = (leftPixel & 0xFF) + ((leftPixel >> 8) & 0xFF) + ((leftPixel >> 16) & 0xFF);
-
-        // Calculate below-left luminance for first pixel
-        int belowVal = *(int *) belowPtr;
-        int belowLum = (belowVal & 0xFF) + ((belowVal >> 8) & 0xFF) + ((belowVal >> 16) & 0xFF);
-
-        // Calculate above luminance for first pixel
-        int aboveVal = *(int *) abovePtr;
-        int aboveLum = (aboveVal & 0xFF) + ((aboveVal >> 8) & 0xFF) + ((aboveVal >> 16) & 0xFF);
-
-        // Calculate current pixel luminance
-        int currVal = *(int *) srcPtr;
-        int currLum = (currVal & 0xFF) + ((currVal >> 8) & 0xFF) + ((currVal >> 16) & 0xFF);
-
-        // Calculate right pixel luminance
-        int rightVal = *(int *) (belowPtr + 4);
-        int rightLum = (rightVal & 0xFF) + ((rightVal >> 8) & 0xFF) + ((rightVal >> 16) & 0xFF);
-
-        // First pixel of row
-        *dstPtr = (currLum <= 1) ? 127 : 63;
-        dstPtr[1] = (XBYTE) (aboveLum - belowLum + leftLum - rightLum);
-        dstPtr[2] = (XBYTE) (leftLum - currLum);
-        dstPtr[3] = 0;
-        dstPtr += 4;
-
-        belowPtr += 4;
-        abovePtr += 4;
-
-        {
-            // Scalar middle pixels
-            for (unsigned int x = 1; x < (unsigned int) (Width - 1); x++) {
-                // Get values
-                leftPixel = *(int *) (currentPtr - 4);
-                leftLum = (leftPixel & 0xFF) + ((leftPixel >> 8) & 0xFF) + ((leftPixel >> 16) & 0xFF);
-
-                int nextRightVal = *(int *) (currentPtr + 4);
-                int nextRightLum = (nextRightVal & 0xFF) + ((nextRightVal >> 8) & 0xFF) + ((nextRightVal >> 16) & 0xFF);
-
-                currVal = *(int *) currentPtr;
-                currLum = (currVal & 0xFF) + ((currVal >> 8) & 0xFF) + ((currVal >> 16) & 0xFF);
-
-                belowVal = *(int *) belowPtr;
-                belowLum = (belowVal & 0xFF) + ((belowVal >> 8) & 0xFF) + ((belowVal >> 16) & 0xFF);
-
-                aboveVal = *(int *) abovePtr;
-                aboveLum = (aboveVal & 0xFF) + ((aboveVal >> 8) & 0xFF) + ((aboveVal >> 16) & 0xFF);
-
-                *dstPtr = (currLum <= 1) ? 127 : 63;
-                dstPtr[1] = (XBYTE) (aboveLum - belowLum);
-                dstPtr[2] = (XBYTE) (leftLum - nextRightLum);
-                dstPtr[3] = 0;
-
-                currentPtr += 4;
-                belowPtr += 4;
-                abovePtr += 4;
-                dstPtr += 4;
+        if (y + 1 < Height) {
+            RotateLuminanceRowsForward(aboveLum, currentLum, belowLum);
+            if (y + 2 < Height) {
+                FillCachedLuminanceRow(tempImage.Data + (y + 2) * BytesPerLine, Width, 4, belowLum, NULL);
             }
         }
-
-        // Last pixel of row
-        leftPixel = *(int *) (srcPtr + (Width - 2) * 4);
-        leftLum = (leftPixel & 0xFF) + ((leftPixel >> 8) & 0xFF) + ((leftPixel >> 16) & 0xFF);
-
-        // Right pixel wraps to first pixel
-        int firstVal = *(int *) srcPtr;
-        int firstLum = (firstVal & 0xFF) + ((firstVal >> 8) & 0xFF) + ((firstVal >> 16) & 0xFF);
-
-        currVal = *(int *) currentPtr;
-        currLum = (currVal & 0xFF) + ((currVal >> 8) & 0xFF) + ((currVal >> 16) & 0xFF);
-
-        belowVal = *(int *) belowPtr;
-        belowLum = (belowVal & 0xFF) + ((belowVal >> 8) & 0xFF) + ((belowVal >> 16) & 0xFF);
-
-        aboveVal = *(int *) abovePtr;
-        aboveLum = (aboveVal & 0xFF) + ((aboveVal >> 8) & 0xFF) + ((aboveVal >> 16) & 0xFF);
-
-        *dstPtr = (currLum <= 1) ? 127 : 63;
-        dstPtr[1] = (XBYTE) (aboveLum - belowLum);
-        dstPtr[2] = (XBYTE) (leftLum - firstLum);
-        dstPtr[3] = 0;
-        dstPtr += 4;
-
-        srcPtr += BytesPerLine;
     }
 
     return TRUE;
