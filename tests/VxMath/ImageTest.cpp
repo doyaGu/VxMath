@@ -822,6 +822,31 @@ TEST_F(ImageManipulationTest, VxGenerateMipMap_24BitSimplePattern) {
     EXPECT_EQ(dst_buffer[3], 0xCD);
 }
 
+TEST_F(ImageManipulationTest, VxGenerateMipMap_16Bit565SimplePattern) {
+    VxImageDescEx src_desc;
+    VxPixelFormat2ImageDesc(_16_RGB565, src_desc);
+    src_desc.Width = 2;
+    src_desc.Height = 2;
+    src_desc.BytesPerLine = 2 * 2;
+    src_desc.Image = AllocateBuffer(2 * 2 * 2);
+
+    uint16_t *src = reinterpret_cast<uint16_t *>(src_desc.Image);
+    src[0] = 0xF800;
+    src[1] = 0x07E0;
+    src[2] = 0x001F;
+    src[3] = 0xFFFF;
+
+    uint8_t *dst_buffer = AllocateBuffer(4);
+    dst_buffer[2] = 0xCD;
+    dst_buffer[3] = 0xCD;
+    VxGenerateMipMap(src_desc, dst_buffer);
+
+    uint16_t *dst = reinterpret_cast<uint16_t *>(dst_buffer);
+    EXPECT_EQ(dst[0], 0x7BEFu);
+    EXPECT_EQ(dst_buffer[2], 0xCD);
+    EXPECT_EQ(dst_buffer[3], 0xCD);
+}
+
 TEST_F(ImageManipulationTest, VxResizeImage32_UpScale) {
     VxImageDescEx src_desc, dst_desc;
     VxPixelFormat2ImageDesc(_32_ARGB8888, src_desc);
