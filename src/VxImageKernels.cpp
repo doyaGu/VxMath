@@ -289,6 +289,11 @@ struct VxImageKernelBackend {
     VxImageBumpKernelFn Bump24;
 };
 
+static XBOOL ConvertToBumpMap32(const VxImageDescEx &image);
+static XBOOL ConvertToBumpMap24ScalarKernel(const VxImageDescEx &image);
+static XBOOL ConvertToBumpMap24CachedKernel(const VxImageDescEx &image);
+static XBOOL ConvertToBumpMap32ScalarKernel(const VxImageDescEx &image);
+
 static XBOOL GenerateMipMap24ScalarKernel(const VxImageDescEx &src_desc, XBYTE *Buffer) {
     if (src_desc.BitsPerPixel != 24) return FALSE;
     GenerateMipMap24(src_desc, Buffer);
@@ -307,8 +312,8 @@ static const VxImageKernelBackend kVxImageBackendScalar = {
     GenerateMipMap16Rgb565ScalarKernel,
     NULL,
     NULL,
-    NULL,
-    NULL
+    ConvertToBumpMap32ScalarKernel,
+    ConvertToBumpMap24ScalarKernel
 };
 
 static const VxImageKernelBackend kVxImageBackendSSE2 = {
@@ -317,8 +322,8 @@ static const VxImageKernelBackend kVxImageBackendSSE2 = {
     VxGenerateMipMap16Rgb565SSE2,
     NULL,
     NULL,
-    NULL,
-    NULL
+    ConvertToBumpMap32ScalarKernel,
+    ConvertToBumpMap24CachedKernel
 };
 
 static const VxImageKernelBackend kVxImageBackendSSSE3 = {
@@ -327,8 +332,8 @@ static const VxImageKernelBackend kVxImageBackendSSSE3 = {
     VxGenerateMipMap16Rgb565SSE2,
     NULL,
     NULL,
-    NULL,
-    NULL
+    ConvertToBumpMap32ScalarKernel,
+    ConvertToBumpMap24CachedKernel
 };
 
 static const VxImageKernelBackend kVxImageBackendAVX2 = {
@@ -337,8 +342,8 @@ static const VxImageKernelBackend kVxImageBackendAVX2 = {
     VxGenerateMipMap16Rgb565SSE2,
     NULL,
     NULL,
-    NULL,
-    NULL
+    ConvertToBumpMap32ScalarKernel,
+    ConvertToBumpMap24CachedKernel
 };
 
 static const VxImageKernelBackend *GetVxImageBackend(int simdMode) {
@@ -635,10 +640,7 @@ static XBOOL ConvertToBumpMap24Cached(const VxImageDescEx &image) {
     return TRUE;
 }
 
-static XBOOL ConvertToBumpMap24(const VxImageDescEx &image, int simdMode) {
-    if (simdMode != VX_SIMD_MODE_NONE) {
-        return ConvertToBumpMap24Cached(image);
-    }
+static XBOOL ConvertToBumpMap24(const VxImageDescEx &image) {
     if (image.Image == nullptr) return FALSE;
     if (image.Width < 2 || image.Height <= 0 || image.BytesPerLine <= 0) return FALSE;
 
@@ -713,12 +715,25 @@ static XBOOL ConvertToBumpMap24(const VxImageDescEx &image, int simdMode) {
     return TRUE;
 }
 
-XBOOL VxConvertToBumpMapKernel(const VxImageDescEx &image, int simdMode) {
-    if (image.BitsPerPixel == 24) return ConvertToBumpMap24(image, simdMode);
+static XBOOL ConvertToBumpMap24ScalarKernel(const VxImageDescEx &image) {
+    if (image.BitsPerPixel != 24) return FALSE;
+    return ConvertToBumpMap24(image);
+}
+
+static XBOOL ConvertToBumpMap24CachedKernel(const VxImageDescEx &image) {
+    if (image.BitsPerPixel != 24) return FALSE;
+    return ConvertToBumpMap24Cached(image);
+}
+
+static XBOOL ConvertToBumpMap32ScalarKernel(const VxImageDescEx &image) {
+    if (image.BitsPerPixel != 32) return FALSE;
+    return ConvertToBumpMap32(image);
+}
+
+static XBOOL ConvertToBumpMap32(const VxImageDescEx &image) {
     if (image.BitsPerPixel != 32) return FALSE;
     if (image.Image == nullptr) return FALSE;
     if (image.Width < 2 || image.Height <= 0 || image.BytesPerLine <= 0) return FALSE;
-    (void) simdMode;
 
     // Allocate temporary copy of the image
     const size_t bytesPerLine = static_cast<size_t>(image.BytesPerLine);
@@ -852,6 +867,22 @@ XBOOL VxConvertToBumpMapKernel(const VxImageDescEx &image, int simdMode) {
     }
 
     return TRUE;
+}
+
+XBOOL VxConvertToBumpMapKernel(const VxImageDescEx &image, int simdMode) {
+    const VxImageKernelBackend *backend = GetVxImageBackend(simdMode);
+
+    if (image.BitsPerPixel == 24) {
+        if (backend->Bump24 && backend->Bump24(image)) return TRUE;
+        return ConvertToBumpMap24(image);
+    }
+
+    if (image.BitsPerPixel == 32) {
+        if (backend->Bump32 && backend->Bump32(image)) return TRUE;
+        return ConvertToBumpMap32(image);
+    }
+
+    return FALSE;
 }
 
 
