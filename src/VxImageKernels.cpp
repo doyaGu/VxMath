@@ -596,7 +596,33 @@ static void FillLuminance32Row(const XBYTE *row, int width, int *luminance) {
 
 typedef XBOOL (*VxFillLuminanceKernelFn)(const XBYTE *, int, int *);
 
-static void FillNormalLuminanceRow(
+struct VxLuminanceRowBuffers {
+    XArray<int> Row0;
+    XArray<int> Row1;
+    XArray<int> Row2;
+};
+
+static XBOOL AllocateLuminanceRows(VxLuminanceRowBuffers &rows, int width, int count) {
+    if (count > 0) rows.Row0.Resize(width);
+    if (count > 1) rows.Row1.Resize(width);
+    if (count > 2) rows.Row2.Resize(width);
+    return TRUE;
+}
+
+static void SwapLuminanceRows(int *&a, int *&b) {
+    int *tmp = a;
+    a = b;
+    b = tmp;
+}
+
+static void RotateLuminanceRowsForward(int *&above, int *&current, int *&below) {
+    int *oldAbove = above;
+    above = current;
+    current = below;
+    below = oldAbove;
+}
+
+static void FillCachedLuminanceRow(
     const XBYTE *row,
     int width,
     int bytesPerPixel,
@@ -651,26 +677,22 @@ static XBOOL ConvertToNormalMapLuminanceCached(
         return TRUE;
     }
 
-    XArray<int> rowA;
-    XArray<int> rowB;
-    rowA.Resize(image.Width);
-    rowB.Resize(image.Width);
+    VxLuminanceRowBuffers rows;
+    AllocateLuminanceRows(rows, image.Width, 2);
 
-    int *currentLum = rowA.Begin();
-    int *belowLum = rowB.Begin();
-    FillNormalLuminanceRow(image.Image, image.Width, bytesPerPixel, currentLum, fillLuminance);
-    FillNormalLuminanceRow(image.Image + image.BytesPerLine, image.Width, bytesPerPixel, belowLum, fillLuminance);
+    int *currentLum = rows.Row0.Begin();
+    int *belowLum = rows.Row1.Begin();
+    FillCachedLuminanceRow(image.Image, image.Width, bytesPerPixel, currentLum, fillLuminance);
+    FillCachedLuminanceRow(image.Image + image.BytesPerLine, image.Width, bytesPerPixel, belowLum, fillLuminance);
 
     for (int y = 0; y < image.Height - 1; ++y) {
         XBYTE *dstRow = image.Image + y * image.BytesPerLine;
         ConvertNormalLuminanceRows(dstRow, image.Width, bytesPerPixel, currentLum, belowLum);
 
-        int *tmp = currentLum;
-        currentLum = belowLum;
-        belowLum = tmp;
+        SwapLuminanceRows(currentLum, belowLum);
 
         if (y + 2 < image.Height) {
-            FillNormalLuminanceRow(
+            FillCachedLuminanceRow(
                 image.Image + (y + 2) * image.BytesPerLine,
                 image.Width,
                 bytesPerPixel,
@@ -724,6 +746,30 @@ XBOOL VxConvertToNormalMapKernel(const VxImageDescEx &image, XDWORD ColorMask, i
     return FALSE;
 }
 
+static void WriteBumpMap24Row(
+    XBYTE *dstRow,
+    int width,
+    const int *aboveLum,
+    const int *currentLum,
+    const int *belowLum
+) {
+    dstRow[0] = (XBYTE) ((currentLum[0] <= 1) ? 127 : 63);
+    dstRow[1] = (XBYTE) (aboveLum[0] - belowLum[0] + currentLum[width - 1] - belowLum[1]);
+    dstRow[2] = (XBYTE) (currentLum[width - 1] - currentLum[0]);
+
+    for (int x = 1; x < width - 1; ++x) {
+        XBYTE *dst = dstRow + x * 3;
+        dst[0] = (XBYTE) ((currentLum[x] <= 1) ? 127 : 63);
+        dst[1] = (XBYTE) (aboveLum[x] - belowLum[x]);
+        dst[2] = (XBYTE) (currentLum[x - 1] - currentLum[x + 1]);
+    }
+
+    XBYTE *dst = dstRow + (width - 1) * 3;
+    dst[0] = (XBYTE) ((currentLum[width - 1] <= 1) ? 127 : 63);
+    dst[1] = (XBYTE) (aboveLum[width - 1] - belowLum[width - 1]);
+    dst[2] = (XBYTE) (currentLum[width - 2] - currentLum[0]);
+}
+
 
 static XBOOL ConvertToBumpMap24Cached(const VxImageDescEx &image) {
     if (image.Image == nullptr) return FALSE;
@@ -744,41 +790,29 @@ static XBOOL ConvertToBumpMap24Cached(const VxImageDescEx &image) {
     const int Height = image.Height;
     const int BytesPerLine = image.BytesPerLine;
 
-    XArray<int> aboveLum;
-    XArray<int> currentLum;
-    XArray<int> belowLum;
-    aboveLum.Resize(Width);
-    currentLum.Resize(Width);
-    belowLum.Resize(Width);
+    VxLuminanceRowBuffers rows;
+    AllocateLuminanceRows(rows, Width, 3);
+    int *aboveLum = rows.Row0.Begin();
+    int *currentLum = rows.Row1.Begin();
+    int *belowLum = rows.Row2.Begin();
 
     XBYTE *dstRow = image.Image;
     XBYTE *lastRow = tempImage.Begin() + BytesPerLine * (Height - 1);
+    FillCachedLuminanceRow(lastRow, Width, 3, aboveLum, NULL);
+    FillCachedLuminanceRow(tempImage.Begin(), Width, 3, currentLum, NULL);
+    FillCachedLuminanceRow((Height > 1) ? (tempImage.Begin() + BytesPerLine) : tempImage.Begin(), Width, 3, belowLum, NULL);
+
     for (int y = 0; y < Height; ++y) {
-        XBYTE *srcRow = tempImage.Begin() + y * BytesPerLine;
-        XBYTE *aboveRow = (y == 0) ? lastRow : srcRow - BytesPerLine;
-        XBYTE *belowRow = (y != Height - 1) ? srcRow + BytesPerLine : srcRow;
-
-        FillLuminance24Row(aboveRow, Width, aboveLum.Begin());
-        FillLuminance24Row(srcRow, Width, currentLum.Begin());
-        FillLuminance24Row(belowRow, Width, belowLum.Begin());
-
-        dstRow[0] = (XBYTE) ((currentLum[0] <= 1) ? 127 : 63);
-        dstRow[1] = (XBYTE) (aboveLum[0] - belowLum[0] + currentLum[Width - 1] - belowLum[1]);
-        dstRow[2] = (XBYTE) (currentLum[Width - 1] - currentLum[0]);
-
-        for (int x = 1; x < Width - 1; ++x) {
-            XBYTE *dst = dstRow + x * 3;
-            dst[0] = (XBYTE) ((currentLum[x] <= 1) ? 127 : 63);
-            dst[1] = (XBYTE) (aboveLum[x] - belowLum[x]);
-            dst[2] = (XBYTE) (currentLum[x - 1] - currentLum[x + 1]);
-        }
-
-        XBYTE *dst = dstRow + (Width - 1) * 3;
-        dst[0] = (XBYTE) ((currentLum[Width - 1] <= 1) ? 127 : 63);
-        dst[1] = (XBYTE) (aboveLum[Width - 1] - belowLum[Width - 1]);
-        dst[2] = (XBYTE) (currentLum[Width - 2] - currentLum[0]);
-
+        const int *actualBelowLum = (y != Height - 1) ? belowLum : currentLum;
+        WriteBumpMap24Row(dstRow, Width, aboveLum, currentLum, actualBelowLum);
         dstRow += BytesPerLine;
+
+        if (y + 1 < Height) {
+            RotateLuminanceRowsForward(aboveLum, currentLum, belowLum);
+            if (y + 2 < Height) {
+                FillCachedLuminanceRow(tempImage.Begin() + (y + 2) * BytesPerLine, Width, 3, belowLum, NULL);
+            }
+        }
     }
 
     return TRUE;
