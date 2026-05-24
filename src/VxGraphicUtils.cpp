@@ -275,71 +275,139 @@ static void GenerateMipMap24(const VxImageDescEx &src_desc, XBYTE *Buffer) {
     }
 }
 
-static XDWORD ExtractMaskedComponent(XWORD pixel, XDWORD mask) {
-    if (!mask) return 0;
-    return (pixel & mask) >> GetBitShift(mask);
+struct PixelChannel16 {
+    XWORD Mask;
+    XBYTE Shift;
+};
+
+struct PixelLayout16 {
+    PixelChannel16 Channels[4];
+    int Count;
+};
+
+static void AddPixelChannel16(PixelLayout16 &layout, XDWORD mask) {
+    if (!mask) return;
+    layout.Channels[layout.Count].Mask = (XWORD) mask;
+    layout.Channels[layout.Count].Shift = (XBYTE) GetBitShift(mask);
+    ++layout.Count;
 }
 
-static XDWORD PackMaskedComponent(XDWORD value, XDWORD mask) {
-    if (!mask) return 0;
-    return (value << GetBitShift(mask)) & mask;
+static PixelLayout16 BuildPixelLayout16(const VxImageDescEx &desc) {
+    PixelLayout16 layout = {};
+    AddPixelChannel16(layout, desc.RedMask);
+    AddPixelChannel16(layout, desc.GreenMask);
+    AddPixelChannel16(layout, desc.BlueMask);
+    AddPixelChannel16(layout, desc.AlphaMask);
+    return layout;
 }
 
-static XWORD AveragePixel16(const VxImageDescEx &src_desc, XWORD p0, XWORD p1) {
+static XBOOL IsRgb565(const VxImageDescEx &desc) {
+    return desc.BitsPerPixel == 16 &&
+        desc.RedMask == 0xF800 &&
+        desc.GreenMask == 0x07E0 &&
+        desc.BlueMask == 0x001F &&
+        desc.AlphaMask == 0;
+}
+
+static XDWORD ExtractMaskedComponent(XWORD pixel, const PixelChannel16 &channel) {
+    return (pixel & channel.Mask) >> channel.Shift;
+}
+
+static XDWORD PackMaskedComponent(XDWORD value, const PixelChannel16 &channel) {
+    return (value << channel.Shift) & channel.Mask;
+}
+
+static XWORD AveragePixel16(const PixelLayout16 &layout, XWORD p0, XWORD p1) {
     XWORD result = 0;
-    const XDWORD masks[] = {
-        src_desc.RedMask,
-        src_desc.GreenMask,
-        src_desc.BlueMask,
-        src_desc.AlphaMask
-    };
-
-    for (XDWORD mask : masks) {
-        if (!mask) continue;
-        const XDWORD avg = (ExtractMaskedComponent(p0, mask) + ExtractMaskedComponent(p1, mask)) >> 1;
-        result = (XWORD) (result | PackMaskedComponent(avg, mask));
+    for (int i = 0; i < layout.Count; ++i) {
+        const PixelChannel16 &channel = layout.Channels[i];
+        const XDWORD avg = (ExtractMaskedComponent(p0, channel) + ExtractMaskedComponent(p1, channel)) >> 1;
+        result = (XWORD) (result | PackMaskedComponent(avg, channel));
     }
 
     return result;
 }
 
-static XWORD AveragePixel16(const VxImageDescEx &src_desc, XWORD p0, XWORD p1, XWORD p2, XWORD p3) {
+static XWORD AveragePixel16(const PixelLayout16 &layout, XWORD p0, XWORD p1, XWORD p2, XWORD p3) {
     XWORD result = 0;
-    const XDWORD masks[] = {
-        src_desc.RedMask,
-        src_desc.GreenMask,
-        src_desc.BlueMask,
-        src_desc.AlphaMask
-    };
-
-    for (XDWORD mask : masks) {
-        if (!mask) continue;
+    for (int i = 0; i < layout.Count; ++i) {
+        const PixelChannel16 &channel = layout.Channels[i];
         const XDWORD avg = (
-            ExtractMaskedComponent(p0, mask) +
-            ExtractMaskedComponent(p1, mask) +
-            ExtractMaskedComponent(p2, mask) +
-            ExtractMaskedComponent(p3, mask)
+            ExtractMaskedComponent(p0, channel) +
+            ExtractMaskedComponent(p1, channel) +
+            ExtractMaskedComponent(p2, channel) +
+            ExtractMaskedComponent(p3, channel)
         ) >> 2;
-        result = (XWORD) (result | PackMaskedComponent(avg, mask));
+        result = (XWORD) (result | PackMaskedComponent(avg, channel));
     }
 
     return result;
 }
 
-static void GenerateMipMap16(const VxImageDescEx &src_desc, XBYTE *Buffer) {
+#if defined(VX_SIMD_SSE2)
+static void StoreRgb565Averages4(XWORD *dst, __m128i red, __m128i green, __m128i blue) {
+    __m128i pixels = _mm_or_si128(_mm_slli_epi32(red, 11), _mm_slli_epi32(green, 5));
+    pixels = _mm_or_si128(pixels, blue);
+
+    alignas(16) XDWORD packed[4];
+    _mm_store_si128((__m128i *) packed, pixels);
+    dst[0] = (XWORD) packed[0];
+    dst[1] = (XWORD) packed[1];
+    dst[2] = (XWORD) packed[2];
+    dst[3] = (XWORD) packed[3];
+}
+
+static void AverageRgb565Horizontal4(const XWORD *src, XWORD *dst) {
+    const __m128i pixels = _mm_loadu_si128((const __m128i *) src);
+    const __m128i ones = _mm_set1_epi16(1);
+    const __m128i red = _mm_srli_epi16(_mm_and_si128(pixels, _mm_set1_epi16((short) 0xF800)), 11);
+    const __m128i green = _mm_srli_epi16(_mm_and_si128(pixels, _mm_set1_epi16(0x07E0)), 5);
+    const __m128i blue = _mm_and_si128(pixels, _mm_set1_epi16(0x001F));
+
+    StoreRgb565Averages4(
+        dst,
+        _mm_srli_epi32(_mm_madd_epi16(red, ones), 1),
+        _mm_srli_epi32(_mm_madd_epi16(green, ones), 1),
+        _mm_srli_epi32(_mm_madd_epi16(blue, ones), 1)
+    );
+}
+
+static void AverageRgb565Block4(const XWORD *row0, const XWORD *row1, XWORD *dst) {
+    const __m128i pixels0 = _mm_loadu_si128((const __m128i *) row0);
+    const __m128i pixels1 = _mm_loadu_si128((const __m128i *) row1);
+    const __m128i ones = _mm_set1_epi16(1);
+
+    const __m128i red0 = _mm_srli_epi16(_mm_and_si128(pixels0, _mm_set1_epi16((short) 0xF800)), 11);
+    const __m128i red1 = _mm_srli_epi16(_mm_and_si128(pixels1, _mm_set1_epi16((short) 0xF800)), 11);
+    const __m128i green0 = _mm_srli_epi16(_mm_and_si128(pixels0, _mm_set1_epi16(0x07E0)), 5);
+    const __m128i green1 = _mm_srli_epi16(_mm_and_si128(pixels1, _mm_set1_epi16(0x07E0)), 5);
+    const __m128i blue0 = _mm_and_si128(pixels0, _mm_set1_epi16(0x001F));
+    const __m128i blue1 = _mm_and_si128(pixels1, _mm_set1_epi16(0x001F));
+
+    StoreRgb565Averages4(
+        dst,
+        _mm_srli_epi32(_mm_add_epi32(_mm_madd_epi16(red0, ones), _mm_madd_epi16(red1, ones)), 2),
+        _mm_srli_epi32(_mm_add_epi32(_mm_madd_epi16(green0, ones), _mm_madd_epi16(green1, ones)), 2),
+        _mm_srli_epi32(_mm_add_epi32(_mm_madd_epi16(blue0, ones), _mm_madd_epi16(blue1, ones)), 2)
+    );
+}
+#endif
+
+static void GenerateMipMap16(const VxImageDescEx &src_desc, XBYTE *Buffer, bool useSIMD) {
     const int height = src_desc.Height;
     const int bytesPerLine = src_desc.BytesPerLine;
     XBYTE *image = src_desc.Image;
 
     const int dstWidth = src_desc.Width >> 1;
     const int dstHeight = height >> 1;
+    const PixelLayout16 layout = BuildPixelLayout16(src_desc);
 
     if (dstWidth == 0) {
         if (dstHeight) {
             XWORD *dst = (XWORD *) Buffer;
             XBYTE *src = image;
             for (int y = 0; y < dstHeight; ++y) {
-                *dst++ = AveragePixel16(src_desc, *(XWORD *) src, *(XWORD *) (src + bytesPerLine));
+                *dst++ = AveragePixel16(layout, *(XWORD *) src, *(XWORD *) (src + bytesPerLine));
                 src += bytesPerLine * 2;
             }
         }
@@ -349,9 +417,18 @@ static void GenerateMipMap16(const VxImageDescEx &src_desc, XBYTE *Buffer) {
     if (dstHeight == 0) {
         XWORD *dst = (XWORD *) Buffer;
         XWORD *src = (XWORD *) image;
-        for (int x = 0; x < dstWidth; ++x) {
-            *dst++ = AveragePixel16(src_desc, src[0], src[1]);
-            src += 2;
+
+        int x = 0;
+#if defined(VX_SIMD_SSE2)
+        if (useSIMD && IsRgb565(src_desc)) {
+            for (; x + 4 <= dstWidth; x += 4) {
+                AverageRgb565Horizontal4(src + x * 2, dst + x);
+            }
+        }
+#endif
+        for (; x < dstWidth; ++x) {
+            XWORD *pixel = src + x * 2;
+            dst[x] = AveragePixel16(layout, pixel[0], pixel[1]);
         }
         return;
     }
@@ -360,11 +437,21 @@ static void GenerateMipMap16(const VxImageDescEx &src_desc, XBYTE *Buffer) {
     for (int y = 0; y < dstHeight; ++y) {
         XBYTE *row0 = image + y * 2 * bytesPerLine;
         XBYTE *row1 = row0 + bytesPerLine;
-        for (int x = 0; x < dstWidth; ++x) {
+
+        int x = 0;
+#if defined(VX_SIMD_SSE2)
+        if (useSIMD && IsRgb565(src_desc)) {
+            for (; x + 4 <= dstWidth; x += 4) {
+                AverageRgb565Block4((XWORD *) (row0 + x * 4), (XWORD *) (row1 + x * 4), dst + x);
+            }
+        }
+#endif
+        for (; x < dstWidth; ++x) {
             XWORD *p0 = (XWORD *) (row0 + x * 4);
             XWORD *p2 = (XWORD *) (row1 + x * 4);
-            *dst++ = AveragePixel16(src_desc, p0[0], p0[1], p2[0], p2[1]);
+            dst[x] = AveragePixel16(layout, p0[0], p0[1], p2[0], p2[1]);
         }
+        dst += dstWidth;
     }
 }
 
@@ -375,7 +462,7 @@ static void GenerateMipMapImpl(const VxImageDescEx &src_desc, XBYTE *Buffer, boo
     }
 
     if (src_desc.BitsPerPixel == 16) {
-        GenerateMipMap16(src_desc, Buffer);
+        GenerateMipMap16(src_desc, Buffer, useSIMD);
         return;
     }
 
