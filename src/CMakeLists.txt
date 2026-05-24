@@ -64,6 +64,7 @@ set(VXMATH_PRIVATE_HEADERS
         VxEigenMatrix.h
         VxBlitEngine.h
         VxBlitInternal.h
+        VxImageKernels.h
         NeuQuant.h
 )
 
@@ -72,6 +73,8 @@ set(VXMATH_COMMON_SOURCES
         VxSIMDDispatch.cpp
         VxBlitDispatchBridge.cpp
         VxGraphicUtils.cpp
+        VxImageKernels.cpp
+        VxImageKernelsSSE2.cpp
         VxBlitKernels.cpp
         VxBlitEngineSSE2.cpp
         VxBlitEngineSSSE3.cpp
@@ -130,7 +133,7 @@ if (VXMATH_ENABLE_SIMD AND NOT VXMATH_EFFECTIVE_SIMD_LEVEL STREQUAL "NONE")
         check_cxx_compiler_flag("-mssse3" VXMATH_HAS_MSSSE3_FLAG)
         if (VXMATH_HAS_MSSSE3_FLAG)
             set_property(
-                    SOURCE VxBlitEngineSSSE3.cpp
+                    SOURCE VxBlitEngineSSSE3.cpp VxImageKernelsSSE2.cpp
                     APPEND PROPERTY COMPILE_OPTIONS "-mssse3"
             )
         endif ()
