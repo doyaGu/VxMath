@@ -882,6 +882,41 @@ TEST_F(ImageManipulationTest, VxGenerateMipMap_24BitSimplePattern) {
     EXPECT_EQ(dst_buffer[3], 0xCD);
 }
 
+TEST_F(ImageManipulationTest, VxGenerateMipMap_24BitWideBlocksWithTail) {
+    VxImageDescEx src_desc;
+    VxPixelFormat2ImageDesc(_24_RGB888, src_desc);
+    src_desc.Width = 18;
+    src_desc.Height = 2;
+    src_desc.BytesPerLine = 18 * 3;
+    src_desc.Image = AllocateBuffer(18 * 2 * 3);
+
+    const uint8_t expected[9][3] = {
+        {3, 11, 19}, {23, 31, 39}, {43, 51, 59},
+        {63, 71, 79}, {83, 91, 99}, {103, 111, 119},
+        {123, 131, 139}, {143, 151, 159}, {163, 171, 179}
+    };
+
+    for (int block = 0; block < 9; ++block) {
+        for (int y = 0; y < 2; ++y) {
+            for (int x = 0; x < 2; ++x) {
+                uint8_t *pixel = src_desc.Image + y * src_desc.BytesPerLine + (block * 2 + x) * 3;
+                pixel[0] = expected[block][0];
+                pixel[1] = expected[block][1];
+                pixel[2] = expected[block][2];
+            }
+        }
+    }
+
+    uint8_t *dst_buffer = AllocateBuffer(9 * 3);
+    VxGenerateMipMap(src_desc, dst_buffer);
+
+    for (int block = 0; block < 9; ++block) {
+        EXPECT_EQ(dst_buffer[block * 3 + 0], expected[block][0]) << "B at block " << block;
+        EXPECT_EQ(dst_buffer[block * 3 + 1], expected[block][1]) << "G at block " << block;
+        EXPECT_EQ(dst_buffer[block * 3 + 2], expected[block][2]) << "R at block " << block;
+    }
+}
+
 TEST_F(ImageManipulationTest, VxGenerateMipMap_16Bit565SimplePattern) {
     VxImageDescEx src_desc;
     VxPixelFormat2ImageDesc(_16_RGB565, src_desc);
@@ -903,6 +938,31 @@ TEST_F(ImageManipulationTest, VxGenerateMipMap_16Bit565SimplePattern) {
 
     uint16_t *dst = reinterpret_cast<uint16_t *>(dst_buffer);
     EXPECT_EQ(dst[0], 0x7BEFu);
+    EXPECT_EQ(dst_buffer[2], 0xCD);
+    EXPECT_EQ(dst_buffer[3], 0xCD);
+}
+
+TEST_F(ImageManipulationTest, VxGenerateMipMap_16BitRGB555UsesGenericLayout) {
+    VxImageDescEx src_desc;
+    VxPixelFormat2ImageDesc(_16_RGB555, src_desc);
+    src_desc.Width = 2;
+    src_desc.Height = 2;
+    src_desc.BytesPerLine = 2 * 2;
+    src_desc.Image = AllocateBuffer(2 * 2 * 2);
+
+    uint16_t *src = reinterpret_cast<uint16_t *>(src_desc.Image);
+    src[0] = 0x7C00;
+    src[1] = 0x03E0;
+    src[2] = 0x001F;
+    src[3] = 0x7FFF;
+
+    uint8_t *dst_buffer = AllocateBuffer(4);
+    dst_buffer[2] = 0xCD;
+    dst_buffer[3] = 0xCD;
+    VxGenerateMipMap(src_desc, dst_buffer);
+
+    uint16_t *dst = reinterpret_cast<uint16_t *>(dst_buffer);
+    EXPECT_EQ(dst[0], 0x3DEFu);
     EXPECT_EQ(dst_buffer[2], 0xCD);
     EXPECT_EQ(dst_buffer[3], 0xCD);
 }

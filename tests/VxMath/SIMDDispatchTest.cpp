@@ -1017,6 +1017,102 @@ TEST(SIMDDispatchTest, ConvertToNormalMapSingleRowIsStable) {
     EXPECT_EQ(0, std::memcmp(imagePixels.data(), baseline.data(), baseline.size() * sizeof(XDWORD)));
 }
 
+TEST(SIMDDispatchTest, GenerateMipMapImageBackendsMatchScalar) {
+    struct ScopedSIMDOverride {
+        ScopedSIMDOverride() : previousMode(VxGetSIMDOverride()) {}
+        ~ScopedSIMDOverride() { VxSetSIMDOverride(previousMode); }
+        int previousMode;
+    } scopedOverride;
+
+    auto makeDesc = [](VX_PIXELFORMAT format, int width, int height, XBYTE *image) {
+        VxImageDescEx desc;
+        VxPixelFormat2ImageDesc(format, desc);
+        desc.Width = width;
+        desc.Height = height;
+        desc.BytesPerLine = width * (desc.BitsPerPixel / 8);
+        desc.Image = image;
+        return desc;
+    };
+
+    auto runCase = [&](VX_PIXELFORMAT format, int width, int height) {
+        VxImageDescEx probe;
+        VxPixelFormat2ImageDesc(format, probe);
+        const int bytesPerPixel = probe.BitsPerPixel / 8;
+        std::vector<XBYTE> source(static_cast<std::size_t>(width) * height * bytesPerPixel);
+        for (std::size_t i = 0; i < source.size(); ++i) {
+            source[i] = static_cast<XBYTE>((i * 37u + 11u) & 0xFFu);
+        }
+
+        const std::size_t dstSize = static_cast<std::size_t>(width >> 1) * (height >> 1) * bytesPerPixel;
+        std::vector<XBYTE> scalar(dstSize);
+        std::vector<XBYTE> sse2(dstSize);
+        std::vector<XBYTE> automatic(dstSize);
+
+        ASSERT_TRUE(VxSetSIMDOverride(VX_SIMD_MODE_NONE));
+        VxImageDescEx scalarDesc = makeDesc(format, width, height, source.data());
+        VxGenerateMipMap(scalarDesc, scalar.data());
+
+        ASSERT_TRUE(VxSetSIMDOverride(VX_SIMD_MODE_SSE2));
+        VxImageDescEx sse2Desc = makeDesc(format, width, height, source.data());
+        VxGenerateMipMap(sse2Desc, sse2.data());
+
+        ASSERT_TRUE(VxSetSIMDOverride(VX_SIMD_MODE_AUTO));
+        VxImageDescEx autoDesc = makeDesc(format, width, height, source.data());
+        VxGenerateMipMap(autoDesc, automatic.data());
+
+        EXPECT_EQ(scalar, sse2) << "SSE2 mismatch for " << VxPixelFormat2String(format);
+        EXPECT_EQ(scalar, automatic) << "AUTO mismatch for " << VxPixelFormat2String(format);
+    };
+
+    runCase(_24_RGB888, 34, 18);
+    runCase(_16_RGB565, 34, 18);
+    runCase(_16_RGB555, 34, 18);
+}
+
+TEST(SIMDDispatchTest, ConvertToBumpMap24AutoMatchesScalar) {
+    struct ScopedSIMDOverride {
+        ScopedSIMDOverride() : previousMode(VxGetSIMDOverride()) {}
+        ~ScopedSIMDOverride() { VxSetSIMDOverride(previousMode); }
+        int previousMode;
+    } scopedOverride;
+
+    constexpr int kWidth = 18;
+    constexpr int kHeight = 12;
+    constexpr int kPitch = kWidth * 3;
+    std::vector<XBYTE> source(kPitch * kHeight);
+    for (int y = 0; y < kHeight; ++y) {
+        for (int x = 0; x < kWidth; ++x) {
+            XBYTE *pixel = source.data() + y * kPitch + x * 3;
+            pixel[0] = static_cast<XBYTE>((x * 13 + y * 3) & 0xFF);
+            pixel[1] = static_cast<XBYTE>((x * 7 + y * 11) & 0xFF);
+            pixel[2] = static_cast<XBYTE>((x * 5 + y * 17) & 0xFF);
+        }
+    }
+
+    std::vector<XBYTE> scalar = source;
+    std::vector<XBYTE> automatic = source;
+
+    auto makeDesc = [=](XBYTE *image) {
+        VxImageDescEx desc;
+        VxPixelFormat2ImageDesc(_24_RGB888, desc);
+        desc.Width = kWidth;
+        desc.Height = kHeight;
+        desc.BytesPerLine = kPitch;
+        desc.Image = image;
+        return desc;
+    };
+
+    ASSERT_TRUE(VxSetSIMDOverride(VX_SIMD_MODE_NONE));
+    VxImageDescEx scalarDesc = makeDesc(scalar.data());
+    ASSERT_TRUE(VxConvertToBumpMap(scalarDesc));
+
+    ASSERT_TRUE(VxSetSIMDOverride(VX_SIMD_MODE_AUTO));
+    VxImageDescEx autoDesc = makeDesc(automatic.data());
+    ASSERT_TRUE(VxConvertToBumpMap(autoDesc));
+
+    EXPECT_EQ(scalar, automatic);
+}
+
 TEST(SIMDDispatchTest, ComputeBestFitBBoxContainsInputPoints) {
     struct PointWithPad {
         float x, y, z, pad;
