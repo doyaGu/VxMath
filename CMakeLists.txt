@@ -57,6 +57,7 @@ endif ()
 # Project options
 # =============================================================================
 option(VXMATH_BUILD_TESTS "Build the test suite" OFF)
+option(VXMATH_BUILD_PERF "Build VxMath performance tools" OFF)
 option(VXMATH_BUILD_SHARED "Build shared library" ON)
 option(VXMATH_BUILD_STATIC "Build static library" OFF)
 option(VXMATH_INSTALL "Generate install target" ${VXMATH_IS_TOP_LEVEL})
@@ -228,6 +229,10 @@ set(VXMATH_SIMDE_INCLUDE_DIR "${VXMATH_SIMDE_INCLUDE_DIR}" CACHE INTERNAL "Bundl
 if (VXMATH_BUILD_TESTS)
     enable_testing()
     add_subdirectory(tests)
+endif ()
+
+if (VXMATH_BUILD_PERF)
+    add_subdirectory(perf)
 endif ()
 
 # =============================================================================
