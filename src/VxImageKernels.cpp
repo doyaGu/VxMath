@@ -293,6 +293,10 @@ static XBOOL ConvertToBumpMap32(const VxImageDescEx &image);
 static XBOOL ConvertToBumpMap24ScalarKernel(const VxImageDescEx &image);
 static XBOOL ConvertToBumpMap24CachedKernel(const VxImageDescEx &image);
 static XBOOL ConvertToBumpMap32ScalarKernel(const VxImageDescEx &image);
+static XBOOL ConvertToNormalMap32ScalarKernel(const VxImageDescEx &image, XDWORD ColorMask);
+static XBOOL ConvertToNormalMap24ScalarKernel(const VxImageDescEx &image, XDWORD ColorMask);
+static XBOOL ConvertToNormalMap32CachedSSE2Kernel(const VxImageDescEx &image, XDWORD ColorMask);
+static XBOOL ConvertToNormalMap24CachedSSSE3Kernel(const VxImageDescEx &image, XDWORD ColorMask);
 
 static XBOOL GenerateMipMap24ScalarKernel(const VxImageDescEx &src_desc, XBYTE *Buffer) {
     if (src_desc.BitsPerPixel != 24) return FALSE;
@@ -310,8 +314,8 @@ static const VxImageKernelBackend kVxImageBackendScalar = {
     GenerateMipMap32Scalar,
     GenerateMipMap24ScalarKernel,
     GenerateMipMap16Rgb565ScalarKernel,
-    NULL,
-    NULL,
+    ConvertToNormalMap32ScalarKernel,
+    ConvertToNormalMap24ScalarKernel,
     ConvertToBumpMap32ScalarKernel,
     ConvertToBumpMap24ScalarKernel
 };
@@ -320,8 +324,8 @@ static const VxImageKernelBackend kVxImageBackendSSE2 = {
     VxGenerateMipMap32SSE2,
     GenerateMipMap24ScalarKernel,
     VxGenerateMipMap16Rgb565SSE2,
-    NULL,
-    NULL,
+    ConvertToNormalMap32CachedSSE2Kernel,
+    ConvertToNormalMap24ScalarKernel,
     ConvertToBumpMap32ScalarKernel,
     ConvertToBumpMap24CachedKernel
 };
@@ -330,8 +334,8 @@ static const VxImageKernelBackend kVxImageBackendSSSE3 = {
     VxGenerateMipMap32SSE2,
     VxGenerateMipMap24Rgb888SSSE3,
     VxGenerateMipMap16Rgb565SSE2,
-    NULL,
-    NULL,
+    ConvertToNormalMap32CachedSSE2Kernel,
+    ConvertToNormalMap24CachedSSSE3Kernel,
     ConvertToBumpMap32ScalarKernel,
     ConvertToBumpMap24CachedKernel
 };
@@ -340,8 +344,8 @@ static const VxImageKernelBackend kVxImageBackendAVX2 = {
     VxGenerateMipMap32SSE2,
     VxGenerateMipMap24Rgb888SSSE3,
     VxGenerateMipMap16Rgb565SSE2,
-    NULL,
-    NULL,
+    ConvertToNormalMap32CachedSSE2Kernel,
+    ConvertToNormalMap24CachedSSSE3Kernel,
     ConvertToBumpMap32ScalarKernel,
     ConvertToBumpMap24CachedKernel
 };
@@ -416,11 +420,10 @@ static void WriteNormalPixel24(XBYTE *pixel, XDWORD packedNormal) {
     pixel[2] = (XBYTE) ((packedNormal >> 16) & 0xFF);
 }
 
-XBOOL VxConvertToNormalMapKernel(const VxImageDescEx &image, XDWORD ColorMask, int simdMode) {
+static XBOOL ConvertToNormalMapScalar(const VxImageDescEx &image, XDWORD ColorMask) {
     if (image.BitsPerPixel != 32 && image.BitsPerPixel != 24) return FALSE;
     if (image.Width == 0 || image.Height == 0) return FALSE;
     if (image.Image == nullptr) return FALSE;
-    (void) simdMode;
 
     XBYTE *Image = image.Image;
     int Width = image.Width;
@@ -578,6 +581,147 @@ XBOOL VxConvertToNormalMapKernel(const VxImageDescEx &image, XDWORD ColorMask, i
     }
 
     return TRUE;
+}
+
+static int Luminance32(const XBYTE *pixel) {
+    const XDWORD value = *(const XDWORD *) pixel;
+    return (int) ((value & 0xFF) + ((value >> 8) & 0xFF) + ((value >> 16) & 0xFF));
+}
+
+static void FillLuminance32Row(const XBYTE *row, int width, int *luminance) {
+    for (int x = 0; x < width; ++x) {
+        luminance[x] = Luminance32(row + x * 4);
+    }
+}
+
+typedef XBOOL (*VxFillLuminanceKernelFn)(const XBYTE *, int, int *);
+
+static void FillNormalLuminanceRow(
+    const XBYTE *row,
+    int width,
+    int bytesPerPixel,
+    int *luminance,
+    VxFillLuminanceKernelFn fillLuminance
+) {
+    if (fillLuminance && fillLuminance(row, width, luminance)) return;
+    if (bytesPerPixel == 4) {
+        FillLuminance32Row(row, width, luminance);
+    } else {
+        FillLuminance24Row(row, width, luminance);
+    }
+}
+
+static void ConvertNormalLuminanceRows(
+    XBYTE *dstRow,
+    int width,
+    int bytesPerPixel,
+    const int *currentLum,
+    const int *belowLum
+) {
+    const float scale = 0.0013071896f; // 1.0 / 765.0 (255*3)
+
+    for (int x = 0; x < width; ++x) {
+        const int rightIndex = (x + 1 < width) ? (x + 1) : x;
+        const float lum0 = (float) currentLum[x] * scale;
+        const float lum1 = (float) currentLum[rightIndex] * scale;
+        const float lum2 = (float) belowLum[x] * scale;
+        const float dx = lum1 - lum0;
+        const float dy = lum2 - lum0;
+        const float invLen = 1.0f / sqrtf(dx * dx + dy * dy + 1.0f);
+        const float normal[3] = {dx * invLen, dy * invLen, invLen};
+        const XDWORD packed = PackNormalToPixel(normal, lum0);
+        XBYTE *dst = dstRow + x * bytesPerPixel;
+        if (bytesPerPixel == 4) {
+            *(XDWORD *) dst = packed;
+        } else {
+            WriteNormalPixel24(dst, packed);
+        }
+    }
+}
+
+static XBOOL ConvertToNormalMapLuminanceCached(
+    const VxImageDescEx &image,
+    int bytesPerPixel,
+    VxFillLuminanceKernelFn fillLuminance
+) {
+    if (image.Image == nullptr) return FALSE;
+    if (image.Width == 0 || image.Height == 0 || image.BytesPerLine <= 0) return FALSE;
+
+    if (image.Height == 1) {
+        return TRUE;
+    }
+
+    XArray<int> rowA;
+    XArray<int> rowB;
+    rowA.Resize(image.Width);
+    rowB.Resize(image.Width);
+
+    int *currentLum = rowA.Begin();
+    int *belowLum = rowB.Begin();
+    FillNormalLuminanceRow(image.Image, image.Width, bytesPerPixel, currentLum, fillLuminance);
+    FillNormalLuminanceRow(image.Image + image.BytesPerLine, image.Width, bytesPerPixel, belowLum, fillLuminance);
+
+    for (int y = 0; y < image.Height - 1; ++y) {
+        XBYTE *dstRow = image.Image + y * image.BytesPerLine;
+        ConvertNormalLuminanceRows(dstRow, image.Width, bytesPerPixel, currentLum, belowLum);
+
+        int *tmp = currentLum;
+        currentLum = belowLum;
+        belowLum = tmp;
+
+        if (y + 2 < image.Height) {
+            FillNormalLuminanceRow(
+                image.Image + (y + 2) * image.BytesPerLine,
+                image.Width,
+                bytesPerPixel,
+                belowLum,
+                fillLuminance
+            );
+        }
+    }
+
+    memcpy(
+        image.Image + (image.Height - 1) * image.BytesPerLine,
+        image.Image + (image.Height - 2) * image.BytesPerLine,
+        image.BytesPerLine
+    );
+    return TRUE;
+}
+
+static XBOOL ConvertToNormalMap32ScalarKernel(const VxImageDescEx &image, XDWORD ColorMask) {
+    if (image.BitsPerPixel != 32) return FALSE;
+    return ConvertToNormalMapScalar(image, ColorMask);
+}
+
+static XBOOL ConvertToNormalMap24ScalarKernel(const VxImageDescEx &image, XDWORD ColorMask) {
+    if (image.BitsPerPixel != 24) return FALSE;
+    return ConvertToNormalMapScalar(image, ColorMask);
+}
+
+static XBOOL ConvertToNormalMap32CachedSSE2Kernel(const VxImageDescEx &image, XDWORD ColorMask) {
+    if (image.BitsPerPixel != 32 || ColorMask != 0xFFFFFFFFu) return FALSE;
+    return ConvertToNormalMapLuminanceCached(image, 4, VxFillLuminance32SSE2);
+}
+
+static XBOOL ConvertToNormalMap24CachedSSSE3Kernel(const VxImageDescEx &image, XDWORD ColorMask) {
+    if (image.BitsPerPixel != 24 || ColorMask != 0xFFFFFFFFu) return FALSE;
+    return ConvertToNormalMapLuminanceCached(image, 3, VxFillLuminance24SSSE3);
+}
+
+XBOOL VxConvertToNormalMapKernel(const VxImageDescEx &image, XDWORD ColorMask, int simdMode) {
+    const VxImageKernelBackend *backend = GetVxImageBackend(simdMode);
+
+    if (image.BitsPerPixel == 32) {
+        if (backend->Normal32 && backend->Normal32(image, ColorMask)) return TRUE;
+        return ConvertToNormalMapScalar(image, ColorMask);
+    }
+
+    if (image.BitsPerPixel == 24) {
+        if (backend->Normal24 && backend->Normal24(image, ColorMask)) return TRUE;
+        return ConvertToNormalMapScalar(image, ColorMask);
+    }
+
+    return FALSE;
 }
 
 

@@ -134,6 +134,13 @@ static __m128i LoadRgb24x4(const XBYTE *src) {
     return _mm_shuffle_epi8(_mm_loadu_si128((const __m128i *) src), shuffle);
 }
 
+static __m128i LoadRgb24x4Exact(const XBYTE *src) {
+    const __m128i shuffle = _mm_setr_epi8(0, 1, 2, -1, 3, 4, 5, -1, 6, 7, 8, -1, 9, 10, 11, -1);
+    const __m128i lo = _mm_loadl_epi64((const __m128i *) src);
+    const __m128i hi = _mm_cvtsi32_si128(*(const int *) (src + 8));
+    return _mm_shuffle_epi8(_mm_or_si128(lo, _mm_slli_si128(hi, 8)), shuffle);
+}
+
 static XDWORD AverageRgb24Pair(__m128i row0Pair, __m128i row1Pair) {
     const __m128i zero = _mm_setzero_si128();
     const __m128i sum0 = _mm_add_epi16(row0Pair, _mm_srli_si128(row0Pair, 8));
@@ -158,6 +165,58 @@ static void AverageRgb24Scalar(XBYTE *dst, const XBYTE *p0, const XBYTE *p1, con
     dst[2] = (XBYTE) (((int) p0[2] + p1[2] + p2[2] + p3[2]) >> 2);
 }
 #endif
+
+XBOOL VxFillLuminance32SSE2(const XBYTE *row, int width, int *luminance) {
+#if defined(VX_SIMD_SSE2)
+    const __m128i mask = _mm_set1_epi32(0x000000FF);
+    int x = 0;
+    for (; x + 4 <= width; x += 4) {
+        const __m128i pixels = _mm_loadu_si128((const __m128i *) (row + x * 4));
+        const __m128i blue = _mm_and_si128(pixels, mask);
+        const __m128i green = _mm_and_si128(_mm_srli_epi32(pixels, 8), mask);
+        const __m128i red = _mm_and_si128(_mm_srli_epi32(pixels, 16), mask);
+        const __m128i sum = _mm_add_epi32(_mm_add_epi32(red, green), blue);
+        _mm_storeu_si128((__m128i *) (luminance + x), sum);
+    }
+
+    for (; x < width; ++x) {
+        const XDWORD value = *(const XDWORD *) (row + x * 4);
+        luminance[x] = (int) ((value & 0xFF) + ((value >> 8) & 0xFF) + ((value >> 16) & 0xFF));
+    }
+    return TRUE;
+#else
+    (void) row;
+    (void) width;
+    (void) luminance;
+    return FALSE;
+#endif
+}
+
+XBOOL VxFillLuminance24SSSE3(const XBYTE *row, int width, int *luminance) {
+#if defined(VX_SIMD_SSSE3)
+    const __m128i mask = _mm_set1_epi32(0x000000FF);
+    int x = 0;
+    for (; x + 4 <= width; x += 4) {
+        const __m128i pixels = LoadRgb24x4Exact(row + x * 3);
+        const __m128i blue = _mm_and_si128(pixels, mask);
+        const __m128i green = _mm_and_si128(_mm_srli_epi32(pixels, 8), mask);
+        const __m128i red = _mm_and_si128(_mm_srli_epi32(pixels, 16), mask);
+        const __m128i sum = _mm_add_epi32(_mm_add_epi32(red, green), blue);
+        _mm_storeu_si128((__m128i *) (luminance + x), sum);
+    }
+
+    for (; x < width; ++x) {
+        const XBYTE *pixel = row + x * 3;
+        luminance[x] = (int) pixel[0] + pixel[1] + pixel[2];
+    }
+    return TRUE;
+#else
+    (void) row;
+    (void) width;
+    (void) luminance;
+    return FALSE;
+#endif
+}
 
 XBOOL VxGenerateMipMap32SSE2(const VxImageDescEx &src_desc, XBYTE *Buffer) {
 #if defined(VX_SIMD_SSE2)
