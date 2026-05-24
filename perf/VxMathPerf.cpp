@@ -1,8 +1,8 @@
-#include <cstddef>
-#include <cstdint>
-#include <cstdio>
-#include <cstdlib>
-#include <cstring>
+#include <stddef.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
 #include "VxBlitEngine.h"
 #include "VxMath.h"
@@ -15,8 +15,6 @@
 #else
 #include <time.h>
 #endif
-
-namespace {
 
 template <typename T>
 class PerfBuffer : public XArray<T> {
@@ -336,8 +334,6 @@ struct PerfVertex {
     float z;
     float w;
 };
-
-} // namespace
 
 int main(int argc, char **argv) {
     ProgramOptions options;
@@ -974,7 +970,7 @@ int main(int argc, char **argv) {
             VxGenerateMipMap(mip565SrcDesc, mip565Dst.data());
         });
         RUN_CASE("bump_rgb24_1024", backend, bumpRGB24Src.size() + bumpRGB24Work.size(), kWarmup, kMeasure, {
-            std::memcpy(bumpRGB24Work.data(), bumpRGB24Src.data(), bumpRGB24Src.size());
+            memcpy(bumpRGB24Work.data(), bumpRGB24Src.data(), bumpRGB24Src.size());
             VxConvertToBumpMap(bumpRGB24Desc);
         });
 

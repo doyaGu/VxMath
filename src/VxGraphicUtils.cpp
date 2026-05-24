@@ -1,6 +1,3 @@
-#include <limits>
-#include <atomic>
-
 #include "VxMath.h"
 #include "VxAtomic.h"
 #include "VxSIMD.h"
@@ -8,7 +5,6 @@
 #include "VxBlitEngine.h"
 #include "VxImageKernels.h"
 
-namespace {
 typedef void (*VxGenerateMipMapDispatchFn)(const VxImageDescEx &, XBYTE *);
 typedef XBOOL (*VxConvertToNormalMapDispatchFn)(const VxImageDescEx &, XDWORD);
 typedef XBOOL (*VxConvertToBumpMapDispatchFn)(const VxImageDescEx &);
@@ -59,11 +55,10 @@ const VxGraphicDispatchTable kVxGraphicDispatchSIMD = {
 };
 #endif
 
-std::atomic<const VxGraphicDispatchTable *> g_VxGraphicDispatch(&kVxGraphicDispatchScalar);
+static const VxGraphicDispatchTable *volatile g_VxGraphicDispatch = &kVxGraphicDispatchScalar;
 
-const VxGraphicDispatchTable *GetVxGraphicDispatchTable() {
-    return g_VxGraphicDispatch.load(std::memory_order_acquire);
-}
+static const VxGraphicDispatchTable *GetVxGraphicDispatchTable() {
+    return (const VxGraphicDispatchTable *) VxAtomicLoadPtr((void *volatile *) &g_VxGraphicDispatch);
 }
 
 void VxGraphicDispatchRebuild(int effectiveMode) {
@@ -74,7 +69,7 @@ void VxGraphicDispatchRebuild(int effectiveMode) {
     (void) useSIMD;
     const VxGraphicDispatchTable *next = &kVxGraphicDispatchScalar;
 #endif
-    g_VxGraphicDispatch.store(next, std::memory_order_release);
+    VxAtomicStorePtr((void *volatile *) &g_VxGraphicDispatch, (void *) next);
 }
 
 //------------------------------------------------------------------------------

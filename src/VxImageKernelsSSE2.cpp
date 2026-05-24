@@ -1,8 +1,6 @@
 #include "VxImageKernels.h"
 #include "VxSIMD.h"
 
-namespace {
-
 static XBOOL IsRgb565(const VxImageDescEx &desc) {
     return desc.BitsPerPixel == 16 &&
         desc.RedMask == 0xF800 &&
@@ -110,8 +108,6 @@ static void AverageRgb24Scalar(XBYTE *dst, const XBYTE *p0, const XBYTE *p1, con
     dst[2] = (XBYTE) (((int) p0[2] + p1[2] + p2[2] + p3[2]) >> 2);
 }
 #endif
-
-} // namespace
 
 XBOOL VxGenerateMipMap16Rgb565SSE2(const VxImageDescEx &src_desc, XBYTE *Buffer) {
 #if defined(VX_SIMD_SSE2)
