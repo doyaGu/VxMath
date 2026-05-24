@@ -1189,10 +1189,13 @@ TEST_F(ImageManipulationTest, VxConvertToBumpMap_24Bit) {
         }
     }
 
-    std::vector<uint8_t> original(desc.Image, desc.Image + desc.Height * desc.BytesPerLine);
+    const int originalSize = desc.Height * desc.BytesPerLine;
+    XArray<uint8_t> original;
+    original.Resize(originalSize);
+    memcpy(original.Begin(), desc.Image, originalSize);
 
     EXPECT_TRUE(VxConvertToBumpMap(desc));
-    EXPECT_NE(memcmp(desc.Image, original.data(), original.size()), 0);
+    EXPECT_NE(memcmp(desc.Image, original.Begin(), originalSize), 0);
 }
 
 //--- Utility Function Tests ---

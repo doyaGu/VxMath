@@ -1024,49 +1024,72 @@ TEST(SIMDDispatchTest, GenerateMipMapImageBackendsMatchScalar) {
         int previousMode;
     } scopedOverride;
 
-    auto makeDesc = [](VX_PIXELFORMAT format, int width, int height, XBYTE *image) {
-        VxImageDescEx desc;
-        VxPixelFormat2ImageDesc(format, desc);
-        desc.Width = width;
-        desc.Height = height;
-        desc.BytesPerLine = width * (desc.BitsPerPixel / 8);
-        desc.Image = image;
-        return desc;
+    struct MipMapCase {
+        VX_PIXELFORMAT format;
+        int width;
+        int height;
     };
 
-    auto runCase = [&](VX_PIXELFORMAT format, int width, int height) {
+    const MipMapCase cases[] = {
+        {_24_RGB888, 34, 18},
+        {_16_RGB565, 34, 18},
+        {_16_RGB555, 34, 18}
+    };
+
+    for (int caseIndex = 0; caseIndex < 3; ++caseIndex) {
+        const VX_PIXELFORMAT format = cases[caseIndex].format;
+        const int width = cases[caseIndex].width;
+        const int height = cases[caseIndex].height;
         VxImageDescEx probe;
         VxPixelFormat2ImageDesc(format, probe);
         const int bytesPerPixel = probe.BitsPerPixel / 8;
-        std::vector<XBYTE> source(static_cast<std::size_t>(width) * height * bytesPerPixel);
-        for (std::size_t i = 0; i < source.size(); ++i) {
+        const int sourceSize = width * height * bytesPerPixel;
+        XArray<XBYTE> source;
+        source.Resize(sourceSize);
+        for (int i = 0; i < sourceSize; ++i) {
             source[i] = static_cast<XBYTE>((i * 37u + 11u) & 0xFFu);
         }
 
-        const std::size_t dstSize = static_cast<std::size_t>(width >> 1) * (height >> 1) * bytesPerPixel;
-        std::vector<XBYTE> scalar(dstSize);
-        std::vector<XBYTE> sse2(dstSize);
-        std::vector<XBYTE> automatic(dstSize);
+        const int dstSize = (width >> 1) * (height >> 1) * bytesPerPixel;
+        XArray<XBYTE> scalar;
+        XArray<XBYTE> sse2;
+        XArray<XBYTE> automatic;
+        scalar.Resize(dstSize);
+        sse2.Resize(dstSize);
+        automatic.Resize(dstSize);
 
         ASSERT_TRUE(VxSetSIMDOverride(VX_SIMD_MODE_NONE));
-        VxImageDescEx scalarDesc = makeDesc(format, width, height, source.data());
-        VxGenerateMipMap(scalarDesc, scalar.data());
+        VxImageDescEx scalarDesc;
+        VxPixelFormat2ImageDesc(format, scalarDesc);
+        scalarDesc.Width = width;
+        scalarDesc.Height = height;
+        scalarDesc.BytesPerLine = width * bytesPerPixel;
+        scalarDesc.Image = source.Begin();
+        VxGenerateMipMap(scalarDesc, scalar.Begin());
 
         ASSERT_TRUE(VxSetSIMDOverride(VX_SIMD_MODE_SSE2));
-        VxImageDescEx sse2Desc = makeDesc(format, width, height, source.data());
-        VxGenerateMipMap(sse2Desc, sse2.data());
+        VxImageDescEx sse2Desc;
+        VxPixelFormat2ImageDesc(format, sse2Desc);
+        sse2Desc.Width = width;
+        sse2Desc.Height = height;
+        sse2Desc.BytesPerLine = width * bytesPerPixel;
+        sse2Desc.Image = source.Begin();
+        VxGenerateMipMap(sse2Desc, sse2.Begin());
 
         ASSERT_TRUE(VxSetSIMDOverride(VX_SIMD_MODE_AUTO));
-        VxImageDescEx autoDesc = makeDesc(format, width, height, source.data());
-        VxGenerateMipMap(autoDesc, automatic.data());
+        VxImageDescEx autoDesc;
+        VxPixelFormat2ImageDesc(format, autoDesc);
+        autoDesc.Width = width;
+        autoDesc.Height = height;
+        autoDesc.BytesPerLine = width * bytesPerPixel;
+        autoDesc.Image = source.Begin();
+        VxGenerateMipMap(autoDesc, automatic.Begin());
 
-        EXPECT_EQ(scalar, sse2) << "SSE2 mismatch for " << VxPixelFormat2String(format);
-        EXPECT_EQ(scalar, automatic) << "AUTO mismatch for " << VxPixelFormat2String(format);
-    };
-
-    runCase(_24_RGB888, 34, 18);
-    runCase(_16_RGB565, 34, 18);
-    runCase(_16_RGB555, 34, 18);
+        EXPECT_EQ(0, memcmp(scalar.Begin(), sse2.Begin(), dstSize))
+            << "SSE2 mismatch for " << VxPixelFormat2String(format);
+        EXPECT_EQ(0, memcmp(scalar.Begin(), automatic.Begin(), dstSize))
+            << "AUTO mismatch for " << VxPixelFormat2String(format);
+    }
 }
 
 TEST(SIMDDispatchTest, ConvertToBumpMap24AutoMatchesScalar) {
@@ -1079,38 +1102,43 @@ TEST(SIMDDispatchTest, ConvertToBumpMap24AutoMatchesScalar) {
     constexpr int kWidth = 18;
     constexpr int kHeight = 12;
     constexpr int kPitch = kWidth * 3;
-    std::vector<XBYTE> source(kPitch * kHeight);
+    XArray<XBYTE> source;
+    source.Resize(kPitch * kHeight);
     for (int y = 0; y < kHeight; ++y) {
         for (int x = 0; x < kWidth; ++x) {
-            XBYTE *pixel = source.data() + y * kPitch + x * 3;
+            XBYTE *pixel = source.Begin() + y * kPitch + x * 3;
             pixel[0] = static_cast<XBYTE>((x * 13 + y * 3) & 0xFF);
             pixel[1] = static_cast<XBYTE>((x * 7 + y * 11) & 0xFF);
             pixel[2] = static_cast<XBYTE>((x * 5 + y * 17) & 0xFF);
         }
     }
 
-    std::vector<XBYTE> scalar = source;
-    std::vector<XBYTE> automatic = source;
-
-    auto makeDesc = [=](XBYTE *image) {
-        VxImageDescEx desc;
-        VxPixelFormat2ImageDesc(_24_RGB888, desc);
-        desc.Width = kWidth;
-        desc.Height = kHeight;
-        desc.BytesPerLine = kPitch;
-        desc.Image = image;
-        return desc;
-    };
+    XArray<XBYTE> scalar;
+    XArray<XBYTE> automatic;
+    scalar.Resize(kPitch * kHeight);
+    automatic.Resize(kPitch * kHeight);
+    memcpy(scalar.Begin(), source.Begin(), kPitch * kHeight);
+    memcpy(automatic.Begin(), source.Begin(), kPitch * kHeight);
 
     ASSERT_TRUE(VxSetSIMDOverride(VX_SIMD_MODE_NONE));
-    VxImageDescEx scalarDesc = makeDesc(scalar.data());
+    VxImageDescEx scalarDesc;
+    VxPixelFormat2ImageDesc(_24_RGB888, scalarDesc);
+    scalarDesc.Width = kWidth;
+    scalarDesc.Height = kHeight;
+    scalarDesc.BytesPerLine = kPitch;
+    scalarDesc.Image = scalar.Begin();
     ASSERT_TRUE(VxConvertToBumpMap(scalarDesc));
 
     ASSERT_TRUE(VxSetSIMDOverride(VX_SIMD_MODE_AUTO));
-    VxImageDescEx autoDesc = makeDesc(automatic.data());
+    VxImageDescEx autoDesc;
+    VxPixelFormat2ImageDesc(_24_RGB888, autoDesc);
+    autoDesc.Width = kWidth;
+    autoDesc.Height = kHeight;
+    autoDesc.BytesPerLine = kPitch;
+    autoDesc.Image = automatic.Begin();
     ASSERT_TRUE(VxConvertToBumpMap(autoDesc));
 
-    EXPECT_EQ(scalar, automatic);
+    EXPECT_EQ(0, memcmp(scalar.Begin(), automatic.Begin(), kPitch * kHeight));
 }
 
 TEST(SIMDDispatchTest, ComputeBestFitBBoxContainsInputPoints) {
