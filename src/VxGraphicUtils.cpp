@@ -275,9 +275,107 @@ static void GenerateMipMap24(const VxImageDescEx &src_desc, XBYTE *Buffer) {
     }
 }
 
+static XDWORD ExtractMaskedComponent(XWORD pixel, XDWORD mask) {
+    if (!mask) return 0;
+    return (pixel & mask) >> GetBitShift(mask);
+}
+
+static XDWORD PackMaskedComponent(XDWORD value, XDWORD mask) {
+    if (!mask) return 0;
+    return (value << GetBitShift(mask)) & mask;
+}
+
+static XWORD AveragePixel16(const VxImageDescEx &src_desc, XWORD p0, XWORD p1) {
+    XWORD result = 0;
+    const XDWORD masks[] = {
+        src_desc.RedMask,
+        src_desc.GreenMask,
+        src_desc.BlueMask,
+        src_desc.AlphaMask
+    };
+
+    for (XDWORD mask : masks) {
+        if (!mask) continue;
+        const XDWORD avg = (ExtractMaskedComponent(p0, mask) + ExtractMaskedComponent(p1, mask)) >> 1;
+        result = (XWORD) (result | PackMaskedComponent(avg, mask));
+    }
+
+    return result;
+}
+
+static XWORD AveragePixel16(const VxImageDescEx &src_desc, XWORD p0, XWORD p1, XWORD p2, XWORD p3) {
+    XWORD result = 0;
+    const XDWORD masks[] = {
+        src_desc.RedMask,
+        src_desc.GreenMask,
+        src_desc.BlueMask,
+        src_desc.AlphaMask
+    };
+
+    for (XDWORD mask : masks) {
+        if (!mask) continue;
+        const XDWORD avg = (
+            ExtractMaskedComponent(p0, mask) +
+            ExtractMaskedComponent(p1, mask) +
+            ExtractMaskedComponent(p2, mask) +
+            ExtractMaskedComponent(p3, mask)
+        ) >> 2;
+        result = (XWORD) (result | PackMaskedComponent(avg, mask));
+    }
+
+    return result;
+}
+
+static void GenerateMipMap16(const VxImageDescEx &src_desc, XBYTE *Buffer) {
+    const int height = src_desc.Height;
+    const int bytesPerLine = src_desc.BytesPerLine;
+    XBYTE *image = src_desc.Image;
+
+    const int dstWidth = src_desc.Width >> 1;
+    const int dstHeight = height >> 1;
+
+    if (dstWidth == 0) {
+        if (dstHeight) {
+            XWORD *dst = (XWORD *) Buffer;
+            XBYTE *src = image;
+            for (int y = 0; y < dstHeight; ++y) {
+                *dst++ = AveragePixel16(src_desc, *(XWORD *) src, *(XWORD *) (src + bytesPerLine));
+                src += bytesPerLine * 2;
+            }
+        }
+        return;
+    }
+
+    if (dstHeight == 0) {
+        XWORD *dst = (XWORD *) Buffer;
+        XWORD *src = (XWORD *) image;
+        for (int x = 0; x < dstWidth; ++x) {
+            *dst++ = AveragePixel16(src_desc, src[0], src[1]);
+            src += 2;
+        }
+        return;
+    }
+
+    XWORD *dst = (XWORD *) Buffer;
+    for (int y = 0; y < dstHeight; ++y) {
+        XBYTE *row0 = image + y * 2 * bytesPerLine;
+        XBYTE *row1 = row0 + bytesPerLine;
+        for (int x = 0; x < dstWidth; ++x) {
+            XWORD *p0 = (XWORD *) (row0 + x * 4);
+            XWORD *p2 = (XWORD *) (row1 + x * 4);
+            *dst++ = AveragePixel16(src_desc, p0[0], p0[1], p2[0], p2[1]);
+        }
+    }
+}
+
 static void GenerateMipMapImpl(const VxImageDescEx &src_desc, XBYTE *Buffer, bool useSIMD) {
     if (src_desc.BitsPerPixel == 24) {
         GenerateMipMap24(src_desc, Buffer);
+        return;
+    }
+
+    if (src_desc.BitsPerPixel == 16) {
+        GenerateMipMap16(src_desc, Buffer);
         return;
     }
 
