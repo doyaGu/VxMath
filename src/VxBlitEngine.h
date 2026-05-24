@@ -345,6 +345,13 @@ private:
      */
     void DoBlitWithResize(const VxImageDescEx &src_desc, const VxImageDescEx &dst_desc, VxBlitLineFunc blitFunc);
 
+    /**
+     * @brief Resize path for non-32-bit sources.
+     * @param src_desc Source image descriptor.
+     * @param dst_desc Destination image descriptor.
+     */
+    void DoNon32BlitWithResize(const VxImageDescEx &src_desc, const VxImageDescEx &dst_desc);
+
     // Dispatch table setup helpers
     void ResetDispatchTables();
     void ResetHotPathKernels();

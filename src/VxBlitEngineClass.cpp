@@ -42,6 +42,19 @@ static int CollapseSIMDModeToBlitKernelTier(int mode) {
     }
 }
 
+static bool HasSamePixelLayout(const VxImageDescEx &a, const VxImageDescEx &b) {
+    return a.BitsPerPixel == b.BitsPerPixel &&
+        a.RedMask == b.RedMask &&
+        a.GreenMask == b.GreenMask &&
+        a.BlueMask == b.BlueMask &&
+        a.AlphaMask == b.AlphaMask;
+}
+
+static bool IsTrueColorResizeFormat(const VxImageDescEx &desc) {
+    const int bytesPerPixel = desc.BitsPerPixel / 8;
+    return bytesPerPixel >= 2 && bytesPerPixel <= 4;
+}
+
 static XDWORD ExpandMaskedColorTo8Bit(XDWORD pixel, XDWORD mask) {
     if (!mask) return 0;
 
@@ -565,29 +578,7 @@ void VxBlitEngine::DoBlit(const VxImageDescEx &src_desc, const VxImageDescEx &ds
 
     const bool sizeMismatch = (dst_desc.Width != src_desc.Width || dst_desc.Height != src_desc.Height);
     if (sizeMismatch && src_desc.BitsPerPixel != 32) {
-        const bool sameFormat = (src_desc.BitsPerPixel == dst_desc.BitsPerPixel &&
-            src_desc.RedMask == dst_desc.RedMask &&
-            src_desc.GreenMask == dst_desc.GreenMask &&
-            src_desc.BlueMask == dst_desc.BlueMask &&
-            src_desc.AlphaMask == dst_desc.AlphaMask);
-        if (!sameFormat) {
-            const int srcBytesPerPixel = src_desc.BitsPerPixel / 8;
-            const int dstBytesPerPixel = dst_desc.BitsPerPixel / 8;
-            if (srcBytesPerPixel >= 2 && dstBytesPerPixel >= 2) {
-                ResizeImage(src_desc, dst_desc);
-            }
-            return;
-        }
-
-        const int bytesPerPixel = src_desc.BitsPerPixel / 8;
-        if (bytesPerPixel == 3) {
-            ResizeBilinear24(src_desc, dst_desc);
-            return;
-        }
-        if (bytesPerPixel > 0 && bytesPerPixel != 4) {
-            ResizeNearestNeighbor(src_desc, dst_desc);
-            return;
-        }
+        DoNon32BlitWithResize(src_desc, dst_desc);
         return;
     }
 
@@ -629,6 +620,22 @@ void VxBlitEngine::DoBlit(const VxImageDescEx &src_desc, const VxImageDescEx &ds
 
         srcRow += src_desc.BytesPerLine;
         dstRow += dst_desc.BytesPerLine;
+    }
+}
+
+void VxBlitEngine::DoNon32BlitWithResize(const VxImageDescEx &src_desc, const VxImageDescEx &dst_desc) {
+    if (HasSamePixelLayout(src_desc, dst_desc)) {
+        const int bytesPerPixel = src_desc.BitsPerPixel / 8;
+        if (bytesPerPixel == 3) {
+            ResizeBilinear24(src_desc, dst_desc);
+        } else if (bytesPerPixel > 0 && bytesPerPixel != 4) {
+            ResizeNearestNeighbor(src_desc, dst_desc);
+        }
+        return;
+    }
+
+    if (IsTrueColorResizeFormat(src_desc) && IsTrueColorResizeFormat(dst_desc)) {
+        ResizeImage(src_desc, dst_desc);
     }
 }
 
@@ -1412,14 +1419,10 @@ void VxBlitEngine::ResizeImage(const VxImageDescEx &src_desc, const VxImageDescE
         return;
     }
 
-    // For mixed bit depths, convert to 32-bit, resize, then convert back
-    if (srcChannels >= 2) {
-        // Allocate temporary 32-bit buffers
-        XArray<XBYTE> srcTemp, dstTemp;
-        srcTemp.Reserve(src_desc.Width * src_desc.Height * 4);
-        dstTemp.Reserve(dst_desc.Width * dst_desc.Height * 4);
+    // For mixed truecolor depths, use 32-bit as the interpolation format.
+    if (srcChannels >= 2 && dstChannels >= 2) {
+        XArray<XBYTE> srcTemp;
 
-        // Convert source to 32-bit ARGB
         VxImageDescEx src32;
         src32.Width = src_desc.Width;
         src32.Height = src_desc.Height;
@@ -1429,12 +1432,15 @@ void VxBlitEngine::ResizeImage(const VxImageDescEx &src_desc, const VxImageDescE
         src32.GreenMask = 0x0000FF00;
         src32.BlueMask = 0x000000FF;
         src32.AlphaMask = 0xFF000000;
-        src32.Image = srcTemp.Begin();
 
-        // Blit to 32-bit format
-        DoBlit(src_desc, src32);
+        if (srcChannels != 4) {
+            srcTemp.Resize(src_desc.Width * src_desc.Height * 4);
+            src32.Image = srcTemp.Begin();
+            DoBlit(src_desc, src32);
+        } else {
+            src32.Image = src_desc.Image;
+        }
 
-        // Create destination 32-bit descriptor
         VxImageDescEx dst32;
         dst32.Width = dst_desc.Width;
         dst32.Height = dst_desc.Height;
@@ -1444,13 +1450,21 @@ void VxBlitEngine::ResizeImage(const VxImageDescEx &src_desc, const VxImageDescE
         dst32.GreenMask = 0x0000FF00;
         dst32.BlueMask = 0x000000FF;
         dst32.AlphaMask = 0xFF000000;
-        dst32.Image = dstTemp.Begin();
+
+        XArray<XBYTE> dstTemp;
+        if (dstChannels == 4) {
+            dst32.Image = dst_desc.Image;
+        } else {
+            dstTemp.Resize(dst_desc.Width * dst_desc.Height * 4);
+            dst32.Image = dstTemp.Begin();
+        }
 
         // Resize in 32-bit
         ResizeBilinear32(src32, dst32);
 
-        // Convert back to destination format
-        DoBlit(dst32, dst_desc);
+        if (dstChannels != 4) {
+            DoBlit(dst32, dst_desc);
+        }
         return;
     }
 
