@@ -798,6 +798,30 @@ TEST_F(ImageManipulationTest, VxGenerateMipMap_EdgeCase1x1) {
     EXPECT_EQ((dst_ptr[0] >> 24) & 0xFF, 0xFF); // Alpha should be preserved
 }
 
+TEST_F(ImageManipulationTest, VxGenerateMipMap_24BitSimplePattern) {
+    VxImageDescEx src_desc;
+    VxPixelFormat2ImageDesc(_24_RGB888, src_desc);
+    src_desc.Width = 2;
+    src_desc.Height = 2;
+    src_desc.BytesPerLine = 2 * 3;
+    src_desc.Image = AllocateBuffer(2 * 2 * 3);
+
+    uint8_t *src = src_desc.Image;
+    src[0] = 0x00; src[1] = 0x00; src[2] = 0xFF;
+    src[3] = 0x00; src[4] = 0xFF; src[5] = 0x00;
+    src[6] = 0xFF; src[7] = 0x00; src[8] = 0x00;
+    src[9] = 0xFF; src[10] = 0xFF; src[11] = 0xFF;
+
+    uint8_t *dst_buffer = AllocateBuffer(4);
+    dst_buffer[3] = 0xCD;
+    VxGenerateMipMap(src_desc, dst_buffer);
+
+    EXPECT_EQ(dst_buffer[0], 127);
+    EXPECT_EQ(dst_buffer[1], 127);
+    EXPECT_EQ(dst_buffer[2], 127);
+    EXPECT_EQ(dst_buffer[3], 0xCD);
+}
+
 TEST_F(ImageManipulationTest, VxResizeImage32_UpScale) {
     VxImageDescEx src_desc, dst_desc;
     VxPixelFormat2ImageDesc(_32_ARGB8888, src_desc);
