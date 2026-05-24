@@ -149,6 +149,7 @@ struct ProgramOptions {
     bool singleBackend = false;
     bool sweepBackends = false;
     bool gateImageAuto = false;
+    bool imageGateCasesOnly = false;
     bool printHeader = true;
     bool hasRequestedBackend = false;
     int gateRuns = 1;
@@ -238,6 +239,11 @@ bool ParseProgramOptions(int argc, char **argv, ProgramOptions &options) {
             continue;
         }
 
+        if (strcmp(arg, "--image-gate-cases-only") == 0) {
+            options.imageGateCasesOnly = true;
+            continue;
+        }
+
         if (strcmp(arg, "--gate-runs") == 0) {
             if (i + 1 >= argc || !ParsePositiveInt(argv[++i], options.gateRuns)) {
                 return false;
@@ -302,6 +308,8 @@ static ImagePerfGateCase g_ImagePerfGateCases[] = {
     {"normal_rgb24_1024", 0.0, 0.0}
 };
 
+static bool g_ImageGateCasesOnly = false;
+
 void ResetImagePerfGateCases() {
     for (int i = 0; i < (int) (sizeof(g_ImagePerfGateCases) / sizeof(g_ImagePerfGateCases[0])); ++i) {
         g_ImagePerfGateCases[i].NoneNs = 0.0;
@@ -314,6 +322,10 @@ int FindImagePerfGateCase(const char *name) {
         if (strcmp(name, g_ImagePerfGateCases[i].Name) == 0) return i;
     }
     return -1;
+}
+
+bool ShouldRunPerfCase(const char *name) {
+    return !g_ImageGateCasesOnly || FindImagePerfGateCase(name) >= 0;
 }
 
 FILE *OpenPerfPipe(const char *command) {
@@ -339,7 +351,7 @@ bool ReadImagePerfGateRun(const char *selfPath, const char *backend, bool isAuto
         command,
         sizeof(command),
         _TRUNCATE,
-        "\"%s\" --single-backend --no-header --simd-backend=%s",
+        "\"%s\" --single-backend --no-header --image-gate-cases-only --simd-backend=%s",
         (selfPath && *selfPath) ? selfPath : "VxMathPerf",
         backend
     );
@@ -347,7 +359,7 @@ bool ReadImagePerfGateRun(const char *selfPath, const char *backend, bool isAuto
     snprintf(
         command,
         sizeof(command),
-        "\"%s\" --single-backend --no-header --simd-backend=%s",
+        "\"%s\" --single-backend --no-header --image-gate-cases-only --simd-backend=%s",
         (selfPath && *selfPath) ? selfPath : "VxMathPerf",
         backend
     );
@@ -452,20 +464,22 @@ int RunBackendSweep(const char *selfPath) {
 
 #define RUN_CASE(NAME, BACKEND, BYTES_PER_ITER, WARMUP_ITERS, MEASURE_ITERS, ...) \
     do { \
-        for (int runCaseWarmup = 0; runCaseWarmup < (WARMUP_ITERS); ++runCaseWarmup) { \
-            __VA_ARGS__ \
+        if (ShouldRunPerfCase((NAME))) { \
+            for (int runCaseWarmup = 0; runCaseWarmup < (WARMUP_ITERS); ++runCaseWarmup) { \
+                __VA_ARGS__ \
+            } \
+            PerfTimer runCaseTimer; \
+            runCaseTimer.Reset(); \
+            for (int runCaseMeasure = 0; runCaseMeasure < (MEASURE_ITERS); ++runCaseMeasure) { \
+                __VA_ARGS__ \
+            } \
+            const double runCaseTotalSeconds = runCaseTimer.ElapsedSeconds(); \
+            const double runCaseTotalNs = runCaseTotalSeconds * 1.0e9; \
+            const double runCaseNsPerOp = runCaseTotalNs / static_cast<double>(MEASURE_ITERS); \
+            const double runCaseTotalMB = static_cast<double>(BYTES_PER_ITER) * static_cast<double>(MEASURE_ITERS) / (1024.0 * 1024.0); \
+            const double runCaseMBPerSec = (runCaseTotalSeconds > 0.0) ? (runCaseTotalMB / runCaseTotalSeconds) : 0.0; \
+            printf("%s,%s,%.3f,%.3f\n", (NAME), (BACKEND), runCaseNsPerOp, runCaseMBPerSec); \
         } \
-        PerfTimer runCaseTimer; \
-        runCaseTimer.Reset(); \
-        for (int runCaseMeasure = 0; runCaseMeasure < (MEASURE_ITERS); ++runCaseMeasure) { \
-            __VA_ARGS__ \
-        } \
-        const double runCaseTotalSeconds = runCaseTimer.ElapsedSeconds(); \
-        const double runCaseTotalNs = runCaseTotalSeconds * 1.0e9; \
-        const double runCaseNsPerOp = runCaseTotalNs / static_cast<double>(MEASURE_ITERS); \
-        const double runCaseTotalMB = static_cast<double>(BYTES_PER_ITER) * static_cast<double>(MEASURE_ITERS) / (1024.0 * 1024.0); \
-        const double runCaseMBPerSec = (runCaseTotalSeconds > 0.0) ? (runCaseTotalMB / runCaseTotalSeconds) : 0.0; \
-        printf("%s,%s,%.3f,%.3f\n", (NAME), (BACKEND), runCaseNsPerOp, runCaseMBPerSec); \
     } while (0)
 
 #define RUN_BLIT_CASE(NAME, SRC, DST) \
@@ -514,6 +528,8 @@ int main(int argc, char **argv) {
                 (argc > 0 && argv[0]) ? argv[0] : "VxMathPerf");
         return 2;
     }
+
+    g_ImageGateCasesOnly = options.imageGateCasesOnly;
 
     if (options.gateImageAuto) {
         return RunImagePerfGate((argc > 0 && argv[0]) ? argv[0] : "VxMathPerf", options.gateRuns);
