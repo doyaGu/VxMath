@@ -1,6 +1,6 @@
-#include <cmath>
-#include <cstring>
-#include <limits>
+#include <limits.h>
+#include <math.h>
+#include <string.h>
 
 #include "VxImageKernels.h"
 #include "VxBlitEngine.h"
@@ -739,7 +739,7 @@ static XBOOL ConvertToBumpMap24(const VxImageDescEx &image, bool useSIMD) {
     if (image.Width < 2 || image.Height <= 0 || image.BytesPerLine <= 0) return FALSE;
 
     const size_t pixelCount = static_cast<size_t>(image.Width) * static_cast<size_t>(image.Height);
-    if (pixelCount > static_cast<size_t>((std::numeric_limits<int>::max)() / 4)) {
+    if (pixelCount > static_cast<size_t>(INT_MAX / 4)) {
         return FALSE;
     }
 
