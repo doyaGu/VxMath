@@ -333,7 +333,7 @@ static const VxImageKernelBackend kVxImageBackendSSSE3 = {
 
 static const VxImageKernelBackend kVxImageBackendAVX2 = {
     VxGenerateMipMap32SSE2,
-    GenerateMipMap24ScalarKernel,
+    VxGenerateMipMap24Rgb888SSSE3,
     VxGenerateMipMap16Rgb565SSE2,
     NULL,
     NULL,
@@ -397,6 +397,12 @@ static XDWORD ReadPixel24(const XBYTE *pixel) {
 static int Luminance24(const XBYTE *pixel) {
     const XDWORD value = ReadPixel24(pixel);
     return (int) ((value & 0xFF) + ((value >> 8) & 0xFF) + ((value >> 16) & 0xFF));
+}
+
+static void FillLuminance24Row(const XBYTE *row, int width, int *luminance) {
+    for (int x = 0; x < width; ++x) {
+        luminance[x] = Luminance24(row + x * 3);
+    }
 }
 
 static void WriteNormalPixel24(XBYTE *pixel, XDWORD packedNormal) {
@@ -570,8 +576,69 @@ XBOOL VxConvertToNormalMapKernel(const VxImageDescEx &image, XDWORD ColorMask, i
 }
 
 
+static XBOOL ConvertToBumpMap24Cached(const VxImageDescEx &image) {
+    if (image.Image == nullptr) return FALSE;
+    if (image.Width < 2 || image.Height <= 0 || image.BytesPerLine <= 0) return FALSE;
+
+    const size_t bytesPerLine = static_cast<size_t>(image.BytesPerLine);
+    const size_t imageHeight = static_cast<size_t>(image.Height);
+    if (bytesPerLine > (static_cast<size_t>(INT_MAX) / imageHeight)) {
+        return FALSE;
+    }
+
+    const size_t imageSize = bytesPerLine * imageHeight;
+    XArray<XBYTE> tempImage;
+    tempImage.Resize(static_cast<int>(imageSize));
+    memcpy(tempImage.Begin(), image.Image, imageSize);
+
+    const int Width = image.Width;
+    const int Height = image.Height;
+    const int BytesPerLine = image.BytesPerLine;
+
+    XArray<int> aboveLum;
+    XArray<int> currentLum;
+    XArray<int> belowLum;
+    aboveLum.Resize(Width);
+    currentLum.Resize(Width);
+    belowLum.Resize(Width);
+
+    XBYTE *dstRow = image.Image;
+    XBYTE *lastRow = tempImage.Begin() + BytesPerLine * (Height - 1);
+    for (int y = 0; y < Height; ++y) {
+        XBYTE *srcRow = tempImage.Begin() + y * BytesPerLine;
+        XBYTE *aboveRow = (y == 0) ? lastRow : srcRow - BytesPerLine;
+        XBYTE *belowRow = (y != Height - 1) ? srcRow + BytesPerLine : srcRow;
+
+        FillLuminance24Row(aboveRow, Width, aboveLum.Begin());
+        FillLuminance24Row(srcRow, Width, currentLum.Begin());
+        FillLuminance24Row(belowRow, Width, belowLum.Begin());
+
+        dstRow[0] = (XBYTE) ((currentLum[0] <= 1) ? 127 : 63);
+        dstRow[1] = (XBYTE) (aboveLum[0] - belowLum[0] + currentLum[Width - 1] - belowLum[1]);
+        dstRow[2] = (XBYTE) (currentLum[Width - 1] - currentLum[0]);
+
+        for (int x = 1; x < Width - 1; ++x) {
+            XBYTE *dst = dstRow + x * 3;
+            dst[0] = (XBYTE) ((currentLum[x] <= 1) ? 127 : 63);
+            dst[1] = (XBYTE) (aboveLum[x] - belowLum[x]);
+            dst[2] = (XBYTE) (currentLum[x - 1] - currentLum[x + 1]);
+        }
+
+        XBYTE *dst = dstRow + (Width - 1) * 3;
+        dst[0] = (XBYTE) ((currentLum[Width - 1] <= 1) ? 127 : 63);
+        dst[1] = (XBYTE) (aboveLum[Width - 1] - belowLum[Width - 1]);
+        dst[2] = (XBYTE) (currentLum[Width - 2] - currentLum[0]);
+
+        dstRow += BytesPerLine;
+    }
+
+    return TRUE;
+}
+
 static XBOOL ConvertToBumpMap24(const VxImageDescEx &image, int simdMode) {
-    (void) simdMode;
+    if (simdMode != VX_SIMD_MODE_NONE) {
+        return ConvertToBumpMap24Cached(image);
+    }
     if (image.Image == nullptr) return FALSE;
     if (image.Width < 2 || image.Height <= 0 || image.BytesPerLine <= 0) return FALSE;
 
