@@ -1296,6 +1296,96 @@ TEST(SIMDDispatchTest, ConvertToBumpMap24AutoMatchesScalar) {
     EXPECT_EQ(0, memcmp(reference.Begin(), automatic.Begin(), kPitch * kHeight));
 }
 
+TEST(SIMDDispatchTest, ConvertToBumpMap32BackendsMatchScalar) {
+    struct ScopedSIMDOverride {
+        ScopedSIMDOverride() : previousMode(VxGetSIMDOverride()) {}
+        ~ScopedSIMDOverride() { VxSetSIMDOverride(previousMode); }
+        int previousMode;
+    } scopedOverride;
+
+    struct BumpCase {
+        int Width;
+        int Height;
+        int Padding;
+    };
+
+    const BumpCase cases[] = {
+        {1, 8, 4},
+        {2, 2, 0},
+        {17, 11, 12},
+        {18, 12, 16},
+    };
+    const int backendModes[] = {
+        VX_SIMD_MODE_SSE2,
+        VX_SIMD_MODE_SSSE3,
+        VX_SIMD_MODE_AUTO,
+    };
+    const char *backendNames[] = {
+        "SSE2",
+        "SSSE3",
+        "AUTO",
+    };
+
+    for (int caseIndex = 0; caseIndex < static_cast<int>(sizeof(cases) / sizeof(cases[0])); ++caseIndex) {
+        const BumpCase &testCase = cases[caseIndex];
+        const int pitch = testCase.Width * 4 + testCase.Padding;
+        const int imageSize = pitch * testCase.Height;
+
+        XArray<XBYTE> source;
+        source.Resize(imageSize);
+        for (int y = 0; y < testCase.Height; ++y) {
+            XBYTE *row = source.Begin() + y * pitch;
+            for (int x = 0; x < testCase.Width; ++x) {
+                XBYTE *pixel = row + x * 4;
+                pixel[0] = static_cast<XBYTE>((x * 19 + y * 3 + caseIndex * 11) & 0xFF);
+                pixel[1] = static_cast<XBYTE>((x * 5 + y * 23 + caseIndex * 7) & 0xFF);
+                pixel[2] = static_cast<XBYTE>((x * 13 + y * 17 + caseIndex * 5) & 0xFF);
+                pixel[3] = static_cast<XBYTE>((x * 29 + y * 31 + 0x40) & 0xFF);
+            }
+            for (int p = testCase.Width * 4; p < pitch; ++p) {
+                row[p] = static_cast<XBYTE>((p * 37 + y * 9 + caseIndex) & 0xFF);
+            }
+        }
+
+        XArray<XBYTE> scalar;
+        scalar.Resize(imageSize);
+        memcpy(scalar.Begin(), source.Begin(), imageSize);
+
+        ASSERT_TRUE(VxSetSIMDOverride(VX_SIMD_MODE_NONE));
+        VxImageDescEx scalarDesc;
+        VxPixelFormat2ImageDesc(_32_ARGB8888, scalarDesc);
+        scalarDesc.Width = testCase.Width;
+        scalarDesc.Height = testCase.Height;
+        scalarDesc.BytesPerLine = pitch;
+        scalarDesc.Image = scalar.Begin();
+        const XBOOL scalarResult = VxConvertToBumpMap(scalarDesc);
+
+        for (int backendIndex = 0; backendIndex < static_cast<int>(sizeof(backendModes) / sizeof(backendModes[0])); ++backendIndex) {
+            XArray<XBYTE> backend;
+            backend.Resize(imageSize);
+            memcpy(backend.Begin(), source.Begin(), imageSize);
+
+            ASSERT_TRUE(VxSetSIMDOverride(backendModes[backendIndex]));
+            VxImageDescEx backendDesc;
+            VxPixelFormat2ImageDesc(_32_ARGB8888, backendDesc);
+            backendDesc.Width = testCase.Width;
+            backendDesc.Height = testCase.Height;
+            backendDesc.BytesPerLine = pitch;
+            backendDesc.Image = backend.Begin();
+            const XBOOL backendResult = VxConvertToBumpMap(backendDesc);
+
+            EXPECT_EQ(scalarResult, backendResult)
+                << backendNames[backendIndex]
+                << " result mismatch for "
+                << testCase.Width << "x" << testCase.Height;
+            EXPECT_EQ(0, memcmp(scalar.Begin(), backend.Begin(), imageSize))
+                << backendNames[backendIndex]
+                << " output mismatch for "
+                << testCase.Width << "x" << testCase.Height;
+        }
+    }
+}
+
 TEST(SIMDDispatchTest, ComputeBestFitBBoxContainsInputPoints) {
     struct PointWithPad {
         float x, y, z, pad;
