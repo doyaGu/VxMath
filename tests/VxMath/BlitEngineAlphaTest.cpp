@@ -852,6 +852,39 @@ TEST_F(AlphaBlitTest, ClearAlpha_AllWidths) {
     }
 }
 
+TEST_F(AlphaBlitTest, ClearAlpha_16BitAlphaFormats) {
+    const int width = 3;
+    const int height = 2;
+
+    ImageBuffer argb1555Buffer(width * height * 2);
+    auto argb1555 = ImageDescFactory::Create16Bit1555(width, height, argb1555Buffer.Data());
+    XWORD *pixels1555 = reinterpret_cast<XWORD *>(argb1555Buffer.Data());
+    for (int i = 0; i < width * height; ++i) {
+        pixels1555[i] = 0xFFFF;
+    }
+
+    blitter.ClearAlpha(argb1555);
+
+    for (int i = 0; i < width * height; ++i) {
+        EXPECT_EQ(pixels1555[i], 0x7FFFu)
+            << "ARGB1555 alpha bit should be cleared and color bits preserved";
+    }
+
+    ImageBuffer argb4444Buffer(width * height * 2);
+    auto argb4444 = ImageDescFactory::Create16Bit4444(width, height, argb4444Buffer.Data());
+    XWORD *pixels4444 = reinterpret_cast<XWORD *>(argb4444Buffer.Data());
+    for (int i = 0; i < width * height; ++i) {
+        pixels4444[i] = 0xFFFF;
+    }
+
+    blitter.ClearAlpha(argb4444);
+
+    for (int i = 0; i < width * height; ++i) {
+        EXPECT_EQ(pixels4444[i], 0x0FFFu)
+            << "ARGB4444 alpha nibble should be cleared and color bits preserved";
+    }
+}
+
 TEST_F(AlphaBlitTest, SetFullAlpha_AllWidths) {
     for (int width : {1, 3, 4, 7, 8, 15, 16, 17, 33}) {
         const int height = 4;
@@ -869,6 +902,39 @@ TEST_F(AlphaBlitTest, SetFullAlpha_AllWidths) {
             EXPECT_EQ(pixels[i], 0xFFAABBCCu) 
                 << "Width " << width << ", pixel " << i << ": Alpha should be FF, colors preserved";
         }
+    }
+}
+
+TEST_F(AlphaBlitTest, SetFullAlpha_16BitAlphaFormats) {
+    const int width = 3;
+    const int height = 2;
+
+    ImageBuffer argb1555Buffer(width * height * 2);
+    auto argb1555 = ImageDescFactory::Create16Bit1555(width, height, argb1555Buffer.Data());
+    XWORD *pixels1555 = reinterpret_cast<XWORD *>(argb1555Buffer.Data());
+    for (int i = 0; i < width * height; ++i) {
+        pixels1555[i] = 0x1234;
+    }
+
+    blitter.SetFullAlpha(argb1555);
+
+    for (int i = 0; i < width * height; ++i) {
+        EXPECT_EQ(pixels1555[i], 0x9234u)
+            << "ARGB1555 alpha bit should be set and color bits preserved";
+    }
+
+    ImageBuffer argb4444Buffer(width * height * 2);
+    auto argb4444 = ImageDescFactory::Create16Bit4444(width, height, argb4444Buffer.Data());
+    XWORD *pixels4444 = reinterpret_cast<XWORD *>(argb4444Buffer.Data());
+    for (int i = 0; i < width * height; ++i) {
+        pixels4444[i] = 0x0123;
+    }
+
+    blitter.SetFullAlpha(argb4444);
+
+    for (int i = 0; i < width * height; ++i) {
+        EXPECT_EQ(pixels4444[i], 0xF123u)
+            << "ARGB4444 alpha nibble should be set and color bits preserved";
     }
 }
 
