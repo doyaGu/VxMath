@@ -42,6 +42,28 @@ static int CollapseSIMDModeToBlitKernelTier(int mode) {
     }
 }
 
+static XDWORD ExpandMaskedColorTo8Bit(XDWORD pixel, XDWORD mask) {
+    if (!mask) return 0;
+
+    const XDWORD shift = GetBitShiftLocal(mask);
+    const XDWORD bits = GetBitCountLocal(mask);
+    const XDWORD maxValue = (1u << bits) - 1u;
+    const XDWORD value = (pixel & mask) >> shift;
+
+    return (value * 255u + maxValue / 2u) / maxValue;
+}
+
+static XDWORD Pack8BitColorToMask(XDWORD value, XDWORD mask) {
+    if (!mask) return 0;
+
+    const XDWORD shift = GetBitShiftLocal(mask);
+    const XDWORD bits = GetBitCountLocal(mask);
+    const XDWORD maxValue = (1u << bits) - 1u;
+    const XDWORD packed = (value * maxValue + 127u) / 255u;
+
+    return (packed << shift) & mask;
+}
+
 //==============================================================================
 //  VxBlitEngine -- Construction / Destruction
 //==============================================================================
@@ -983,8 +1005,45 @@ void VxBlitEngine::ConvertToGrayscale(const VxImageDescEx &desc) {
     VxMutexLock lock(m_Lock);
 
     if (!desc.Image) return;
-    if (desc.BitsPerPixel != 32) return;
+    if (desc.BitsPerPixel != 32 && desc.BitsPerPixel != 24 && desc.BitsPerPixel != 16) return;
     if (desc.Width <= 0 || desc.Height <= 0) return;
+
+    if (desc.BitsPerPixel == 24) {
+        XBYTE *row = desc.Image;
+        for (int y = 0; y < desc.Height; ++y) {
+            XBYTE *dst = row;
+            for (int x = 0; x < desc.Width; ++x) {
+                const XDWORD y_val = (77u * dst[2] + 150u * dst[1] + 29u * dst[0]) >> 8;
+                dst[0] = static_cast<XBYTE>(y_val);
+                dst[1] = static_cast<XBYTE>(y_val);
+                dst[2] = static_cast<XBYTE>(y_val);
+                dst += 3;
+            }
+            row += desc.BytesPerLine;
+        }
+        return;
+    }
+
+    if (desc.BitsPerPixel == 16) {
+        const XWORD colorMask = static_cast<XWORD>(desc.RedMask | desc.GreenMask | desc.BlueMask);
+        XBYTE *row = desc.Image;
+        for (int y = 0; y < desc.Height; ++y) {
+            XWORD *dst = (XWORD *)row;
+            for (int x = 0; x < desc.Width; ++x) {
+                const XWORD pixel = dst[x];
+                const XDWORD r = ExpandMaskedColorTo8Bit(pixel, desc.RedMask);
+                const XDWORD g = ExpandMaskedColorTo8Bit(pixel, desc.GreenMask);
+                const XDWORD b = ExpandMaskedColorTo8Bit(pixel, desc.BlueMask);
+                const XDWORD y_val = (77u * r + 150u * g + 29u * b) >> 8;
+                dst[x] = static_cast<XWORD>((pixel & ~colorMask) |
+                    Pack8BitColorToMask(y_val, desc.RedMask) |
+                    Pack8BitColorToMask(y_val, desc.GreenMask) |
+                    Pack8BitColorToMask(y_val, desc.BlueMask));
+            }
+            row += desc.BytesPerLine;
+        }
+        return;
+    }
 
     VxBlitInfo info = {};
     info.width = desc.Width;

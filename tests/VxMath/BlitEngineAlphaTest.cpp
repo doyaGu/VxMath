@@ -1079,6 +1079,71 @@ TEST_F(AlphaBlitTest, ConvertToGrayscale_AllWidths) {
     }
 }
 
+TEST_F(AlphaBlitTest, ConvertToGrayscale_24BitRGB) {
+    const int width = 2;
+    const int height = 1;
+    ImageBuffer buffer(width * height * 3);
+    auto desc = ImageDescFactory::Create24BitRGB(width, height, buffer.Data());
+
+    PatternGenerator::FillSolid24(buffer.Data(), width, height, 0x40, 0x80, 0x20);
+    buffer[3] = 0xFF;
+    buffer[4] = 0xFF;
+    buffer[5] = 0xFF;
+
+    blitter.ConvertToGrayscale(desc);
+
+    EXPECT_EQ(buffer[0], 97u);
+    EXPECT_EQ(buffer[1], 97u);
+    EXPECT_EQ(buffer[2], 97u);
+    EXPECT_EQ(buffer[3], 0xFFu);
+    EXPECT_EQ(buffer[4], 0xFFu);
+    EXPECT_EQ(buffer[5], 0xFFu);
+}
+
+TEST_F(AlphaBlitTest, ConvertToGrayscale_16BitFormats) {
+    const int width = 3;
+    const int height = 1;
+
+    ImageBuffer rgb565Buffer(width * height * 2);
+    auto rgb565 = ImageDescFactory::Create16Bit565(width, height, rgb565Buffer.Data());
+    XWORD *pixels565 = reinterpret_cast<XWORD *>(rgb565Buffer.Data());
+    pixels565[0] = 0xF800;
+    pixels565[1] = 0x07E0;
+    pixels565[2] = 0x001F;
+
+    blitter.ConvertToGrayscale(rgb565);
+
+    EXPECT_EQ(pixels565[0], 0x4A69u);
+    EXPECT_EQ(pixels565[1], 0x94B2u);
+    EXPECT_EQ(pixels565[2], 0x18E3u);
+
+    ImageBuffer argb1555Buffer(2 * 2);
+    auto argb1555 = ImageDescFactory::Create16Bit1555(2, 1, argb1555Buffer.Data());
+    XWORD *pixels1555 = reinterpret_cast<XWORD *>(argb1555Buffer.Data());
+    pixels1555[0] = 0xFC00;
+    pixels1555[1] = 0x7C00;
+
+    blitter.ConvertToGrayscale(argb1555);
+
+    EXPECT_EQ(pixels1555[0], 0xA529u)
+        << "ARGB1555 alpha bit should be preserved while color channels become gray";
+    EXPECT_EQ(pixels1555[1], 0x2529u)
+        << "ARGB1555 transparent alpha bit should be preserved while color channels become gray";
+
+    ImageBuffer argb4444Buffer(2 * 2);
+    auto argb4444 = ImageDescFactory::Create16Bit4444(2, 1, argb4444Buffer.Data());
+    XWORD *pixels4444 = reinterpret_cast<XWORD *>(argb4444Buffer.Data());
+    pixels4444[0] = 0xAF00;
+    pixels4444[1] = 0x0F00;
+
+    blitter.ConvertToGrayscale(argb4444);
+
+    EXPECT_EQ(pixels4444[0], 0xA444u)
+        << "ARGB4444 alpha nibble should be preserved while color channels become gray";
+    EXPECT_EQ(pixels4444[1], 0x0444u)
+        << "ARGB4444 zero alpha nibble should be preserved while color channels become gray";
+}
+
 TEST_F(AlphaBlitTest, ConvertToGrayscale_White) {
     const int width = 8, height = 8;
     ImageBuffer buffer(width * height * 4);
