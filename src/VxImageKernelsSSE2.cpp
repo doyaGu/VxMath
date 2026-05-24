@@ -131,11 +131,6 @@ static void AverageRgb565Block4(const XWORD *row0, const XWORD *row1, XWORD *dst
 #if defined(VX_SIMD_SSSE3)
 static __m128i LoadRgb24x4(const XBYTE *src) {
     const __m128i shuffle = _mm_setr_epi8(0, 1, 2, -1, 3, 4, 5, -1, 6, 7, 8, -1, 9, 10, 11, -1);
-    return _mm_shuffle_epi8(_mm_loadu_si128((const __m128i *) src), shuffle);
-}
-
-static __m128i LoadRgb24x4Exact(const XBYTE *src) {
-    const __m128i shuffle = _mm_setr_epi8(0, 1, 2, -1, 3, 4, 5, -1, 6, 7, 8, -1, 9, 10, 11, -1);
     const __m128i lo = _mm_loadl_epi64((const __m128i *) src);
     const __m128i hi = _mm_cvtsi32_si128(*(const int *) (src + 8));
     return _mm_shuffle_epi8(_mm_or_si128(lo, _mm_slli_si128(hi, 8)), shuffle);
@@ -197,7 +192,7 @@ XBOOL VxFillLuminance24SSSE3(const XBYTE *row, int width, int *luminance) {
     const __m128i mask = _mm_set1_epi32(0x000000FF);
     int x = 0;
     for (; x + 4 <= width; x += 4) {
-        const __m128i pixels = LoadRgb24x4Exact(row + x * 3);
+        const __m128i pixels = LoadRgb24x4(row + x * 3);
         const __m128i blue = _mm_and_si128(pixels, mask);
         const __m128i green = _mm_and_si128(_mm_srli_epi32(pixels, 8), mask);
         const __m128i red = _mm_and_si128(_mm_srli_epi32(pixels, 16), mask);
@@ -356,7 +351,7 @@ XBOOL VxGenerateMipMap24Rgb888SSSE3(const VxImageDescEx &src_desc, XBYTE *Buffer
         const XBYTE *row0 = src_desc.Image + y * 2 * src_desc.BytesPerLine;
         const XBYTE *row1 = row0 + src_desc.BytesPerLine;
         int x = 0;
-        for (; x + 4 < dstWidth; x += 4) {
+        for (; x + 4 <= dstWidth; x += 4) {
             const XBYTE *src0 = row0 + x * 6;
             const XBYTE *src1 = row1 + x * 6;
 
