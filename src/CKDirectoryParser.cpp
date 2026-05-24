@@ -15,10 +15,6 @@
 #include <sys/stat.h>
 #endif
 
-#ifndef MAX_PATH
-#define MAX_PATH _MAX_PATH
-#endif
-
 #if !defined(_WIN32)
 static bool IsDirectory(const char *path) {
     struct stat st;
@@ -68,11 +64,11 @@ CKDirectoryParser::~CKDirectoryParser() {
 
 const char *CKDirectoryParser::GetNextFile() {
 #if defined(_WIN32)
-    char buf[MAX_PATH];
+    char buf[_MAX_PATH];
 
     // Handle non-recursive mode or first phase of recursive mode (files in current directory)
     if ((m_State & 2) == 0) {
-        _snprintf_s(buf, MAX_PATH, _TRUNCATE, "%s\\%s", m_StartDir, m_FileMask);
+        _snprintf_s(buf, _MAX_PATH, _TRUNCATE, "%s\\%s", m_StartDir, m_FileMask);
 
         // Use a loop to skip directories instead of recursive calls
         while (true) {
@@ -103,7 +99,7 @@ const char *CKDirectoryParser::GetNextFile() {
 
             // Check if current item is a file (not directory)
             if ((((_finddata_t*)m_FindData)->attrib & _A_SUBDIR) == 0) {
-                _snprintf_s(m_FullFileName, MAX_PATH, _TRUNCATE, "%s\\%s", m_StartDir,
+                _snprintf_s(m_FullFileName, _MAX_PATH, _TRUNCATE, "%s\\%s", m_StartDir,
                            ((_finddata_t*)m_FindData)->name);
                 return m_FullFileName;
             }
@@ -128,7 +124,7 @@ const char *CKDirectoryParser::GetNextFile() {
         // Look for next subdirectory
         while (true) {
             if (m_hFile == -1) {
-                _snprintf_s(buf, MAX_PATH, _TRUNCATE, "%s\\*.*", m_StartDir);
+                _snprintf_s(buf, _MAX_PATH, _TRUNCATE, "%s\\*.*", m_StartDir);
                 m_hFile = _findfirst(buf, (_finddata_t*)m_FindData);
                 if (m_hFile == -1) {
                     return NULL; // No subdirectories found
@@ -147,8 +143,8 @@ const char *CKDirectoryParser::GetNextFile() {
                 strcmp(((_finddata_t*)m_FindData)->name, "..") != 0 &&
                 (((_finddata_t*)m_FindData)->attrib & _A_SUBDIR) != 0) {
 
-                char dir[MAX_PATH];
-                _snprintf_s(dir, MAX_PATH, _TRUNCATE, "%s\\%s", m_StartDir,
+                char dir[_MAX_PATH];
+                _snprintf_s(dir, _MAX_PATH, _TRUNCATE, "%s\\%s", m_StartDir,
                            ((_finddata_t*)m_FindData)->name);
                 m_SubParser = new CKDirectoryParser(dir, m_FileMask, TRUE);
 
@@ -167,7 +163,7 @@ const char *CKDirectoryParser::GetNextFile() {
 
     return NULL;
 #else
-    char buf[MAX_PATH];
+    char buf[_MAX_PATH];
 
     if ((m_State & 2) == 0) {
         while (true) {
@@ -201,7 +197,7 @@ const char *CKDirectoryParser::GetNextFile() {
                 continue;
             }
 
-            snprintf(buf, MAX_PATH, "%s/%s", m_StartDir, entry->d_name);
+            snprintf(buf, _MAX_PATH, "%s/%s", m_StartDir, entry->d_name);
             if (IsDirectory(buf)) {
                 continue;
             }
@@ -209,7 +205,7 @@ const char *CKDirectoryParser::GetNextFile() {
                 continue;
             }
 
-            snprintf(m_FullFileName, MAX_PATH, "%s/%s", m_StartDir, entry->d_name);
+            snprintf(m_FullFileName, _MAX_PATH, "%s/%s", m_StartDir, entry->d_name);
             return m_FullFileName;
         }
     }
@@ -245,7 +241,7 @@ const char *CKDirectoryParser::GetNextFile() {
                 continue;
             }
 
-            snprintf(buf, MAX_PATH, "%s/%s", m_StartDir, entry->d_name);
+            snprintf(buf, _MAX_PATH, "%s/%s", m_StartDir, entry->d_name);
             if (IsDirectory(buf)) {
                 m_SubParser = new CKDirectoryParser(buf, m_FileMask, TRUE);
                 const char *ret = m_SubParser->GetNextFile();
@@ -276,7 +272,7 @@ void CKDirectoryParser::Reset(const char *dir, const char *fileMask, XBOOL recur
 
     // Allocate new resources
     m_FindData = new _finddata_t;
-    m_FullFileName = new char[MAX_PATH];
+    m_FullFileName = new char[_MAX_PATH];
 
     // Set directory
     if (dir) {
@@ -317,7 +313,7 @@ void CKDirectoryParser::Reset(const char *dir, const char *fileMask, XBOOL recur
 
     delete[] m_FullFileName;
 
-    m_FullFileName = new char[MAX_PATH];
+    m_FullFileName = new char[_MAX_PATH];
     m_FindData = NULL;
 
     if (dir) {
