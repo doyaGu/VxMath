@@ -887,6 +887,28 @@ TEST_F(ImageManipulationTest, VxConvertToNormalMap_FlatSurface) {
     EXPECT_EQ(center_b, 255);       // Z component should be 1 (encoded as 255)
 }
 
+TEST_F(ImageManipulationTest, VxConvertToNormalMap_24BitFlatSurface) {
+    VxImageDescEx desc;
+    VxPixelFormat2ImageDesc(_24_RGB888, desc);
+    desc.Width = 3;
+    desc.Height = 3;
+    desc.BytesPerLine = 3 * 3;
+    desc.Image = AllocateBuffer(3 * 3 * 3);
+
+    for (int i = 0; i < 9; ++i) {
+        desc.Image[i * 3 + 0] = 0x80;
+        desc.Image[i * 3 + 1] = 0x80;
+        desc.Image[i * 3 + 2] = 0x80;
+    }
+
+    EXPECT_TRUE(VxConvertToNormalMap(desc, desc.RedMask));
+
+    uint8_t *center = desc.Image + 4 * 3;
+    EXPECT_EQ(center[0], 255);       // Z component in blue
+    EXPECT_NEAR(center[1], 128, 10); // Y component in green
+    EXPECT_NEAR(center[2], 128, 10); // X component in red
+}
+
 TEST_F(ImageManipulationTest, VxConvertToNormalMap_Slope) {
     VxImageDescEx desc;
     VxPixelFormat2ImageDesc(_32_ARGB8888, desc);
