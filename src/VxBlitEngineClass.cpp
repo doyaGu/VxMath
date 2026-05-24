@@ -571,6 +571,11 @@ void VxBlitEngine::DoBlit(const VxImageDescEx &src_desc, const VxImageDescEx &ds
             src_desc.BlueMask == dst_desc.BlueMask &&
             src_desc.AlphaMask == dst_desc.AlphaMask);
         if (!sameFormat) {
+            const int srcBytesPerPixel = src_desc.BitsPerPixel / 8;
+            const int dstBytesPerPixel = dst_desc.BitsPerPixel / 8;
+            if (srcBytesPerPixel >= 2 && dstBytesPerPixel >= 2) {
+                ResizeImage(src_desc, dst_desc);
+            }
             return;
         }
 
