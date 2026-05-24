@@ -26,7 +26,6 @@ target_link_libraries(VxMathPerf PRIVATE
 )
 
 if (VXMATH_ENABLE_PERF_GATES)
-    enable_testing()
     add_test(NAME VxMathImagePerfGate
             COMMAND VxMathPerf --gate-image-auto --gate-runs=3
     )
