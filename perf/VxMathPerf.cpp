@@ -792,6 +792,10 @@ int main(int argc, char **argv) {
         PerfBuffer<XBYTE> mip565Dst(mipDstPixels * 2);
         PerfBuffer<XBYTE> bumpRGB24Src(mipPixels * 3);
         PerfBuffer<XBYTE> bumpRGB24Work(mipPixels * 3);
+        PerfBuffer<XBYTE> normalARGBSrc(mipPixels * 4);
+        PerfBuffer<XBYTE> normalARGBWork(mipPixels * 4);
+        PerfBuffer<XBYTE> normalRGB24Src(mipPixels * 3);
+        PerfBuffer<XBYTE> normalRGB24Work(mipPixels * 3);
 
         PerfBuffer<XBYTE> palette(256 * 4);
 
@@ -826,6 +830,10 @@ int main(int argc, char **argv) {
         FillRandomBytes(mip565Dst, rng);
         FillRandomBytes(bumpRGB24Src, rng);
         FillRandomBytes(bumpRGB24Work, rng);
+        FillRandomBytes(normalARGBSrc, rng);
+        FillRandomBytes(normalARGBWork, rng);
+        FillRandomBytes(normalRGB24Src, rng);
+        FillRandomBytes(normalRGB24Work, rng);
         FillRandomBytes(palette, rng);
 
         VxImageDescEx srcARGBDesc = MakeImageDesc(_32_ARGB8888, kW, kH, srcARGB.data());
@@ -861,6 +869,8 @@ int main(int argc, char **argv) {
         VxImageDescEx mipRGB24SrcDesc = MakeImageDesc(_24_RGB888, kMipW, kMipH, mipRGB24Src.data());
         VxImageDescEx mip565SrcDesc = MakeImageDesc(_16_RGB565, kMipW, kMipH, mip565Src.data());
         VxImageDescEx bumpRGB24Desc = MakeImageDesc(_24_RGB888, kMipW, kMipH, bumpRGB24Work.data());
+        VxImageDescEx normalARGBDesc = MakeImageDesc(_32_ARGB8888, kMipW, kMipH, normalARGBWork.data());
+        VxImageDescEx normalRGB24Desc = MakeImageDesc(_24_RGB888, kMipW, kMipH, normalRGB24Work.data());
 
         // Specific x86 conversion table coverage.
         RUN_BLIT_CASE("blit_argb_to_rgb32_1080p", srcARGBDesc, dstRGB32Desc);
@@ -972,6 +982,14 @@ int main(int argc, char **argv) {
         RUN_CASE("bump_rgb24_1024", backend, bumpRGB24Src.size() + bumpRGB24Work.size(), kWarmup, kMeasure, {
             memcpy(bumpRGB24Work.data(), bumpRGB24Src.data(), bumpRGB24Src.size());
             VxConvertToBumpMap(bumpRGB24Desc);
+        });
+        RUN_CASE("normal_argb32_1024", backend, normalARGBSrc.size() + normalARGBWork.size(), kWarmup, kMeasure, {
+            memcpy(normalARGBWork.data(), normalARGBSrc.data(), normalARGBSrc.size());
+            VxConvertToNormalMap(normalARGBDesc, 0xFFFFFFFFu);
+        });
+        RUN_CASE("normal_rgb24_1024", backend, normalRGB24Src.size() + normalRGB24Work.size(), kWarmup, kMeasure, {
+            memcpy(normalRGB24Work.data(), normalRGB24Src.data(), normalRGB24Src.size());
+            VxConvertToNormalMap(normalRGB24Desc, 0xFFFFFFFFu);
         });
 
         // Fill paths.
