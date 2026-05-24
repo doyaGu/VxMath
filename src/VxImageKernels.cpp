@@ -181,7 +181,6 @@ static void GenerateMipMap16(const VxImageDescEx &src_desc, XBYTE *Buffer) {
 }
 
 static XBOOL GenerateMipMap32Scalar(const VxImageDescEx &src_desc, XBYTE *Buffer) {
-    const bool useSIMD = false;
     int Height = src_desc.Height;
     int BytesPerLine = src_desc.BytesPerLine;
     XBYTE *Image = src_desc.Image;
@@ -195,27 +194,6 @@ static XBOOL GenerateMipMap32Scalar(const VxImageDescEx &src_desc, XBYTE *Buffer
             XBYTE *dstPtr = Buffer;
             XBYTE *srcPtr = Image;
             int h = dstHeight;
-#if defined(VX_SIMD_SSE2)
-            if (useSIMD) {
-                __m128i zero = _mm_setzero_si128();
-                // Process 4 output pixels at a time if possible
-                while (h >= 4) {
-                    for (int i = 0; i < 4; i++) {
-                        __m128i p0 = _mm_cvtsi32_si128(*(int *) srcPtr);
-                        __m128i p1 = _mm_cvtsi32_si128(*(int *) (srcPtr + BytesPerLine));
-                        __m128i lo0 = _mm_unpacklo_epi8(p0, zero);
-                        __m128i lo1 = _mm_unpacklo_epi8(p1, zero);
-                        __m128i sum = _mm_add_epi16(lo0, lo1);
-                        sum = _mm_srli_epi16(sum, 1);
-                        __m128i result = _mm_packus_epi16(sum, zero);
-                        *(int *) dstPtr = _mm_cvtsi128_si32(result);
-                        dstPtr += BytesPerLine;
-                        srcPtr += BytesPerLine * 2;
-                    }
-                    h -= 4;
-                }
-            }
-#endif
             while (h > 0) {
                 XDWORD p0 = *(XDWORD *) srcPtr;
                 XDWORD p1 = *(XDWORD *) (srcPtr + BytesPerLine);
@@ -243,70 +221,24 @@ static XBOOL GenerateMipMap32Scalar(const VxImageDescEx &src_desc, XBYTE *Buffer
         XBYTE *dstPtr = Buffer;
         XDWORD *srcPtr = (XDWORD *) Image;
 
-#if defined(VX_SIMD_SSE2)
-        if (useSIMD) {
-            // SSE2 path - process 2 output pixels at a time (4 source pixels)
-            __m128i zero = _mm_setzero_si128();
-            int w = dstWidth;
-            while (w >= 2) {
-                // Load 4 source pixels (16 bytes)
-                __m128i src = _mm_loadu_si128((const __m128i *) srcPtr);
-                // Unpack bytes to 16-bit
-                __m128i lo = _mm_unpacklo_epi8(src, zero);
-                __m128i hi = _mm_unpackhi_epi8(src, zero);
+        int w = dstWidth;
+        do {
+            XDWORD p0 = srcPtr[0];
+            XDWORD p1 = srcPtr[1];
 
-                // Extract odd/even pixels and average
-                __m128i p0 = _mm_unpacklo_epi64(lo, hi);
-                __m128i p1 = _mm_unpackhi_epi64(lo, hi);
-                __m128i sum = _mm_add_epi16(p0, p1);
-                sum = _mm_srli_epi16(sum, 1);
+            XDWORD rb0 = p0 & 0x00FF00FF;
+            XDWORD rb1 = p1 & 0x00FF00FF;
+            XDWORD ag0 = (p0 & 0xFF00FF00) >> 8;
+            XDWORD ag1 = (p1 & 0xFF00FF00) >> 8;
 
-                // Pack back to bytes
-                __m128i result = _mm_packus_epi16(sum, zero);
-                _mm_storel_epi64((__m128i *) dstPtr, result);
+            XDWORD rbAvg = ((rb0 + rb1) >> 1) & 0x00FF00FF;
+            XDWORD agAvg = ((ag0 + ag1) << 7) & 0xFF00FF00;
 
-                srcPtr += 4;
-                dstPtr += 8;
-                w -= 2;
-            }
-            // Handle remaining pixel
-            while (w > 0) {
-                XDWORD p0 = srcPtr[0];
-                XDWORD p1 = srcPtr[1];
-                XDWORD rb0 = p0 & 0x00FF00FF;
-                XDWORD rb1 = p1 & 0x00FF00FF;
-                XDWORD ag0 = (p0 & 0xFF00FF00) >> 8;
-                XDWORD ag1 = (p1 & 0xFF00FF00) >> 8;
-                XDWORD rbAvg = ((rb0 + rb1) >> 1) & 0x00FF00FF;
-                XDWORD agAvg = ((ag0 + ag1) << 7) & 0xFF00FF00;
-                *(XDWORD *) dstPtr = rbAvg | agAvg;
-                srcPtr += 2;
-                dstPtr += 4;
-                --w;
-            }
-        } else
-#endif
-        // Plain C path
-        {
-            int w = dstWidth;
-            do {
-                XDWORD p0 = srcPtr[0];
-                XDWORD p1 = srcPtr[1];
-
-                XDWORD rb0 = p0 & 0x00FF00FF;
-                XDWORD rb1 = p1 & 0x00FF00FF;
-                XDWORD ag0 = (p0 & 0xFF00FF00) >> 8;
-                XDWORD ag1 = (p1 & 0xFF00FF00) >> 8;
-
-                XDWORD rbAvg = ((rb0 + rb1) >> 1) & 0x00FF00FF;
-                XDWORD agAvg = ((ag0 + ag1) << 7) & 0xFF00FF00;
-
-                *(XDWORD *) dstPtr = rbAvg | agAvg;
-                srcPtr += 2;
-                dstPtr += 4;
-                --w;
-            } while (w);
-        }
+            *(XDWORD *) dstPtr = rbAvg | agAvg;
+            srcPtr += 2;
+            dstPtr += 4;
+            --w;
+        } while (w);
         return TRUE;
     }
 
@@ -314,97 +246,32 @@ static XBOOL GenerateMipMap32Scalar(const VxImageDescEx &src_desc, XBYTE *Buffer
     XBYTE *dstPtr = Buffer;
     XDWORD *srcPtr = (XDWORD *) Image;
 
-#if defined(VX_SIMD_SSE2)
-    if (useSIMD) {
-        // SSE2 path - process 2 output pixels at a time
-        __m128i zero = _mm_setzero_si128();
-        int h = dstHeight;
+    int h = dstHeight;
+    do {
+        XDWORD *rowStart = srcPtr;
+        int w = dstWidth;
         do {
-            XDWORD *rowStart = srcPtr;
-            int w = dstWidth;
-            while (w >= 2) {
-                // Load 4 source pixels from current row
-                __m128i src0 = _mm_loadu_si128((const __m128i *) srcPtr);
-                // Load 4 source pixels from next row
-                __m128i src1 = _mm_loadu_si128((const __m128i *) ((XBYTE *) srcPtr + BytesPerLine));
+            XDWORD p0 = srcPtr[0];
+            XDWORD p1 = srcPtr[1];
+            XDWORD p2 = *(XDWORD *) ((XBYTE *) srcPtr + BytesPerLine);
+            XDWORD p3 = *(XDWORD *) ((XBYTE *) srcPtr + BytesPerLine + 4);
 
-                // Unpack to 16-bit
-                __m128i lo0 = _mm_unpacklo_epi8(src0, zero);
-                __m128i hi0 = _mm_unpackhi_epi8(src0, zero);
-                __m128i lo1 = _mm_unpacklo_epi8(src1, zero);
-                __m128i hi1 = _mm_unpackhi_epi8(src1, zero);
+            XDWORD rb = (p0 & 0x00FF00FF) + (p1 & 0x00FF00FF) +
+                (p2 & 0x00FF00FF) + (p3 & 0x00FF00FF);
+            XDWORD ag = ((p0 & 0xFF00FF00) >> 8) + ((p1 & 0xFF00FF00) >> 8) +
+                ((p2 & 0xFF00FF00) >> 8) + ((p3 & 0xFF00FF00) >> 8);
 
-                // Sum all 4 pixels for each output pixel
-                __m128i p0 = _mm_unpacklo_epi64(lo0, hi0);
-                __m128i p1 = _mm_unpackhi_epi64(lo0, hi0);
-                __m128i p2 = _mm_unpacklo_epi64(lo1, hi1);
-                __m128i p3 = _mm_unpackhi_epi64(lo1, hi1);
+            XDWORD rbAvg = (rb >> 2) & 0x00FF00FF;
+            XDWORD agAvg = ((ag >> 2) << 8) & 0xFF00FF00;
 
-                __m128i sum = _mm_add_epi16(_mm_add_epi16(_mm_add_epi16(p0, p1), p2), p3);
-                sum = _mm_srli_epi16(sum, 2);
-
-                // Pack back to bytes
-                __m128i result = _mm_packus_epi16(sum, zero);
-                _mm_storel_epi64((__m128i *) dstPtr, result);
-
-                srcPtr += 4;
-                dstPtr += 8;
-                w -= 2;
-            }
-            // Handle remaining pixel
-            while (w > 0) {
-                XDWORD p0 = srcPtr[0];
-                XDWORD p1 = srcPtr[1];
-                XDWORD p2 = *(XDWORD *) ((XBYTE *) srcPtr + BytesPerLine);
-                XDWORD p3 = *(XDWORD *) ((XBYTE *) srcPtr + BytesPerLine + 4);
-
-                XDWORD rb = (p0 & 0x00FF00FF) + (p1 & 0x00FF00FF) +
-                    (p2 & 0x00FF00FF) + (p3 & 0x00FF00FF);
-                XDWORD ag = ((p0 & 0xFF00FF00) >> 8) + ((p1 & 0xFF00FF00) >> 8) +
-                    ((p2 & 0xFF00FF00) >> 8) + ((p3 & 0xFF00FF00) >> 8);
-
-                XDWORD rbAvg = (rb >> 2) & 0x00FF00FF;
-                XDWORD agAvg = ((ag >> 2) << 8) & 0xFF00FF00;
-
-                *(XDWORD *) dstPtr = rbAvg | agAvg;
-                srcPtr += 2;
-                dstPtr += 4;
-                --w;
-            }
-            srcPtr = (XDWORD *) ((XBYTE *) rowStart + BytesPerLine * 2);
-            --h;
-        } while (h);
-    } else
-#endif
-    // Plain C path
-    {
-        int h = dstHeight;
-        do {
-            XDWORD *rowStart = srcPtr;
-            int w = dstWidth;
-            do {
-                XDWORD p0 = srcPtr[0];
-                XDWORD p1 = srcPtr[1];
-                XDWORD p2 = *(XDWORD *) ((XBYTE *) srcPtr + BytesPerLine);
-                XDWORD p3 = *(XDWORD *) ((XBYTE *) srcPtr + BytesPerLine + 4);
-
-                XDWORD rb = (p0 & 0x00FF00FF) + (p1 & 0x00FF00FF) +
-                    (p2 & 0x00FF00FF) + (p3 & 0x00FF00FF);
-                XDWORD ag = ((p0 & 0xFF00FF00) >> 8) + ((p1 & 0xFF00FF00) >> 8) +
-                    ((p2 & 0xFF00FF00) >> 8) + ((p3 & 0xFF00FF00) >> 8);
-
-                XDWORD rbAvg = (rb >> 2) & 0x00FF00FF;
-                XDWORD agAvg = ((ag >> 2) << 8) & 0xFF00FF00;
-
-                *(XDWORD *) dstPtr = rbAvg | agAvg;
-                srcPtr += 2;
-                dstPtr += 4;
-                --w;
-            } while (w);
-            srcPtr = (XDWORD *) ((XBYTE *) rowStart + BytesPerLine * 2);
-            --h;
-        } while (h);
-    }
+            *(XDWORD *) dstPtr = rbAvg | agAvg;
+            srcPtr += 2;
+            dstPtr += 4;
+            --w;
+        } while (w);
+        srcPtr = (XDWORD *) ((XBYTE *) rowStart + BytesPerLine * 2);
+        --h;
+    } while (h);
     return TRUE;
 }
 
@@ -527,67 +394,22 @@ static XDWORD ReadPixel24(const XBYTE *pixel) {
     return (XDWORD) pixel[0] | ((XDWORD) pixel[1] << 8) | ((XDWORD) pixel[2] << 16);
 }
 
+static int Luminance24(const XBYTE *pixel) {
+    const XDWORD value = ReadPixel24(pixel);
+    return (int) ((value & 0xFF) + ((value >> 8) & 0xFF) + ((value >> 16) & 0xFF));
+}
+
 static void WriteNormalPixel24(XBYTE *pixel, XDWORD packedNormal) {
     pixel[0] = (XBYTE) (packedNormal & 0xFF);
     pixel[1] = (XBYTE) ((packedNormal >> 8) & 0xFF);
     pixel[2] = (XBYTE) ((packedNormal >> 16) & 0xFF);
 }
 
-#if defined(VX_SIMD_SSE2)
-// SSE version: Pack 4 normals to pixels at once
-static void PackNormalToPixelSSE(const __m128 &dx4, const __m128 &dy4, const __m128 &invLen4,
-                                 const __m128 &lum4, XDWORD *outPixels) {
-    __m128 scale127 = _mm_set1_ps(127.0f);
-    __m128 offset128 = _mm_set1_ps(128.0f);
-    __m128 scaleNeg255 = _mm_set1_ps(-255.0f);
-
-    // Calculate normal components
-    __m128 nx = _mm_mul_ps(dx4, invLen4);
-    __m128 ny = _mm_mul_ps(dy4, invLen4);
-    __m128 nz = invLen4;
-
-    // Convert to color space: normal * 127 + 128
-    __m128 nx_color = _mm_add_ps(_mm_mul_ps(nx, scale127), offset128);
-    __m128 ny_color = _mm_add_ps(_mm_mul_ps(ny, scale127), offset128);
-    __m128 nz_color = _mm_add_ps(_mm_mul_ps(nz, scale127), offset128);
-    __m128 alpha = _mm_mul_ps(lum4, scaleNeg255);
-
-    // Convert to integers
-    __m128i nx_i = _mm_cvttps_epi32(nx_color);
-    __m128i ny_i = _mm_cvttps_epi32(ny_color);
-    __m128i nz_i = _mm_cvttps_epi32(nz_color);
-    __m128i alpha_i = _mm_cvttps_epi32(alpha);
-
-    // Pack: ((nx - alpha<<8) << 8 + ny) << 8 + nz
-    // Extract and pack each pixel
-    alignas(16) int nx_arr[4], ny_arr[4], nz_arr[4], alpha_arr[4];
-    _mm_store_si128((__m128i *) nx_arr, nx_i);
-    _mm_store_si128((__m128i *) ny_arr, ny_i);
-    _mm_store_si128((__m128i *) nz_arr, nz_i);
-    _mm_store_si128((__m128i *) alpha_arr, alpha_i);
-
-    for (int i = 0; i < 4; i++) {
-        outPixels[i] = (XDWORD) (((((nx_arr[i] - (alpha_arr[i] << 8)) << 8) + ny_arr[i]) << 8) + nz_arr[i]);
-    }
-}
-
-// SSE version: Calculate luminance for 4 pixels (returns float values)
-static __m128 CalculateLuminanceSSE4(const XDWORD *pixels, const __m128 &scale) {
-    // Extract R, G, B from each pixel and sum them
-    alignas(16) float lum[4];
-    for (int i = 0; i < 4; i++) {
-        XDWORD p = pixels[i];
-        lum[i] = (float) ((p & 0xFF) + ((p >> 8) & 0xFF) + ((p >> 16) & 0xFF));
-    }
-    return _mm_mul_ps(_mm_load_ps(lum), scale);
-}
-#endif
-
 XBOOL VxConvertToNormalMapKernel(const VxImageDescEx &image, XDWORD ColorMask, int simdMode) {
     if (image.BitsPerPixel != 32 && image.BitsPerPixel != 24) return FALSE;
     if (image.Width == 0 || image.Height == 0) return FALSE;
     if (image.Image == nullptr) return FALSE;
-    const bool useSIMD = simdMode != VX_SIMD_MODE_NONE;
+    (void) simdMode;
 
     XBYTE *Image = image.Image;
     int Width = image.Width;
@@ -660,76 +482,6 @@ XBOOL VxConvertToNormalMapKernel(const VxImageDescEx &image, XDWORD ColorMask, i
         // Use luminance from RGB
         const float scale = 0.0013071896f; // 1.0 / 765.0 (255*3)
 
-#if defined(VX_SIMD_SSE2)
-        if (useSIMD && Width >= 8) {
-            __m128 scaleVec = _mm_set1_ps(scale);
-            __m128 one = _mm_set1_ps(1.0f);
-
-            for (int y = 0; y < Height - 1; y++) {
-                XDWORD *rowCurrent = (XDWORD *) (Image + y * image.BytesPerLine);
-                XDWORD *rowBelow = (XDWORD *) (Image + (y + 1) * image.BytesPerLine);
-
-                int x = 0;
-                // Process 4 pixels at a time
-                for (; x + 4 < Width; x += 4) {
-                    XDWORD *pCurrent = rowCurrent + x;
-
-                    // Load 4 current pixels
-                    alignas(16) XDWORD current4[4] = {pCurrent[0], pCurrent[1], pCurrent[2], pCurrent[3]};
-                    // Load 4 right pixels
-                    alignas(16) XDWORD right4[4] = {pCurrent[1], pCurrent[2], pCurrent[3], pCurrent[4]};
-                    // Load 4 below pixels
-                    alignas(16) XDWORD below4[4] = {rowBelow[x], rowBelow[x + 1], rowBelow[x + 2], rowBelow[x + 3]};
-
-                    // Calculate luminances
-                    __m128 lum0 = CalculateLuminanceSSE4(current4, scaleVec);
-                    __m128 lum1 = CalculateLuminanceSSE4(right4, scaleVec);
-                    __m128 lum2 = CalculateLuminanceSSE4(below4, scaleVec);
-
-                    // Calculate derivatives
-                    __m128 dx = _mm_sub_ps(lum1, lum0);
-                    __m128 dy = _mm_sub_ps(lum2, lum0);
-
-                    // Calculate length^2 = dx^2 + dy^2 + 1
-                    __m128 lenSq = _mm_add_ps(_mm_add_ps(_mm_mul_ps(dx, dx), _mm_mul_ps(dy, dy)), one);
-
-                    // Calculate inverse length using fast reciprocal sqrt
-                    __m128 invLen = VxSIMDReciprocalSqrtAccurate(lenSq);
-
-                    // Pack and store 4 output pixels
-                    alignas(16) XDWORD outPixels[4];
-                    PackNormalToPixelSSE(dx, dy, invLen, lum0, outPixels);
-                    pCurrent[0] = outPixels[0];
-                    pCurrent[1] = outPixels[1];
-                    pCurrent[2] = outPixels[2];
-                    pCurrent[3] = outPixels[3];
-                }
-
-                // Handle remaining pixels with scalar code
-                for (; x < Width; x++) {
-                    XDWORD *pCurrent = rowCurrent + x;
-                    XDWORD *pRight = (x + 1 < Width) ? (pCurrent + 1) : pCurrent;
-                    XDWORD *pBelow = rowBelow + x;
-
-                    XDWORD p0 = *pCurrent;
-                    float lum0f = ((p0 & 0xFF) + ((p0 >> 8) & 0xFF) + ((p0 >> 16) & 0xFF)) * scale;
-
-                    XDWORD p1 = *pRight;
-                    float lum1f = ((p1 & 0xFF) + ((p1 >> 8) & 0xFF) + ((p1 >> 16) & 0xFF)) * scale;
-
-                    XDWORD p2 = *pBelow;
-                    float lum2f = ((p2 & 0xFF) + ((p2 >> 8) & 0xFF) + ((p2 >> 16) & 0xFF)) * scale;
-
-                    float dxf = lum1f - lum0f;
-                    float dyf = lum2f - lum0f;
-                    float invLenf = 1.0f / sqrtf(dxf * dxf + dyf * dyf + 1.0f);
-
-                    float normal[3] = {dxf * invLenf, dyf * invLenf, invLenf};
-                    *pCurrent = PackNormalToPixel(normal, lum0f);
-                }
-            }
-        } else
-#endif
         {
             // Scalar fallback
             for (int y = 0; y < Height - 1; y++) {
@@ -818,38 +570,79 @@ XBOOL VxConvertToNormalMapKernel(const VxImageDescEx &image, XDWORD ColorMask, i
 }
 
 
-#if defined(VX_SIMD_SSE2)
-static inline int SseLuminance(XDWORD pixel) {
-    return (int) ((pixel & 0xFF) + ((pixel >> 8) & 0xFF) + ((pixel >> 16) & 0xFF));
-}
-#endif
-
 static XBOOL ConvertToBumpMap24(const VxImageDescEx &image, int simdMode) {
+    (void) simdMode;
     if (image.Image == nullptr) return FALSE;
     if (image.Width < 2 || image.Height <= 0 || image.BytesPerLine <= 0) return FALSE;
 
-    const size_t pixelCount = static_cast<size_t>(image.Width) * static_cast<size_t>(image.Height);
-    if (pixelCount > static_cast<size_t>(INT_MAX / 4)) {
+    const size_t bytesPerLine = static_cast<size_t>(image.BytesPerLine);
+    const size_t imageHeight = static_cast<size_t>(image.Height);
+    if (bytesPerLine > (static_cast<size_t>(INT_MAX) / imageHeight)) {
         return FALSE;
     }
 
+    const size_t imageSize = bytesPerLine * imageHeight;
     XArray<XBYTE> tempImage;
-    tempImage.Resize(static_cast<int>(pixelCount * 4));
+    tempImage.Resize(static_cast<int>(imageSize));
+    memcpy(tempImage.Begin(), image.Image, imageSize);
 
-    VxImageDescEx image32;
-    VxPixelFormat2ImageDesc(_32_ARGB8888, image32);
-    image32.Width = image.Width;
-    image32.Height = image.Height;
-    image32.BytesPerLine = image.Width * 4;
-    image32.Image = tempImage.Begin();
+    const int Width = image.Width;
+    const int Height = image.Height;
+    const int BytesPerLine = image.BytesPerLine;
+    XBYTE *srcPtr = tempImage.Begin();
+    XBYTE *dstPtr = image.Image;
+    XBYTE *lastRowPtr = tempImage.Begin() + BytesPerLine * (Height - 1);
 
-    TheBlitter.DoBlit(image, image32);
-    // The 24-bit path gets its SIMD win from the 24<->32 blit kernels; the
-    // existing 32-bit bump SSE2 loop is slower than scalar on this conversion.
-    if (!VxConvertToBumpMapKernel(image32, VX_SIMD_MODE_NONE)) {
-        return FALSE;
+    for (int y = 0; y < Height; ++y) {
+        XBYTE *abovePtr = (y == 0) ? lastRowPtr : srcPtr - BytesPerLine;
+        XBYTE *belowPtr = (y != Height - 1) ? srcPtr + BytesPerLine : srcPtr;
+
+        int leftLum = Luminance24(srcPtr + (Width - 1) * 3);
+        int belowLum = Luminance24(belowPtr);
+        int aboveLum = Luminance24(abovePtr);
+        int currLum = Luminance24(srcPtr);
+        int rightLum = Luminance24(belowPtr + 3);
+
+        dstPtr[0] = (XBYTE) ((currLum <= 1) ? 127 : 63);
+        dstPtr[1] = (XBYTE) (aboveLum - belowLum + leftLum - rightLum);
+        dstPtr[2] = (XBYTE) (leftLum - currLum);
+
+        XBYTE *currentPtr = srcPtr + 3;
+        XBYTE *currentDst = dstPtr + 3;
+        abovePtr += 3;
+        belowPtr += 3;
+
+        for (int x = 1; x < Width - 1; ++x) {
+            leftLum = Luminance24(currentPtr - 3);
+            rightLum = Luminance24(currentPtr + 3);
+            currLum = Luminance24(currentPtr);
+            belowLum = Luminance24(belowPtr);
+            aboveLum = Luminance24(abovePtr);
+
+            currentDst[0] = (XBYTE) ((currLum <= 1) ? 127 : 63);
+            currentDst[1] = (XBYTE) (aboveLum - belowLum);
+            currentDst[2] = (XBYTE) (leftLum - rightLum);
+
+            currentPtr += 3;
+            currentDst += 3;
+            abovePtr += 3;
+            belowPtr += 3;
+        }
+
+        leftLum = Luminance24(srcPtr + (Width - 2) * 3);
+        rightLum = Luminance24(srcPtr);
+        currLum = Luminance24(currentPtr);
+        belowLum = Luminance24(belowPtr);
+        aboveLum = Luminance24(abovePtr);
+
+        currentDst[0] = (XBYTE) ((currLum <= 1) ? 127 : 63);
+        currentDst[1] = (XBYTE) (aboveLum - belowLum);
+        currentDst[2] = (XBYTE) (leftLum - rightLum);
+
+        srcPtr += BytesPerLine;
+        dstPtr += BytesPerLine;
     }
-    TheBlitter.DoBlit(image32, image);
+
     return TRUE;
 }
 
@@ -858,7 +651,7 @@ XBOOL VxConvertToBumpMapKernel(const VxImageDescEx &image, int simdMode) {
     if (image.BitsPerPixel != 32) return FALSE;
     if (image.Image == nullptr) return FALSE;
     if (image.Width < 2 || image.Height <= 0 || image.BytesPerLine <= 0) return FALSE;
-    const bool useSIMD = simdMode != VX_SIMD_MODE_NONE;
+    (void) simdMode;
 
     // Allocate temporary copy of the image
     const size_t bytesPerLine = static_cast<size_t>(image.BytesPerLine);
@@ -867,18 +660,23 @@ XBOOL VxConvertToBumpMapKernel(const VxImageDescEx &image, int simdMode) {
         return FALSE;
     }
 
-    const size_t imageSize = bytesPerLine * imageHeight;
-    XBYTE *tempImage = new XBYTE[imageSize];
-    memcpy(tempImage, image.Image, imageSize);
+    if (bytesPerLine > (static_cast<size_t>(INT_MAX) / imageHeight)) {
+        return FALSE;
+    }
 
-    XBYTE *srcPtr = tempImage;
+    const size_t imageSize = bytesPerLine * imageHeight;
+    XArray<XBYTE> tempImage;
+    tempImage.Resize(static_cast<int>(imageSize));
+    memcpy(tempImage.Begin(), image.Image, imageSize);
+
+    XBYTE *srcPtr = tempImage.Begin();
     XBYTE *dstPtr = image.Image;
     int Width = image.Width;
     int Height = image.Height;
     int BytesPerLine = image.BytesPerLine;
 
     // Calculate pointer to last row of source (for wrap-around)
-    XBYTE *lastRowPtr = tempImage + BytesPerLine * (Height - 1);
+    XBYTE *lastRowPtr = tempImage.Begin() + BytesPerLine * (Height - 1);
 
     for (int y = 0; y < Height; y++) {
         // Get pointer to row above (wrap to last row if at top)
@@ -929,84 +727,6 @@ XBOOL VxConvertToBumpMapKernel(const VxImageDescEx &image, int simdMode) {
         belowPtr += 4;
         abovePtr += 4;
 
-#if defined(VX_SIMD_SSE2)
-        // SSE2 optimized middle pixels - process 4 pixels at a time
-        if (useSIMD && Width >= 6) {
-            __m128i zero = _mm_setzero_si128();
-
-            unsigned int x = 1;
-            // Process 4 pixels at a time when possible
-            while (x + 4 < (unsigned int) (Width - 1)) {
-                // Load 4 current pixels
-                __m128i curr4 = _mm_loadu_si128((const __m128i *) currentPtr);
-                __m128i below4 = _mm_loadu_si128((const __m128i *) belowPtr);
-                __m128i above4 = _mm_loadu_si128((const __m128i *) abovePtr);
-                __m128i left4 = _mm_loadu_si128((const __m128i *) (currentPtr - 4));
-                __m128i right4 = _mm_loadu_si128((const __m128i *) (currentPtr + 4));
-
-                // Process each of 4 pixels
-                for (int i = 0; i < 4; i++) {
-                    XDWORD currPx = _mm_cvtsi128_si32(curr4);
-                    XDWORD belowPx = _mm_cvtsi128_si32(below4);
-                    XDWORD abovePx = _mm_cvtsi128_si32(above4);
-                    XDWORD leftPx = _mm_cvtsi128_si32(left4);
-                    XDWORD rightPx = _mm_cvtsi128_si32(right4);
-
-                    int cLum = SseLuminance(currPx);
-                    int bLum = SseLuminance(belowPx);
-                    int aLum = SseLuminance(abovePx);
-                    int lLum = SseLuminance(leftPx);
-                    int rLum = SseLuminance(rightPx);
-
-                    *dstPtr = (cLum <= 1) ? 127 : 63;
-                    dstPtr[1] = (XBYTE) (aLum - bLum);
-                    dstPtr[2] = (XBYTE) (lLum - rLum);
-                    dstPtr[3] = 0;
-                    dstPtr += 4;
-
-                    // Shift to next pixel
-                    curr4 = _mm_srli_si128(curr4, 4);
-                    below4 = _mm_srli_si128(below4, 4);
-                    above4 = _mm_srli_si128(above4, 4);
-                    left4 = _mm_srli_si128(left4, 4);
-                    right4 = _mm_srli_si128(right4, 4);
-                }
-
-                currentPtr += 16;
-                belowPtr += 16;
-                abovePtr += 16;
-                x += 4;
-            }
-
-            // Handle remaining middle pixels with scalar code
-            for (; x < (unsigned int) (Width - 1); x++) {
-                leftPixel = *(int *) (currentPtr - 4);
-                leftLum = (leftPixel & 0xFF) + ((leftPixel >> 8) & 0xFF) + ((leftPixel >> 16) & 0xFF);
-
-                int nextRightVal = *(int *) (currentPtr + 4);
-                int nextRightLum = (nextRightVal & 0xFF) + ((nextRightVal >> 8) & 0xFF) + ((nextRightVal >> 16) & 0xFF);
-
-                currVal = *(int *) currentPtr;
-                currLum = (currVal & 0xFF) + ((currVal >> 8) & 0xFF) + ((currVal >> 16) & 0xFF);
-
-                belowVal = *(int *) belowPtr;
-                belowLum = (belowVal & 0xFF) + ((belowVal >> 8) & 0xFF) + ((belowVal >> 16) & 0xFF);
-
-                aboveVal = *(int *) abovePtr;
-                aboveLum = (aboveVal & 0xFF) + ((aboveVal >> 8) & 0xFF) + ((aboveVal >> 16) & 0xFF);
-
-                *dstPtr = (currLum <= 1) ? 127 : 63;
-                dstPtr[1] = (XBYTE) (aboveLum - belowLum);
-                dstPtr[2] = (XBYTE) (leftLum - nextRightLum);
-                dstPtr[3] = 0;
-
-                currentPtr += 4;
-                belowPtr += 4;
-                abovePtr += 4;
-                dstPtr += 4;
-            }
-        } else
-#endif
         {
             // Scalar middle pixels
             for (unsigned int x = 1; x < (unsigned int) (Width - 1); x++) {
@@ -1064,7 +784,6 @@ XBOOL VxConvertToBumpMapKernel(const VxImageDescEx &image, int simdMode) {
         srcPtr += BytesPerLine;
     }
 
-    delete[] tempImage;
     return TRUE;
 }
 
