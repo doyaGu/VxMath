@@ -663,6 +663,31 @@ TEST_F(AlphaBlitTest, PremultiplyAlpha_FullTransparent) {
     }
 }
 
+TEST_F(AlphaBlitTest, PremultiplyAlpha_16BitAlphaFormats) {
+    ImageBuffer argb1555Buffer(2 * 2);
+    auto argb1555 = ImageDescFactory::Create16Bit1555(2, 1, argb1555Buffer.Data());
+    XWORD *pixels1555 = reinterpret_cast<XWORD *>(argb1555Buffer.Data());
+    pixels1555[0] = 0xFC00;
+    pixels1555[1] = 0x7C00;
+
+    blitter.PremultiplyAlpha(argb1555);
+
+    EXPECT_EQ(pixels1555[0], 0xFC00u)
+        << "ARGB1555 opaque pixels should keep color";
+    EXPECT_EQ(pixels1555[1], 0x0000u)
+        << "ARGB1555 transparent pixels should clear color";
+
+    ImageBuffer argb4444Buffer(1 * 2);
+    auto argb4444 = ImageDescFactory::Create16Bit4444(1, 1, argb4444Buffer.Data());
+    XWORD *pixels4444 = reinterpret_cast<XWORD *>(argb4444Buffer.Data());
+    pixels4444[0] = 0x8F84;
+
+    blitter.PremultiplyAlpha(argb4444);
+
+    EXPECT_EQ(pixels4444[0], 0x8842u)
+        << "ARGB4444 color channels should be scaled by the alpha nibble";
+}
+
 //==============================================================================
 // Unpremultiply Alpha Tests
 //==============================================================================
@@ -706,6 +731,34 @@ TEST_F(AlphaBlitTest, UnpremultiplyAlpha_HalfTransparent) {
         EXPECT_NEAR(g, 0x80, 2) << "Green should be ~0x80";
         EXPECT_NEAR(b, 0x40, 2) << "Blue should be ~0x40";
     }
+}
+
+TEST_F(AlphaBlitTest, UnpremultiplyAlpha_16BitAlphaFormats) {
+    ImageBuffer argb1555Buffer(2 * 2);
+    auto argb1555 = ImageDescFactory::Create16Bit1555(2, 1, argb1555Buffer.Data());
+    XWORD *pixels1555 = reinterpret_cast<XWORD *>(argb1555Buffer.Data());
+    pixels1555[0] = 0x801F;
+    pixels1555[1] = 0x001F;
+
+    blitter.UnpremultiplyAlpha(argb1555);
+
+    EXPECT_EQ(pixels1555[0], 0x801Fu)
+        << "ARGB1555 opaque pixels should keep color";
+    EXPECT_EQ(pixels1555[1], 0x0000u)
+        << "ARGB1555 transparent pixels should clear color";
+
+    ImageBuffer argb4444Buffer(2 * 2);
+    auto argb4444 = ImageDescFactory::Create16Bit4444(2, 1, argb4444Buffer.Data());
+    XWORD *pixels4444 = reinterpret_cast<XWORD *>(argb4444Buffer.Data());
+    pixels4444[0] = 0x8842;
+    pixels4444[1] = 0x0042;
+
+    blitter.UnpremultiplyAlpha(argb4444);
+
+    EXPECT_EQ(pixels4444[0], 0x8F74u)
+        << "ARGB4444 color channels should be expanded by the alpha nibble";
+    EXPECT_EQ(pixels4444[1], 0x0000u)
+        << "ARGB4444 zero alpha should clear color";
 }
 
 //==============================================================================
