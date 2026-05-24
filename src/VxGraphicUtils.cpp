@@ -218,7 +218,69 @@ void VxResizeImage32(const VxImageDescEx &src_desc, const VxImageDescEx &dst_des
     TheBlitter.ResizeImage(src_desc, dst_desc);
 }
 
+static void AveragePixel24(XBYTE *dst, const XBYTE *p0, const XBYTE *p1) {
+    dst[0] = (XBYTE) (((int) p0[0] + p1[0]) >> 1);
+    dst[1] = (XBYTE) (((int) p0[1] + p1[1]) >> 1);
+    dst[2] = (XBYTE) (((int) p0[2] + p1[2]) >> 1);
+}
+
+static void AveragePixel24(XBYTE *dst, const XBYTE *p0, const XBYTE *p1, const XBYTE *p2, const XBYTE *p3) {
+    dst[0] = (XBYTE) (((int) p0[0] + p1[0] + p2[0] + p3[0]) >> 2);
+    dst[1] = (XBYTE) (((int) p0[1] + p1[1] + p2[1] + p3[1]) >> 2);
+    dst[2] = (XBYTE) (((int) p0[2] + p1[2] + p2[2] + p3[2]) >> 2);
+}
+
+static void GenerateMipMap24(const VxImageDescEx &src_desc, XBYTE *Buffer) {
+    const int height = src_desc.Height;
+    const int bytesPerLine = src_desc.BytesPerLine;
+    XBYTE *image = src_desc.Image;
+
+    const int dstWidth = src_desc.Width >> 1;
+    const int dstHeight = height >> 1;
+
+    if (dstWidth == 0) {
+        if (dstHeight) {
+            XBYTE *dst = Buffer;
+            XBYTE *src = image;
+            for (int y = 0; y < dstHeight; ++y) {
+                AveragePixel24(dst, src, src + bytesPerLine);
+                dst += 3;
+                src += bytesPerLine * 2;
+            }
+        }
+        return;
+    }
+
+    if (dstHeight == 0) {
+        XBYTE *dst = Buffer;
+        XBYTE *src = image;
+        for (int x = 0; x < dstWidth; ++x) {
+            AveragePixel24(dst, src, src + 3);
+            dst += 3;
+            src += 6;
+        }
+        return;
+    }
+
+    XBYTE *dst = Buffer;
+    for (int y = 0; y < dstHeight; ++y) {
+        XBYTE *row0 = image + y * 2 * bytesPerLine;
+        XBYTE *row1 = row0 + bytesPerLine;
+        for (int x = 0; x < dstWidth; ++x) {
+            XBYTE *p0 = row0 + x * 6;
+            XBYTE *p2 = row1 + x * 6;
+            AveragePixel24(dst, p0, p0 + 3, p2, p2 + 3);
+            dst += 3;
+        }
+    }
+}
+
 static void GenerateMipMapImpl(const VxImageDescEx &src_desc, XBYTE *Buffer, bool useSIMD) {
+    if (src_desc.BitsPerPixel == 24) {
+        GenerateMipMap24(src_desc, Buffer);
+        return;
+    }
+
     int Height = src_desc.Height;
     int BytesPerLine = src_desc.BytesPerLine;
     XBYTE *Image = src_desc.Image;
