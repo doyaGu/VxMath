@@ -856,8 +856,41 @@ void VxBlitEngine::SwapRedBlue(const VxImageDescEx &desc) {
     VxMutexLock lock(m_Lock);
 
     if (!desc.Image) return;
-    if (desc.BitsPerPixel != 32) return;
+    if (desc.BitsPerPixel != 32 && desc.BitsPerPixel != 24 && desc.BitsPerPixel != 16) return;
     if (desc.Width <= 0 || desc.Height <= 0) return;
+
+    if (desc.BitsPerPixel == 24) {
+        XBYTE *row = desc.Image;
+        for (int y = 0; y < desc.Height; ++y) {
+            XBYTE *dst = row;
+            for (int x = 0; x < desc.Width; ++x) {
+                const XBYTE b = dst[0];
+                dst[0] = dst[2];
+                dst[2] = b;
+                dst += 3;
+            }
+            row += desc.BytesPerLine;
+        }
+        return;
+    }
+
+    if (desc.BitsPerPixel == 16) {
+        const XWORD swapMask = static_cast<XWORD>(desc.RedMask | desc.BlueMask);
+        XBYTE *row = desc.Image;
+        for (int y = 0; y < desc.Height; ++y) {
+            XWORD *dst = (XWORD *)row;
+            for (int x = 0; x < desc.Width; ++x) {
+                const XWORD pixel = dst[x];
+                const XDWORD r = ExpandMaskedColorTo8Bit(pixel, desc.RedMask);
+                const XDWORD b = ExpandMaskedColorTo8Bit(pixel, desc.BlueMask);
+                dst[x] = static_cast<XWORD>((pixel & ~swapMask) |
+                    Pack8BitColorToMask(b, desc.RedMask) |
+                    Pack8BitColorToMask(r, desc.BlueMask));
+            }
+            row += desc.BytesPerLine;
+        }
+        return;
+    }
 
     VxBlitInfo info = {};
     info.width = desc.Width;
