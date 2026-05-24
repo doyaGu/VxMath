@@ -933,8 +933,33 @@ void VxBlitEngine::InvertColors(const VxImageDescEx &desc) {
     VxMutexLock lock(m_Lock);
 
     if (!desc.Image) return;
-    if (desc.BitsPerPixel != 32) return;
+    if (desc.BitsPerPixel != 32 && desc.BitsPerPixel != 24 && desc.BitsPerPixel != 16) return;
     if (desc.Width <= 0 || desc.Height <= 0) return;
+
+    if (desc.BitsPerPixel == 24) {
+        XBYTE *row = desc.Image;
+        for (int y = 0; y < desc.Height; ++y) {
+            XBYTE *dst = row;
+            for (int x = 0; x < desc.Width * 3; ++x) {
+                dst[x] ^= 0xFF;
+            }
+            row += desc.BytesPerLine;
+        }
+        return;
+    }
+
+    if (desc.BitsPerPixel == 16) {
+        const XWORD colorMask = static_cast<XWORD>(desc.RedMask | desc.GreenMask | desc.BlueMask);
+        XBYTE *row = desc.Image;
+        for (int y = 0; y < desc.Height; ++y) {
+            XWORD *dst = (XWORD *)row;
+            for (int x = 0; x < desc.Width; ++x) {
+                dst[x] ^= colorMask;
+            }
+            row += desc.BytesPerLine;
+        }
+        return;
+    }
 
     VxBlitInfo info = {};
     info.width = desc.Width;

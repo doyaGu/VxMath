@@ -962,6 +962,71 @@ TEST_F(AlphaBlitTest, InvertColors_AllWidths) {
     }
 }
 
+TEST_F(AlphaBlitTest, InvertColors_24BitRGB) {
+    const int width = 2;
+    const int height = 1;
+    ImageBuffer buffer(width * height * 3);
+    auto desc = ImageDescFactory::Create24BitRGB(width, height, buffer.Data());
+
+    buffer[0] = 0x10;
+    buffer[1] = 0x20;
+    buffer[2] = 0x30;
+    buffer[3] = 0xAA;
+    buffer[4] = 0xBB;
+    buffer[5] = 0xCC;
+
+    blitter.InvertColors(desc);
+
+    EXPECT_EQ(buffer[0], 0xEFu);
+    EXPECT_EQ(buffer[1], 0xDFu);
+    EXPECT_EQ(buffer[2], 0xCFu);
+    EXPECT_EQ(buffer[3], 0x55u);
+    EXPECT_EQ(buffer[4], 0x44u);
+    EXPECT_EQ(buffer[5], 0x33u);
+}
+
+TEST_F(AlphaBlitTest, InvertColors_16BitFormats) {
+    const int width = 2;
+    const int height = 1;
+
+    ImageBuffer rgb565Buffer(width * height * 2);
+    auto rgb565 = ImageDescFactory::Create16Bit565(width, height, rgb565Buffer.Data());
+    XWORD *pixels565 = reinterpret_cast<XWORD *>(rgb565Buffer.Data());
+    pixels565[0] = 0x1234;
+    pixels565[1] = 0xABCD;
+
+    blitter.InvertColors(rgb565);
+
+    EXPECT_EQ(pixels565[0], 0xEDCBu);
+    EXPECT_EQ(pixels565[1], 0x5432u);
+
+    ImageBuffer argb1555Buffer(width * height * 2);
+    auto argb1555 = ImageDescFactory::Create16Bit1555(width, height, argb1555Buffer.Data());
+    XWORD *pixels1555 = reinterpret_cast<XWORD *>(argb1555Buffer.Data());
+    pixels1555[0] = 0x9234;
+    pixels1555[1] = 0x1234;
+
+    blitter.InvertColors(argb1555);
+
+    EXPECT_EQ(pixels1555[0], 0xEDCBu)
+        << "ARGB1555 alpha bit should be preserved while color bits are inverted";
+    EXPECT_EQ(pixels1555[1], 0x6DCBu)
+        << "ARGB1555 transparent alpha bit should be preserved while color bits are inverted";
+
+    ImageBuffer argb4444Buffer(width * height * 2);
+    auto argb4444 = ImageDescFactory::Create16Bit4444(width, height, argb4444Buffer.Data());
+    XWORD *pixels4444 = reinterpret_cast<XWORD *>(argb4444Buffer.Data());
+    pixels4444[0] = 0xA123;
+    pixels4444[1] = 0x0123;
+
+    blitter.InvertColors(argb4444);
+
+    EXPECT_EQ(pixels4444[0], 0xAEDCu)
+        << "ARGB4444 alpha nibble should be preserved while color bits are inverted";
+    EXPECT_EQ(pixels4444[1], 0x0EDCu)
+        << "ARGB4444 zero alpha nibble should be preserved while color bits are inverted";
+}
+
 TEST_F(AlphaBlitTest, InvertColors_DoubleInvert_Roundtrip) {
     const int width = 16, height = 16;
     ImageBuffer buffer(width * height * 4);
