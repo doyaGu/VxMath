@@ -24,3 +24,14 @@ target_include_directories(VxMathPerf PRIVATE
 target_link_libraries(VxMathPerf PRIVATE
         ${VXMATH_PERF_LINK_TARGET}
 )
+
+if (VXMATH_ENABLE_PERF_GATES)
+    enable_testing()
+    add_test(NAME VxMathImagePerfGate
+            COMMAND VxMathPerf --gate-image-auto --gate-runs=3
+    )
+    set_tests_properties(VxMathImagePerfGate PROPERTIES
+            ENVIRONMENT "VXMATH_PERF_WARMUP=5;VXMATH_PERF_MEASURE=30"
+            LABELS "perf"
+    )
+endif ()
