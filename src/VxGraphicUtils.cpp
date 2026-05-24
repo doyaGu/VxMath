@@ -466,6 +466,16 @@ static XDWORD PackNormalToPixel(const float *normal, float height) {
     return (XDWORD) (((((nx_color - (alpha << 8)) << 8) + ny_color) << 8) + nz_color);
 }
 
+static XDWORD ReadPixel24(const XBYTE *pixel) {
+    return (XDWORD) pixel[0] | ((XDWORD) pixel[1] << 8) | ((XDWORD) pixel[2] << 16);
+}
+
+static void WriteNormalPixel24(XBYTE *pixel, XDWORD packedNormal) {
+    pixel[0] = (XBYTE) (packedNormal & 0xFF);
+    pixel[1] = (XBYTE) ((packedNormal >> 8) & 0xFF);
+    pixel[2] = (XBYTE) ((packedNormal >> 16) & 0xFF);
+}
+
 #if defined(VX_SIMD_SSE2)
 // SSE version: Pack 4 normals to pixels at once
 static void PackNormalToPixelSSE(const __m128 &dx4, const __m128 &dy4, const __m128 &invLen4,
@@ -517,13 +527,76 @@ static __m128 CalculateLuminanceSSE4(const XDWORD *pixels, const __m128 &scale) 
 #endif
 
 static XBOOL ConvertToNormalMapImpl(const VxImageDescEx &image, XDWORD ColorMask, bool useSIMD) {
-    if (image.BitsPerPixel != 32) return FALSE;
+    if (image.BitsPerPixel != 32 && image.BitsPerPixel != 24) return FALSE;
     if (image.Width == 0 || image.Height == 0) return FALSE;
     if (image.Image == nullptr) return FALSE;
 
     XBYTE *Image = image.Image;
     int Width = image.Width;
     int Height = image.Height;
+
+    if (image.BitsPerPixel == 24) {
+        if (ColorMask == 0xFFFFFFFF) {
+            const float scale = 0.0013071896f; // 1.0 / 765.0 (255*3)
+
+            for (int y = 0; y < Height - 1; y++) {
+                for (int x = 0; x < Width; x++) {
+                    XBYTE *pCurrent = Image + y * image.BytesPerLine + x * 3;
+                    XBYTE *pRight = (x + 1 < Width) ? pCurrent + 3 : pCurrent;
+                    XBYTE *pBelow = Image + (y + 1) * image.BytesPerLine + x * 3;
+
+                    XDWORD p0 = ReadPixel24(pCurrent);
+                    XDWORD p1 = ReadPixel24(pRight);
+                    XDWORD p2 = ReadPixel24(pBelow);
+                    float lum0 = ((p0 & 0xFF) + ((p0 >> 8) & 0xFF) + ((p0 >> 16) & 0xFF)) * scale;
+                    float lum1 = ((p1 & 0xFF) + ((p1 >> 8) & 0xFF) + ((p1 >> 16) & 0xFF)) * scale;
+                    float lum2 = ((p2 & 0xFF) + ((p2 >> 8) & 0xFF) + ((p2 >> 16) & 0xFF)) * scale;
+
+                    float dx = lum1 - lum0;
+                    float dy = lum2 - lum0;
+                    float invLen = 1.0f / sqrtf(dx * dx + dy * dy + 1.0f);
+                    float normal[3] = {dx * invLen, dy * invLen, invLen};
+
+                    WriteNormalPixel24(pCurrent, PackNormalToPixel(normal, lum0));
+                }
+            }
+        } else {
+            XBYTE BitShift = (XBYTE) GetBitShift(ColorMask);
+            const float scale = 1.0f / 255.0f;
+
+            for (int y = 0; y < Height - 1; y++) {
+                for (int x = 0; x < Width; x++) {
+                    XBYTE *pCurrent = Image + y * image.BytesPerLine + x * 3;
+                    XBYTE *pRight = (x + 1 < Width) ? pCurrent + 3 : pCurrent;
+                    XBYTE *pBelow = Image + (y + 1) * image.BytesPerLine + x * 3;
+
+                    XDWORD v0 = (ReadPixel24(pCurrent) & ColorMask) >> BitShift;
+                    XDWORD v1 = (ReadPixel24(pRight) & ColorMask) >> BitShift;
+                    XDWORD v2 = (ReadPixel24(pBelow) & ColorMask) >> BitShift;
+                    float h0 = (float) v0 * scale;
+                    float h1 = (float) v1 * scale;
+                    float h2 = (float) v2 * scale;
+
+                    float dx = h1 - h0;
+                    float dy = h2 - h0;
+                    float invLen = 1.0f / sqrtf(dx * dx + dy * dy + 1.0f);
+                    float normal[3] = {dx * invLen, dy * invLen, invLen};
+
+                    WriteNormalPixel24(pCurrent, PackNormalToPixel(normal, h0));
+                }
+            }
+        }
+
+        if (Height > 1) {
+            memcpy(
+                Image + (Height - 1) * image.BytesPerLine,
+                Image + (Height - 2) * image.BytesPerLine,
+                image.BytesPerLine
+            );
+        }
+
+        return TRUE;
+    }
 
     if (ColorMask == 0xFFFFFFFF) {
         // Use luminance from RGB
