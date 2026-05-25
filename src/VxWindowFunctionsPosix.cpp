@@ -17,6 +17,7 @@
 #endif
 #include <sys/stat.h>
 #include <sys/statvfs.h>
+#include <sys/wait.h>
 #include <unistd.h>
 
 #include "VxImageDescEx.h"
@@ -135,6 +136,178 @@ static XBOOL CopyParentPath(const char *file, XString &parent) {
 
     parent.Create(file, parentLen);
     return TRUE;
+}
+
+static XBOOL HasUrlScheme(const char *file) {
+    if (!file) {
+        return FALSE;
+    }
+    return strstr(file, "://") != NULL ? TRUE : FALSE;
+}
+
+static XBOOL IsFileUrl(const char *file) {
+    if (!file) {
+        return FALSE;
+    }
+    return strncasecmp(file, "file://", 7) == 0 ? TRUE : FALSE;
+}
+
+static XDWORD CopyCachedPath(const char *path, char *cachedFile, int cachedFileSize) {
+    const size_t pathLen = strlen(path);
+    if (pathLen >= static_cast<size_t>(cachedFileSize)) {
+        cachedFile[0] = '\0';
+        return 0x8007007Au;
+    }
+    memcpy(cachedFile, path, pathLen + 1);
+    return 0;
+}
+
+static XBOOL CreateDownloadCacheFile(char *cachedFile, int cachedFileSize, XString &path, int *fd) {
+    if (!cachedFile || cachedFileSize <= 0 || !fd) {
+        return FALSE;
+    }
+
+    const char *tmp = getenv("TMPDIR");
+    if (!tmp || !*tmp) {
+        tmp = "/tmp";
+    }
+
+    XString pattern(tmp);
+    AppendPathComponent(pattern, "vxurlcache-XXXXXX");
+
+    char localPath[PATH_MAX];
+    if (strlen(pattern.CStr()) >= sizeof(localPath)) {
+        return FALSE;
+    }
+    strcpy(localPath, pattern.CStr());
+
+    const int localFd = mkstemp(localPath);
+    if (localFd < 0) {
+        return FALSE;
+    }
+
+    if (CopyCachedPath(localPath, cachedFile, cachedFileSize) != 0) {
+        close(localFd);
+        unlink(localPath);
+        return FALSE;
+    }
+
+    path = localPath;
+    *fd = localFd;
+    return TRUE;
+}
+
+static XDWORD CopyFileToCache(const char *sourcePath, char *cachedFile, int cachedFileSize) {
+    if (!sourcePath || !*sourcePath) {
+        return 0x80070057u;
+    }
+
+    int inFd = open(sourcePath, O_RDONLY);
+    if (inFd < 0) {
+        return 0x80004005u;
+    }
+
+    XString cachePath;
+    int outFd = -1;
+    if (!CreateDownloadCacheFile(cachedFile, cachedFileSize, cachePath, &outFd)) {
+        close(inFd);
+        return 0x80004005u;
+    }
+
+    char buffer[16384];
+    XDWORD result = 0;
+    for (;;) {
+        const ssize_t readCount = read(inFd, buffer, sizeof(buffer));
+        if (readCount == 0) {
+            break;
+        }
+        if (readCount < 0) {
+            result = 0x80004005u;
+            break;
+        }
+
+        ssize_t written = 0;
+        while (written < readCount) {
+            const ssize_t writeCount = write(outFd, buffer + written, static_cast<size_t>(readCount - written));
+            if (writeCount <= 0) {
+                result = 0x80004005u;
+                break;
+            }
+            written += writeCount;
+        }
+        if (result != 0) {
+            break;
+        }
+    }
+
+    close(inFd);
+    close(outFd);
+
+    if (result != 0) {
+        unlink(cachePath.CStr());
+        cachedFile[0] = '\0';
+    }
+    return result;
+}
+
+static XDWORD RunDownloader(const char *tool, char *const argv[], const char *outputPath) {
+    const pid_t pid = fork();
+    if (pid < 0) {
+        return 0x80004005u;
+    }
+
+    if (pid == 0) {
+        execvp(tool, argv);
+        _exit(127);
+    }
+
+    int status = 0;
+    if (waitpid(pid, &status, 0) < 0) {
+        return 0x80004005u;
+    }
+
+    if (!WIFEXITED(status) || WEXITSTATUS(status) != 0) {
+        unlink(outputPath);
+        return 0x80004005u;
+    }
+
+    return 0;
+}
+
+static XDWORD DownloadUrlWithExternalTool(const char *url, char *cachedFile, int cachedFileSize) {
+    XString cachePath;
+    int outFd = -1;
+    if (!CreateDownloadCacheFile(cachedFile, cachedFileSize, cachePath, &outFd)) {
+        return 0x80004005u;
+    }
+    close(outFd);
+
+    char *curlArgv[] = {
+        const_cast<char *>("curl"),
+        const_cast<char *>("-fsSL"),
+        const_cast<char *>("-o"),
+        const_cast<char *>(cachePath.CStr()),
+        const_cast<char *>(url),
+        NULL
+    };
+    XDWORD result = RunDownloader("curl", curlArgv, cachePath.CStr());
+    if (result == 0) {
+        return 0;
+    }
+
+    char *wgetArgv[] = {
+        const_cast<char *>("wget"),
+        const_cast<char *>("-q"),
+        const_cast<char *>("-O"),
+        const_cast<char *>(cachePath.CStr()),
+        const_cast<char *>(url),
+        NULL
+    };
+    result = RunDownloader("wget", wgetArgv, cachePath.CStr());
+    if (result != 0) {
+        cachedFile[0] = '\0';
+    }
+    return result;
 }
 
 char VxScanCodeToAscii(XDWORD scancode, unsigned char keystate[256]) {
@@ -515,12 +688,29 @@ XBOOL VxCreateFileTree(const char *file) {
 }
 
 XDWORD VxURLDownloadToCacheFile(const char *File, char *CachedFile, int szCachedFile) {
-    (void) File;
-    if (CachedFile && szCachedFile > 0) {
-        CachedFile[0] = '\0';
+    if (!CachedFile || szCachedFile <= 0) {
+        return 0x80070057u;
     }
-    // URL download is not implemented on non-Windows.
-    return 0x80004005u;
+    CachedFile[0] = '\0';
+
+    if (!File || !*File) {
+        return 0x80070057u;
+    }
+
+    if (IsFileUrl(File)) {
+        XString path(File + 7);
+        if (strncmp(path.CStr(), "localhost/", 10) == 0) {
+            path = path.CStr() + 9;
+        }
+        VxUnEscapeUrl(path);
+        return CopyFileToCache(path.CStr(), CachedFile, szCachedFile);
+    }
+
+    if (!HasUrlScheme(File)) {
+        return CopyFileToCache(File, CachedFile, szCachedFile);
+    }
+
+    return DownloadUrlWithExternalTool(File, CachedFile, szCachedFile);
 }
 
 BITMAP_HANDLE VxCreateBitmap(const VxImageDescEx &desc) {
