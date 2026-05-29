@@ -14,7 +14,6 @@
 #include <algorithm>  // For std::move
 #include <initializer_list>
 #include <iterator>   // For std::reverse_iterator
-#include <string>     // For std::string
 #include <stdexcept>  // For std::out_of_range
 #endif
 
@@ -273,16 +272,6 @@ public:
     }
 
     /**
-     * @brief Constructs from an std::string (C++11).
-     * @remark Content is copied; embedded NULs are preserved.
-     */
-    explicit XString(const std::string &s) : XBaseString() {
-        const size_t kMaxLen = (size_t) MAX_LENGTH;
-        const size_t n = (s.size() < kMaxLen) ? s.size() : kMaxLen;
-        Assign(s.data(), (int) n);
-    }
-
-    /**
      * @brief Constructs from an initializer_list<char> (C++11).
      * @remark All characters are copied; embedded NULs are preserved.
      */
@@ -304,48 +293,6 @@ public:
         m_Buffer[m_Length] = '\0';
     }
 
-    /**
-     * @brief Assigns from an std::string (C++11).
-     * @remark Content is copied; embedded NULs are preserved.
-     */
-    XString &operator=(const std::string &s) {
-        const size_t kMaxLen = (size_t) MAX_LENGTH;
-        const size_t n = (s.size() < kMaxLen) ? s.size() : kMaxLen;
-        Assign(s.data(), (int) n);
-        return *this;
-    }
-
-    /**
-     * @brief Appends an std::string (C++11).
-     * @remark Content is appended; embedded NULs are preserved.
-     */
-    XString &operator<<(const std::string &s) {
-        if (!s.empty()) {
-            const size_t kMaxLen = (size_t) MAX_LENGTH;
-            const size_t curLen = (size_t) m_Length;
-            const size_t remaining = (curLen < kMaxLen) ? (kMaxLen - curLen) : 0;
-            const size_t toCopy = (s.size() < remaining) ? s.size() : remaining;
-            if (toCopy > 0) {
-                const size_t newLen = curLen + toCopy;
-                CheckSize((int) newLen);
-                memcpy(&m_Buffer[curLen], s.data(), toCopy);
-                m_Length = (XWORD) newLen;
-                m_Buffer[m_Length] = '\0';
-            }
-        }
-        return *this;
-    }
-
-    /**
-     * @brief Converts to std::string (C++11).
-     * @remark Preserves embedded NULs.
-     */
-    std::string ToStdString() const {
-        return std::string(m_Buffer ? m_Buffer : "", (size_t) m_Length);
-    }
-
-    /** @brief Explicit conversion to std::string (C++11). */
-    explicit operator std::string() const { return ToStdString(); }
 #endif
 
     /**
@@ -1122,9 +1069,6 @@ public:
             m_Length = iLength;
     }
 
-    /**
-     * @brief Explicit conversion to std::string (C++11).
-     */
     /** @brief Clears the string content, keeps capacity (C++11). */
     void Clear() {
         m_Length = 0;
@@ -1161,10 +1105,6 @@ public:
     XString &operator+=(bool v) { return (*this) << v; }
     /** @brief Appends a pointer. Alias for `operator<<`. */
     XString &operator+=(const void *v) { return (*this) << v; }
-#if VX_HAS_CXX11
-    /** @brief Appends an std::string. Alias for `operator<<` (C++11). */
-    XString &operator+=(const std::string &v) { return (*this) << v; }
-#endif
     //@}
 
     /**
