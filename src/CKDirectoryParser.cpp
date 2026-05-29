@@ -15,6 +15,67 @@
 #include <sys/stat.h>
 #endif
 
+static char *DuplicateCString(const char *value) {
+    const char *text = value ? value : "";
+    const size_t len = strlen(text);
+    char *copy = new char[len + 1];
+    memcpy(copy, text, len + 1);
+    return copy;
+}
+
+static char *DuplicateDirectoryName(const char *dir) {
+    char *copy = DuplicateCString(dir);
+    size_t len = strlen(copy);
+    if (len > 0 && (copy[len - 1] == '\\' || copy[len - 1] == '/')) {
+        copy[len - 1] = '\0';
+    }
+    return copy;
+}
+
+static char NativePathSeparator() {
+#if defined(_WIN32)
+    return '\\';
+#else
+    return '/';
+#endif
+}
+
+static XBOOL IsPathSeparator(char c) {
+    return (c == '\\' || c == '/') ? TRUE : FALSE;
+}
+
+static char *JoinDirectoryPath(const char *dir, const char *leaf) {
+    const char *directory = dir ? dir : "";
+    const char *name = leaf ? leaf : "";
+
+    size_t directoryLength = strlen(directory);
+    while (directoryLength > 0 && IsPathSeparator(directory[directoryLength - 1]))
+        --directoryLength;
+
+    const size_t nameLength = strlen(name);
+    const XBOOL needSeparator = (directoryLength > 0 && nameLength > 0 && !IsPathSeparator(name[0]));
+    const size_t resultLength = directoryLength + (needSeparator ? 1 : 0) + nameLength;
+
+    char *result = new char[resultLength + 1];
+    size_t offset = 0;
+    if (directoryLength > 0) {
+        memcpy(result, directory, directoryLength);
+        offset = directoryLength;
+    }
+    if (needSeparator)
+        result[offset++] = NativePathSeparator();
+    if (nameLength > 0)
+        memcpy(result + offset, name, nameLength);
+    result[resultLength] = '\0';
+    return result;
+}
+
+static const char *StoreFullFileName(char *&storage, char *filename) {
+    delete[] storage;
+    storage = filename;
+    return storage;
+}
+
 #if !defined(_WIN32)
 static bool IsDirectory(const char *path) {
     struct stat st;
@@ -64,16 +125,14 @@ CKDirectoryParser::~CKDirectoryParser() {
 
 const char *CKDirectoryParser::GetNextFile() {
 #if defined(_WIN32)
-    char buf[_MAX_PATH];
-
     // Handle non-recursive mode or first phase of recursive mode (files in current directory)
     if ((m_State & 2) == 0) {
-        _snprintf_s(buf, _MAX_PATH, _TRUNCATE, "%s\\%s", m_StartDir, m_FileMask);
-
         // Use a loop to skip directories instead of recursive calls
         while (true) {
             if (m_hFile == -1) {
-                m_hFile = _findfirst(buf, (_finddata_t*)m_FindData);
+                char *search = JoinDirectoryPath(m_StartDir, m_FileMask);
+                m_hFile = _findfirst(search, (_finddata_t*)m_FindData);
+                delete[] search;
                 if (m_hFile == -1) {
                     // No files found, move to subdirectory search if recursive
                     if ((m_State & 1) != 0) {
@@ -99,9 +158,8 @@ const char *CKDirectoryParser::GetNextFile() {
 
             // Check if current item is a file (not directory)
             if ((((_finddata_t*)m_FindData)->attrib & _A_SUBDIR) == 0) {
-                _snprintf_s(m_FullFileName, _MAX_PATH, _TRUNCATE, "%s\\%s", m_StartDir,
-                           ((_finddata_t*)m_FindData)->name);
-                return m_FullFileName;
+                char *fullFileName = JoinDirectoryPath(m_StartDir, ((_finddata_t*)m_FindData)->name);
+                return StoreFullFileName(m_FullFileName, fullFileName);
             }
             // If it's a directory, continue the loop to find next item
         }
@@ -124,8 +182,9 @@ const char *CKDirectoryParser::GetNextFile() {
         // Look for next subdirectory
         while (true) {
             if (m_hFile == -1) {
-                _snprintf_s(buf, _MAX_PATH, _TRUNCATE, "%s\\*.*", m_StartDir);
-                m_hFile = _findfirst(buf, (_finddata_t*)m_FindData);
+                char *search = JoinDirectoryPath(m_StartDir, "*.*");
+                m_hFile = _findfirst(search, (_finddata_t*)m_FindData);
+                delete[] search;
                 if (m_hFile == -1) {
                     return NULL; // No subdirectories found
                 }
@@ -143,10 +202,9 @@ const char *CKDirectoryParser::GetNextFile() {
                 strcmp(((_finddata_t*)m_FindData)->name, "..") != 0 &&
                 (((_finddata_t*)m_FindData)->attrib & _A_SUBDIR) != 0) {
 
-                char dir[_MAX_PATH];
-                _snprintf_s(dir, _MAX_PATH, _TRUNCATE, "%s\\%s", m_StartDir,
-                           ((_finddata_t*)m_FindData)->name);
+                char *dir = JoinDirectoryPath(m_StartDir, ((_finddata_t*)m_FindData)->name);
                 m_SubParser = new CKDirectoryParser(dir, m_FileMask, TRUE);
+                delete[] dir;
 
                 const char *ret = m_SubParser->GetNextFile();
                 if (ret) {
@@ -163,8 +221,6 @@ const char *CKDirectoryParser::GetNextFile() {
 
     return NULL;
 #else
-    char buf[_MAX_PATH];
-
     if ((m_State & 2) == 0) {
         while (true) {
             DIR *dir = reinterpret_cast<DIR *>(m_hFile);
@@ -197,16 +253,17 @@ const char *CKDirectoryParser::GetNextFile() {
                 continue;
             }
 
-            snprintf(buf, _MAX_PATH, "%s/%s", m_StartDir, entry->d_name);
-            if (IsDirectory(buf)) {
+            char *path = JoinDirectoryPath(m_StartDir, entry->d_name);
+            if (IsDirectory(path)) {
+                delete[] path;
                 continue;
             }
             if (!MatchMask(entry->d_name, m_FileMask)) {
+                delete[] path;
                 continue;
             }
 
-            snprintf(m_FullFileName, _MAX_PATH, "%s/%s", m_StartDir, entry->d_name);
-            return m_FullFileName;
+            return StoreFullFileName(m_FullFileName, path);
         }
     }
 
@@ -241,15 +298,18 @@ const char *CKDirectoryParser::GetNextFile() {
                 continue;
             }
 
-            snprintf(buf, _MAX_PATH, "%s/%s", m_StartDir, entry->d_name);
-            if (IsDirectory(buf)) {
-                m_SubParser = new CKDirectoryParser(buf, m_FileMask, TRUE);
+            char *path = JoinDirectoryPath(m_StartDir, entry->d_name);
+            if (IsDirectory(path)) {
+                m_SubParser = new CKDirectoryParser(path, m_FileMask, TRUE);
+                delete[] path;
                 const char *ret = m_SubParser->GetNextFile();
                 if (ret) {
                     return ret;
                 }
                 delete m_SubParser;
                 m_SubParser = NULL;
+            } else {
+                delete[] path;
             }
         }
     }
@@ -272,19 +332,12 @@ void CKDirectoryParser::Reset(const char *dir, const char *fileMask, XBOOL recur
 
     // Allocate new resources
     m_FindData = new _finddata_t;
-    m_FullFileName = new char[_MAX_PATH];
+    m_FullFileName = DuplicateCString("");
 
     // Set directory
     if (dir) {
         delete[] oldStartDir; // Clean up old directory
-        size_t dirLen = strlen(dir);
-        m_StartDir = new char[dirLen + 1];
-        strcpy_s(m_StartDir, dirLen + 1, dir);
-
-        // Remove trailing slash/backslash
-        if (dirLen > 0 && (m_StartDir[dirLen - 1] == '\\' || m_StartDir[dirLen - 1] == '/')) {
-            m_StartDir[dirLen - 1] = '\0';
-        }
+        m_StartDir = DuplicateDirectoryName(dir);
     } else {
         // Keep the old directory if NULL is passed
         m_StartDir = oldStartDir;
@@ -293,9 +346,7 @@ void CKDirectoryParser::Reset(const char *dir, const char *fileMask, XBOOL recur
     // Set file mask
     if (fileMask) {
         delete[] oldFileMask; // Clean up old mask
-        size_t maskLen = strlen(fileMask);
-        m_FileMask = new char[maskLen + 1];
-        strcpy_s(m_FileMask, maskLen + 1, fileMask);
+        m_FileMask = DuplicateCString(fileMask);
     } else {
         // Keep the old file mask if NULL is passed
         m_FileMask = oldFileMask;
@@ -313,27 +364,19 @@ void CKDirectoryParser::Reset(const char *dir, const char *fileMask, XBOOL recur
 
     delete[] m_FullFileName;
 
-    m_FullFileName = new char[_MAX_PATH];
+    m_FullFileName = DuplicateCString("");
     m_FindData = NULL;
 
     if (dir) {
         delete[] oldStartDir;
-        size_t dirLen = strlen(dir);
-        m_StartDir = new char[dirLen + 1];
-        memcpy(m_StartDir, dir, dirLen + 1);
-
-        if (dirLen > 0 && (m_StartDir[dirLen - 1] == '\\' || m_StartDir[dirLen - 1] == '/')) {
-            m_StartDir[dirLen - 1] = '\0';
-        }
+        m_StartDir = DuplicateDirectoryName(dir);
     } else {
         m_StartDir = oldStartDir;
     }
 
     if (fileMask) {
         delete[] oldFileMask;
-        size_t maskLen = strlen(fileMask);
-        m_FileMask = new char[maskLen + 1];
-        memcpy(m_FileMask, fileMask, maskLen + 1);
+        m_FileMask = DuplicateCString(fileMask);
     } else {
         m_FileMask = oldFileMask;
     }
