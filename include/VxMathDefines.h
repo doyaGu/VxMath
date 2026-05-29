@@ -104,14 +104,6 @@
 #define NULL 0
 #endif
 
-#ifndef _MAX_PATH
-#   ifdef PATH_MAX
-#       define _MAX_PATH PATH_MAX
-#   else
-#       define _MAX_PATH 260
-#   endif
-#endif
-
 #ifndef _MAX_DRIVE
 #define _MAX_DRIVE 3
 #endif
