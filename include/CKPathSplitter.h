@@ -2,7 +2,6 @@
 #define CKPATHSPLITTER_H
 
 #include "VxMathDefines.h"
-
 #include <stdlib.h>
 #include <string.h>
 
@@ -110,13 +109,31 @@ public:
     CKPathMaker(const char *Drive, const char *Directory, const char *Fname, const char *Extension);
 
     /**
+     * @brief Copy constructor.
+     * @param other The path maker to copy from.
+     */
+    CKPathMaker(const CKPathMaker &other);
+
+    /**
+     * @brief Assignment operator.
+     * @param other The path maker to copy from.
+     * @return A reference to this object.
+     */
+    CKPathMaker &operator=(const CKPathMaker &other);
+
+    /**
+     * @brief Destructor.
+     */
+    ~CKPathMaker();
+
+    /**
      * @brief Returns the constructed full path.
      * @return A pointer to the string containing the full path.
      */
     const char *GetFileName() const;
 
 protected:
-    char m_FileName[_MAX_PATH]; ///< Buffer to store the constructed full path.
+    char *m_FileName; ///< Buffer to store the constructed full path.
 };
 
 /**

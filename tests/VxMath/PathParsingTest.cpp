@@ -5,13 +5,45 @@
 #include <set>
 #include <fstream>
 #include <filesystem> // For modern filesystem operations in the test fixture
+#include <algorithm>
 #include <chrono>
 #include <thread>
+
+static constexpr size_t kLegacyWindowsPathLimit = 260;
 
 // Helper to create a file
 void CreateEmptyFile(const std::filesystem::path &path) {
     std::ofstream outfile(path);
     outfile.close();
+}
+
+static std::filesystem::path ToLongFilesystemPath(const std::filesystem::path &path) {
+#if defined(_WIN32)
+    std::string absolute = std::filesystem::absolute(path).string();
+    std::replace(absolute.begin(), absolute.end(), '/', '\\');
+    if (absolute.rfind("\\\\?\\", 0) != 0)
+        absolute = "\\\\?\\" + absolute;
+    return std::filesystem::path(absolute);
+#else
+    return path;
+#endif
+}
+
+static std::string ToParserPath(const std::filesystem::path &path) {
+#if defined(_WIN32)
+    return ToLongFilesystemPath(path).string();
+#else
+    return path.string();
+#endif
+}
+
+static std::filesystem::path BuildDeepDirectory(const std::filesystem::path &root, const char *leafName) {
+    std::filesystem::path dir = root;
+    int index = 0;
+    while (ToParserPath(dir / leafName).size() <= kLegacyWindowsPathLimit + 32) {
+        dir /= std::string("segment_") + std::to_string(index++) + "_" + std::string(32, 'x');
+    }
+    return dir;
 }
 
 // Test Fixture for CKDirectoryParser which requires a real filesystem
@@ -57,7 +89,7 @@ protected:
 
     void TearDown() override {
         std::error_code ec;
-        std::filesystem::remove_all(m_rootDir, ec);
+        std::filesystem::remove_all(ToLongFilesystemPath(m_rootDir), ec);
     }
 
     // Helper to collect all files found by the parser
@@ -184,6 +216,30 @@ TEST(PathMakerTest, OnlyFilename) {
     ASSERT_STREQ(maker.GetFileName(), "File");
 }
 
+TEST(PathMakerTest, LongPathIsNotTruncated) {
+    XString directory = "\\Dir\\";
+    while (directory.Length() <= kLegacyWindowsPathLimit + 32) {
+        directory << "segment_with_long_name\\";
+    }
+
+    CKPathMaker maker("C:", directory.CStr(), "File", ".ext");
+
+    XString expected = "C:";
+    expected << directory << "File.ext";
+    ASSERT_GT(expected.Length(), kLegacyWindowsPathLimit);
+    ASSERT_STREQ(maker.GetFileName(), expected.CStr());
+}
+
+TEST(PathMakerTest, CopyOwnsFileName) {
+    CKPathMaker maker("C:", "\\Dir\\", "File", ".ext");
+    CKPathMaker copy(maker);
+    CKPathMaker assigned(nullptr, nullptr, "Other", nullptr);
+    assigned = maker;
+
+    ASSERT_STREQ(copy.GetFileName(), "C:\\Dir\\File.ext");
+    ASSERT_STREQ(assigned.GetFileName(), "C:\\Dir\\File.ext");
+}
+
 // --- CKFileExtension Tests ---
 
 TEST(FileExtensionTest, Construction) {
@@ -226,6 +282,34 @@ TEST_F(DirectoryParserTest, NonRecursive_SpecificMask) {
     ASSERT_TRUE(files.count((m_rootDir / "file1.txt").string()));
 }
 
+TEST_F(DirectoryParserTest, NonRecursive_LongPathIsNotTruncated) {
+    const char *leafName = "long_file.txt";
+    std::filesystem::path longDir = BuildDeepDirectory(m_rootDir / "long_non_recursive", leafName);
+    std::filesystem::path longFile = longDir / leafName;
+
+    std::error_code ec;
+    std::filesystem::create_directories(ToLongFilesystemPath(longDir), ec);
+    if (ec) {
+        GTEST_SKIP() << "Long path directory creation is not supported: " << ec.message();
+    }
+
+    std::ofstream outfile(ToLongFilesystemPath(longFile));
+    if (!outfile) {
+        GTEST_SKIP() << "Long path file creation is not supported";
+    }
+    outfile.close();
+
+    const std::string parserDir = ToParserPath(longDir);
+    const std::string expectedFile = ToParserPath(longFile);
+    ASSERT_GT(expectedFile.size(), kLegacyWindowsPathLimit);
+
+    CKDirectoryParser parser(parserDir.c_str(), "*.txt", FALSE);
+    const char *file = parser.GetNextFile();
+
+    ASSERT_NE(file, nullptr);
+    EXPECT_STREQ(file, expectedFile.c_str());
+}
+
 TEST_F(DirectoryParserTest, Recursive_AllFiles) {
     CKDirectoryParser parser(const_cast<char *>(m_rootDirStr.c_str()), "*.*", TRUE);
     auto files = CollectFiles(parser);
@@ -236,6 +320,35 @@ TEST_F(DirectoryParserTest, Recursive_AllFiles) {
     ASSERT_TRUE(files.count((m_rootDir / "image.JPG").string()));
     ASSERT_TRUE(files.count((m_subDir / "subfile.txt").string()));
     ASSERT_TRUE(files.count((m_subDir / "another.log").string()));
+}
+
+TEST_F(DirectoryParserTest, Recursive_LongPathIsNotTruncated) {
+    const char *leafName = "nested_long_file.txt";
+    std::filesystem::path root = m_rootDir / "long_recursive";
+    std::filesystem::path longDir = BuildDeepDirectory(root, leafName);
+    std::filesystem::path longFile = longDir / leafName;
+
+    std::error_code ec;
+    std::filesystem::create_directories(ToLongFilesystemPath(longDir), ec);
+    if (ec) {
+        GTEST_SKIP() << "Long path directory creation is not supported: " << ec.message();
+    }
+
+    std::ofstream outfile(ToLongFilesystemPath(longFile));
+    if (!outfile) {
+        GTEST_SKIP() << "Long path file creation is not supported";
+    }
+    outfile.close();
+
+    const std::string parserRoot = ToParserPath(root);
+    const std::string expectedFile = ToParserPath(longFile);
+    ASSERT_GT(expectedFile.size(), kLegacyWindowsPathLimit);
+
+    CKDirectoryParser parser(parserRoot.c_str(), "*.txt", TRUE);
+    auto files = CollectFiles(parser);
+
+    ASSERT_EQ(files.size(), 1);
+    EXPECT_TRUE(files.count(expectedFile));
 }
 
 TEST_F(DirectoryParserTest, Recursive_SpecificMaskAndCase) {

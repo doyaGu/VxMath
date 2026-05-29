@@ -39,6 +39,57 @@ static bool HasDrivePrefix(const char *path) {
     return path && isalpha(static_cast<unsigned char>(path[0])) && path[1] == ':';
 }
 
+static char *DuplicatePathString(const char *text) {
+    const size_t length = text ? strlen(text) : 0;
+    char *copy = new char[length + 1];
+    if (length > 0) {
+        memcpy(copy, text, length);
+    }
+    copy[length] = '\0';
+    return copy;
+}
+
+static XBOOL AddPathPartLength(size_t &total, const char *part) {
+    if (!part) {
+        return TRUE;
+    }
+
+    const size_t length = strlen(part);
+    if (length > ((size_t) -1) - total) {
+        return FALSE;
+    }
+    total += length;
+    return TRUE;
+}
+
+static char *CreatePathMakerFileName(const char *drive, const char *dir, const char *name, const char *dot, const char *ext) {
+    size_t length = 0;
+    if (!AddPathPartLength(length, drive) ||
+        !AddPathPartLength(length, dir) ||
+        !AddPathPartLength(length, name) ||
+        !AddPathPartLength(length, dot) ||
+        !AddPathPartLength(length, ext)) {
+        return DuplicatePathString("");
+    }
+
+    char *fileName = new char[length + 1];
+    size_t pos = 0;
+    const char *parts[] = {drive, dir, name, dot, ext};
+    for (int i = 0; i < 5; ++i) {
+        const char *part = parts[i];
+        if (!part) {
+            continue;
+        }
+        const size_t partLength = strlen(part);
+        if (partLength > 0) {
+            memcpy(fileName + pos, part, partLength);
+            pos += partLength;
+        }
+    }
+    fileName[pos] = '\0';
+    return fileName;
+}
+
 CKPathSplitter::CKPathSplitter(const char *file) : m_Drive(), m_Dir(), m_Filename(), m_Ext() {
     if (!file || file[0] == '\0') {
         return;
@@ -90,19 +141,32 @@ const char *CKPathSplitter::GetExtension() const {
     return m_Ext;
 }
 
-CKPathMaker::CKPathMaker(const char *Drive, const char *Directory, const char *Fname, const char *Extension) : m_FileName() {
+CKPathMaker::CKPathMaker(const char *Drive, const char *Directory, const char *Fname, const char *Extension) : m_FileName(NULL) {
     const char *drive = Drive ? Drive : "";
     const char *dir = Directory ? Directory : "";
     const char *name = Fname ? Fname : "";
     const char *ext = Extension ? Extension : "";
     const char *dot = (ext[0] != '\0' && ext[0] != '.') ? "." : "";
 
-    const int written = snprintf(m_FileName, sizeof(m_FileName), "%s%s%s%s%s", drive, dir, name, dot, ext);
-    if (written < 0 || static_cast<size_t>(written) >= sizeof(m_FileName)) {
-        m_FileName[sizeof(m_FileName) - 1] = '\0';
+    m_FileName = CreatePathMakerFileName(drive, dir, name, dot, ext);
+}
+
+CKPathMaker::CKPathMaker(const CKPathMaker &other) : m_FileName(DuplicatePathString(other.GetFileName())) {
+}
+
+CKPathMaker &CKPathMaker::operator=(const CKPathMaker &other) {
+    if (this != &other) {
+        char *copy = DuplicatePathString(other.GetFileName());
+        delete[] m_FileName;
+        m_FileName = copy;
     }
+    return *this;
+}
+
+CKPathMaker::~CKPathMaker() {
+    delete[] m_FileName;
 }
 
 const char *CKPathMaker::GetFileName() const {
-    return m_FileName;
+    return m_FileName ? m_FileName : "";
 }
