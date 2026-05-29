@@ -7,7 +7,7 @@
 struct VxImageDescEx;
 
 typedef struct VxDirectoryEntry {
-    char Name[_MAX_PATH];
+    XString Name;
     XBOOL IsDirectory;
     size_t Size;
 } VxDirectoryEntry;
@@ -131,15 +131,21 @@ VX_EXPORT XBOOL VxDeleteFile(const char *path);
 /// @brief Lists directory entries matching an optional wildcard mask.
 VX_EXPORT XBOOL VxListDirectory(const char *dir, const char *mask, XBOOL includeDirectories, VxDirectoryEntryCallback callback, void *userData);
 /// @brief Gets the current working directory for the application.
-VX_EXPORT XBOOL VxGetCurrentDirectory(char *path);
+VX_EXPORT XBOOL VxGetCurrentDirectory(char *path, size_t pathSize);
+/// @brief Gets the current working directory for the application.
+VX_EXPORT XString VxGetCurrentDirectory();
 /// @brief Gets the executable/application base path.
-VX_EXPORT XBOOL VxGetApplicationBasePath(char *path);
+VX_EXPORT XBOOL VxGetApplicationBasePath(char *path, size_t pathSize);
 /// @brief Gets a user-writable configuration directory for an application.
 VX_EXPORT XBOOL VxGetUserConfigPath(const char *appName, char *path, size_t pathSize);
+/// @brief Gets a user-writable configuration directory for an application.
+VX_EXPORT XBOOL VxGetUserConfigPath(const char *appName, XString &path);
 /// @brief Sets the current working directory for the application.
 VX_EXPORT XBOOL VxSetCurrentDirectory(const char *path);
 /// @brief Combines a path and a filename into a full path string.
-VX_EXPORT XBOOL VxMakePath(char *fullpath, const char *path, const char *file);
+VX_EXPORT XBOOL VxMakePath(char *fullpath, size_t fullpathSize, const char *path, const char *file);
+/// @brief Combines a path and a filename into a full path string.
+VX_EXPORT XBOOL VxMakePath(XString &fullpath, const char *path, const char *file);
 /// @brief Checks if a specified amount of disk space is available in a directory.
 VX_EXPORT XBOOL VxTestDiskSpace(const char *dir, size_t size);
 
@@ -149,6 +155,8 @@ VX_EXPORT int VxMessageBox(WIN_HANDLE hWnd, const char *lpText, const char *lpCa
 //------ Process access {secret}
 /// @brief Retrieves the full path of the file for the specified module.
 VX_EXPORT size_t VxGetModuleFileName(INSTANCE_HANDLE Handle, char *string, size_t StringSize);
+/// @brief Retrieves the full path of the file for the specified module.
+VX_EXPORT XString VxGetModuleFileName(INSTANCE_HANDLE Handle);
 /// @brief Retrieves a module handle for the specified module name.
 VX_EXPORT INSTANCE_HANDLE VxGetModuleHandle(const char *filename);
 

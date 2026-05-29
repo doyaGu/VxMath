@@ -50,6 +50,59 @@ static XBOOL AppendPathComponent(XString &path, const char *name) {
     return TRUE;
 }
 
+static XBOOL CopyDirectoryPartToBuffer(const char *filePath, char *output, size_t outputSize) {
+    if (!filePath || !output || outputSize == 0) {
+        return FALSE;
+    }
+
+    const char *lastSlash = strrchr(filePath, '/');
+    if (!lastSlash) {
+        return FALSE;
+    }
+
+    const size_t directoryLength = (size_t) (lastSlash - filePath) + 1;
+    if (directoryLength + 1 > outputSize) {
+        return FALSE;
+    }
+
+    memcpy(output, filePath, directoryLength);
+    output[directoryLength] = '\0';
+    return TRUE;
+}
+
+static char *VxReadCurrentExecutablePath() {
+#if defined(__linux__)
+    char *resolvedPath = realpath("/proc/self/exe", NULL);
+    if (!resolvedPath) {
+        return NULL;
+    }
+
+    const size_t length = strlen(resolvedPath);
+    char *path = new char[length + 1];
+    memcpy(path, resolvedPath, length + 1);
+    free(resolvedPath);
+    return path;
+#elif defined(__APPLE__)
+    uint32_t size = 1;
+    char probe[1];
+    _NSGetExecutablePath(probe, &size);
+    if (size == 0) {
+        return NULL;
+    }
+
+    char *path = new char[size + 1];
+    if (_NSGetExecutablePath(path, &size) == 0) {
+        path[size] = '\0';
+        return path;
+    }
+
+    delete[] path;
+    return NULL;
+#else
+    return NULL;
+#endif
+}
+
 static XBOOL RemoveDirectoryTree(const char *path) {
     struct stat st;
     if (lstat(path, &st) != 0) {
@@ -175,24 +228,25 @@ static XBOOL CreateDownloadCacheFile(char *cachedFile, int cachedFileSize, XStri
     XString pattern(tmp);
     AppendPathComponent(pattern, "vxurlcache-XXXXXX");
 
-    char localPath[PATH_MAX];
-    if (strlen(pattern.CStr()) >= sizeof(localPath)) {
-        return FALSE;
-    }
-    strcpy(localPath, pattern.CStr());
+    const size_t patternLength = strlen(pattern.CStr());
+    char *localPath = new char[patternLength + 1];
+    memcpy(localPath, pattern.CStr(), patternLength + 1);
 
     const int localFd = mkstemp(localPath);
     if (localFd < 0) {
+        delete[] localPath;
         return FALSE;
     }
 
     if (CopyCachedPath(localPath, cachedFile, cachedFileSize) != 0) {
         close(localFd);
         unlink(localPath);
+        delete[] localPath;
         return FALSE;
     }
 
     path = localPath;
+    delete[] localPath;
     *fd = localFd;
     return TRUE;
 }
@@ -545,11 +599,91 @@ XBOOL VxDeleteDirectory(const char *path) {
     return RemoveDirectoryTree(path);
 }
 
-XBOOL VxGetCurrentDirectory(char *path) {
-    if (!path) {
+XBOOL VxGetCurrentDirectory(char *path, size_t pathSize) {
+    if (!path || pathSize == 0) {
         return FALSE;
     }
-    return getcwd(path, _MAX_PATH) != NULL;
+    return getcwd(path, pathSize) != NULL;
+}
+
+XString VxGetCurrentDirectory() {
+    char *buffer = getcwd(NULL, 0);
+    if (!buffer) {
+        return "";
+    }
+
+    XString path(buffer);
+    free(buffer);
+    return path;
+}
+
+XBOOL VxGetApplicationBasePath(char *path, size_t pathSize) {
+    if (!path || pathSize == 0) {
+        return FALSE;
+    }
+
+    char *modulePath = VxReadCurrentExecutablePath();
+    XBOOL result = CopyDirectoryPartToBuffer(modulePath, path, pathSize);
+    delete[] modulePath;
+    return result;
+}
+
+XBOOL VxGetUserConfigPath(const char *appName, char *path, size_t pathSize) {
+    if (!path || pathSize == 0) {
+        return FALSE;
+    }
+
+    XString configPath;
+    if (!VxGetUserConfigPath(appName, configPath)) {
+        return FALSE;
+    }
+
+    const size_t configPathLength = strlen(configPath.CStr());
+    if (configPathLength + 1 > pathSize) {
+        path[0] = '\0';
+        return FALSE;
+    }
+
+    memcpy(path, configPath.CStr(), configPathLength + 1);
+    return TRUE;
+}
+
+XBOOL VxGetUserConfigPath(const char *appName, XString &path) {
+    path = "";
+    const char *name = (appName && *appName) ? appName : "Ballance";
+
+#if defined(__APPLE__)
+    const char *home = getenv("HOME");
+    if (!home || !*home) {
+        return FALSE;
+    }
+    path = home;
+    AppendPathComponent(path, "Library");
+    AppendPathComponent(path, "Application Support");
+    AppendPathComponent(path, name);
+#else
+    const char *xdg = getenv("XDG_CONFIG_HOME");
+    const char *home = getenv("HOME");
+    if (xdg && *xdg) {
+        path = xdg;
+        AppendPathComponent(path, name);
+    } else if (home && *home) {
+        path = home;
+        AppendPathComponent(path, ".config");
+        AppendPathComponent(path, name);
+    } else {
+        return FALSE;
+    }
+#endif
+
+    if (path.Length() > 0 && path[path.Length() - 1] != '/') {
+        path << '/';
+    }
+
+    XString marker(path);
+    AppendPathComponent(marker, "_marker_");
+    VxCreateFileTree(marker.CStr());
+    return TRUE;
 }
 
 XBOOL VxSetCurrentDirectory(const char *path) {
@@ -557,29 +691,35 @@ XBOOL VxSetCurrentDirectory(const char *path) {
         return FALSE;
     }
 
-    char normalized[_MAX_PATH];
     size_t len = strlen(path);
-    if (len >= sizeof(normalized)) {
-        return FALSE;
-    }
+    char *normalized = new char[len + 1];
 
     for (size_t i = 0; i <= len; ++i) {
         normalized[i] = (path[i] == '\\') ? '/' : path[i];
     }
 
-    return chdir(normalized) == 0;
+    XBOOL result = chdir(normalized) == 0;
+    delete[] normalized;
+    return result;
 }
 
-XBOOL VxMakePath(char *fullpath, const char *path, const char *file) {
-    if (!fullpath || !path || !file) {
+XBOOL VxMakePath(char *fullpath, size_t fullpathSize, const char *path, const char *file) {
+    if (!fullpath || fullpathSize == 0 || !path || !file) {
         return FALSE;
     }
 
     const size_t pathLen = strlen(path);
     const size_t fileLen = strlen(file);
-    const bool needSep = (pathLen > 0 && path[pathLen - 1] != '/');
-    const size_t totalLen = pathLen + (needSep ? 1 : 0) + fileLen;
-    if (totalLen >= _MAX_PATH) {
+    const bool needSep = (pathLen > 0 && path[pathLen - 1] != '/' && path[pathLen - 1] != '\\');
+    if (pathLen > ((size_t) -1) - (needSep ? 1 : 0)) {
+        return FALSE;
+    }
+    size_t totalLen = pathLen + (needSep ? 1 : 0);
+    if (fileLen > ((size_t) -1) - totalLen) {
+        return FALSE;
+    }
+    totalLen += fileLen;
+    if (totalLen + 1 > fullpathSize) {
         return FALSE;
     }
 
@@ -596,6 +736,35 @@ XBOOL VxMakePath(char *fullpath, const char *path, const char *file) {
     }
     fullpath[pos + fileLen] = '\0';
     return TRUE;
+}
+
+XBOOL VxMakePath(XString &fullpath, const char *path, const char *file) {
+    fullpath = "";
+    if (!path || !file) {
+        return FALSE;
+    }
+
+    const size_t pathLen = strlen(path);
+    const size_t fileLen = strlen(file);
+    if (pathLen > ((size_t) -1) - fileLen) {
+        return FALSE;
+    }
+    const size_t contentSize = pathLen + fileLen;
+    if (contentSize > ((size_t) -1) - 2) {
+        return FALSE;
+    }
+    const size_t bufferSize = contentSize + 2;
+    if (bufferSize > (size_t)XString::MAX_LENGTH + 1) {
+        return FALSE;
+    }
+
+    char *buffer = new char[bufferSize];
+    XBOOL ok = VxMakePath(buffer, bufferSize, path, file);
+    if (ok) {
+        fullpath = buffer;
+    }
+    delete[] buffer;
+    return ok;
 }
 
 XBOOL VxTestDiskSpace(const char *dir, size_t size) {
@@ -619,11 +788,7 @@ int VxMessageBox(WIN_HANDLE hWnd, const char *lpText, const char *lpCaption, XDW
     return 0;
 }
 
-size_t VxGetModuleFileName(INSTANCE_HANDLE Handle, char *string, size_t StringSize) {
-    if (!string || StringSize == 0) {
-        return 0;
-    }
-
+XString VxGetModuleFileName(INSTANCE_HANDLE Handle) {
     const char *resolvedPath = NULL;
 
 #if defined(__linux__) && defined(RTLD_DI_LINKMAP)
@@ -640,28 +805,29 @@ size_t VxGetModuleFileName(INSTANCE_HANDLE Handle, char *string, size_t StringSi
     (void) Handle;
 #endif
 
-    char localPath[PATH_MAX] = {};
+    char *localPath = NULL;
     if (!resolvedPath) {
-#if defined(__linux__)
-        const ssize_t len = readlink("/proc/self/exe", localPath, sizeof(localPath) - 1);
-        if (len > 0) {
-            localPath[len] = '\0';
-            resolvedPath = localPath;
-        }
-#elif defined(__APPLE__)
-        uint32_t size = static_cast<uint32_t>(sizeof(localPath));
-        if (_NSGetExecutablePath(localPath, &size) == 0) {
-            resolvedPath = localPath;
-        }
-#endif
+        localPath = VxReadCurrentExecutablePath();
+        resolvedPath = localPath;
     }
 
     if (!resolvedPath) {
-        string[0] = '\0';
+        delete[] localPath;
+        return "";
+    }
+
+    XString result(resolvedPath);
+    delete[] localPath;
+    return result;
+}
+
+size_t VxGetModuleFileName(INSTANCE_HANDLE Handle, char *string, size_t StringSize) {
+    if (!string || StringSize == 0) {
         return 0;
     }
 
-    return CopyModulePathToBuffer(resolvedPath, string, StringSize);
+    XString path = VxGetModuleFileName(Handle);
+    return CopyModulePathToBuffer(path.CStr(), string, StringSize);
 }
 
 INSTANCE_HANDLE VxGetModuleHandle(const char *filename) {

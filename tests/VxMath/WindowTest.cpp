@@ -6,6 +6,8 @@
 #include <string>
 #include <vector>
 
+static constexpr size_t kLegacyWindowsPathLimit = 260;
+
 // A test fixture to manage temporary resources like files and windows.
 class VxWindowFunctionsTest : public ::testing::Test {
 protected:
@@ -153,25 +155,26 @@ TEST_F(VxWindowFunctionsTest, CreateFileTreeFailsWhenIntermediateComponentIsAFil
 }
 
 TEST_F(VxWindowFunctionsTest, CurrentDirectory) {
-    char originalDir[_MAX_PATH];
-    ASSERT_TRUE(VxGetCurrentDirectory(originalDir));
+    XString originalDir = VxGetCurrentDirectory();
+    ASSERT_FALSE(originalDir.IsEmpty());
 
     // Set current directory to our temp path
     ASSERT_TRUE(VxSetCurrentDirectory(m_tempDir.string().c_str()));
 
     // Verify it was set
-    char newDir[_MAX_PATH];
-    ASSERT_TRUE(VxGetCurrentDirectory(newDir));
-    EXPECT_EQ(std::filesystem::path(newDir), m_tempDir);
+    const std::string expectedDir = m_tempDir.string();
+    std::vector<char> newDir(expectedDir.size() + 1u, '\0');
+    ASSERT_TRUE(VxGetCurrentDirectory(newDir.data(), newDir.size()));
+    EXPECT_EQ(std::filesystem::path(newDir.data()), m_tempDir);
 
     // Restore original directory
-    ASSERT_TRUE(VxSetCurrentDirectory(originalDir));
+    ASSERT_TRUE(VxSetCurrentDirectory(originalDir.CStr()));
 }
 
 #ifndef _WIN32
 TEST_F(VxWindowFunctionsTest, CurrentDirectoryAcceptsWindowsSeparators) {
-    char originalDir[_MAX_PATH];
-    ASSERT_TRUE(VxGetCurrentDirectory(originalDir));
+    XString originalDir = VxGetCurrentDirectory();
+    ASSERT_FALSE(originalDir.IsEmpty());
 
     std::filesystem::path childDir = m_tempDir / "3D Entities" / "Level";
     std::filesystem::create_directories(childDir);
@@ -184,26 +187,52 @@ TEST_F(VxWindowFunctionsTest, CurrentDirectoryAcceptsWindowsSeparators) {
 
     ASSERT_TRUE(VxSetCurrentDirectory(windowsStylePath.c_str()));
 
-    char newDir[_MAX_PATH];
-    ASSERT_TRUE(VxGetCurrentDirectory(newDir));
-    EXPECT_EQ(std::filesystem::path(newDir), childDir);
+    const std::string expectedDir = childDir.string();
+    std::vector<char> newDir(expectedDir.size() + 1u, '\0');
+    ASSERT_TRUE(VxGetCurrentDirectory(newDir.data(), newDir.size()));
+    EXPECT_EQ(std::filesystem::path(newDir.data()), childDir);
 
-    ASSERT_TRUE(VxSetCurrentDirectory(originalDir));
+    ASSERT_TRUE(VxSetCurrentDirectory(originalDir.CStr()));
 }
 #endif
 
 TEST_F(VxWindowFunctionsTest, MakePath) {
-    char fullPath[_MAX_PATH];
 #ifdef _WIN32
     const char *path = "C:\\Temp";
 #else
         const char* path = "/tmp";
 #endif
     const char *file = "test.txt";
-
-    EXPECT_TRUE(VxMakePath(fullPath, path, file));
     std::filesystem::path expectedPath = std::filesystem::path(path) / file;
-    EXPECT_EQ(std::filesystem::path(fullPath), expectedPath);
+    const std::string expectedText = expectedPath.string();
+    std::vector<char> fullPath(expectedText.size() + 1u, '\0');
+
+    EXPECT_TRUE(VxMakePath(fullPath.data(), fullPath.size(), path, file));
+    EXPECT_EQ(std::filesystem::path(fullPath.data()), expectedPath);
+}
+
+TEST_F(VxWindowFunctionsTest, MakePathAcceptsExplicitLongBuffer) {
+    std::string longDirectory(kLegacyWindowsPathLimit + 16, 'a');
+    const char *file = "test.txt";
+    const size_t bufferSize = longDirectory.size() + strlen(file) + 2;
+    std::vector<char> fullPath(bufferSize, '\0');
+
+    EXPECT_TRUE(VxMakePath(fullPath.data(), fullPath.size(), longDirectory.c_str(), file));
+    EXPECT_GT(strlen(fullPath.data()), kLegacyWindowsPathLimit);
+}
+
+TEST_F(VxWindowFunctionsTest, MakePathWritesXString) {
+#ifdef _WIN32
+    const char *path = "C:\\Temp";
+#else
+    const char *path = "/tmp";
+#endif
+    const char *file = "test.txt";
+    std::filesystem::path expectedPath = std::filesystem::path(path) / file;
+
+    XString fullPath;
+    EXPECT_TRUE(VxMakePath(fullPath, path, file));
+    EXPECT_EQ(std::filesystem::path(fullPath.CStr()), expectedPath);
 }
 
 TEST_F(VxWindowFunctionsTest, TestDiskSpace) {
@@ -252,10 +281,14 @@ TEST_F(VxWindowFunctionsTest, ModuleFunctions) {
     ASSERT_NE(hMod, nullptr);
 
     // Get the file name of the current executable
-    char modulePath[_MAX_PATH];
-    size_t pathLen = VxGetModuleFileName(hMod, modulePath, _MAX_PATH);
+    XString modulePath = VxGetModuleFileName(hMod);
+    ASSERT_FALSE(modulePath.IsEmpty());
+
+    std::vector<char> moduleBuffer((size_t)modulePath.Length() + 1u, '\0');
+    size_t pathLen = VxGetModuleFileName(hMod, moduleBuffer.data(), moduleBuffer.size());
     ASSERT_GT(pathLen, 0);
-    EXPECT_TRUE(std::filesystem::exists(modulePath));
+    EXPECT_STREQ(moduleBuffer.data(), modulePath.CStr());
+    EXPECT_TRUE(std::filesystem::exists(modulePath.CStr()));
 }
 
 // --- Tests for functions that are not easily automated ---

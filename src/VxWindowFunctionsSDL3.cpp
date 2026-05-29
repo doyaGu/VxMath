@@ -709,12 +709,14 @@ XBOOL VxRemoveDirectory(const char *path) {
 #endif
 }
 
+static XString VxJoinPathString(const char *dir, const char *file);
+
 // Helper function to recursively delete directory
 static XBOOL VxDeleteDirectoryRecursive(const char *path) {
+    if (!path || !*path)
+        return FALSE;
+
     // Use SDL_EnumerateDirectory for cross-platform directory iteration
-    int count = 0;
-    char **entries = NULL;
-    
     // For SDL3, we'll use the glob pattern approach or fall back to platform-specific
 #ifdef _WIN32
     // Windows implementation using Shell API
@@ -724,10 +726,11 @@ static XBOOL VxDeleteDirectoryRecursive(const char *path) {
         LPFSHPROC mySHFileOperation = (LPFSHPROC)lib.GetFunctionPtr("SHFileOperationA");
         if (mySHFileOperation) {
             // Create double-null terminated string
-            char pathBuffer[_MAX_PATH + 2];
-            strncpy(pathBuffer, path, _MAX_PATH);
-            pathBuffer[strlen(path)] = '\0';
-            pathBuffer[strlen(path) + 1] = '\0';
+            const size_t pathLength = strlen(path);
+            char *pathBuffer = new char[pathLength + 2];
+            memcpy(pathBuffer, path, pathLength);
+            pathBuffer[pathLength] = '\0';
+            pathBuffer[pathLength + 1] = '\0';
             
             // SHFILEOPSTRUCT
             struct {
@@ -746,6 +749,7 @@ static XBOOL VxDeleteDirectoryRecursive(const char *path) {
             fileOp.fFlags = 0x0614; // FOF_NO_UI
             
             int ret = mySHFileOperation(&fileOp) == 0;
+            delete[] pathBuffer;
             lib.ReleaseLibrary();
             return ret;
         }
@@ -759,20 +763,18 @@ static XBOOL VxDeleteDirectoryRecursive(const char *path) {
         return FALSE;
 
     struct dirent *entry;
-    char fullpath[PATH_MAX];
-
     while ((entry = readdir(dir)) != NULL) {
         if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0)
             continue;
 
-        snprintf(fullpath, sizeof(fullpath), "%s/%s", path, entry->d_name);
+        XString fullpath = VxJoinPathString(path, entry->d_name);
 
         struct stat st;
-        if (stat(fullpath, &st) == 0) {
+        if (stat(fullpath.CStr(), &st) == 0) {
             if (S_ISDIR(st.st_mode)) {
-                VxDeleteDirectoryRecursive(fullpath);
+                VxDeleteDirectoryRecursive(fullpath.CStr());
             } else {
-                unlink(fullpath);
+                unlink(fullpath.CStr());
             }
         }
     }
@@ -871,14 +873,26 @@ static XBOOL VxDirectoryNameMatches(const char *name, const char *mask) {
 #endif
 }
 
+static XString VxJoinPathString(const char *dir, const char *file) {
+    XString result = dir ? dir : "";
+    if (result.Length() > 0 && result[result.Length() - 1] != '\\' && result[result.Length() - 1] != '/') {
+#ifdef _WIN32
+        result << '\\';
+#else
+        result << '/';
+#endif
+    }
+    result << (file ? file : "");
+    return result;
+}
+
 XBOOL VxListDirectory(const char *dir, const char *mask, XBOOL includeDirectories, VxDirectoryEntryCallback callback, void *userData) {
     if (!dir || !callback)
         return FALSE;
 #ifdef _WIN32
-    char search[_MAX_PATH];
-    VxMakePath(search, dir, (mask && *mask) ? mask : "*");
+    XString search = VxJoinPathString(dir, (mask && *mask) ? mask : "*");
     WIN32_FIND_DATAA findData;
-    HANDLE hFind = FindFirstFileA(search, &findData);
+    HANDLE hFind = FindFirstFileA(search.CStr(), &findData);
     if (hFind == INVALID_HANDLE_VALUE)
         return FALSE;
     XBOOL ok = TRUE;
@@ -889,8 +903,7 @@ XBOOL VxListDirectory(const char *dir, const char *mask, XBOOL includeDirectorie
         if (isDirectory && !includeDirectories)
             continue;
         VxDirectoryEntry entry;
-        memset(&entry, 0, sizeof(entry));
-        strncpy(entry.Name, findData.cFileName, sizeof(entry.Name) - 1);
+        entry.Name = findData.cFileName;
         entry.IsDirectory = isDirectory;
         entry.Size = (size_t)(((uint64_t)findData.nFileSizeHigh << 32) | findData.nFileSizeLow);
         if (!callback(&entry, userData)) {
@@ -913,18 +926,16 @@ XBOOL VxListDirectory(const char *dir, const char *mask, XBOOL includeDirectorie
         if (!VxDirectoryNameMatches(entryData->d_name, mask))
             continue;
 
-        char fullpath[PATH_MAX];
-        snprintf(fullpath, sizeof(fullpath), "%s/%s", dir, entryData->d_name);
+        XString fullpath = VxJoinPathString(dir, entryData->d_name);
         struct stat st;
-        if (stat(fullpath, &st) != 0)
+        if (stat(fullpath.CStr(), &st) != 0)
             continue;
         XBOOL isDirectory = S_ISDIR(st.st_mode);
         if (isDirectory && !includeDirectories)
             continue;
 
         VxDirectoryEntry entry;
-        memset(&entry, 0, sizeof(entry));
-        strncpy(entry.Name, entryData->d_name, sizeof(entry.Name) - 1);
+        entry.Name = entryData->d_name;
         entry.IsDirectory = isDirectory;
         entry.Size = (size_t)st.st_size;
         if (!callback(&entry, userData)) {
@@ -937,35 +948,77 @@ XBOOL VxListDirectory(const char *dir, const char *mask, XBOOL includeDirectorie
 #endif
 }
 
-XBOOL VxGetCurrentDirectory(char *path) {
-    if (!path)
+XBOOL VxGetCurrentDirectory(char *path, size_t pathSize) {
+    if (!path || pathSize == 0)
         return FALSE;
 #ifdef _WIN32
-    return GetCurrentDirectoryA(_MAX_PATH, path) != 0;
+    DWORD result = GetCurrentDirectoryA((DWORD) pathSize, path);
+    return result != 0 && result < pathSize;
 #else
-    return getcwd(path, PATH_MAX) != NULL;
+    return getcwd(path, pathSize) != NULL;
 #endif
 }
 
-XBOOL VxGetApplicationBasePath(char *path) {
-    if (!path)
+XString VxGetCurrentDirectory() {
+#ifdef _WIN32
+    DWORD required = GetCurrentDirectoryA(0, NULL);
+    if (required == 0)
+        return "";
+
+    char *buffer = new char[required];
+    DWORD written = GetCurrentDirectoryA(required, buffer);
+    if (written == 0 || written >= required) {
+        delete[] buffer;
+        return "";
+    }
+
+    XString path(buffer, (int) written);
+    delete[] buffer;
+    return path;
+#else
+    char *buffer = getcwd(NULL, 0);
+    if (!buffer)
+        return "";
+    XString path(buffer);
+    free(buffer);
+    return path;
+#endif
+}
+
+XBOOL VxGetApplicationBasePath(char *path, size_t pathSize) {
+    if (!path || pathSize == 0)
         return FALSE;
     const char *basePath = SDL_GetBasePath();
     if (!basePath)
         return FALSE;
-    strncpy(path, basePath, _MAX_PATH - 1);
-    path[_MAX_PATH - 1] = '\0';
+    size_t basePathLength = strlen(basePath);
+    if (basePathLength + 1 > pathSize)
+        return FALSE;
+    memcpy(path, basePath, basePathLength + 1);
     return TRUE;
 }
 
 XBOOL VxGetUserConfigPath(const char *appName, char *path, size_t pathSize) {
     if (!path || pathSize == 0)
         return FALSE;
+    XString configPath;
+    if (!VxGetUserConfigPath(appName, configPath))
+        return FALSE;
+    const size_t configPathLength = strlen(configPath.CStr());
+    if (configPathLength + 1 > pathSize) {
+        path[0] = '\0';
+        return FALSE;
+    }
+    memcpy(path, configPath.CStr(), configPathLength + 1);
+    return TRUE;
+}
+
+XBOOL VxGetUserConfigPath(const char *appName, XString &path) {
+    path = "";
     const char *name = (appName && *appName) ? appName : "Ballance";
     char *prefPath = SDL_GetPrefPath("", name);
     if (prefPath) {
-        strncpy(path, prefPath, pathSize - 1);
-        path[pathSize - 1] = '\0';
+        path = prefPath;
         SDL_free(prefPath);
     } else {
 #ifdef _WIN32
@@ -974,31 +1027,38 @@ XBOOL VxGetUserConfigPath(const char *appName, char *path, size_t pathSize) {
             base = SDL_getenv("USERPROFILE");
         if (!base)
             return FALSE;
-        if (snprintf(path, pathSize, "%s\\%s\\", base, name) < 0 || strlen(path) >= pathSize)
-            return FALSE;
+        path = base;
+        if (path.Length() > 0 && path[path.Length() - 1] != '\\' && path[path.Length() - 1] != '/')
+            path << '\\';
+        path << name << '\\';
 #elif defined(__APPLE__)
         const char *home = SDL_getenv("HOME");
         if (!home)
             return FALSE;
-        if (snprintf(path, pathSize, "%s/Library/Application Support/%s/", home, name) < 0 || strlen(path) >= pathSize)
-            return FALSE;
+        path = home;
+        if (path.Length() > 0 && path[path.Length() - 1] != '/')
+            path << '/';
+        path << "Library/Application Support/" << name << '/';
 #else
         const char *xdg = SDL_getenv("XDG_CONFIG_HOME");
         const char *home = SDL_getenv("HOME");
         if (xdg && *xdg) {
-            if (snprintf(path, pathSize, "%s/%s/", xdg, name) < 0 || strlen(path) >= pathSize)
-                return FALSE;
+            path = xdg;
+            if (path.Length() > 0 && path[path.Length() - 1] != '/')
+                path << '/';
+            path << name << '/';
         } else if (home) {
-            if (snprintf(path, pathSize, "%s/.config/%s/", home, name) < 0 || strlen(path) >= pathSize)
-                return FALSE;
+            path = home;
+            if (path.Length() > 0 && path[path.Length() - 1] != '/')
+                path << '/';
+            path << ".config/" << name << '/';
         } else {
             return FALSE;
         }
 #endif
     }
-    char marker[_MAX_PATH];
-    VxMakePath(marker, path, "_marker_");
-    VxCreateFileTree(marker);
+    XString marker = VxJoinPathString(path.CStr(), "_marker_");
+    VxCreateFileTree(marker.CStr());
     return TRUE;
 }
 
@@ -1009,24 +1069,24 @@ XBOOL VxSetCurrentDirectory(const char *path) {
 #ifdef _WIN32
     return SetCurrentDirectoryA(path);
 #else
-    char normalized[_MAX_PATH];
     size_t len = strlen(path);
-    if (len >= sizeof(normalized))
-        return FALSE;
+    char *normalized = new char[len + 1];
 
     for (size_t i = 0; i <= len; ++i)
         normalized[i] = (path[i] == '\\') ? '/' : path[i];
 
-    return chdir(normalized) == 0;
+    XBOOL result = chdir(normalized) == 0;
+    delete[] normalized;
+    return result;
 #endif
 }
 
-XBOOL VxMakePath(char *fullpath, const char *path, const char *file) {
-    if (!path || !file || !fullpath)
+XBOOL VxMakePath(char *fullpath, size_t fullpathSize, const char *path, const char *file) {
+    if (!path || !file || !fullpath || fullpathSize == 0)
         return FALSE;
 
-    strcpy(fullpath, path);
     size_t pathLen = strlen(path);
+    size_t fileLen = strlen(file);
 
 #ifdef _WIN32
     char separator = '\\';
@@ -1036,17 +1096,52 @@ XBOOL VxMakePath(char *fullpath, const char *path, const char *file) {
     char altSeparator = '\\';
 #endif
 
-    if (pathLen >= _MAX_PATH - strlen(file) - 1)
+    XBOOL needSeparator = (pathLen > 0 && path[pathLen - 1] != separator && path[pathLen - 1] != altSeparator);
+    if (pathLen > ((size_t) -1) - (needSeparator ? 1 : 0))
+        return FALSE;
+    size_t totalLen = pathLen + (needSeparator ? 1 : 0);
+    if (fileLen > ((size_t) -1) - totalLen)
+        return FALSE;
+    totalLen += fileLen;
+    if (totalLen + 1 > fullpathSize)
         return FALSE;
 
-    // Check if we need to add a path separator
-    if (pathLen > 0 && fullpath[pathLen - 1] != separator && fullpath[pathLen - 1] != altSeparator) {
-        fullpath[pathLen] = separator;
-        ++pathLen;
+    size_t pos = 0;
+    if (pathLen > 0) {
+        memcpy(fullpath, path, pathLen);
+        pos = pathLen;
     }
+    if (needSeparator)
+        fullpath[pos++] = separator;
+    if (fileLen > 0)
+        memcpy(fullpath + pos, file, fileLen);
 
-    strcpy(&fullpath[pathLen], file);
+    fullpath[totalLen] = '\0';
     return TRUE;
+}
+
+XBOOL VxMakePath(XString &fullpath, const char *path, const char *file) {
+    fullpath = "";
+    if (!path || !file)
+        return FALSE;
+
+    size_t pathLen = strlen(path);
+    size_t fileLen = strlen(file);
+    if (pathLen > ((size_t) -1) - fileLen)
+        return FALSE;
+    size_t contentSize = pathLen + fileLen;
+    if (contentSize > ((size_t) -1) - 2)
+        return FALSE;
+    size_t bufferSize = contentSize + 2;
+    if (bufferSize > (size_t)XString::MAX_LENGTH + 1)
+        return FALSE;
+
+    char *buffer = new char[bufferSize];
+    XBOOL ok = VxMakePath(buffer, bufferSize, path, file);
+    if (ok)
+        fullpath = buffer;
+    delete[] buffer;
+    return ok;
 }
 
 XBOOL VxTestDiskSpace(const char *dir, size_t size) {
@@ -1087,30 +1182,53 @@ int VxMessageBox(WIN_HANDLE hWnd, const char *lpText, const char *lpCaption, XDW
 // Module Functions
 // ============================================================================
 
-size_t VxGetModuleFileName(INSTANCE_HANDLE Handle, char *string, size_t StringSize) {
+XString VxGetModuleFileName(INSTANCE_HANDLE Handle) {
+#ifdef _WIN32
+    DWORD bufferSize = 260;
+    for (;;) {
+        char *buffer = new char[bufferSize];
+        DWORD written = GetModuleFileNameA((HMODULE) Handle, buffer, bufferSize);
+        if (written == 0) {
+            delete[] buffer;
+            return "";
+        }
+        if (written < bufferSize) {
+            XString path(buffer, (int) written);
+            delete[] buffer;
+            return path;
+        }
+        delete[] buffer;
+        if (bufferSize > ((DWORD) -1) / 2) {
+            return "";
+        }
+        bufferSize = bufferSize + bufferSize;
+    }
+#else
     if (Handle == NULL) {
         // Get current executable path
         const char *basePath = SDL_GetBasePath();
-        if (basePath) {
-            strncpy(string, basePath, StringSize - 1);
-            string[StringSize - 1] = '\0';
-            XDWORD len = (XDWORD)strlen(string);
-            return len;
-        }
+        return basePath ? basePath : "";
     }
-    
-    // For specific module handles, fall back to platform-specific
-#ifdef _WIN32
-    return GetModuleFileNameA((HMODULE)Handle, string, (DWORD)StringSize);
-#else
+
     Dl_info info;
     if (dladdr(Handle, &info) && info.dli_fname) {
-        strncpy(string, info.dli_fname, StringSize - 1);
-        string[StringSize - 1] = '\0';
-        return strlen(string);
+        return info.dli_fname;
     }
-    return 0;
+    return "";
 #endif
+}
+
+size_t VxGetModuleFileName(INSTANCE_HANDLE Handle, char *string, size_t StringSize) {
+    if (!string || StringSize == 0)
+        return 0;
+
+    XString path = VxGetModuleFileName(Handle);
+    const size_t pathLength = strlen(path.CStr());
+    const size_t copyLength = (pathLength < StringSize - 1) ? pathLength : StringSize - 1;
+    if (copyLength > 0)
+        memcpy(string, path.CStr(), copyLength);
+    string[copyLength] = '\0';
+    return copyLength;
 }
 
 INSTANCE_HANDLE VxGetModuleHandle(const char *filename) {
