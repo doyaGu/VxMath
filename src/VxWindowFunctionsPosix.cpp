@@ -8,6 +8,7 @@
 #include <dirent.h>
 #include <dlfcn.h>
 #include <fcntl.h>
+#include <fnmatch.h>
 #include <limits.h>
 #if defined(__linux__) && defined(RTLD_DI_LINKMAP)
 #include <link.h>
@@ -69,6 +70,55 @@ static XBOOL CopyDirectoryPartToBuffer(const char *filePath, char *output, size_
     output[directoryLength] = '\0';
     return TRUE;
 }
+
+static XBOOL VxDirectoryNameMatches(const char *name, const char *mask) {
+    if (!name) {
+        return FALSE;
+    }
+    if (!mask || !*mask || strcmp(mask, "*") == 0) {
+        return TRUE;
+    }
+    return fnmatch(mask, name, 0) == 0 ? TRUE : FALSE;
+}
+
+static XBOOL VxStatDirectoryEntry(const char *dir, const char *name, XBOOL &isDirectory, size_t &size) {
+    XString fullpath(dir);
+    AppendPathComponent(fullpath, name);
+
+    struct stat st;
+    if (stat(fullpath.CStr(), &st) != 0) {
+        return FALSE;
+    }
+
+    isDirectory = S_ISDIR(st.st_mode) ? TRUE : FALSE;
+    size = (size_t)st.st_size;
+    return TRUE;
+}
+
+#if defined(DT_DIR)
+static XBOOL VxGetDirectoryEntryInfo(const char *dir, const char *name, unsigned char type, XBOOL &isDirectory, size_t &size) {
+    if (type == DT_DIR) {
+        isDirectory = TRUE;
+        size = 0;
+        return TRUE;
+    }
+    if (type == DT_REG) {
+        return VxStatDirectoryEntry(dir, name, isDirectory, size);
+    }
+
+    if (type != DT_UNKNOWN
+#if defined(DT_LNK)
+        && type != DT_LNK
+#endif
+    ) {
+        isDirectory = FALSE;
+        size = 0;
+        return TRUE;
+    }
+
+    return VxStatDirectoryEntry(dir, name, isDirectory, size);
+}
+#endif
 
 static char *VxReadCurrentExecutablePath() {
 #if defined(__linux__)
@@ -597,6 +647,74 @@ XBOOL VxDeleteDirectory(const char *path) {
     }
 
     return RemoveDirectoryTree(path);
+}
+
+XBOOL VxFileExists(const char *path) {
+    if (!path) {
+        return FALSE;
+    }
+
+    struct stat st;
+    return stat(path, &st) == 0 && S_ISREG(st.st_mode) ? TRUE : FALSE;
+}
+
+XBOOL VxDirectoryExists(const char *path) {
+    if (!path) {
+        return FALSE;
+    }
+
+    struct stat st;
+    return stat(path, &st) == 0 && S_ISDIR(st.st_mode) ? TRUE : FALSE;
+}
+
+XBOOL VxListDirectory(const char *dir, const char *mask, XBOOL includeDirectories, VxDirectoryEntryCallback callback, void *userData) {
+    if (!dir || !callback) {
+        return FALSE;
+    }
+
+    DIR *handle = opendir(dir);
+    if (!handle) {
+        return FALSE;
+    }
+
+    XBOOL ok = TRUE;
+    struct dirent *entryData;
+    while ((entryData = readdir(handle)) != NULL) {
+        if (strcmp(entryData->d_name, ".") == 0 || strcmp(entryData->d_name, "..") == 0) {
+            continue;
+        }
+        if (!VxDirectoryNameMatches(entryData->d_name, mask)) {
+            continue;
+        }
+
+        XBOOL isDirectory = FALSE;
+        size_t size = 0;
+#if defined(DT_DIR)
+        if (!VxGetDirectoryEntryInfo(dir, entryData->d_name, entryData->d_type, isDirectory, size)) {
+            continue;
+        }
+#else
+        if (!VxStatDirectoryEntry(dir, entryData->d_name, isDirectory, size)) {
+            continue;
+        }
+#endif
+
+        if (isDirectory && !includeDirectories) {
+            continue;
+        }
+
+        VxDirectoryEntry entry;
+        entry.Name = entryData->d_name;
+        entry.IsDirectory = isDirectory;
+        entry.Size = size;
+        if (!callback(&entry, userData)) {
+            ok = FALSE;
+            break;
+        }
+    }
+
+    closedir(handle);
+    return ok;
 }
 
 XBOOL VxGetCurrentDirectory(char *path, size_t pathSize) {

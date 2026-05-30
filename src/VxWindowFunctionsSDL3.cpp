@@ -886,6 +886,43 @@ static XString VxJoinPathString(const char *dir, const char *file) {
     return result;
 }
 
+#ifndef _WIN32
+static XBOOL VxStatDirectoryEntry(const char *dir, const char *name, XBOOL &isDirectory, size_t &size) {
+    XString fullpath = VxJoinPathString(dir, name);
+    struct stat st;
+    if (stat(fullpath.CStr(), &st) != 0)
+        return FALSE;
+    isDirectory = S_ISDIR(st.st_mode) ? TRUE : FALSE;
+    size = (size_t)st.st_size;
+    return TRUE;
+}
+
+#if defined(DT_DIR)
+static XBOOL VxGetDirectoryEntryInfo(const char *dir, const char *name, unsigned char type, XBOOL &isDirectory, size_t &size) {
+    if (type == DT_DIR) {
+        isDirectory = TRUE;
+        size = 0;
+        return TRUE;
+    }
+    if (type == DT_REG) {
+        return VxStatDirectoryEntry(dir, name, isDirectory, size);
+    }
+
+    if (type != DT_UNKNOWN
+#if defined(DT_LNK)
+        && type != DT_LNK
+#endif
+    ) {
+        isDirectory = FALSE;
+        size = 0;
+        return TRUE;
+    }
+
+    return VxStatDirectoryEntry(dir, name, isDirectory, size);
+}
+#endif
+#endif
+
 XBOOL VxListDirectory(const char *dir, const char *mask, XBOOL includeDirectories, VxDirectoryEntryCallback callback, void *userData) {
     if (!dir || !callback)
         return FALSE;
@@ -926,18 +963,22 @@ XBOOL VxListDirectory(const char *dir, const char *mask, XBOOL includeDirectorie
         if (!VxDirectoryNameMatches(entryData->d_name, mask))
             continue;
 
-        XString fullpath = VxJoinPathString(dir, entryData->d_name);
-        struct stat st;
-        if (stat(fullpath.CStr(), &st) != 0)
+        XBOOL isDirectory = FALSE;
+        size_t size = 0;
+#if defined(DT_DIR)
+        if (!VxGetDirectoryEntryInfo(dir, entryData->d_name, entryData->d_type, isDirectory, size))
             continue;
-        XBOOL isDirectory = S_ISDIR(st.st_mode);
+#else
+        if (!VxStatDirectoryEntry(dir, entryData->d_name, isDirectory, size))
+            continue;
+#endif
         if (isDirectory && !includeDirectories)
             continue;
 
         VxDirectoryEntry entry;
         entry.Name = entryData->d_name;
         entry.IsDirectory = isDirectory;
-        entry.Size = (size_t)st.st_size;
+        entry.Size = size;
         if (!callback(&entry, userData)) {
             ok = FALSE;
             break;
