@@ -172,6 +172,7 @@ typedef enum CKRST_DPFLAGS {
     CKRST_DP_MATRIXPAL  = 0x02000000UL,
     ///< The last weight is a DWORD which contains the indices of matrix to which the weights are associated.
     CKRST_DP_PSIZE      = 0x04000000UL, ///< Point size data is added to each vertex.
+    CKRST_DP_TWEEN      = 0x08000000UL, ///< A second position and optional normal set is provided for vertex tweening.
 
     CKRST_DP_VBUFFER = 0x10000000UL,
     ///< If a Vertex Buffer can be created, the returned structure should directly point to it.
@@ -254,6 +255,10 @@ struct VxDrawPrimitiveDataSimple {
 struct VxDrawPrimitiveData : public VxDrawPrimitiveDataSimple {
     void *TexCoordPtrs[CKRST_MAX_STAGES - 1]; ///< Pointers to texture coordinates data for subsequent texture stages.
     unsigned int TexCoordStrides[CKRST_MAX_STAGES - 1]; ///< Strides for subsequent texture coordinate buffers.
+    void *TweenPositionPtr; ///< Second model-space position set used by VXVBLEND_TWEENING.
+    unsigned int TweenPositionStride; ///< Amount in bytes between tween positions.
+    void *TweenNormalPtr; ///< Optional second normal set used by VXVBLEND_TWEENING.
+    unsigned int TweenNormalStride; ///< Amount in bytes between tween normals.
 };
 
 /**
@@ -908,6 +913,7 @@ typedef enum VXRENDERSTATETYPE {
 
     VXRENDERSTATE_CLIPPLANEENABLE   = 152, ///< Enable user-defined clipping planes (DWORD mask)
     VXRENDERSTATE_INDEXVBLENDENABLE = 167, ///< Enable indexed vertex blending (TRUE/FALSE)
+    VXRENDERSTATE_TWEENFACTOR       = 170, ///< Vertex tween factor stored as float bits.
     VXRENDERSTATE_BLENDOP           = 171, ///< Set blending operation (VXBLENDOP)
 
     // Virtools Specific Render States
