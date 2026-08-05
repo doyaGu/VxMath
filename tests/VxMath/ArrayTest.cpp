@@ -5,6 +5,7 @@
 #include "XBitArray.h"
 #include <cstring>
 #include <initializer_list>
+#include <type_traits>
 #include <utility>
 
 // Test simple types with XArray
@@ -313,60 +314,36 @@ TEST_F(XArrayTest, FillArray) {
     }
 }
 
-// Test XArray with custom objects
+// Test XArray with a custom trivially copyable type.
 struct TestObject {
     int value;
-    static int construction_count;
-    static int destruction_count;
-
-    TestObject() : value(0) { construction_count++; }
-    TestObject(int v) : value(v) { construction_count++; }
-    TestObject(const TestObject &other) : value(other.value) { construction_count++; }
-    ~TestObject() { destruction_count++; }
 
     bool operator==(const TestObject &other) const { return value == other.value; }
     bool operator!=(const TestObject &other) const { return value != other.value; }
     bool operator>(const TestObject &other) const { return value > other.value; }
     bool operator<(const TestObject &other) const { return value < other.value; }
-
-    static void ResetCounters() {
-        construction_count = 0;
-        destruction_count = 0;
-    }
 };
 
-int TestObject::construction_count = 0;
-int TestObject::destruction_count = 0;
+static_assert(std::is_trivially_copyable<TestObject>::value,
+              "XArray test values must satisfy the container's storage contract");
 
-class XArrayObjectTest : public ::testing::Test {
-protected:
-    void SetUp() override {
-        TestObject::ResetCounters();
-    }
+class XArrayObjectTest : public ::testing::Test {};
 
-    void TearDown() override {
-        // Verify no memory leaks
-        EXPECT_EQ(TestObject::construction_count, TestObject::destruction_count);
-    }
-};
+TEST_F(XArrayObjectTest, TrivialObjectStorage) {
+    XArray<TestObject> arr;
+    arr.PushBack(TestObject{10});
+    arr.PushBack(TestObject{20});
 
-TEST_F(XArrayObjectTest, ObjectLifetime) {
-    {
-        XArray<TestObject> arr;
-        arr.PushBack(TestObject(10));
-        arr.PushBack(TestObject(20));
-    }
-
-    // Objects should be properly destroyed
-    EXPECT_EQ(TestObject::construction_count, TestObject::destruction_count);
+    EXPECT_EQ(arr[0].value, 10);
+    EXPECT_EQ(arr[1].value, 20);
 }
 
 TEST_F(XArrayObjectTest, ObjectOperations) {
     XArray<TestObject> arr;
 
-    arr.PushBack(TestObject(30));
-    arr.PushBack(TestObject(10));
-    arr.PushBack(TestObject(20));
+    arr.PushBack(TestObject{30});
+    arr.PushBack(TestObject{10});
+    arr.PushBack(TestObject{20});
 
     EXPECT_EQ(arr[0].value, 30);
     EXPECT_EQ(arr[1].value, 10);
@@ -378,7 +355,7 @@ TEST_F(XArrayObjectTest, ObjectOperations) {
     EXPECT_EQ(arr[1].value, 20);
     EXPECT_EQ(arr[2].value, 30);
 
-    XArray<TestObject>::Iterator it = arr.Find(TestObject(20));
+    XArray<TestObject>::Iterator it = arr.Find(TestObject{20});
     EXPECT_NE(it, arr.End());
     EXPECT_EQ(it->value, 20);
 }
