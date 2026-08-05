@@ -75,7 +75,6 @@ function(vx_add_test TEST_NAME)
         target_link_libraries(${TEST_NAME} PRIVATE
                 ${TEST_TARGET}
                 ${TEST_DEPENDENCIES}
-                gtest
                 gmock
         )
     else ()
