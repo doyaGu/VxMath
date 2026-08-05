@@ -15,6 +15,7 @@
 #include <initializer_list>
 #include <iterator>   // For std::reverse_iterator
 #include <stdexcept>  // For std::out_of_range
+#include <string>
 #endif
 
 class XString;
@@ -162,6 +163,12 @@ public:
     /// @typedef ConstIterator A constant iterator.
     typedef const char *ConstIterator;
 #if VX_HAS_CXX11
+    /** @brief Constructs from a standard string, preserving embedded NULs. */
+    XString(const std::string &iSrc) : XBaseString() {
+        const size_t length = std::min(iSrc.size(), (size_t) MAX_LENGTH);
+        Assign(iSrc.data(), (int) length);
+    }
+
     /// @typedef ReverseIterator A mutable reverse iterator.
     typedef std::reverse_iterator<Iterator> ReverseIterator;
     /// @typedef ConstReverseIterator A constant reverse iterator.
@@ -268,6 +275,31 @@ public:
             iSrc.m_Length = 0;
             iSrc.m_Allocated = 0;
         }
+        return *this;
+    }
+
+    /** @brief Assigns a standard string, preserving embedded NULs. */
+    XString &operator=(const std::string &iSrc) {
+        const size_t length = std::min(iSrc.size(), (size_t) MAX_LENGTH);
+        Assign(iSrc.data(), (int) length);
+        return *this;
+    }
+
+    /** @brief Converts to a standard string, preserving embedded NULs. */
+    std::string ToStdString() const {
+        return std::string(CStr(), (size_t) m_Length);
+    }
+
+    /** @brief Appends a standard string, preserving embedded NULs. */
+    XString &operator<<(const std::string &iSrc) {
+        const int remaining = GetRemainingLength();
+        const size_t length = std::min(iSrc.size(), (size_t) remaining);
+        if (length == 0)
+            return *this;
+        CheckSize(m_Length + (int) length);
+        memcpy(m_Buffer + m_Length, iSrc.data(), length);
+        m_Length = (XWORD) (m_Length + length);
+        m_Buffer[m_Length] = '\0';
         return *this;
     }
 
