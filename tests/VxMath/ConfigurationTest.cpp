@@ -848,7 +848,7 @@ TEST_F(VxConfigurationPerformanceTest, LargeNumberOfEntries) {
     // Add many entries
     for (int i = 0; i < numEntries; i++) {
         char keyName[32];
-        sprintf(keyName, "Key%d", i);
+        snprintf(keyName, sizeof(keyName), "Key%d", i);
         config->AddEntry(nullptr, keyName, i);
     }
 
@@ -857,7 +857,7 @@ TEST_F(VxConfigurationPerformanceTest, LargeNumberOfEntries) {
     // Test lookup performance
     for (int i = 0; i < 100; i++) {
         char keyName[32];
-        sprintf(keyName, "Key%d", i * 100);
+        snprintf(keyName, sizeof(keyName), "Key%d", i * 100);
         VxConfigurationEntry *entry = config->GetEntry(keyName, FALSE);
         EXPECT_NE(entry, nullptr);
 
@@ -874,7 +874,7 @@ TEST_F(VxConfigurationPerformanceTest, DeepHierarchy) {
     char sectionPath[1000] = "";
     for (int i = 0; i < depth; i++) {
         char levelName[32];
-        sprintf(levelName, "Level%d", i);
+        snprintf(levelName, sizeof(levelName), "Level%d", i);
 
         if (i > 0) {
             strcat(sectionPath, ".");
@@ -882,13 +882,13 @@ TEST_F(VxConfigurationPerformanceTest, DeepHierarchy) {
         strcat(sectionPath, levelName);
 
         char entryKey[32];
-        sprintf(entryKey, "Key%d", i);
+        snprintf(entryKey, sizeof(entryKey), "Key%d", i);
         config->AddEntry(sectionPath, entryKey, i);
     }
 
     // Test deep lookup
     char deepKey[1100];
-    sprintf(deepKey, "%s.Key%d", sectionPath, depth - 1);
+    snprintf(deepKey, sizeof(deepKey), "%s.Key%d", sectionPath, depth - 1);
     VxConfigurationEntry *entry = config->GetEntry(deepKey, TRUE);
     EXPECT_NE(entry, nullptr);
 

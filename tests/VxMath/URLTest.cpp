@@ -72,7 +72,7 @@ XDWORD VxEscapeURL(const char *InURL, XString &OutURL) {
     while (*pi) {
         // Check if character needs escaping
         if (strchr(" #$%&\\+,;=@[]^{}", *pi)) {
-            sprintf(pb, "%%%02X", (unsigned char) *pi);
+            snprintf(pb, 4, "%%%02X", (unsigned char) *pi);
             pb += 3;
         } else {
             *pb++ = *pi;
@@ -706,4 +706,3 @@ TEST(BugTest, UnescapeExactBoundary) {
     VxUnEscapeUrl(testStr);
     EXPECT_TRUE(testStr == "test "); // Should decode properly
 }
-
