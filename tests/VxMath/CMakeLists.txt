@@ -157,6 +157,13 @@ foreach (TEST_SOURCE ${VXMATH_TEST_SOURCES})
     vx_copy_runtime_dependencies(${TEST_NAME})
 endforeach ()
 
+# Keep registry compatibility tests isolated from the developer's real profile.
+set(VXMATH_TEST_HOME "${CMAKE_CURRENT_BINARY_DIR}/test-home")
+file(MAKE_DIRECTORY "${VXMATH_TEST_HOME}")
+set_tests_properties(PlatformCompatibilityTest PROPERTIES
+        ENVIRONMENT "HOME=${VXMATH_TEST_HOME};BALLANCE_USER_CONFIG_HOME=${VXMATH_TEST_HOME}"
+)
+
 vx_add_test(
         SIMDDispatchTest
         SOURCES

@@ -363,14 +363,17 @@ void VxDetectProcessor() {
 }
 
 const char *GetProcessorDescription() {
+    VxDetectProcessor();
     return g_ProcDescription;
 }
 
 int GetProcessorFrequency() {
+    VxDetectProcessor();
     return g_ProcessorFrequency;
 }
 
 XDWORD GetProcessorFeatures() {
+    VxDetectProcessor();
     return g_ProcessorFeatures;
 }
 
@@ -379,9 +382,11 @@ void ModifyProcessorFeatures(XDWORD Add, XDWORD Remove) {
 }
 
 ProcessorsType GetProcessorType() {
+    VxDetectProcessor();
     return g_ProcessorType;
 }
 
 XDWORD GetInstructionSetExtensions() {
+    VxDetectProcessor();
     return g_InstructionSetExtensions;
 }

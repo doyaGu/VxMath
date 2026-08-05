@@ -445,6 +445,12 @@ XBOOL VxSetCursor(VXCURSOR_POINTER cursorID) {
     default:
         return TRUE;
     }
+
+    // Cursor selection is harmless before the video subsystem exists. Treat it
+    // as a successful no-op so headless tools and tests retain the legacy API
+    // behavior without forcing video initialization.
+    if (!SDL_WasInit(SDL_INIT_VIDEO))
+        return TRUE;
     
     SDL_Cursor *cursor = SDL_CreateSystemCursor(sdlCursor);
     if (cursor) {
@@ -531,7 +537,7 @@ XBOOL VxGetEnvironmentVariable(const char *envName, XString &envValue) {
         return FALSE;
     }
     
-    const char *value = SDL_getenv(envName);
+    const char *value = getenv(envName);
     if (!value) {
         envValue = "";
         return FALSE;
@@ -1057,8 +1063,14 @@ XBOOL VxGetUserConfigPath(const char *appName, char *path, size_t pathSize) {
 XBOOL VxGetUserConfigPath(const char *appName, XString &path) {
     path = "";
     const char *name = (appName && *appName) ? appName : "Ballance";
-    char *prefPath = SDL_GetPrefPath("", name);
-    if (prefPath) {
+    const char *overrideBase = getenv("BALLANCE_USER_CONFIG_HOME");
+    char *prefPath = NULL;
+    if (overrideBase && *overrideBase) {
+        path = overrideBase;
+        if (path[path.Length() - 1] != '/' && path[path.Length() - 1] != '\\')
+            path << '/';
+        path << name << '/';
+    } else if ((prefPath = SDL_GetPrefPath("", name)) != NULL) {
         path = prefPath;
         SDL_free(prefPath);
     } else {
@@ -1099,8 +1111,7 @@ XBOOL VxGetUserConfigPath(const char *appName, XString &path) {
 #endif
     }
     XString marker = VxJoinPathString(path.CStr(), "_marker_");
-    VxCreateFileTree(marker.CStr());
-    return TRUE;
+    return VxCreateFileTree(marker.CStr());
 }
 
 XBOOL VxSetCurrentDirectory(const char *path) {
@@ -1255,7 +1266,8 @@ XString VxGetModuleFileName(INSTANCE_HANDLE Handle) {
     if (dladdr(Handle, &info) && info.dli_fname) {
         return info.dli_fname;
     }
-    return "";
+    const char *basePath = SDL_GetBasePath();
+    return basePath ? basePath : "";
 #endif
 }
 
@@ -1302,8 +1314,14 @@ XBOOL VxCreateFileTree(const char *file) {
         
         // Check if directory exists, create if not
         SDL_PathInfo info;
-        if (!SDL_GetPathInfo(filepath.CStr(), &info)) {
-            SDL_CreateDirectory(filepath.CStr());
+        if (SDL_GetPathInfo(filepath.CStr(), &info)) {
+            if (info.type != SDL_PATHTYPE_DIRECTORY) {
+                *pch = separator;
+                return FALSE;
+            }
+        } else if (!SDL_CreateDirectory(filepath.CStr())) {
+            *pch = separator;
+            return FALSE;
         }
         
         *pch = separator;
@@ -1450,7 +1468,7 @@ FONT_HANDLE VxCreateFont(const char *FontName, int FontSize, int Weight, XBOOL i
 
 XBOOL VxGetFontInfo(FONT_HANDLE Font, VXFONTINFO &desc) {
     (void)Font;
-    memset(&desc, 0, sizeof(VXFONTINFO));
+    desc = VXFONTINFO();
     return FALSE;
 }
 

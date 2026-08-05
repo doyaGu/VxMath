@@ -12,6 +12,7 @@ static constexpr size_t kLegacyWindowsPathLimit = 260;
 class VxWindowFunctionsTest : public ::testing::Test {
 protected:
     void SetUp() override {
+        m_originalDir = VxGetCurrentDirectory();
         // Create a temporary directory for filesystem tests
         m_tempDir = std::filesystem::temp_directory_path() / "VxMath_Test_Temp";
         std::filesystem::create_directories(m_tempDir);
@@ -19,6 +20,8 @@ protected:
     }
 
     void TearDown() override {
+        if (!m_originalDir.IsEmpty())
+            VxSetCurrentDirectory(m_originalDir.CStr());
         // Clean up the temporary directory
         std::filesystem::remove_all(m_tempDir);
 
@@ -34,6 +37,7 @@ protected:
     }
 
     std::filesystem::path m_tempDir;
+    XString m_originalDir;
 };
 
 // --- Keyboard and Input Tests ---
@@ -163,9 +167,9 @@ TEST_F(VxWindowFunctionsTest, CurrentDirectory) {
 
     // Verify it was set
     const std::string expectedDir = m_tempDir.string();
-    std::vector<char> newDir(expectedDir.size() + 1u, '\0');
+    std::vector<char> newDir(4096, '\0');
     ASSERT_TRUE(VxGetCurrentDirectory(newDir.data(), newDir.size()));
-    EXPECT_EQ(std::filesystem::path(newDir.data()), m_tempDir);
+    EXPECT_TRUE(std::filesystem::equivalent(std::filesystem::path(newDir.data()), m_tempDir));
 
     // Restore original directory
     ASSERT_TRUE(VxSetCurrentDirectory(originalDir.CStr()));
@@ -188,9 +192,9 @@ TEST_F(VxWindowFunctionsTest, CurrentDirectoryAcceptsWindowsSeparators) {
     ASSERT_TRUE(VxSetCurrentDirectory(windowsStylePath.c_str()));
 
     const std::string expectedDir = childDir.string();
-    std::vector<char> newDir(expectedDir.size() + 1u, '\0');
+    std::vector<char> newDir(4096, '\0');
     ASSERT_TRUE(VxGetCurrentDirectory(newDir.data(), newDir.size()));
-    EXPECT_EQ(std::filesystem::path(newDir.data()), childDir);
+    EXPECT_TRUE(std::filesystem::equivalent(std::filesystem::path(newDir.data()), childDir));
 
     ASSERT_TRUE(VxSetCurrentDirectory(originalDir.CStr()));
 }

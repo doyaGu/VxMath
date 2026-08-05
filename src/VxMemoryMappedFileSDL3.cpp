@@ -34,7 +34,7 @@ VxMemoryMappedFile::VxMemoryMappedFile(const char *pszFileName) {
 
     // Get file size
     Sint64 size = SDL_GetIOSize(io);
-    if (size < 0) {
+    if (size <= 0) {
         SDL_CloseIO(io);
         m_errCode = VxMMF_FileMapping;
         return;
