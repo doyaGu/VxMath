@@ -124,7 +124,7 @@ XDWORD VxEscapeURL(const char *InURL, XString &OutURL) {
     while (*pi) {
         if (strchr(" #$%&\\+,/:;=?@[]^{}", *pi)) {
             // Escape special character
-            sprintf(pb, "%%%02X", (unsigned char) *pi);
+            snprintf(pb, 4, "%%%02X", (unsigned char) *pi);
             pb += 3;
         } else {
             // Copy normal character
