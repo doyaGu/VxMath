@@ -156,6 +156,8 @@ set(VXMATH_SOURCES
 )
 
 function(vx_configure_target TARGET_NAME)
+    target_compile_features(${TARGET_NAME} PRIVATE cxx_std_17)
+
     target_sources(${TARGET_NAME} PRIVATE
             ${VXMATH_SOURCES}
             ${VXMATH_PUBLIC_HEADERS}
