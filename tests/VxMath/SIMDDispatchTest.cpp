@@ -1916,7 +1916,6 @@ TEST(SIMDDispatchTest, TransformBox2DSIMDMatchesReciprocalRegression) {
     VXCLIP_FLAGS andFlags = static_cast<VXCLIP_FLAGS>(0);
 
     EXPECT_TRUE(VxSIMDTransformBox2D(&worldProjection, &box, &extents, &screen, &orFlags, &andFlags));
-#if defined(VX_SIMD_USE_SIMDE)
     VxRect expectedExtents;
     VXCLIP_FLAGS expectedOr = static_cast<VXCLIP_FLAGS>(0);
     VXCLIP_FLAGS expectedAnd = static_cast<VXCLIP_FLAGS>(0);
@@ -1927,14 +1926,6 @@ TEST(SIMDDispatchTest, TransformBox2DSIMDMatchesReciprocalRegression) {
     EXPECT_NEAR(extents.top, expectedExtents.top, 1.0e-5f);
     EXPECT_NEAR(extents.right, expectedExtents.right, 1.0e-5f);
     EXPECT_NEAR(extents.bottom, expectedExtents.bottom, 1.0e-5f);
-#else
-    EXPECT_EQ(orFlags, static_cast<VXCLIP_FLAGS>(0x2A0));
-    EXPECT_EQ(andFlags, static_cast<VXCLIP_FLAGS>(0));
-    EXPECT_NEAR(extents.left, 0.8471585f, 1.0e-6f);
-    EXPECT_NEAR(extents.top, 0.3446510f, 1.0e-6f);
-    EXPECT_NEAR(extents.right, 8.92401f, 1.0e-5f);
-    EXPECT_NEAR(extents.bottom, 1.38608015f, 1.0e-6f);
-#endif
 }
 
 TEST(SIMDDispatchTest, ProjectBoxZExtentsSIMDMatchesScalarReference) {
