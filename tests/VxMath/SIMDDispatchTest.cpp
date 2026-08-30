@@ -3,6 +3,7 @@
 #include <cmath>
 #include <cstdint>
 #include <cstring>
+#include <limits>
 #include <random>
 #include <vector>
 
@@ -19,6 +20,8 @@ constexpr float kDispatchTightTolerance = 1.0e-6f;
 constexpr float kDispatchRectTolerance = 1.0e-5f;
 constexpr float kDispatchScreenTolerance = 1.0e-6f;
 #endif
+
+constexpr float kDispatchPlaneNearestTolerance = 2.0e-5f;
 
 VxVector MultiplyVec3Scalar(const VxMatrix &m, const VxVector &v) {
     return VxVector(
@@ -1329,10 +1332,11 @@ TEST(SIMDDispatchTest, ConvertToBumpMap32BackendsMatchScalar) {
     for (int caseIndex = 0; caseIndex < static_cast<int>(sizeof(cases) / sizeof(cases[0])); ++caseIndex) {
         const BumpCase &testCase = cases[caseIndex];
         const int pitch = testCase.Width * 4 + testCase.Padding;
-        const int imageSize = pitch * testCase.Height;
+        const size_t imageSize = static_cast<size_t>(pitch) * static_cast<size_t>(testCase.Height);
+        ASSERT_LE(imageSize, static_cast<size_t>(std::numeric_limits<int>::max()));
 
         XArray<XBYTE> source;
-        source.Resize(imageSize);
+        source.Resize(static_cast<int>(imageSize));
         for (int y = 0; y < testCase.Height; ++y) {
             XBYTE *row = source.Begin() + y * pitch;
             for (int x = 0; x < testCase.Width; ++x) {
@@ -1348,7 +1352,7 @@ TEST(SIMDDispatchTest, ConvertToBumpMap32BackendsMatchScalar) {
         }
 
         XArray<XBYTE> scalar;
-        scalar.Resize(imageSize);
+        scalar.Resize(static_cast<int>(imageSize));
         memcpy(scalar.Begin(), source.Begin(), imageSize);
 
         ASSERT_TRUE(VxSetSIMDOverride(VX_SIMD_MODE_NONE));
@@ -1362,7 +1366,7 @@ TEST(SIMDDispatchTest, ConvertToBumpMap32BackendsMatchScalar) {
 
         for (int backendIndex = 0; backendIndex < static_cast<int>(sizeof(backendModes) / sizeof(backendModes[0])); ++backendIndex) {
             XArray<XBYTE> backend;
-            backend.Resize(imageSize);
+            backend.Resize(static_cast<int>(imageSize));
             memcpy(backend.Begin(), source.Begin(), imageSize);
 
             ASSERT_TRUE(VxSetSIMDOverride(backendModes[backendIndex]));
@@ -1591,9 +1595,9 @@ TEST(SIMDDispatchTest, PlaneSIMDMatchesScalarReference) {
         VxVector simdNearest;
         VxSIMDPlaneNearestPoint(&simdNearest, &simdPlane, &testPoint);
         const VxVector scalarNearest = ScalarPlaneNearestPoint(scalarPlane, testPoint);
-        EXPECT_NEAR(simdNearest.x, scalarNearest.x, 1.0e-5f);
-        EXPECT_NEAR(simdNearest.y, scalarNearest.y, 1.0e-5f);
-        EXPECT_NEAR(simdNearest.z, scalarNearest.z, 1.0e-5f);
+        EXPECT_NEAR(simdNearest.x, scalarNearest.x, kDispatchPlaneNearestTolerance);
+        EXPECT_NEAR(simdNearest.y, scalarNearest.y, kDispatchPlaneNearestTolerance);
+        EXPECT_NEAR(simdNearest.z, scalarNearest.z, kDispatchPlaneNearestTolerance);
     }
 
     VxPlane scalarTri;

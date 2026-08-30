@@ -288,20 +288,19 @@ public:
      * @param size The number of elements to reserve space for.
      */
     void Reserve(int size) {
+        XASSERT(size >= 0);
+        if (size < 0) return;
+
+        T *oldData = m_Begin;
+        int oldCount = Size();
+        if (oldCount > size) oldCount = size;
         T *newData = Allocate(size);
 
-        // Recopy of old elements
-        int oldCount = Size();
         if (oldCount > 0) {
-            T *last = XMin(m_Begin + size, m_End);
-            XCopy(newData, m_Begin, last);
-            oldCount = (int) (last - m_Begin);
-        } else {
-            oldCount = 0;
+            XCopy(newData, oldData, oldData + oldCount);
         }
 
-        // new Pointers
-        Free();
+        Free(oldData);
         m_Begin = newData;
         m_End = newData ? (newData + oldCount) : NULL;
         m_AllocatedEnd = newData ? (newData + size) : NULL;
@@ -614,8 +613,9 @@ public:
      * @param o The value to fill the array with.
      */
     void Fill(const T &o) {
-        for (T *t = m_Begin; t != m_End; ++t)
-            *t = o;
+        const int count = Size();
+        for (int i = 0; i < count; ++i)
+            m_Begin[i] = o;
     }
 
     /**
@@ -623,7 +623,9 @@ public:
      * @param val The byte value to set.
      */
     void Memset(XBYTE val) {
-        if (m_Begin) memset(m_Begin, val, Size() * sizeof(T));
+        const int count = Size();
+        if (m_Begin && count > 0)
+            memset(m_Begin, val, static_cast<size_t>(count) * sizeof(T));
     }
 
     /**
@@ -877,8 +879,8 @@ protected:
      * @internal
      */
     void XCopy(T *dest, T *start, T *end) {
-        if (start == end) return;
-        int size = (int)((XBYTE *) end - (XBYTE *) start);
+        if (!dest || !start || !end || start == end) return;
+        const size_t size = (size_t) ((XBYTE *) end - (XBYTE *) start);
         if (size > 0) memcpy(dest, start, size);
     }
 
@@ -1001,14 +1003,16 @@ protected:
      * @brief Frees the raw memory block.
      * @internal
      */
-    void Free() {
-        if (m_Begin)
+    void Free(T *data) {
+        if (data)
 #ifndef VX_MALLOC
-            delete[] m_Begin;
+            delete[] data;
 #else
-            VxFree(m_Begin);
+            VxFree(data);
 #endif
     }
+
+    void Free() { Free(m_Begin); }
 
     ///@}
 

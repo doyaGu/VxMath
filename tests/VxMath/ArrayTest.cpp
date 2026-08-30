@@ -212,6 +212,25 @@ TEST_F(XArrayTest, Reserve) {
     EXPECT_GE(arr.Allocated(), 100);
 }
 
+TEST_F(XArrayTest, ReserveShrinksAndPreservesPrefix) {
+    XArray<int> arr;
+    arr.PushBack(10);
+    arr.PushBack(20);
+    arr.PushBack(30);
+
+    arr.Reserve(2);
+
+    ASSERT_EQ(arr.Size(), 2);
+    EXPECT_EQ(arr.Allocated(), 2);
+    EXPECT_EQ(arr[0], 10);
+    EXPECT_EQ(arr[1], 20);
+
+    arr.Reserve(0);
+    EXPECT_EQ(arr.Size(), 0);
+    EXPECT_EQ(arr.Allocated(), 0);
+    EXPECT_EQ(arr.Begin(), nullptr);
+}
+
 TEST_F(XArrayTest, Resize) {
     XArray<int> arr;
 

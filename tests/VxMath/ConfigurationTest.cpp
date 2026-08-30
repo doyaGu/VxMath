@@ -414,17 +414,19 @@ TEST_F(VxConfigurationTest, SaveToFile) {
 
     // Verify file was created and has content
     FILE *file = fopen("test_save.txt", "rb");
-    EXPECT_TRUE(file != nullptr);
+    ASSERT_NE(file, nullptr);
 
     // Get file size
     fseek(file, 0, SEEK_END);
     long fileSize = ftell(file);
     fseek(file, 0, SEEK_SET);
+    ASSERT_GT(fileSize, 0);
 
     // Read content
-    std::string content(fileSize, '\0');
-    fread(&content[0], sizeof(char), fileSize, file);
+    std::string content(static_cast<size_t>(fileSize), '\0');
+    const size_t bytesRead = fread(&content[0], sizeof(char), content.size(), file);
     fclose(file);
+    ASSERT_EQ(bytesRead, content.size());
 
     EXPECT_FALSE(content.empty());
     EXPECT_NE(content.find("RootKey = RootValue"), std::string::npos);

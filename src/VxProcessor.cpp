@@ -326,12 +326,11 @@ static void FormatProcessorDescription() {
     processorName[sizeof(processorName) - 1] = '\0';
 
     if (g_ProcessorFrequency < 1000) {
-        snprintf(g_ProcDescription, sizeof(g_ProcDescription) - 1, "%s %d MHz", processorName, g_ProcessorFrequency);
+        snprintf(g_ProcDescription, sizeof(g_ProcDescription), "%.47s %d MHz", processorName, g_ProcessorFrequency);
     } else {
-        snprintf(g_ProcDescription, sizeof(g_ProcDescription) - 1, "%s %.2f GHz", processorName,
+        snprintf(g_ProcDescription, sizeof(g_ProcDescription), "%.47s %.2f GHz", processorName,
                  g_ProcessorFrequency / 1000.0);
     }
-    g_ProcDescription[sizeof(g_ProcDescription) - 1] = '\0';
 }
 
 static bool InitializeProcessorDetection() {
