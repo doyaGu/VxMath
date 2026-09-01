@@ -64,6 +64,15 @@
 #define SIMDE_ENABLE_NATIVE_ALIASES
 #endif
 
+/* Keep diagnostics from bundled SIMDe headers local to the dependency.  In
+ * particular, MSVC ARM64 warns about an intentional narrowing conversion in
+ * simde_mm_sad_pu8.  Project code remains subject to warning C4244. */
+#if defined(_MSC_VER)
+#pragma warning(push)
+#pragma warning(disable : 4244)
+#define VX_SIMD_RESTORE_MSVC_WARNINGS 1
+#endif
+
 /*
  * By default, prefer IEEE-ish behavior so SIMD matches scalar code
  * more closely. Projects that want maximum throughput can opt in.
@@ -224,6 +233,11 @@
 #endif
 
 #endif // (VX_SIMD_X86 || VX_SIMD_USE_SIMDE) && !VX_SIMD_FORCE_DISABLED
+
+#if defined(VX_SIMD_RESTORE_MSVC_WARNINGS)
+#pragma warning(pop)
+#undef VX_SIMD_RESTORE_MSVC_WARNINGS
+#endif
 
 // ============================================================================
 // FMA Macros (like DirectXMath XM_FMADD_PS)
