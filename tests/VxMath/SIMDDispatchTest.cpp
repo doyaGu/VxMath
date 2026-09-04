@@ -1333,7 +1333,7 @@ TEST(SIMDDispatchTest, ConvertToBumpMap32BackendsMatchScalar) {
         const BumpCase &testCase = cases[caseIndex];
         const int pitch = testCase.Width * 4 + testCase.Padding;
         const size_t imageSize = static_cast<size_t>(pitch) * static_cast<size_t>(testCase.Height);
-        ASSERT_LE(imageSize, static_cast<size_t>(std::numeric_limits<int>::max()));
+        ASSERT_LE(imageSize, static_cast<size_t>((std::numeric_limits<int>::max)()));
 
         XArray<XBYTE> source;
         source.Resize(static_cast<int>(imageSize));
