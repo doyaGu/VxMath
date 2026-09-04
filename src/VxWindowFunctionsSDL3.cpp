@@ -45,6 +45,7 @@
 #include "XString.h"
 #include "VxColor.h"
 #include "VxImageDescEx.h"
+#include "VxMath.h"
 #include "VxSharedLibrary.h"
 
 // ============================================================================
@@ -532,11 +533,34 @@ void VxAddLibrarySearchPath(const char *path) {
 }
 
 XBOOL VxGetEnvironmentVariable(const char *envName, XString &envValue) {
-    if (!envName) {
+    if (!envName || !*envName) {
         envValue = "";
         return FALSE;
     }
-    
+
+#ifdef _WIN32
+    SetLastError(ERROR_SUCCESS);
+    DWORD required = GetEnvironmentVariableA(envName, NULL, 0);
+    if (required == 0) {
+        envValue = "";
+        return GetLastError() != ERROR_ENVVAR_NOT_FOUND;
+    }
+    if (required - 1 > 0xFFFFu) {
+        envValue = "";
+        return FALSE;
+    }
+
+    char *buffer = new char[required];
+    DWORD written = GetEnvironmentVariableA(envName, buffer, required);
+    if (written == 0 || written >= required) {
+        delete[] buffer;
+        envValue = "";
+        return FALSE;
+    }
+    envValue = buffer;
+    delete[] buffer;
+    return TRUE;
+#else
     const char *value = getenv(envName);
     if (!value) {
         envValue = "";
@@ -544,9 +568,12 @@ XBOOL VxGetEnvironmentVariable(const char *envName, XString &envValue) {
     }
     envValue = value;
     return TRUE;
+#endif
 }
 
 XBOOL VxSetEnvironmentVariable(const char *envName, const char *envValue) {
+    if (!envName || !*envName)
+        return FALSE;
 #ifdef _WIN32
     return SetEnvironmentVariableA(envName, envValue);
 #else
@@ -1295,13 +1322,46 @@ INSTANCE_HANDLE VxGetModuleHandle(const char *filename) {
 }
 
 XBOOL VxCreateFileTree(const char *file) {
+    if (!file || file[0] == '\0')
+        return FALSE;
+
     XString filepath = file;
     if (filepath.Length() <= 1)
         return FALSE;
 
 #ifdef _WIN32
     char separator = '\\';
-    int startPos = 3; // Skip drive letter
+    int startPos = 0;
+    const auto isSeparator = [](char value) { return value == '\\' || value == '/'; };
+    const auto skipUncRoot = [&filepath, &isSeparator](int componentStart) {
+        int pos = componentStart;
+        for (int component = 0; component < 2; ++component) {
+            while (pos < filepath.Length() && !isSeparator(filepath[pos]))
+                ++pos;
+            if (pos >= filepath.Length())
+                return static_cast<int>(filepath.Length());
+            ++pos;
+        }
+        return pos;
+    };
+
+    if (filepath.Length() >= 8 && strncmp(filepath.CStr(), "\\\\?\\", 4) == 0 &&
+        (filepath[4] == 'U' || filepath[4] == 'u') &&
+        (filepath[5] == 'N' || filepath[5] == 'n') &&
+        (filepath[6] == 'C' || filepath[6] == 'c') && isSeparator(filepath[7])) {
+        startPos = skipUncRoot(8); // Skip \\?\UNC\server\share\.
+    } else if (filepath.Length() >= 7 && strncmp(filepath.CStr(), "\\\\?\\", 4) == 0 &&
+        isalpha((unsigned char)filepath[4]) && filepath[5] == ':' &&
+        isSeparator(filepath[6])) {
+        startPos = 7; // Skip the extended-length drive prefix (\\?\C:\).
+    } else if (filepath.Length() >= 3 && isalpha((unsigned char)filepath[0]) &&
+               filepath[1] == ':' && isSeparator(filepath[2])) {
+        startPos = 3; // Skip a normal drive root (C:\).
+    } else if (filepath.Length() >= 2 && isSeparator(filepath[0]) && isSeparator(filepath[1])) {
+        startPos = skipUncRoot(2); // Skip \\server\share\.
+    } else if (isSeparator(filepath[0])) {
+        startPos = 1; // Root-relative path (\directory\file).
+    }
 #else
     char separator = '/';
     int startPos = 1;
@@ -1339,23 +1399,106 @@ XDWORD VxURLDownloadToCacheFile(const char *File, char *CachedFile, int szCached
 }
 
 // ============================================================================
-// Bitmap Functions (stubs - SDL uses surfaces, not GDI bitmaps)
+// Bitmap Functions
 // ============================================================================
 
 BITMAP_HANDLE VxCreateBitmap(const VxImageDescEx &desc) {
+#ifdef _WIN32
+    if (desc.Width <= 0 || desc.Height <= 0)
+        return NULL;
+
+    BITMAPINFO bmi;
+    memset(&bmi, 0, sizeof(bmi));
+    bmi.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+    bmi.bmiHeader.biWidth = desc.Width;
+    bmi.bmiHeader.biHeight = desc.Height;
+    bmi.bmiHeader.biPlanes = 1;
+    bmi.bmiHeader.biBitCount = 24;
+    bmi.bmiHeader.biCompression = BI_RGB;
+
+    void *bitmapBits = NULL;
+    HBITMAP bitmap = CreateDIBSection(NULL, &bmi, DIB_RGB_COLORS, &bitmapBits, NULL, 0);
+    if (!bitmap || !bitmapBits) {
+        if (bitmap)
+            DeleteObject(bitmap);
+        return NULL;
+    }
+
+    DIBSECTION dibSection;
+    if (!GetObjectA(bitmap, sizeof(dibSection), &dibSection)) {
+        DeleteObject(bitmap);
+        return NULL;
+    }
+
+    VxImageDescEx dstDesc;
+    dstDesc.Width = desc.Width;
+    dstDesc.Height = desc.Height;
+    dstDesc.BytesPerLine = dibSection.dsBm.bmWidthBytes;
+    dstDesc.BitsPerPixel = 24;
+    dstDesc.RedMask = R_MASK;
+    dstDesc.GreenMask = G_MASK;
+    dstDesc.BlueMask = B_MASK;
+    dstDesc.AlphaMask = 0;
+    dstDesc.Image = static_cast<XBYTE *>(bitmapBits);
+    if (desc.Image)
+        VxDoBlitUpsideDown(desc, dstDesc);
+    return bitmap;
+#else
     // Create an SDL_Surface from the image description
     SDL_Surface *surface = SDL_CreateSurface(desc.Width, desc.Height, SDL_PIXELFORMAT_RGBA32);
     return (BITMAP_HANDLE)surface;
+#endif
 }
 
 void VxDeleteBitmap(BITMAP_HANDLE Bitmap) {
+#ifdef _WIN32
+    if (Bitmap)
+        DeleteObject(Bitmap);
+#else
     SDL_Surface *surface = (SDL_Surface *)Bitmap;
     if (surface) {
         SDL_DestroySurface(surface);
     }
+#endif
 }
 
 XBYTE *VxConvertBitmap(BITMAP_HANDLE Bitmap, VxImageDescEx &desc) {
+#ifdef _WIN32
+    BITMAP_HANDLE bitmap24 = VxConvertBitmapTo24(Bitmap);
+    if (!bitmap24)
+        return NULL;
+
+    DIBSECTION dibSection;
+    if (!GetObjectA(bitmap24, sizeof(dibSection), &dibSection) || !dibSection.dsBm.bmBits) {
+        if (bitmap24 != Bitmap)
+            DeleteObject(bitmap24);
+        return NULL;
+    }
+
+    VxImageDescEx srcDesc;
+    srcDesc.Width = dibSection.dsBm.bmWidth;
+    srcDesc.Height = dibSection.dsBm.bmHeight;
+    srcDesc.BytesPerLine = dibSection.dsBm.bmWidthBytes;
+    srcDesc.BitsPerPixel = dibSection.dsBm.bmBitsPixel;
+    srcDesc.RedMask = R_MASK;
+    srcDesc.GreenMask = G_MASK;
+    srcDesc.BlueMask = B_MASK;
+    srcDesc.AlphaMask = 0;
+    srcDesc.Image = static_cast<XBYTE *>(dibSection.dsBm.bmBits);
+
+    VxImageDescEx dstDesc = srcDesc;
+    dstDesc.BytesPerLine = 4 * srcDesc.Width;
+    dstDesc.BitsPerPixel = 32;
+    dstDesc.AlphaMask = A_MASK;
+    XBYTE *newImage = new XBYTE[(size_t)dstDesc.BytesPerLine * (size_t)dstDesc.Height];
+    dstDesc.Image = newImage;
+    VxDoBlitUpsideDown(srcDesc, dstDesc);
+
+    if (bitmap24 != Bitmap)
+        DeleteObject(bitmap24);
+    desc = dstDesc;
+    return newImage;
+#else
     SDL_Surface *surface = (SDL_Surface *)Bitmap;
     if (!surface)
         return NULL;
@@ -1367,18 +1510,96 @@ XBYTE *VxConvertBitmap(BITMAP_HANDLE Bitmap, VxImageDescEx &desc) {
     
     // Return pointer to surface pixels (caller should not free this)
     return (XBYTE *)surface->pixels;
+#endif
 }
 
 BITMAP_HANDLE VxConvertBitmapTo24(BITMAP_HANDLE Bitmap) {
+#ifdef _WIN32
+    if (!Bitmap)
+        return NULL;
+
+    BITMAP bm;
+    if (!GetObjectA(Bitmap, sizeof(bm), &bm))
+        return NULL;
+    if (bm.bmBits && bm.bmBitsPixel == 24)
+        return Bitmap;
+
+    HDC srcDC = CreateCompatibleDC(NULL);
+    if (!srcDC)
+        return NULL;
+    HGDIOBJ oldSrc = SelectObject(srcDC, Bitmap);
+
+    BITMAPINFO bmi;
+    memset(&bmi, 0, sizeof(bmi));
+    bmi.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+    bmi.bmiHeader.biWidth = bm.bmWidth;
+    bmi.bmiHeader.biHeight = bm.bmHeight;
+    bmi.bmiHeader.biPlanes = 1;
+    bmi.bmiHeader.biBitCount = 24;
+    bmi.bmiHeader.biCompression = BI_RGB;
+
+    void *bits = NULL;
+    HBITMAP bitmap24 = CreateDIBSection(NULL, &bmi, DIB_RGB_COLORS, &bits, NULL, 0);
+    HDC dstDC = bitmap24 ? CreateCompatibleDC(srcDC) : NULL;
+    if (!bitmap24 || !bits || !dstDC) {
+        SelectObject(srcDC, oldSrc);
+        DeleteDC(srcDC);
+        if (dstDC)
+            DeleteDC(dstDC);
+        if (bitmap24)
+            DeleteObject(bitmap24);
+        return NULL;
+    }
+
+    HGDIOBJ oldDst = SelectObject(dstDC, bitmap24);
+    BitBlt(dstDC, 0, 0, bm.bmWidth, bm.bmHeight, srcDC, 0, 0, SRCCOPY);
+    SelectObject(srcDC, oldSrc);
+    SelectObject(dstDC, oldDst);
+    DeleteDC(srcDC);
+    DeleteDC(dstDC);
+    return bitmap24;
+#else
     SDL_Surface *surface = (SDL_Surface *)Bitmap;
     if (!surface)
         return NULL;
     
     SDL_Surface *converted = SDL_ConvertSurface(surface, SDL_PIXELFORMAT_RGB24);
     return (BITMAP_HANDLE)converted;
+#endif
 }
 
 XBOOL VxCopyBitmap(BITMAP_HANDLE Bitmap, const VxImageDescEx &desc) {
+#ifdef _WIN32
+    if (!Bitmap || !desc.Image)
+        return FALSE;
+
+    BITMAP_HANDLE bitmap24 = VxConvertBitmapTo24(Bitmap);
+    if (!bitmap24)
+        return FALSE;
+
+    DIBSECTION dibSection;
+    if (!GetObjectA(bitmap24, sizeof(dibSection), &dibSection) || !dibSection.dsBm.bmBits) {
+        if (bitmap24 != Bitmap)
+            DeleteObject(bitmap24);
+        return FALSE;
+    }
+
+    VxImageDescEx srcDesc;
+    srcDesc.Width = dibSection.dsBm.bmWidth;
+    srcDesc.Height = dibSection.dsBm.bmHeight;
+    srcDesc.BytesPerLine = dibSection.dsBm.bmWidthBytes;
+    srcDesc.BitsPerPixel = dibSection.dsBm.bmBitsPixel;
+    srcDesc.RedMask = R_MASK;
+    srcDesc.GreenMask = G_MASK;
+    srcDesc.BlueMask = B_MASK;
+    srcDesc.AlphaMask = 0;
+    srcDesc.Image = static_cast<XBYTE *>(dibSection.dsBm.bmBits);
+    VxDoBlitUpsideDown(srcDesc, desc);
+
+    if (bitmap24 != Bitmap)
+        DeleteObject(bitmap24);
+    return TRUE;
+#else
     SDL_Surface *surface = (SDL_Surface *)Bitmap;
     if (!surface || !desc.Image)
         return FALSE;
@@ -1395,6 +1616,7 @@ XBOOL VxCopyBitmap(BITMAP_HANDLE Bitmap, const VxImageDescEx &desc) {
         return TRUE;
     }
     return FALSE;
+#endif
 }
 
 // ============================================================================
@@ -1452,10 +1674,24 @@ XBOOL VxGetMemoryStatus(VxMemoryStatus *status) {
 }
 
 // ============================================================================
-// Font Functions (stubs - SDL uses SDL_ttf for fonts)
+// Font Functions
 // ============================================================================
 
 FONT_HANDLE VxCreateFont(const char *FontName, int FontSize, int Weight, XBOOL italic, XBOOL underline) {
+#ifdef _WIN32
+    if (!FontName || FontSize == 0)
+        return NULL;
+
+    HDC dc = CreateCompatibleDC(NULL);
+    if (!dc)
+        return NULL;
+    int logicalHeight = FontSize < 0 ? FontSize : -MulDiv(FontSize, GetDeviceCaps(dc, LOGPIXELSY), 72);
+    HFONT font = CreateFontA(logicalHeight, 0, 0, 0, Weight, italic, underline, FALSE,
+                             ANSI_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
+                             ANTIALIASED_QUALITY, DEFAULT_PITCH | FF_DONTCARE, FontName);
+    DeleteDC(dc);
+    return font;
+#else
     // SDL3 doesn't have built-in font support
     // Would need SDL_ttf integration
     (void)FontName;
@@ -1464,15 +1700,66 @@ FONT_HANDLE VxCreateFont(const char *FontName, int FontSize, int Weight, XBOOL i
     (void)italic;
     (void)underline;
     return NULL;
+#endif
 }
 
 XBOOL VxGetFontInfo(FONT_HANDLE Font, VXFONTINFO &desc) {
+#ifdef _WIN32
+    if (!Font)
+        return FALSE;
+    LOGFONTA logFont;
+    if (!GetObjectA(Font, sizeof(logFont), &logFont))
+        return FALSE;
+    desc.FaceName = logFont.lfFaceName;
+    desc.Height = logFont.lfHeight < 0 ? -logFont.lfHeight : logFont.lfHeight;
+    desc.Weight = logFont.lfWeight;
+    desc.Italic = logFont.lfItalic ? TRUE : FALSE;
+    desc.Underline = logFont.lfUnderline ? TRUE : FALSE;
+    return TRUE;
+#else
     (void)Font;
     desc = VXFONTINFO();
     return FALSE;
+#endif
 }
 
 XBOOL VxDrawBitmapText(BITMAP_HANDLE Bitmap, FONT_HANDLE Font, const char *string, CKRECT *rect, XDWORD Align, XDWORD BkColor, XDWORD FontColor) {
+#ifdef _WIN32
+    if (!Bitmap || !Font || !string || !rect)
+        return FALSE;
+
+    HDC dc = CreateCompatibleDC(NULL);
+    if (!dc)
+        return FALSE;
+    HGDIOBJ oldBitmap = SelectObject(dc, Bitmap);
+    HGDIOBJ oldFont = SelectObject(dc, Font);
+    if (!oldBitmap || oldBitmap == HGDI_ERROR || !oldFont || oldFont == HGDI_ERROR) {
+        if (oldBitmap && oldBitmap != HGDI_ERROR)
+            SelectObject(dc, oldBitmap);
+        if (oldFont && oldFont != HGDI_ERROR)
+            SelectObject(dc, oldFont);
+        DeleteDC(dc);
+        return FALSE;
+    }
+
+    SetTextColor(dc, RGB(FontColor & 0xFF, (FontColor >> 8) & 0xFF, (FontColor >> 16) & 0xFF));
+    SetBkColor(dc, RGB(BkColor & 0xFF, (BkColor >> 8) & 0xFF, (BkColor >> 16) & 0xFF));
+
+    UINT flags = (Align & (VXTEXT_CENTER | VXTEXT_HCENTER)) ? DT_CENTER
+               : (Align & VXTEXT_RIGHT) ? DT_RIGHT : DT_LEFT;
+    if (Align & VXTEXT_BOTTOM)
+        flags |= DT_BOTTOM | DT_SINGLELINE;
+    else if (Align & VXTEXT_VCENTER)
+        flags |= DT_VCENTER | DT_SINGLELINE;
+    else
+        flags |= DT_TOP | DT_SINGLELINE;
+
+    int result = DrawTextA(dc, string, -1, reinterpret_cast<LPRECT>(rect), flags);
+    SelectObject(dc, oldFont);
+    SelectObject(dc, oldBitmap);
+    DeleteDC(dc);
+    return result != 0;
+#else
     // SDL3 doesn't have built-in text rendering
     // Would need SDL_ttf integration
     (void)Bitmap;
@@ -1483,8 +1770,14 @@ XBOOL VxDrawBitmapText(BITMAP_HANDLE Bitmap, FONT_HANDLE Font, const char *strin
     (void)BkColor;
     (void)FontColor;
     return FALSE;
+#endif
 }
 
 void VxDeleteFont(FONT_HANDLE Font) {
+#ifdef _WIN32
+    if (Font)
+        DeleteObject(Font);
+#else
     (void)Font;
+#endif
 }

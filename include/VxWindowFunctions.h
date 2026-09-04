@@ -177,7 +177,7 @@ VX_EXPORT void VxDeleteBitmap(BITMAP_HANDLE Bitmap);
 VX_EXPORT XBYTE *VxConvertBitmap(BITMAP_HANDLE Bitmap, VxImageDescEx &desc);
 /// @brief Converts a bitmap to a 24-bit color format.
 VX_EXPORT BITMAP_HANDLE VxConvertBitmapTo24(BITMAP_HANDLE Bitmap);
-/// @brief Copies image data into an existing device-dependent bitmap.
+/// @brief Copies pixels from a device-dependent bitmap into an image buffer.
 VX_EXPORT XBOOL VxCopyBitmap(BITMAP_HANDLE Bitmap, const VxImageDescEx &desc);
 
 /// @brief Gets information about the current operating system.

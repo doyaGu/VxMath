@@ -14,6 +14,11 @@
 // Static member for main thread tracking
 VxThread *VxThread::m_MainThread = NULL;
 
+// SDL may start a worker before CreateThread has published its handle in the
+// process-wide lookup table. Keep the owning wrapper in thread-local storage
+// so callbacks can always resolve themselves without racing the creator.
+static thread_local VxThread *g_CurrentVxThread = NULL;
+
 // Forward declaration of thread wrapper
 int SDLCALL VxThreadSDL3Wrapper(void *data);
 
@@ -51,6 +56,7 @@ int SDLCALL VxThreadSDL3Wrapper(void *data) {
         return VXTERROR_NULLTHREAD;
 
     VxThread *thread = (VxThread *)data;
+    g_CurrentVxThread = thread;
     thread->m_State |= VXTS_STARTED;
 
     int ret;
@@ -60,6 +66,7 @@ int SDLCALL VxThreadSDL3Wrapper(void *data) {
         ret = thread->Run();
 
     thread->m_State = VXTS_INITIALE;
+    g_CurrentVxThread = NULL;
     return ret;
 }
 
@@ -142,6 +149,9 @@ XBOOL VxThread::IsStarted() const {
 }
 
 VxThread *VxThread::GetCurrentVxThread() {
+    if (g_CurrentVxThread)
+        return g_CurrentVxThread;
+
     SDL_ThreadID currentId = SDL_GetCurrentThreadID();
 
     GetMutex().EnterMutex();

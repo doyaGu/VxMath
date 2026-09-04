@@ -158,6 +158,24 @@ TEST_F(VxWindowFunctionsTest, CreateFileTreeFailsWhenIntermediateComponentIsAFil
     EXPECT_FALSE(std::filesystem::exists(blockedTarget.parent_path()));
 }
 
+TEST_F(VxWindowFunctionsTest, CreateFileTreeRejectsEmptyInput) {
+    EXPECT_FALSE(VxCreateFileTree(nullptr));
+    EXPECT_FALSE(VxCreateFileTree(""));
+}
+
+#ifdef _WIN32
+TEST_F(VxWindowFunctionsTest, CreateFileTreeAcceptsRootRelativePath) {
+    const std::filesystem::path target = m_tempDir / "root-relative" / "child" / "leaf.txt";
+    const std::string absolute = std::filesystem::absolute(target).string();
+    ASSERT_GE(absolute.size(), 3u);
+    ASSERT_EQ(absolute[1], ':');
+
+    const std::string rootRelative = absolute.substr(2);
+    EXPECT_TRUE(VxCreateFileTree(rootRelative.c_str()));
+    EXPECT_TRUE(std::filesystem::exists(target.parent_path()));
+}
+#endif
+
 TEST_F(VxWindowFunctionsTest, CurrentDirectory) {
     XString originalDir = VxGetCurrentDirectory();
     ASSERT_FALSE(originalDir.IsEmpty());
@@ -294,6 +312,53 @@ TEST_F(VxWindowFunctionsTest, ModuleFunctions) {
     EXPECT_STREQ(moduleBuffer.data(), modulePath.CStr());
     EXPECT_TRUE(std::filesystem::exists(modulePath.CStr()));
 }
+
+#ifdef _WIN32
+TEST_F(VxWindowFunctionsTest, FontLifecycleAndInfo) {
+    FONT_HANDLE font = VxCreateFont("Arial", 16, 700, TRUE, TRUE);
+    ASSERT_NE(font, nullptr);
+
+    VXFONTINFO info;
+    EXPECT_TRUE(VxGetFontInfo(font, info));
+    EXPECT_FALSE(info.FaceName.IsEmpty());
+    EXPECT_GT(info.Height, 0);
+    EXPECT_EQ(info.Weight, 700);
+    EXPECT_TRUE(info.Italic);
+    EXPECT_TRUE(info.Underline);
+    VxDeleteFont(font);
+}
+
+TEST_F(VxWindowFunctionsTest, DrawBitmapTextWritesPixelsBackToImage) {
+    VxImageDescEx desc;
+    desc.Width = 160;
+    desc.Height = 40;
+    desc.BitsPerPixel = 32;
+    desc.BytesPerLine = desc.Width * 4;
+    VxBppToMask(desc);
+    std::vector<XDWORD> pixels((size_t)desc.Width * (size_t)desc.Height, 0);
+    desc.Image = reinterpret_cast<XBYTE *>(pixels.data());
+
+    BITMAP_HANDLE bitmap = VxCreateBitmap(desc);
+    FONT_HANDLE font = VxCreateFont("Arial", 18, 700, FALSE, FALSE);
+    ASSERT_NE(bitmap, nullptr);
+    ASSERT_NE(font, nullptr);
+
+    CKRECT rect = {0, 0, desc.Width, desc.Height};
+    EXPECT_TRUE(VxDrawBitmapText(bitmap, font, "Ballanced", &rect,
+                                 VXTEXT_LEFT | VXTEXT_VCENTER, 0x00000000, 0xFFFFFFFF));
+    EXPECT_TRUE(VxCopyBitmap(bitmap, desc));
+
+    size_t coloredPixels = 0;
+    for (size_t i = 0; i < pixels.size(); ++i) {
+        if ((pixels[i] & 0x00FFFFFFu) != 0)
+            ++coloredPixels;
+    }
+    EXPECT_GT(coloredPixels, 0u);
+
+    VxDeleteFont(font);
+    VxDeleteBitmap(bitmap);
+}
+#endif
 
 // --- Tests for functions that are not easily automated ---
 
