@@ -1147,19 +1147,23 @@ private:
     int XFindPos(const K &key) const {
         int index = Index(key);
         int oldindex = index;
+        int firstDeleted = -1;
 
         Eq eqaulFunc;
 
-        while (m_Table[index].m_Status == STATUS_OCCUPIED) {
-            if (eqaulFunc(m_Table[index].m_Key, key))
+        while (m_Table[index].m_Status != STATUS_FREE) {
+            if (m_Table[index].m_Status == STATUS_OCCUPIED &&
+                eqaulFunc(m_Table[index].m_Key, key))
                 return index;
+            if (m_Table[index].m_Status == STATUS_DELETED && firstDeleted < 0)
+                firstDeleted = index;
             ++index; // Compute ith probe
             if (index == m_Table.Size())
                 index = 0;
             if (index == oldindex)
-                return -1;
+                return firstDeleted;
         }
-        return index;
+        return firstDeleted >= 0 ? firstDeleted : index;
     }
 
     /// @brief The array of entries that holds the hash table data.

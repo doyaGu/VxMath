@@ -1085,6 +1085,27 @@ TEST(XSHashTable, LinearProbingWithCollisions) {
     }
 }
 
+TEST(XSHashTable, TombstonePreservesCollidingProbeChain) {
+    XSHashTable<int, int, IntHashConstantZero> t(16);
+
+    ASSERT_TRUE(t.Insert(1, 10, FALSE));
+    ASSERT_TRUE(t.Insert(2, 20, FALSE));
+    ASSERT_TRUE(t.Insert(3, 30, FALSE));
+
+    t.Remove(1);
+
+    ASSERT_NE(t.FindPtr(2), nullptr);
+    EXPECT_EQ(*t.FindPtr(2), 20);
+    ASSERT_NE(t.FindPtr(3), nullptr);
+    EXPECT_EQ(*t.FindPtr(3), 30);
+    EXPECT_FALSE(t.Insert(2, 200, FALSE));
+    EXPECT_EQ(t.Size(), 2);
+
+    EXPECT_TRUE(t.Insert(2, 200, TRUE));
+    EXPECT_EQ(t.Size(), 2);
+    EXPECT_EQ(*t.FindPtr(2), 200);
+}
+
 TEST(XSHashTable, IterationCoversAllElements) {
     XSHashTable<int, int> t(16);
     for (int i = 0; i < 100; ++i)
