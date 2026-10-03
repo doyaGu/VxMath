@@ -919,9 +919,29 @@ TEST_F(VxMatrixUtilityTest, Vx3DInterpolateMatrixNoScale) {
     // Translation should interpolate normally
     EXPECT_NEAR(interpolated[3][0], 5.0f, STANDARD_TOL);
 
-    // This function should handle scaling differently from regular interpolation
-    // The exact behavior depends on implementation, but it should avoid scaling artifacts
-    EXPECT_NE(interpolated[0][0], 1.5f); // Should not be simple linear interpolation of scale
+    // Both legacy entry points interpolate scale as well as translation.
+    EXPECT_NEAR(interpolated[0][0], 1.5f, STANDARD_TOL);
+    EXPECT_NEAR(interpolated[1][1], 2.0f, STANDARD_TOL);
+    EXPECT_NEAR(interpolated[2][2], 2.5f, STANDARD_TOL);
+}
+
+TEST_F(VxMatrixUtilityTest, InterpolationPreservesSingularShearedEndpointsAndAliases) {
+    VxMatrix selected, invalid;
+    selected.SetIdentity();
+    selected[0][0]=0.0f; selected[0][1]=0.75f; selected[1][2]=-0.25f;
+    selected[3][0]=17.0f; selected[3][1]=-4.0f;
+    for (int i=0; i<4; ++i) for (int j=0; j<4; ++j)
+        invalid[i][j]=std::numeric_limits<float>::quiet_NaN();
+    for (int entry=0; entry<2; ++entry) for (int endpoint=0; endpoint<2; ++endpoint) {
+        for (int alias=0; alias<3; ++alias) {
+            VxMatrix a=endpoint ? invalid : selected, b=endpoint ? selected : invalid, result;
+            VxMatrix &output=alias==1 ? a : alias==2 ? b : result;
+            if (entry==0) Vx3DInterpolateMatrix(static_cast<float>(endpoint),output,a,b);
+            else Vx3DInterpolateMatrixNoScale(static_cast<float>(endpoint),output,a,b);
+            for (int i=0; i<4; ++i) for (int j=0; j<4; ++j)
+                EXPECT_EQ(output[i][j],selected[i][j]);
+        }
+    }
 }
 
 TEST_F(VxMatrixUtilityTest, Vx3DDecomposeMatrix) {
@@ -1262,11 +1282,12 @@ TEST_F(VxMatrixSpecialCasesTest, VeryLargeValues) {
 }
 
 TEST_F(VxMatrixSpecialCasesTest, RotationMatrixProperties) {
-    // Test that rotation matrices preserve length
+    // Test a normalized rotation. The original axis-angle matrix builder uses
+    // approximate RSQRTSS; its direct outputs are covered by DLL fixtures.
     VxVector axis(1.0f, 1.0f, 1.0f);
     axis.Normalize();
     VxMatrix rotation;
-    Vx3DMatrixFromRotation(rotation, axis, PI / 3.0f); // 60 degrees
+    VxQuaternion(axis, PI / 3.0f).ToMatrix(rotation); // 60 degrees
 
     VxVector test_vector(3.0f, 4.0f, 0.0f); // Length = 5
     VxVector rotated = rotation * test_vector;

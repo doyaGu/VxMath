@@ -117,6 +117,8 @@ inline void Vx3DMatrixFromRotation(VxMatrix &ResultMat, const VxVector &Vector, 
  * @param Origin The point to rotate around.
  * @param Angle The angle of rotation in radians.
  */
+// As in the original runtime, an Origin referencing ResultMat[3] observes
+// sequential translation writes. Pass a copy for a fixed pivot in that case.
 inline void Vx3DMatrixFromRotationAndOrigin(VxMatrix &ResultMat, const VxVector &Vector, const VxVector &Origin, float Angle);
 
 /**
@@ -138,7 +140,7 @@ inline void Vx3DMatrixFromEulerAngles(VxMatrix &Mat, float eax, float eay, float
 inline void Vx3DMatrixToEulerAngles(const VxMatrix &Mat, float *eax, float *eay, float *eaz);
 
 /**
- * @brief Performs a linear interpolation between two matrices.
+ * @brief Interpolates decomposed translation and row scales linearly, and rotation with Slerp.
  * @param step The interpolation factor (0.0 for matrix A, 1.0 for matrix B).
  * @param Res The resulting interpolated matrix.
  * @param A The first matrix.
@@ -147,7 +149,8 @@ inline void Vx3DMatrixToEulerAngles(const VxMatrix &Mat, float *eax, float *eay,
 inline void Vx3DInterpolateMatrix(float step, VxMatrix &Res, const VxMatrix &A, const VxMatrix &B);
 
 /**
- * @brief Interpolates between two matrices, handling rotation and translation separately to avoid scaling issues.
+ * @brief Compatibility alias for Vx3DInterpolateMatrix, including scale interpolation.
+ * @note Both names resolve to the same function in the original runtime.
  * @param step The interpolation factor (0.0 for matrix A, 1.0 for matrix B).
  * @param Res The resulting interpolated matrix.
  * @param A The first matrix.

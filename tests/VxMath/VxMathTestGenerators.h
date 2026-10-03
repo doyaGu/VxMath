@@ -137,7 +137,9 @@ public:
         VxMatrix m;
         VxVector axis = UnitVector();
         float angle = Angle();
-        Vx3DMatrixFromRotation(m, axis, angle);
+        // Strict orthogonality properties need a normalized rotation. The
+        // legacy axis-angle matrix builder retains RSQRTSS approximation.
+        VxQuaternion(axis, angle).ToMatrix(m);
         return m;
     }
 

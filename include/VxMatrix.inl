@@ -390,35 +390,62 @@ inline VxQuaternion Vx3DQuaternionFromMatrix(const VxMatrix &Mat) {
     return quat;
 }
 
+namespace VxQuaternionDetail {
+inline void NormalizeRotationAxis(VxVector &axis) {
+    // Finite float squares fit in double even when float arithmetic would
+    // underflow or overflow. Zero/nonfinite axes retain their NaN behavior.
+    const double inverse = 1.0/LengthWide(axis.x, axis.y, axis.z);
+    axis.Set(static_cast<float>(axis.x*inverse),
+             static_cast<float>(axis.y*inverse),
+             static_cast<float>(axis.z*inverse));
+}
+
+inline float CrossComponentWide(float a, float b, float c, float d) {
+    return static_cast<float>(static_cast<double>(a)*b - static_cast<double>(c)*d);
+}
+} // namespace VxQuaternionDetail
+
 inline void Vx3DNormalizeRotationRows(const VxMatrix &in, VxMatrix &out) {
     out = in;
     VxVector row0(in[0][0], in[0][1], in[0][2]);
     VxVector row1(in[1][0], in[1][1], in[1][2]);
-    row0.Normalize();
-    row1.Normalize();
-    VxVector row2 = CrossProduct(row0, row1);
+    VxQuaternionDetail::NormalizeRotationAxis(row0);
+    VxQuaternionDetail::NormalizeRotationAxis(row1);
+    // Keep tiny products until subtraction and the final float store.
+    const VxVector row2(VxQuaternionDetail::CrossComponentWide(row1.z, row0.y, row0.z, row1.y),
+                        VxQuaternionDetail::CrossComponentWide(row0.z, row1.x, row0.x, row1.z),
+                        VxQuaternionDetail::CrossComponentWide(row0.x, row1.y, row1.x, row0.y));
     out[0][0] = row0.x; out[0][1] = row0.y; out[0][2] = row0.z;
     out[1][0] = row1.x; out[1][1] = row1.y; out[1][2] = row1.z;
     out[2][0] = row2.x; out[2][1] = row2.y; out[2][2] = row2.z;
 }
 
 inline void VxQuaternion::FromMatrix(const VxMatrix &Mat, XBOOL MatIsUnit, XBOOL RestoreMat) {
-    (void) RestoreMat;
     const VxMatrix *matrix = &Mat;
     VxMatrix normalized;
     if (!MatIsUnit) {
         Vx3DNormalizeRotationRows(Mat, normalized);
         matrix = &normalized;
+        // The legacy const-reference API leaves normalized rotation rows in
+        // the caller's matrix when RestoreMat is false (0x2429C420).
+        if (!RestoreMat) {
+            VxMatrix &mutableMat = const_cast<VxMatrix &>(Mat);
+            for (int row = 0; row < 3; ++row)
+                for (int column = 0; column < 3; ++column)
+                    mutableMat[row][column] = normalized[row][column];
+        }
     }
 
-    float trace = (*matrix)[0][0] + (*matrix)[1][1] + (*matrix)[2][2];
-    if (trace > 0.0f) {
-        float s = sqrtf(trace + 1.0f);
-        w = s * 0.5f;
-        s = 0.5f / s;
-        x = ((*matrix)[2][1] - (*matrix)[1][2]) * s;
-        y = ((*matrix)[0][2] - (*matrix)[2][0]) * s;
-        z = ((*matrix)[1][0] - (*matrix)[0][1]) * s;
+    // 0x2429C420 sums yy,zz,xx and keeps the intermediates in x87 registers.
+    // A finite matrix can overflow a float sum while its quaternion is finite.
+    const double trace = static_cast<double>((*matrix)[1][1]) + (*matrix)[2][2] + (*matrix)[0][0];
+    if (trace >= 0.0) {
+        const double root = std::sqrt(trace + 1.0);
+        w = static_cast<float>(root * 0.5);
+        const double s = 0.5 / root;
+        x = static_cast<float>((static_cast<double>((*matrix)[2][1]) - (*matrix)[1][2]) * s);
+        y = static_cast<float>((static_cast<double>((*matrix)[0][2]) - (*matrix)[2][0]) * s);
+        z = static_cast<float>((static_cast<double>((*matrix)[1][0]) - (*matrix)[0][1]) * s);
     } else {
         int i = 0;
         if ((*matrix)[1][1] > (*matrix)[0][0]) i = 1;
@@ -426,32 +453,37 @@ inline void VxQuaternion::FromMatrix(const VxMatrix &Mat, XBOOL MatIsUnit, XBOOL
         static const int next[3] = {1, 2, 0};
         int j = next[i];
         int k = next[j];
-        float s = sqrtf((*matrix)[i][i] - (*matrix)[j][j] - (*matrix)[k][k] + 1.0f);
+        const double other = static_cast<double>((*matrix)[k][k]) + (*matrix)[j][j];
+        const double radicand = ((*matrix)[i][i] - other) + 1.0;
+        const double root = std::sqrt(radicand);
         float *q[4] = {&x, &y, &z, &w};
-        *q[i] = s * 0.5f;
-        if (s > EPSILON) {
-            s = 0.5f / s;
-            *q[3] = ((*matrix)[k][j] - (*matrix)[j][k]) * s;
-            *q[j] = ((*matrix)[j][i] + (*matrix)[i][j]) * s;
-            *q[k] = ((*matrix)[k][i] + (*matrix)[i][k]) * s;
-        } else {
-            *q[3] = 1.0f; *q[j] = 0.0f; *q[k] = 0.0f;
-        }
+        *q[i] = static_cast<float>(root * 0.5);
+        const double s = 0.5 / root;
+        *q[j] = static_cast<float>((static_cast<double>((*matrix)[j][i]) + (*matrix)[i][j]) * s);
+        *q[k] = static_cast<float>((static_cast<double>((*matrix)[k][i]) + (*matrix)[i][k]) * s);
+        *q[3] = static_cast<float>((static_cast<double>((*matrix)[k][j]) - (*matrix)[j][k]) * s);
     }
 }
 
 inline void VxQuaternion::ToMatrix(VxMatrix &Mat) const {
-    float norm = x * x + y * y + z * z + w * w;
-    if (norm < EPSILON) { Mat.SetIdentity(); return; }
-    float s = 2.0f / norm;
-    float xs = x*s, ys = y*s, zs = z*s;
-    float wx = w*xs, wy = w*ys, wz = w*zs;
-    float xx = x*xs, xy = x*ys, xz = x*zs;
-    float yy = y*ys, yz = y*zs, zz = z*zs;
-    Mat[0][0] = 1.0f - (yy+zz); Mat[0][1] = xy-wz;          Mat[0][2] = xz+wy;          Mat[0][3] = 0.0f;
-    Mat[1][0] = xy+wz;           Mat[1][1] = 1.0f - (xx+zz); Mat[1][2] = yz-wx;          Mat[1][3] = 0.0f;
-    Mat[2][0] = xz-wy;           Mat[2][1] = yz+wx;           Mat[2][2] = 1.0f - (xx+yy); Mat[2][3] = 0.0f;
-    Mat[3][0] = 0.0f;             Mat[3][1] = 0.0f;            Mat[3][2] = 0.0f;            Mat[3][3] = 1.0f;
+    // Keep both the norm and scaled products wide. This is invariant under
+    // finite nonzero quaternion scaling across the entire float range.
+    const double dx = x, dy = y, dz = z, dw = w;
+    const double s = 2.0 / VxQuaternionDetail::SquaredLengthWide(x, y, z, w);
+    const double xs = dx*s, ys = dy*s, zs = dz*s;
+    const double wx = dw*xs, wy = dw*ys, wz = dw*zs;
+    const double xx = dx*xs, xy = dx*ys, xz = dx*zs;
+    const double yy = dy*ys, yz = dy*zs, zz = dz*zs;
+    Mat[0][0] = static_cast<float>(1.0 - (yy+zz));
+    Mat[0][1] = static_cast<float>(xy-wz);
+    Mat[0][2] = static_cast<float>(xz+wy); Mat[0][3] = 0.0f;
+    Mat[1][0] = static_cast<float>(xy+wz);
+    Mat[1][1] = static_cast<float>(1.0 - (zz+xx));
+    Mat[1][2] = static_cast<float>(yz-wx); Mat[1][3] = 0.0f;
+    Mat[2][0] = static_cast<float>(xz-wy);
+    Mat[2][1] = static_cast<float>(yz+wx);
+    Mat[2][2] = static_cast<float>(1.0 - (yy+xx)); Mat[2][3] = 0.0f;
+    Mat[3][0] = Mat[3][1] = Mat[3][2] = 0.0f; Mat[3][3] = 1.0f;
 }
 
 inline void VxQuaternion::FromRotation(const VxVector &Vector, float Angle) {
@@ -602,45 +634,65 @@ inline void Vx3DRotateVectorStrided(VxStridedData *Dest, VxStridedData *Src, con
 
 // ---------- Matrix rotation / Euler builders ----------
 
+namespace VxMatrixRotationDetail {
+inline float OriginCoordinate(float origin, float a, float x, float b, float y, float c, float z) {
+    const float result = origin - ((a*x + b*y) + c*z);
+    if (std::isfinite(result)) return result;
+    // 0x2429B0E0 retains x87's exponent range until each coordinate write.
+    // An aliased origin can grow enough for the next dot product to overflow
+    // float even when the original sum has a well-defined sign or cancels.
+    const double ax = static_cast<double>(a)*x;
+    const double by = static_cast<double>(b)*y;
+    const double cz = static_cast<double>(c)*z;
+    const double sum = (ax+by)+cz;
+    return static_cast<float>(origin-sum);
+}
+} // namespace VxMatrixRotationDetail
+
 inline void Vx3DMatrixFromRotation(VxMatrix &ResultMat, const VxVector &Vector, float Angle) {
-    if (fabsf(Angle) < EPSILON) { ResultMat.SetIdentity(); return; }
-    const float c = cosf(Angle), s = sinf(Angle), t = 1.0f - c;
-    const float lenSq = Vector.x*Vector.x + Vector.y*Vector.y + Vector.z*Vector.z;
-    float x, y, z;
-    if (lenSq > EPSILON) {
-        const float invLen = 1.0f / sqrtf(lenSq);
-        x = Vector.x*invLen; y = Vector.y*invLen; z = Vector.z*invLen;
-    } else {
-        x = 0.0f; y = 0.0f; z = 1.0f;
-    }
+    float c, s;
+    VxQuaternionDetail::RotationSinCos(Angle, s, c);
+    const float t = 1.0f - c;
+    VxVector axis = Vector;
+    VxQuaternionDetail::NormalizeRotationAxis(axis);
+    const float x = axis.x, y = axis.y, z = axis.z;
     const float xx=x*x, yy=y*y, zz=z*z;
     const float xy=x*y, xz=x*z, yz=y*z;
     const float xs=x*s, ys=y*s, zs=z*s;
     const float xyt=xy*t, xzt=xz*t, yzt=yz*t;
-    ResultMat[0][0] = xx*t+c;  ResultMat[0][1] = xyt+zs; ResultMat[0][2] = xzt-ys; ResultMat[0][3] = 0.0f;
-    ResultMat[1][0] = xyt-zs; ResultMat[1][1] = yy*t+c;  ResultMat[1][2] = yzt+xs; ResultMat[1][3] = 0.0f;
-    ResultMat[2][0] = xzt+ys; ResultMat[2][1] = yzt-xs; ResultMat[2][2] = zz*t+c;  ResultMat[2][3] = 0.0f;
+    ResultMat[0][0] = (1.0f-xx)*c+xx; ResultMat[0][1] = xyt-zs; ResultMat[0][2] = xzt+ys; ResultMat[0][3] = 0.0f;
+    ResultMat[1][0] = xyt+zs; ResultMat[1][1] = (1.0f-yy)*c+yy; ResultMat[1][2] = yzt-xs; ResultMat[1][3] = 0.0f;
+    ResultMat[2][0] = xzt-ys; ResultMat[2][1] = yzt+xs; ResultMat[2][2] = (1.0f-zz)*c+zz; ResultMat[2][3] = 0.0f;
     ResultMat[3][0] = 0.0f;    ResultMat[3][1] = 0.0f;    ResultMat[3][2] = 0.0f;    ResultMat[3][3] = 1.0f;
 }
 
 inline void Vx3DMatrixFromRotationAndOrigin(VxMatrix &ResultMat, const VxVector &Vector, const VxVector &Origin, float Angle) {
-    Vx3DMatrixFromRotation(ResultMat, Vector, Angle);
-    const float negOx=-Origin.x, negOy=-Origin.y, negOz=-Origin.z;
+    VxMatrix rotation;
+    Vx3DMatrixFromRotation(rotation, Vector, Angle);
+    // The original leaves row 3 intact until the translation writes. Origin
+    // can refer to that row, and each subsequent component sees prior writes.
+    for (int i = 0; i < 3; ++i)
+        for (int j = 0; j < 3; ++j) ResultMat[i][j] = rotation[i][j];
     const float *r0=ResultMat[0], *r1=ResultMat[1], *r2=ResultMat[2];
-    ResultMat[3][0] = Origin.x + negOx*r0[0] + negOy*r1[0] + negOz*r2[0];
-    ResultMat[3][1] = Origin.y + negOx*r0[1] + negOy*r1[1] + negOz*r2[1];
-    ResultMat[3][2] = Origin.z + negOx*r0[2] + negOy*r1[2] + negOz*r2[2];
+    using VxMatrixRotationDetail::OriginCoordinate;
+    ResultMat[3][0] = OriginCoordinate(Origin.x, r2[0], Origin.z, Origin.y, r1[0], r0[0], Origin.x);
+    ResultMat[3][1] = OriginCoordinate(Origin.y, r0[1], Origin.x, Origin.z, r2[1], r1[1], Origin.y);
+    ResultMat[3][2] = OriginCoordinate(Origin.z, Origin.y, r1[2], Origin.z, r2[2], r0[2], Origin.x);
+    ResultMat[0][3] = ResultMat[1][3] = ResultMat[2][3] = 0.0f;
+    ResultMat[3][3] = 1.0f;
 }
 
 inline void Vx3DMatrixFromEulerAngles(VxMatrix &Mat, float eax, float eay, float eaz) {
     float cx, sx, cy, sy, cz, sz;
-    if (fabsf(eax) <= EPSILON) { cx = 1.0f; sx = eax; } else { cx = cosf(eax); sx = sinf(eax); }
-    if (fabsf(eay) <= EPSILON) { cy = 1.0f; sy = eay; } else { cy = cosf(eay); sy = sinf(eay); }
-    if (fabsf(eaz) <= EPSILON) { cz = 1.0f; sz = eaz; } else { cz = cosf(eaz); sz = sinf(eaz); }
-    const float sxsy=sx*sy, cxsy=cx*sy, cycz=cy*cz, cysz=cy*sz;
-    Mat[0][0] = cycz;              Mat[0][1] = cysz;              Mat[0][2] = -sy;    Mat[0][3] = 0.0f;
-    Mat[1][0] = sxsy*cz - cx*sz;  Mat[1][1] = sxsy*sz + cx*cz;  Mat[1][2] = sx*cy;  Mat[1][3] = 0.0f;
-    Mat[2][0] = cxsy*cz + sx*sz;  Mat[2][1] = cxsy*sz - sx*cz;  Mat[2][2] = cx*cy;  Mat[2][3] = 0.0f;
+    if (fabsf(eax) <= 1e-8f) { cx = 1.0f; sx = 0.0f; } else { VxQuaternionDetail::RotationSinCos(eax, sx, cx); }
+    if (fabsf(eay) <= 1e-8f) { cy = 1.0f; sy = 0.0f; } else { VxQuaternionDetail::RotationSinCos(eay, sy, cy); }
+    if (fabsf(eaz) <= 1e-8f) { cz = 1.0f; sz = 0.0f; } else { VxQuaternionDetail::RotationSinCos(eaz, sz, cz); }
+    // 0x2429B280 stores the x/z products before multiplying by sin(y).
+    // Reassociation changes overflow and zero products for large angles.
+    const float cxcz=cx*cz, cxsz=cx*sz, sxcz=sx*cz, sxsz=sx*sz;
+    Mat[0][0] = cz*cy;            Mat[0][1] = sz*cy;            Mat[0][2] = -sy;    Mat[0][3] = 0.0f;
+    Mat[1][0] = sxcz*sy - cxsz;   Mat[1][1] = sxsz*sy + cxcz;   Mat[1][2] = sx*cy;  Mat[1][3] = 0.0f;
+    Mat[2][0] = cxcz*sy + sxsz;   Mat[2][1] = cxsz*sy - sxcz;   Mat[2][2] = cx*cy;  Mat[2][3] = 0.0f;
     Mat[3][0] = 0.0f;              Mat[3][1] = 0.0f;              Mat[3][2] = 0.0f;   Mat[3][3] = 1.0f;
 }
 
@@ -648,7 +700,7 @@ inline void Vx3DMatrixToEulerAngles(const VxMatrix &Mat, float *eax, float *eay,
     const float m00=Mat[0][0], m01=Mat[0][1], m02=Mat[0][2];
     const float m12=Mat[1][2], m22=Mat[2][2], m21=Mat[2][1], m11=Mat[1][1];
     const float magnitude = sqrtf(m00*m00 + m01*m01);
-    if (magnitude < EPSILON) {
+    if (!(magnitude > 16.0f * EPSILON)) {
         if (eay) *eay = atan2f(-m02, magnitude);
         if (eax) *eax = atan2f(-m21, m11);
         if (eaz) *eaz = 0.0f;
@@ -681,96 +733,184 @@ inline float Vx3DMatrixNorm(const VxMatrix &M, bool isOneNorm) {
     return maxNorm;
 }
 
-inline float Vx3DMatrixPolarDecomposition(const VxMatrix &M_in, VxMatrix &Q, VxMatrix &S) {
-    VxMatrix E;
-    Vx3DTransposeMatrix(E, M_in);
-    E[0][3] = E[1][3] = E[2][3] = E[3][0] = E[3][1] = E[3][2] = 0.0f;
-    E[3][3] = 1.0f;
-    float E_one_norm = Vx3DMatrixNorm(E, true);
-    float E_inf_norm = Vx3DMatrixNorm(E, false);
-    for (int iter = 0; iter < 20; ++iter) {
-        VxMatrix E_adj;
-        Vx3DMatrixAdjoint(E, E_adj);
-        float det_E = DotProduct(VxVector(E[0][0],E[0][1],E[0][2]), VxVector(E_adj[0][0],E_adj[0][1],E_adj[0][2]));
-        if (fabsf(det_E) < 1e-12f) break;
-        float E_adj_one_norm = Vx3DMatrixNorm(E_adj, true);
-        float E_adj_inf_norm = Vx3DMatrixNorm(E_adj, false);
-        float gamma = sqrtf(sqrtf((E_adj_one_norm*E_adj_inf_norm)/(E_one_norm*E_inf_norm)) / fabsf(det_E));
-        float c1 = 0.5f * gamma, c2 = 0.5f / (gamma * det_E);
-        VxMatrix E_next;
-        for (int i = 0; i < 3; ++i)
-            for (int j = 0; j < 3; ++j)
-                E_next[i][j] = c1*E[i][j] + c2*E_adj[j][i];
-        VxMatrix E_diff;
-        for (int i = 0; i < 3; ++i)
-            for (int j = 0; j < 3; ++j)
-                E_diff[i][j] = E_next[i][j] - E[i][j];
-        E = E_next;
-        if (Vx3DMatrixNorm(E_diff, true) < E_one_norm * 1e-6f) break;
-        E_one_norm = Vx3DMatrixNorm(E, true);
-        E_inf_norm = Vx3DMatrixNorm(E, false);
+namespace VxMatrixDecompositionDetail {
+inline double Dot3(const float *a, const float *b) {
+    return static_cast<double>(a[2])*b[2] + static_cast<double>(a[1])*b[1] + static_cast<double>(a[0])*b[0];
+}
+
+inline int MaxColumn(const VxMatrix &m) {
+    float maximum = 0.0f;
+    int column = -1;
+    for (int i = 0; i < 3; ++i)
+        for (int j = 0; j < 3; ++j)
+            if (std::fabs(m[i][j]) > maximum) { maximum = std::fabs(m[i][j]); column = j; }
+    return column;
+}
+
+inline void MakeReflector(float (&v)[3]) {
+    double length = std::sqrt(Dot3(v, v));
+    if (v[2] < 0.0f) length = -length;
+    v[2] = static_cast<float>(v[2] + length);
+    const double scale = std::sqrt(2.0 / Dot3(v, v));
+    for (int i = 0; i < 3; ++i) v[i] = static_cast<float>(v[i] * scale);
+}
+
+inline void ReflectColumns(VxMatrix &m, const float (&u)[3]) {
+    for (int j = 0; j < 3; ++j) {
+        const double scale = static_cast<double>(m[2][j])*u[2] + static_cast<double>(m[1][j])*u[1] + static_cast<double>(m[0][j])*u[0];
+        for (int i = 0; i < 3; ++i) m[i][j] = static_cast<float>(m[i][j] - scale*u[i]);
     }
-    Vx3DTransposeMatrix(Q, E);
-    VxMatrix Q_T;
-    Vx3DTransposeMatrix(Q_T, Q);
-    Vx3DMultiplyMatrix(S, Q_T, M_in);
+}
+
+inline void ReflectRows(VxMatrix &m, const float (&u)[3]) {
+    for (int i = 0; i < 3; ++i) {
+        const double scale = Dot3(u, m[i]);
+        for (int j = 0; j < 3; ++j) m[i][j] = static_cast<float>(m[i][j] - scale*u[j]);
+    }
+}
+
+inline void OrthogonalRank1(VxMatrix &m, VxMatrix &q) {
+    // Preserve initialization order even when m and q alias, as they do in
+    // original polar decomposition's singular fallback (0x2429B730).
+    q.SetIdentity();
+    const int column = MaxColumn(m);
+    if (column < 0) return;
+    float u[3] = {m[0][column], m[1][column], m[2][column]};
+    MakeReflector(u);
+    ReflectColumns(m, u);
+    float v[3] = {m[2][0], m[2][1], m[2][2]};
+    MakeReflector(v);
+    ReflectRows(m, v);
+    if (m[2][2] < 0.0f) q[2][2] = -1.0f;
+    ReflectColumns(q, u);
+    ReflectRows(q, v);
+}
+
+inline void OrthogonalRank2(VxMatrix &m, const VxMatrix &adjointTranspose, VxMatrix &q) {
+    const int column = MaxColumn(adjointTranspose);
+    if (column < 0) { OrthogonalRank1(m, q); return; }
+    float u[3] = {adjointTranspose[0][column], adjointTranspose[1][column], adjointTranspose[2][column]};
+    MakeReflector(u);
+    ReflectColumns(m, u);
+    float v[3] = {
+        static_cast<float>(static_cast<double>(m[0][1])*m[1][2] - static_cast<double>(m[0][2])*m[1][1]),
+        static_cast<float>(static_cast<double>(m[0][2])*m[1][0] - static_cast<double>(m[0][0])*m[1][2]),
+        static_cast<float>(static_cast<double>(m[0][0])*m[1][1] - static_cast<double>(m[0][1])*m[1][0])};
+    MakeReflector(v);
+    ReflectRows(m, v);
+    const double w = m[0][0], z = m[1][1];
+    const float x = m[1][0], y = m[0][1];
+    if (static_cast<double>(x)*y >= w*z) {
+        const double c = z - w;
+        const float s = x + y;
+        const float inverse = static_cast<float>(1.0 / std::sqrt(static_cast<double>(s)*s + c*c));
+        q[1][1] = static_cast<float>(c*inverse); q[0][0] = -q[1][1];
+        q[1][0] = q[0][1] = s*inverse;
+    } else {
+        const double c = w + z;
+        const float s = x - y;
+        const float inverse = static_cast<float>(1.0 / std::sqrt(static_cast<double>(s)*s + c*c));
+        q[0][0] = q[1][1] = static_cast<float>(c*inverse);
+        q[1][0] = s*inverse; q[0][1] = -q[1][0];
+    }
+    q[0][2] = q[1][2] = q[2][0] = q[2][1] = 0.0f; q[2][2] = 1.0f;
+    ReflectColumns(q, u);
+    ReflectRows(q, v);
+}
+} // namespace VxMatrixDecompositionDetail
+
+inline float Vx3DMatrixPolarDecomposition(const VxMatrix &M_in, VxMatrix &Q, VxMatrix &S) {
+    using namespace VxMatrixDecompositionDetail;
+    VxMatrix e;
+    Vx3DTransposeMatrix(e, M_in);
+    float oneNorm = Vx3DMatrixNorm(e, true), infNorm = Vx3DMatrixNorm(e, false);
+    float determinant = 0.0f;
+    for (;;) {
+        VxMatrix adjointTranspose;
+        for (int i = 0; i < 3; ++i) {
+            const int j = (i+1)%3, k = (i+2)%3;
+            for (int c = 0; c < 3; ++c) {
+                const int a = (c+1)%3, b = (c+2)%3;
+                adjointTranspose[i][c] = static_cast<float>(static_cast<double>(e[j][a])*e[k][b] - static_cast<double>(e[j][b])*e[k][a]);
+            }
+        }
+        const double det = Dot3(e[0], adjointTranspose[0]);
+        determinant = static_cast<float>(det);
+        if (det == 0.0) { OrthogonalRank2(e, adjointTranspose, e); break; }
+        const float adjOne = Vx3DMatrixNorm(adjointTranspose, true);
+        const double adjInf = Vx3DMatrixNorm(adjointTranspose, false);
+        const double gamma = std::sqrt(std::sqrt(adjInf*adjOne / (static_cast<double>(infNorm)*oneNorm)) / std::fabs(determinant));
+        const float c1 = static_cast<float>(0.5*gamma);
+        const double c2 = 0.5 / (gamma*determinant);
+        VxMatrix difference;
+        for (int i = 0; i < 3; ++i)
+            for (int j = 0; j < 3; ++j) {
+                const float previous = e[i][j];
+                e[i][j] = static_cast<float>(static_cast<double>(c1)*previous + c2*adjointTranspose[i][j]);
+                difference[i][j] = previous - e[i][j];
+            }
+        oneNorm = Vx3DMatrixNorm(e, true);
+        infNorm = Vx3DMatrixNorm(e, false);
+        if (Vx3DMatrixNorm(difference, true) <= oneNorm*1e-6) break;
+        // No finite orthogonal factor exists for nonfinite intermediate state.
+        if (!std::isfinite(oneNorm) || !std::isfinite(infNorm)) break;
+    }
+    Q.SetIdentity(); S.SetIdentity();
+    for (int i = 0; i < 3; ++i)
+        for (int j = 0; j < 3; ++j) {
+            Q[i][j] = e[j][i];
+            // The internal original MatrixMultiply is A*B, unlike the public
+            // Vx3DMultiplyMatrix argument convention (B*A).
+            S[i][j] = static_cast<float>(static_cast<double>(e[i][2])*M_in[2][j] + static_cast<double>(e[i][0])*M_in[0][j] + static_cast<double>(e[i][1])*M_in[1][j]);
+        }
     for (int i = 0; i < 3; ++i)
         for (int j = i; j < 3; ++j) {
-            float val = 0.5f * (S[i][j] + S[j][i]);
-            S[i][j] = val; S[j][i] = val;
+            const float symmetric = static_cast<float>((static_cast<double>(S[i][j]) + S[j][i])*0.5);
+            S[i][j] = S[j][i] = symmetric;
         }
-    for (int i = 0; i < 3; ++i) {
-        Q[i][3] = Q[3][i] = 0.0f;
-        S[i][3] = S[3][i] = 0.0f;
-    }
-    Q[3][3] = 1.0f; S[3][3] = 1.0f;
-    return Vx3DMatrixDeterminant(Q);
+    return determinant;
 }
 
 inline VxVector Vx3DMatrixSpectralDecomposition(const VxMatrix &S_in, VxMatrix &U_out) {
+    // 0x2429BC30 uses cyclic off-diagonals [yz,zx,xy] and sweeps 2,1,0.
+    // The original DLL selects 24-bit x87 precision (control word 0x007f).
+    // Round each operation to float: extra precision changes the basis chosen
+    // for repeated eigenvalues, which is observable through Snuggle.
     U_out.SetIdentity();
-    float d[3] = {S_in[0][0], S_in[1][1], S_in[2][2]};
-    float o[3] = {S_in[0][1], S_in[0][2], S_in[1][2]};
+    float diagonal[3] = {S_in[0][0], S_in[1][1], S_in[2][2]};
+    float off[3] = {S_in[1][2], S_in[2][0], S_in[0][1]};
     for (int sweep = 0; sweep < 20; ++sweep) {
-        float sum_off_diag = fabsf(o[0]) + fabsf(o[1]) + fabsf(o[2]);
-        if (sum_off_diag < 1e-9f) break;
-        const int p_map[3] = {0,0,1}, q_map[3] = {1,2,2};
-        for (int i = 0; i < 3; ++i) {
-            int p = p_map[i], q = q_map[i];
-            float S_pq = (p==0&&q==1)?o[0]:((p==0&&q==2)?o[1]:o[2]);
-            if (fabsf(S_pq) < 1e-9f) continue;
-            float diff = d[q] - d[p];
-            float t_val;
-            if (fabsf(diff) + fabsf(S_pq)*100.0f == fabsf(diff)) {
-                t_val = S_pq / diff;
-            } else {
-                float theta = diff / (2.0f * S_pq);
-                t_val = 1.0f / (fabsf(theta) + sqrtf(theta*theta + 1.0f));
-                if (theta < 0.0f) t_val = -t_val;
+        if (std::fabs(off[2]) + std::fabs(off[1]) + std::fabs(off[0]) == 0.0f) break;
+        for (int k = 2; k >= 0; --k) {
+            const int p = (k+1)%3, q = (p+1)%3;
+            const float magnitude = std::fabs(off[k]);
+            if (!(magnitude > 0.0f)) continue;
+            const float difference = diagonal[q] - diagonal[p];
+            float tangent;
+            if (magnitude*100.0f + std::fabs(difference) == std::fabs(difference)) tangent = off[k] / difference;
+            else {
+                const float theta = 0.5f / off[k] * difference;
+                tangent = 1.0f / (std::sqrt(theta*theta + 1.0f) + std::fabs(theta));
+                if (theta < 0.0f) tangent = -tangent;
             }
-            float c = 1.0f / sqrtf(1.0f + t_val*t_val);
-            float s = t_val * c;
-            float tau = s / (1.0f + c);
-            float h = t_val * S_pq;
-            d[p] -= h; d[q] += h;
-            int r = 3 - p - q;
-            float S_pr = (p==0&&r==1)?o[0]:((p==0&&r==2)?o[1]:o[2]);
-            if (p > r) S_pr = (r==0&&p==1)?o[0]:((r==0&&p==2)?o[1]:o[2]);
-            float S_qr = (q==0&&r==1)?o[0]:((q==0&&r==2)?o[1]:o[2]);
-            if (q > r) S_qr = (r==0&&q==1)?o[0]:((r==0&&q==2)?o[1]:o[2]);
-            float next_S_pr = S_pr - s*(S_qr + S_pr*tau);
-            float next_S_qr = S_qr + s*(S_pr - S_qr*tau);
-            if (p==0&&r==1) o[0]=next_S_pr; else if(p==0&&r==2) o[1]=next_S_pr; else o[2]=next_S_pr;
-            if (q==0&&r==1) o[0]=next_S_qr; else if(q==0&&r==2) o[1]=next_S_qr; else o[2]=next_S_qr;
-            if (i==0) o[0]=0; if (i==1) o[1]=0; if (i==2) o[2]=0;
-            for (int k = 0; k < 3; ++k) {
-                float g = U_out[k][p], h_u = U_out[k][q];
-                U_out[k][p] = g - s*(h_u + g*tau);
-                U_out[k][q] = h_u + s*(g - h_u*tau);
+            const float cosine = 1.0f / std::sqrt(tangent*tangent + 1.0f);
+            const float sine = cosine*tangent;
+            const float tau = sine / (cosine+1.0f);
+            const float shift = tangent*off[k];
+            off[k] = 0.0f;
+            diagonal[p] -= shift;
+            diagonal[q] += shift;
+            const float oldQ = off[q];
+            off[q] = oldQ - (tau*oldQ + off[p])*sine;
+            off[p] = (oldQ - tau*off[p])*sine + off[p];
+            for (int row = 2; row >= 0; --row) {
+                const float a = U_out[row][p], b = U_out[row][q];
+                U_out[row][p] = a - (a*tau+b)*sine;
+                U_out[row][q] = (a-b*tau)*sine+b;
             }
         }
     }
-    return VxVector(d[0], d[1], d[2]);
+    return VxVector(diagonal[0], diagonal[1], diagonal[2]);
 }
 
 // ---------- Matrix decomposition functions ----------
@@ -833,41 +973,35 @@ inline float Vx3DDecomposeMatrixTotalPtr(const VxMatrix &A, VxQuaternion *Quat, 
 
 // ---------- Matrix interpolation ----------
 
-inline void Vx3DInterpolateMatrix(float step, VxMatrix &Res, const VxMatrix &A, const VxMatrix &B) {
-    VxQuaternion quatA, quatB, uRotA, uRotB;
-    VxVector posA, posB, scaleA, scaleB;
-    Vx3DDecomposeMatrixTotal(A, quatA, posA, scaleA, uRotA);
-    Vx3DDecomposeMatrixTotal(B, quatB, posB, scaleB, uRotB);
-    VxQuaternion quatRes = Slerp(step, quatA, quatB);
-    VxVector posRes = Interpolate(step, posA, posB);
-    VxVector scaleRes = Interpolate(step, scaleA, scaleB);
-    VxQuaternion uRotRes = Slerp(step, uRotA, uRotB);
-    VxMatrix scaleMat, rotMat, uRotMat;
-    scaleMat.SetIdentity();
-    scaleMat[0][0] = scaleRes.x;
-    scaleMat[1][1] = scaleRes.y;
-    scaleMat[2][2] = scaleRes.z;
-    quatRes.ToMatrix(rotMat);
-    uRotRes.ToMatrix(uRotMat);
-    VxMatrix temp;
-    Vx3DMultiplyMatrix(temp, uRotMat, scaleMat);
-    Vx3DMultiplyMatrix(Res, rotMat, temp);
-    Res[3][0] = posRes.x;
-    Res[3][1] = posRes.y;
-    Res[3][2] = posRes.z;
-}
-
 inline void Vx3DInterpolateMatrixNoScale(float step, VxMatrix &Res, const VxMatrix &A, const VxMatrix &B) {
+    // Preserve the selected endpoint, including shear and singular matrices,
+    // without letting the unused endpoint's decomposition contaminate it.
+    if (step == 0.0f) { Res = A; return; }
+    if (step == 1.0f) { Res = B; return; }
     VxQuaternion quatA, quatB;
     VxVector posA, posB, scaleA, scaleB;
     Vx3DDecomposeMatrix(A, quatA, posA, scaleA);
     Vx3DDecomposeMatrix(B, quatB, posB, scaleB);
-    VxQuaternion quatRes = Slerp(step, quatA, quatB);
-    VxVector posRes = Interpolate(step, posA, posB);
-    quatRes.ToMatrix(Res);
-    Res[3][0] = posRes.x;
-    Res[3][1] = posRes.y;
-    Res[3][2] = posRes.z;
+    VxQuaternion rotation = Slerp(step, quatA, quatB);
+    const VxVector position = Interpolate(step, posA, posB);
+    const VxVector scale = Interpolate(step, scaleA, scaleB);
+    rotation.Normalize();
+    const double x=rotation.x, y=rotation.y, z=rotation.z, w=rotation.w;
+    const double xx=x*x, yy=y*y, zz=z*z, ww=w*w, xy=y*x, wz=w*z;
+    const float xz=static_cast<float>(z*x), wx=static_cast<float>(w*x);
+    const float yz=static_cast<float>(z*y), wy=static_cast<float>(w*y);
+    Res.SetIdentity();
+    Res[0][0]=static_cast<float>(ww+xx-yy-zz); Res[0][1]=static_cast<float>(2*xy-2*wz); Res[0][2]=2*wy+2*xz;
+    Res[1][0]=static_cast<float>(2*wz+2*xy); Res[1][1]=static_cast<float>(ww-xx+yy-zz); Res[1][2]=2*yz-2*wx;
+    Res[2][0]=2*xz-2*wy; Res[2][1]=2*yz+2*wx; Res[2][2]=static_cast<float>(ww-xx-yy+zz);
+    for (int i = 0; i < 3; ++i)
+        for (int j = 0; j < 3; ++j) Res[i][j] *= scale[i];
+    Res[3][0]=position.x; Res[3][1]=position.y; Res[3][2]=position.z;
+}
+
+inline void Vx3DInterpolateMatrix(float step, VxMatrix &Res, const VxMatrix &A, const VxMatrix &B) {
+    // Both original exports alias 0x2429A9B0, including scale interpolation.
+    Vx3DInterpolateMatrixNoScale(step, Res, A, B);
 }
 
 // =============================================================================
