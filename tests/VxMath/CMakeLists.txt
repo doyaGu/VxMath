@@ -93,7 +93,10 @@ endfunction()
 set(VXMATH_TEST_SOURCES
         VectorTest.cpp
         QuaternionTest.cpp
+        QuaternionReferenceTest.cpp
+        QuaternionConversionTest.cpp
         MatrixTest.cpp
+        MatrixDecompositionReferenceTest.cpp
         FrustumTest.cpp
         PlaneTest.cpp
         RayTest.cpp
@@ -155,6 +158,17 @@ foreach (TEST_SOURCE ${VXMATH_TEST_SOURCES})
     endif()
     vx_copy_runtime_dependencies(${TEST_NAME})
 endforeach ()
+
+# Exercise the same original-DLL samples with header SIMD paths disabled.
+vx_add_test(QuaternionReferenceScalarTest SOURCES QuaternionReferenceTest.cpp)
+target_compile_definitions(QuaternionReferenceScalarTest PRIVATE VX_SIMD_NONE=1)
+vx_copy_runtime_dependencies(QuaternionReferenceScalarTest)
+vx_add_test(QuaternionConversionScalarTest SOURCES QuaternionConversionTest.cpp)
+target_compile_definitions(QuaternionConversionScalarTest PRIVATE VX_SIMD_NONE=1)
+vx_copy_runtime_dependencies(QuaternionConversionScalarTest)
+vx_add_test(MatrixDecompositionReferenceScalarTest SOURCES MatrixDecompositionReferenceTest.cpp)
+target_compile_definitions(MatrixDecompositionReferenceScalarTest PRIVATE VX_SIMD_NONE=1)
+vx_copy_runtime_dependencies(MatrixDecompositionReferenceScalarTest)
 
 # Keep registry compatibility tests isolated from the developer's real profile.
 set(VXMATH_TEST_HOME "${CMAKE_CURRENT_BINARY_DIR}/test-home")
