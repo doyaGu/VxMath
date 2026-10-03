@@ -1,121 +1,103 @@
-﻿#include "VxQuaternion.h"
+#include "VxQuaternion.h"
 #include "VxMatrix.h"
 
-// Global lookup tables used by VxQuaternionSnuggle
-static VxQuaternion g_SnuggleLookup[8] = {
-    {0.0f, 0.0f, 0.0f, 1.0f}, // Identity
-    {0.5f, 0.5f, 0.5f, 0.5f}, // 120-degree rotations
-    {0.5f, -0.5f, 0.5f, 0.5f},
-    {-0.5f, 0.5f, 0.5f, 0.5f},
-    {0.5f, 0.5f, -0.5f, 0.5f},
-    {-0.5f, -0.5f, 0.5f, 0.5f},
-    {0.5f, -0.5f, -0.5f, 0.5f},
-    {1.0f, 0.0f, 0.0f, 0.0f} // 180-degree rotation
-};
-
 VxQuaternion Vx3DQuaternionSnuggle(VxQuaternion *Quat, VxVector *Scale) {
-    // It handles "snuggling" quaternions to remove scale artifacts
     if (!Quat || !Scale)
-        return VxQuaternion(0, 0, 0, 1);
+        return VxQuaternion();
 
-    float x = Scale->x;
-    float y = Scale->y;
-    float z = Scale->z;
+    // Original 0x2429CAE0: choose an equivalent scale-axis representation
+    // with the smallest rotation, permuting scales along with their axes.
+    const float halfRoot = 0.70710677f;
+    int distinct = -1;
+    if (Scale->x == Scale->y) {
+        if (Scale->x == Scale->z) return Vx3DQuaternionConjugate(*Quat);
+        distinct = 2;
+    } else if (Scale->x == Scale->z) distinct = 1;
+    else if (Scale->y == Scale->z) distinct = 0;
 
-    // Check if scales are nearly equal
-    if (x == y && y == z) {
-        // Uniform scale - return conjugate
-        return Vx3DQuaternionConjugate(*Quat);
-    }
-
-    // Determine which scale component is different
-    int caseIndex = 0;
-    if (x == z) caseIndex = 3;      // y is different
-    else if (y == z) caseIndex = 1; // x is different
-    else if (x == y) caseIndex = 2; // z is different
-
-    if (caseIndex == 0) {
-        // All different - complex case
-        VxQuaternion tempQuat = *Quat;
-
-        // Find largest scale component
-        float maxScale = XMax(x, XMax(y, z));
-        float scales[4] = {tempQuat.x, tempQuat.y, tempQuat.z, tempQuat.w};
-
-        // This involves checking signs and magnitudes of components
-        bool signs[4];
-        for (int i = 0; i < 4; i++) {
-            signs[i] = scales[i] < 0.0f;
-            if (signs[i]) scales[i] = -scales[i];
+    if (distinct >= 0) {
+        VxQuaternion toZ;
+        if (distinct == 0) toZ = VxQuaternion(0, halfRoot, 0, halfRoot);
+        if (distinct == 1) toZ = VxQuaternion(halfRoot, 0, 0, halfRoot);
+        if (distinct != 2) {
+            *Quat = Vx3DQuaternionMultiply(*Quat, toZ);
+            const float temp = (*Scale)[distinct];
+            (*Scale)[distinct] = Scale->z; Scale->z = temp;
         }
-
-        // Find dominant components and apply appropriate transformation
-        float avgScale = (x + y + z + scales[3]) * 0.5f;
-        float threshold = sqrtf((scales[0] + scales[1]) * 0.70710677f);
-
-        if (avgScale < threshold) {
-            // Use half-angle rotations
-            VxQuaternion result(0, 0, 0, 1);
-            for (int i = 0; i < 3; i++) {
-                result[i] = signs[i] ? -0.5f : 0.5f;
-            }
-
-            // Swap scale components based on sign pattern
-            bool parity = signs[0] ^ signs[1] ^ signs[2] ^ signs[3];
-            if (parity) {
-                float temp = x;
-                x = y;
-                y = z;
-                z = temp;
-            } else {
-                float temp = y;
-                y = x;
-                x = z;
-                z = temp;
-            }
-
-            Scale->x = x;
-            Scale->y = y;
-            Scale->z = z;
-
-            return VxQuaternion(-result.x, -result.y, -result.z, result.w);
-        } else {
-            // Use simpler transformations
-            int maxIndex = 0;
-            if (scales[1] > scales[maxIndex]) maxIndex = 1;
-            if (scales[2] > scales[maxIndex]) maxIndex = 2;
-            if (scales[3] > scales[maxIndex]) maxIndex = 3;
-
-            VxQuaternion result(0, 0, 0, 1);
-            result[maxIndex] = signs[maxIndex] ? -1.0f : 1.0f;
-
-            return VxQuaternion(-result.x, -result.y, -result.z, result.w);
-        }
-    } else {
-        // Two components are equal - simpler case
         *Quat = Vx3DQuaternionConjugate(*Quat);
-
-        // Apply appropriate lookup table transformation
-        VxQuaternion transform = g_SnuggleLookup[caseIndex];
-        VxQuaternion result = Vx3DQuaternionMultiply(*Quat, transform);
-
-        // Swap scale components as needed
-        if (caseIndex == 1) {
-            float temp = x;
-            x = z;
-            z = y;
-            y = temp;
-        } else if (caseIndex == 2) {
-            float temp = z;
-            z = x;
-            x = y;
-            y = temp;
+        const double x = Quat->x, y = Quat->y, z = Quat->z, w = Quat->w;
+        double magnitude[3] = {
+            z*z + w*w - 0.5,
+            z*x - w*y,
+            w*x + z*y
+        };
+        bool negative[3];
+        for (int i = 0; i < 3; ++i) {
+            negative[i] = magnitude[i] < 0;
+            if (negative[i]) magnitude[i] = -magnitude[i];
         }
-
-        Scale->x = x;
-        Scale->y = y;
-        Scale->z = z;
-
-        return VxQuaternion(-result.x, -result.y, -result.z, result.w);
+        const int winner = magnitude[0] > magnitude[1]
+            ? (magnitude[0] > magnitude[2] ? 0 : 2)
+            : (magnitude[1] > magnitude[2] ? 1 : 2);
+        VxQuaternion permutation;
+        if (winner == 0) {
+            if (negative[0]) permutation = VxQuaternion(1, 0, 0, 0);
+        } else if (winner == 1) {
+            permutation = negative[1] ? VxQuaternion(.5f, .5f, -.5f, -.5f)
+                                      : VxQuaternion(.5f, .5f, .5f, .5f);
+            *Scale = VxVector(Scale->z, Scale->x, Scale->y);
+        } else {
+            permutation = negative[2] ? VxQuaternion(-.5f, .5f, -.5f, -.5f)
+                                      : VxQuaternion(.5f, .5f, .5f, -.5f);
+            *Scale = VxVector(Scale->y, Scale->z, Scale->x);
+        }
+        const VxQuaternion aligned = Vx3DQuaternionMultiply(*Quat, permutation);
+        const double length = std::sqrt(magnitude[winner] + 0.5);
+        const VxQuaternion freeRotation(0, 0,
+            static_cast<float>(-aligned.z / length),
+            static_cast<float>(aligned.w / length));
+        permutation = Vx3DQuaternionMultiply(permutation, freeRotation);
+        return Vx3DQuaternionMultiply(toZ, Vx3DQuaternionConjugate(permutation));
     }
+
+    float magnitude[4];
+    bool negative[4], odd = false;
+    for (int i = 0; i < 4; ++i) {
+        negative[i] = (*Quat)[i] < 0;
+        odd ^= negative[i];
+        magnitude[i] = std::fabs((*Quat)[i]);
+    }
+    // Keep the original strict comparisons: ties choose the later component.
+    int low = magnitude[0] > magnitude[1] ? 0 : 1;
+    int high = magnitude[2] > magnitude[3] ? 2 : 3;
+    if (magnitude[low] > magnitude[high]) {
+        const int other = low ^ 1;
+        if (magnitude[other] > magnitude[high]) { high = low; low = other; }
+        else { const int temp = low; low = high; high = temp; }
+    } else if (magnitude[high ^ 1] > magnitude[low]) low = high ^ 1;
+
+    // Wide scores avoid overflow; equivalent permutations may tie.
+    const double all = (static_cast<double>(magnitude[3]) + magnitude[2] + magnitude[1] + magnitude[0]) * 0.5;
+    const double two = (static_cast<double>(magnitude[low]) + magnitude[high]) * halfRoot;
+    const double one = magnitude[high];
+    VxQuaternion permutation(0, 0, 0, 0);
+    if (all > two && all > one) {
+        for (int i = 0; i < 4; ++i) permutation[i] = negative[i] ? -.5f : .5f;
+        *Scale = odd ? VxVector(Scale->y, Scale->z, Scale->x)
+                     : VxVector(Scale->z, Scale->x, Scale->y);
+    } else if (!(all > two) && two > one) {
+        permutation[low] = negative[low] ? -halfRoot : halfRoot;
+        permutation[high] = negative[high] ? -halfRoot : halfRoot;
+        if (low > high) { const int temp = low; low = high; high = temp; }
+        if (high == 3) {
+            static const int next[3] = {1, 2, 0};
+            high = next[low];
+            low = 3 - high - low;
+        }
+        const float temp = (*Scale)[low];
+        (*Scale)[low] = (*Scale)[high]; (*Scale)[high] = temp;
+    } else {
+        permutation[high] = negative[high] ? -1.0f : 1.0f;
+    }
+    return Vx3DQuaternionConjugate(permutation);
 }

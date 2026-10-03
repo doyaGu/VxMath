@@ -308,20 +308,19 @@ VX_SIMD_INLINE __m128 VxSIMDQuaternionNormalize(__m128 q) noexcept {
 }
 
 VX_SIMD_INLINE __m128 VxSIMDQuaternionMultiply(__m128 qa, __m128 qb) noexcept {
-    const __m128 q1W = _mm_shuffle_ps(qa, qa, _MM_SHUFFLE(3, 3, 3, 3));
-    const __m128 q1X = _mm_shuffle_ps(qa, qa, _MM_SHUFFLE(0, 0, 0, 0));
-    const __m128 q1Y = _mm_shuffle_ps(qa, qa, _MM_SHUFFLE(1, 1, 1, 1));
-    const __m128 q1Z = _mm_shuffle_ps(qa, qa, _MM_SHUFFLE(2, 2, 2, 2));
-
-    const __m128 q2WZYX = _mm_shuffle_ps(qb, qb, _MM_SHUFFLE(0, 1, 2, 3));
-    const __m128 q2ZWXY = _mm_shuffle_ps(qb, qb, _MM_SHUFFLE(1, 0, 3, 2));
-    const __m128 q2YXWZ = _mm_shuffle_ps(qb, qb, _MM_SHUFFLE(2, 3, 0, 1));
-
-    __m128 result = _mm_mul_ps(q1W, qb);
-    result = _mm_add_ps(result, _mm_mul_ps(q1X, _mm_mul_ps(q2WZYX, VX_SIMD_QUAT_SIGN1)));
-    result = _mm_add_ps(result, _mm_mul_ps(q1Y, _mm_mul_ps(q2ZWXY, VX_SIMD_QUAT_SIGN2)));
-    result = _mm_add_ps(result, _mm_mul_ps(q1Z, _mm_mul_ps(q2YXWZ, VX_SIMD_QUAT_SIGN3)));
-    return result;
+    // Match 0x2429D5C0: for xyz, add the two scalar/vector products,
+    // then the positive cross term, then subtract the negative cross term.
+    const __m128 negateW = _mm_setr_ps(0.0f, 0.0f, 0.0f, -0.0f);
+    const __m128 a = _mm_mul_ps(qa, _mm_shuffle_ps(qb, qb, _MM_SHUFFLE(3, 3, 3, 3)));
+    const __m128 b = _mm_xor_ps(negateW,
+        _mm_mul_ps(_mm_shuffle_ps(qa, qa, _MM_SHUFFLE(0, 3, 3, 3)),
+                   _mm_shuffle_ps(qb, qb, _MM_SHUFFLE(0, 2, 1, 0))));
+    const __m128 c = _mm_xor_ps(negateW,
+        _mm_mul_ps(_mm_shuffle_ps(qa, qa, _MM_SHUFFLE(1, 0, 2, 1)),
+                   _mm_shuffle_ps(qb, qb, _MM_SHUFFLE(1, 1, 0, 2))));
+    const __m128 d = _mm_mul_ps(_mm_shuffle_ps(qa, qa, _MM_SHUFFLE(2, 1, 0, 2)),
+                                _mm_shuffle_ps(qb, qb, _MM_SHUFFLE(2, 0, 2, 1)));
+    return _mm_sub_ps(_mm_add_ps(_mm_add_ps(a, b), c), d);
 }
 
 VX_SIMD_INLINE __m128 VxSIMDQuaternionConjugate(__m128 q) noexcept {

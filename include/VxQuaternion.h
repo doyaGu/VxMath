@@ -21,10 +21,10 @@ class VxMatrix;
 ///@{
 
 /**
- * @brief Adjusts a quaternion to account for scaling factors.
- * @param Quat Pointer to the quaternion to adjust.
- * @param Scale Pointer to a vector containing scaling factors.
- * @return The adjusted quaternion.
+ * @brief Chooses an equivalent scale-axis representation with a smaller rotation.
+ * @param Quat Scale-axis quaternion; modified when exactly two scales are equal.
+ * @param Scale Scaling factors, permuted to match the selected axes.
+ * @return The correction quaternion to multiply after the possibly modified Quat.
  */
 VX_EXPORT VxQuaternion Vx3DQuaternionSnuggle(VxQuaternion *Quat, VxVector *Scale);
 
@@ -51,10 +51,12 @@ inline VxQuaternion Vx3DQuaternionConjugate(const VxQuaternion &Quat);
 inline VxQuaternion Vx3DQuaternionMultiply(const VxQuaternion &QuatL, const VxQuaternion &QuatR);
 
 /**
- * @brief Divides one quaternion by another.
+ * @brief Computes the original VxMath relative-rotation quotient.
  * @param P The numerator quaternion.
  * @param Q The denominator quaternion.
- * @return The result of the division (P * Q^-1).
+ * @return conjugate(Q) * P. For unit Q this is Q^-1 * P.
+ * @remarks No squared-magnitude division is performed for non-unit Q.
+ * Uses the original division's component accumulation order.
  */
 inline VxQuaternion Vx3DQuaternionDivide(const VxQuaternion &P, const VxQuaternion &Q);
 
@@ -79,7 +81,7 @@ inline VxQuaternion Slerp(float Theta, const VxQuaternion &Quat1, const VxQuater
 inline VxQuaternion Squad(float Theta, const VxQuaternion &Quat1, const VxQuaternion &Quat1Out, const VxQuaternion &Quat2In, const VxQuaternion &Quat2);
 
 /**
- * @brief Computes the logarithmic difference between two quaternions, equivalent to Ln(Q^-1 * P).
+ * @brief Computes Ln(conjugate(P) * Q), the local rotation from P to Q.
  * @param P The first quaternion.
  * @param Q The second quaternion.
  * @return The quaternion representing the logarithmic difference.
@@ -87,16 +89,20 @@ inline VxQuaternion Squad(float Theta, const VxQuaternion &Quat1, const VxQuater
 inline VxQuaternion LnDif(const VxQuaternion &P, const VxQuaternion &Q);
 
 /**
- * @brief Computes the natural logarithm of a quaternion.
+ * @brief Computes the rotation logarithm of a quaternion.
  * @param Quat The input quaternion.
- * @return The natural logarithm of the quaternion.
+ * @return Vector part scaled by atan2(length(xyz), w) / length(xyz), with w = 0.
+ * @remarks A zero vector part produces zero. No log-magnitude term is returned.
  */
 inline VxQuaternion Ln(const VxQuaternion &Quat);
 
 /**
- * @brief Computes the exponential of a quaternion.
+ * @brief Computes the rotation exponential of a quaternion's vector part.
  * @param Quat The input quaternion.
- * @return The exponential of the quaternion.
+ * @return Vector part scaled by sin(length(xyz)) / length(xyz), with w = cos(length(xyz)).
+ * @remarks The input w component is ignored; a near-zero vector uses scale 1.
+ * Follows the original x87 argument reduction and range limit: for a finite
+ * vector with rounded length at least 2^63, returns xyz unchanged and w = length.
  */
 inline VxQuaternion Exp(const VxQuaternion &Quat);
 ///@}
@@ -175,11 +181,12 @@ public:
      * @brief Creates a quaternion from a matrix.
      * @param Mat The source matrix.
      * @param MatIsUnit If TRUE, assumes the matrix has a unit scale, allowing for a faster conversion.
-     * @param RestoreMat Legacy compatibility flag; kept for API stability.
+     * @param RestoreMat If FALSE and MatIsUnit is FALSE, leaves normalized rotation
+     * rows in Mat. Mat must then refer to a mutable object despite the legacy const signature.
      */
     inline void FromMatrix(const VxMatrix &Mat, XBOOL MatIsUnit = TRUE, XBOOL RestoreMat = TRUE);
 
-    /// @brief Converts this quaternion to a rotation matrix.
+    /// @brief Converts this quaternion to a rotation matrix; a zero quaternion yields NaN rotation entries.
     inline void ToMatrix(VxMatrix &Mat) const;
 
     /// @brief Multiplies this quaternion by another in-place.
@@ -208,7 +215,7 @@ public:
     VxQuaternion operator-(const VxQuaternion &q) const;
     /// @brief Multiplies two quaternions.
     VxQuaternion operator*(const VxQuaternion &q) const;
-    /// @brief Divides one quaternion by another.
+    /// @brief Returns conjugate(q) * this, following Vx3DQuaternionDivide.
     VxQuaternion operator/(const VxQuaternion &q) const;
 
     /// @brief Multiplies a quaternion by a scalar.

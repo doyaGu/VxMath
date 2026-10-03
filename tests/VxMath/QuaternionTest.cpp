@@ -792,8 +792,8 @@ TEST_F(VxQuaternionUtilityTest, Vx3DQuaternionDivide) {
     EXPECT_NEAR(self_div.z, 0.0f, ACCUMULATION_TOL);
     EXPECT_NEAR(std::abs(self_div.w), 1.0f, ACCUMULATION_TOL);
     
-    // Test that division is inverse of multiplication
-    VxQuaternion product = Vx3DQuaternionMultiply(q45, q90);
+    // Division removes a unit quaternion multiplied on the left.
+    VxQuaternion product = Vx3DQuaternionMultiply(q90, q45);
     VxQuaternion recovered = Vx3DQuaternionDivide(product, q90);
     
     EXPECT_TRUE(QuaternionNearBool(recovered, q45, ACCUMULATION_TOL));
@@ -805,12 +805,13 @@ TEST_F(VxQuaternionUtilityTest, Vx3DQuaternionDivide) {
     EXPECT_TRUE(QuaternionNearBool(reconstructed, q90, ACCUMULATION_TOL));
 }
 
-TEST_F(VxQuaternionUtilityTest, Vx3DQuaternionDivideHandlesNonUnitDenominator) {
+TEST_F(VxQuaternionUtilityTest, Vx3DQuaternionDividePreservesDenominatorScale) {
     const VxQuaternion scaled_q90 = 2.0f * q90;
-    const VxQuaternion product = Vx3DQuaternionMultiply(q45, scaled_q90);
+    const VxQuaternion product = Vx3DQuaternionMultiply(scaled_q90, q45);
     const VxQuaternion recovered = Vx3DQuaternionDivide(product, scaled_q90);
 
-    EXPECT_TRUE(QuaternionNearBool(recovered, q45, ACCUMULATION_TOL));
+    // Original VxMath uses conjugation without dividing by the squared norm.
+    EXPECT_TRUE(QuaternionNearBool(recovered, 4.0f * q45, ACCUMULATION_TOL));
 }
 
 TEST_F(VxQuaternionUtilityTest, SlerpComprehensive) {
@@ -966,27 +967,24 @@ TEST_F(VxQuaternionUtilityTest, LnExpFunctions) {
 TEST_F(VxQuaternionUtilityTest, LnDifFunction) {
     VxQuaternion diff = LnDif(q90, q45);
 
-    // This should represent the logarithmic difference from q45 to q90
-    // The VxMath implementation appears to have sign conventions that affect the z component
-    VxQuaternion q45_conj = Vx3DQuaternionConjugate(q45);
-    VxQuaternion expected_diff = Vx3DQuaternionMultiply(q45_conj, q90);
+    // LnDif(from, to) represents the local-frame difference from q90 to q45.
+    VxQuaternion q90_conj = Vx3DQuaternionConjugate(q90);
+    VxQuaternion expected_diff = Vx3DQuaternionMultiply(q90_conj, q45);
     VxQuaternion ln_expected = Ln(expected_diff);
 
     EXPECT_NEAR(diff.x, ln_expected.x, STANDARD_TOL);
     EXPECT_NEAR(diff.y, ln_expected.y, STANDARD_TOL);
-    // The z component appears to have an opposite sign convention in this implementation
-    EXPECT_NEAR(diff.z, -ln_expected.z, STANDARD_TOL);  // Account for implementation convention
+    EXPECT_NEAR(diff.z, ln_expected.z, STANDARD_TOL);
     EXPECT_NEAR(diff.w, ln_expected.w, STANDARD_TOL);
 
     // Test with identity
     VxQuaternion diff_id = LnDif(q45, identity);
-    VxQuaternion ln_q45 = Ln(q45);
+    VxQuaternion ln_q45_conj = Ln(Vx3DQuaternionConjugate(q45));
 
-    EXPECT_NEAR(diff_id.x, ln_q45.x, STANDARD_TOL);
-    EXPECT_NEAR(diff_id.y, ln_q45.y, STANDARD_TOL);
-    // The z component appears to have an opposite sign convention in this implementation
-    EXPECT_NEAR(diff_id.z, -ln_q45.z, STANDARD_TOL);  // Account for implementation convention
-    EXPECT_NEAR(diff_id.w, ln_q45.w, STANDARD_TOL);
+    EXPECT_NEAR(diff_id.x, ln_q45_conj.x, STANDARD_TOL);
+    EXPECT_NEAR(diff_id.y, ln_q45_conj.y, STANDARD_TOL);
+    EXPECT_NEAR(diff_id.z, ln_q45_conj.z, STANDARD_TOL);
+    EXPECT_NEAR(diff_id.w, ln_q45_conj.w, STANDARD_TOL);
 
     // Test self-difference
     VxQuaternion self_diff = LnDif(q45, q45);

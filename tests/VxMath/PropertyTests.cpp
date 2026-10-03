@@ -208,18 +208,18 @@ TEST_F(PropertyTest, QuaternionMultiplicationIsAssociative) {
     }
 }
 
-TEST_F(PropertyTest, QuaternionDivideUndoesMultiplyForUnitQuaternions) {
+TEST_F(PropertyTest, QuaternionDivideRemovesLeftUnitFactor) {
     RandomGenerator rng(SEED);
 
     for (int i = 0; i < ITERATIONS; ++i) {
         VxQuaternion a = rng.UnitQuaternion();
         VxQuaternion b = rng.UnitQuaternion();
 
-        VxQuaternion product = Vx3DQuaternionMultiply(a, b);
+        VxQuaternion product = Vx3DQuaternionMultiply(b, a);
         VxQuaternion recovered = Vx3DQuaternionDivide(product, b);
 
         EXPECT_TRUE(QuaternionNearBool(recovered, a, ACCUMULATION_TOL))
-            << "(a*b)/b != a on iteration " << i << " (seed=" << SEED << ")\n"
+            << "(b*a)/b != a on iteration " << i << " (seed=" << SEED << ")\n"
             << "a=" << QuaternionToString(a) << "\n"
             << "b=" << QuaternionToString(b) << "\n"
             << "recovered=" << QuaternionToString(recovered);
@@ -249,14 +249,14 @@ TEST_F(PropertyTest, QuaternionLnExpRoundTripForUnitQuaternions) {
     }
 }
 
-TEST_F(PropertyTest, QuaternionLnDifMatchesLnOfDivide) {
+TEST_F(PropertyTest, QuaternionLnDifUsesLocalRotationDifference) {
     RandomGenerator rng(SEED);
 
     for (int i = 0; i < ITERATIONS; ++i) {
         VxQuaternion p = rng.UnitQuaternion();
         VxQuaternion q = rng.UnitQuaternion();
 
-        VxQuaternion expected = Ln(Vx3DQuaternionDivide(q, p));
+        VxQuaternion expected = Ln(Vx3DQuaternionMultiply(Vx3DQuaternionConjugate(p), q));
         VxQuaternion actual = LnDif(p, q);
 
         EXPECT_TRUE(QuaternionNearBool(actual, expected, ACCUMULATION_TOL))
