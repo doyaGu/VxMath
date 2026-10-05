@@ -1025,6 +1025,33 @@ TEST_F(VxMatrixUtilityTest, Vx3DDecomposeMatrixTotalPtr) {
     EXPECT_NEAR(pos.z, 3.0f, STANDARD_TOL);
 }
 
+// The original composes the stretch rotation with Snuggle's rewritten input
+// when exactly two scales are equal, so U K U^T no longer rebuilds the stretch.
+TEST_F(VxMatrixUtilityTest, DecomposeMatrixTotalRebuildsStretchWithTwoEqualScales) {
+    const float scales[][3] = {{2, 1, 1}, {1, 2, 1}, {1, 1, 2}, {2, 2, 5}, {1, 3, 3}};
+    for (const auto &diagonal : scales) {
+        VxMatrix transform;
+        transform.SetIdentity();
+        for (int i = 0; i < 3; ++i) transform[i][i] = diagonal[i];
+        for (int entry = 0; entry < 2; ++entry) {
+            SCOPED_TRACE(testing::Message() << diagonal[0] << "," << diagonal[1] << "," << diagonal[2] << " entry=" << entry);
+            VxQuaternion quat, urot;
+            VxVector pos, scale;
+            if (entry == 0) Vx3DDecomposeMatrixTotal(transform, quat, pos, scale, urot);
+            else Vx3DDecomposeMatrixTotalPtr(transform, &quat, &pos, &scale, &urot);
+            VxMatrix u;
+            urot.ToMatrix(u);
+            for (int i = 0; i < 3; ++i) {
+                for (int j = 0; j < 3; ++j) {
+                    float stretch = 0.0f;
+                    for (int k = 0; k < 3; ++k) stretch += u[i][k] * scale[k] * u[j][k];
+                    EXPECT_NEAR(stretch, i == j ? diagonal[i] : 0.0f, STANDARD_TOL);
+                }
+            }
+        }
+    }
+}
+
 // Strided Data Tests
 class VxMatrixStridedTest : public ::testing::Test {
 protected:

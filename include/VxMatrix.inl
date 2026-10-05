@@ -941,7 +941,11 @@ inline float Vx3DDecomposeMatrixTotal(const VxMatrix &A, VxQuaternion &Quat, VxV
     VxMatrix U;
     Scale = Vx3DMatrixSpectralDecomposition(S, U);
     URot = Vx3DQuaternionFromMatrix(U);
-    VxQuaternion snuggleQuat = Vx3DQuaternionSnuggle(&URot, &Scale);
+    // Snuggle rewrites its quaternion argument when exactly two scales are
+    // equal. The original multiplies that rewritten value, so the stretch
+    // axis no longer matches Scale; compose with the unmodified rotation.
+    VxQuaternion snuggleInput = URot;
+    VxQuaternion snuggleQuat = Vx3DQuaternionSnuggle(&snuggleInput, &Scale);
     URot = Vx3DQuaternionMultiply(URot, snuggleQuat);
     return det;
 }
@@ -964,7 +968,9 @@ inline float Vx3DDecomposeMatrixTotalPtr(const VxMatrix &A, VxQuaternion *Quat, 
         VxMatrix U;
         VxVector tempScale = Vx3DMatrixSpectralDecomposition(S, U);
         VxQuaternion tempURot = Vx3DQuaternionFromMatrix(U);
-        VxQuaternion snuggleQuat = Vx3DQuaternionSnuggle(&tempURot, &tempScale);
+        // Compose with the unmodified rotation; see Vx3DDecomposeMatrixTotal.
+        VxQuaternion snuggleInput = tempURot;
+        VxQuaternion snuggleQuat = Vx3DQuaternionSnuggle(&snuggleInput, &tempScale);
         if (URot) *URot = Vx3DQuaternionMultiply(tempURot, snuggleQuat);
         if (Scale) *Scale = tempScale;
     }

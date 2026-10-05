@@ -41,7 +41,29 @@ TEST_P(MatrixDecompositionTest, MatchesOriginalComponents) {
             std::memcpy(actual+8, &scale.x, 12); std::memcpy(actual+11, &u.x, 16);
         }
         if (sample.operation == 5 || sample.operation == 6) std::memcpy(actual, &a[0][0], 64);
+        // Intentional difference: with exactly two equal scales the original
+        // composes the stretch rotation with Snuggle's rewritten input. Where
+        // URot differs from the capture it must rebuild the polar stretch.
+        bool correctedURot = false;
+        if (sample.operation == 3 || (sample.operation == 4 && (sample.mask & 8))) {
+            for (int i = 11; i < 15; ++i)
+                correctedURot |= std::fabs(actual[i] - sample.scalar[i]) > 2e-5f*(1.0f+std::fabs(sample.scalar[i]));
+        }
+        if (correctedURot) {
+            VxQuaternion fullQ, fullU; VxVector fullPos, k;
+            Vx3DDecomposeMatrixTotal(inputA, fullQ, fullPos, k, fullU);
+            EXPECT_TRUE(k.x == k.y || k.x == k.z || k.y == k.z) << "URot differs without two equal scales";
+            VxMatrix polarQ, stretch, rotation;
+            Vx3DMatrixPolarDecomposition(inputA, polarQ, stretch);
+            fullU.ToMatrix(rotation);
+            for (int i = 0; i < 3; ++i) for (int j = 0; j < 3; ++j) {
+                float rebuilt = 0.0f;
+                for (int m = 0; m < 3; ++m) rebuilt += rotation[i][m] * k[m] * rotation[j][m];
+                EXPECT_NEAR(rebuilt, stretch[i][j], 2e-5f*(1.0f+std::fabs(stretch[i][j])));
+            }
+        }
         for (int i = 0; i < 36; ++i) {
+            if (correctedURot && i >= 11 && i < 15) continue;
             // Exact endpoints preserve the selected matrix, including shear;
             // do not reproduce NaNs from decomposing the unused endpoint.
             const bool endpoint = (sample.operation==5 || sample.operation==6) &&
