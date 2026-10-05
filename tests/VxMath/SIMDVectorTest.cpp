@@ -586,9 +586,10 @@ TEST_F(SIMDVectorTest, Rotate_90DegreesAroundZ) {
 
     VxSIMDRotateVector(&result, &rot, &v);
 
-    // X axis rotated 90 degrees around Z should become Y
+    // The original axis-angle builder (covered by DLL fixtures in
+    // QuaternionConversionTest) rotates the X axis to -Y here.
     EXPECT_NEAR(result.x, 0.0f, SIMD_SCALAR_TOL);
-    EXPECT_NEAR(result.y, 1.0f, SIMD_SCALAR_TOL);
+    EXPECT_NEAR(result.y, -1.0f, SIMD_SCALAR_TOL);
     EXPECT_NEAR(result.z, 0.0f, SIMD_SCALAR_TOL);
 }
 
