@@ -79,6 +79,27 @@ TEST_F(XArrayTest, PushBack) {
     EXPECT_FALSE(arr.IsEmpty());
 }
 
+// Growing frees the storage an argument taken from the array points into
+// (ASan reports the old read; ARM64 Windows read garbage).
+TEST_F(XArrayTest, PushBackOwnElementWhileGrowing) {
+    XArray<int> arr;
+    arr.PushBack(7);
+    arr.PushBack(8);
+    ASSERT_EQ(arr.Size(), arr.Allocated());
+
+    arr.PushBack(arr[0]);
+    ASSERT_EQ(arr.Size(), 3);
+    EXPECT_EQ(arr[2], 7);
+#if VX_HAS_CXX11
+    arr.EmplaceBack(arr[1]);
+    ASSERT_EQ(arr.Size(), arr.Allocated());
+    arr.EmplaceBack(arr[3]);
+    ASSERT_EQ(arr.Size(), 5);
+    EXPECT_EQ(arr[3], 8);
+    EXPECT_EQ(arr[4], 8);
+#endif
+}
+
 TEST_F(XArrayTest, PopBack) {
     XArray<int> arr;
     arr.PushBack(10);

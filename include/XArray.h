@@ -361,8 +361,10 @@ public:
      * @param o The element to insert.
      */
     void PushBack(const T &o) {
+        // o may be an element of this array: XInsert copies it before freeing the old storage.
         if (m_End == m_AllocatedEnd) {
-            Reserve(Size() ? Size() * 2 : 2);
+            XInsert(m_End, o);
+            return;
         }
         *(m_End++) = o;
     }
@@ -374,7 +376,8 @@ public:
      */
     void PushBack(T &&o) {
         if (m_End == m_AllocatedEnd) {
-            Reserve(Size() ? Size() * 2 : 2);
+            XInsert(m_End, std::move(o));
+            return;
         }
         *(m_End++) = std::move(o);
     }
@@ -385,10 +388,7 @@ public:
      */
     template <class... Args>
     void EmplaceBack(Args &&... args) {
-        if (m_End == m_AllocatedEnd) {
-            Reserve(Size() ? Size() * 2 : 2);
-        }
-        *(m_End++) = T(std::forward<Args>(args)...);
+        PushBack(T(std::forward<Args>(args)...));
     }
 #endif
 
