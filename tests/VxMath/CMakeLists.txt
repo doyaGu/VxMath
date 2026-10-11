@@ -147,6 +147,11 @@ foreach (TEST_SOURCE ${VXMATH_TEST_SOURCES})
 
     # Do NOT add VxMath as a dependency - we use TEST_TARGET (which is VxMath_GroundTruth)
     vx_add_test(${TEST_NAME} SOURCES ${TEST_SOURCE})
+
+    # MSVC otherwise reports C++98 and silently skips the hash table move tests.
+    if (MSVC AND TEST_NAME STREQUAL "HashTableTest")
+        target_compile_options(${TEST_NAME} PRIVATE /Zc:__cplusplus)
+    endif ()
     
     # Add special include path for SIMD tests
     if (${TEST_NAME} MATCHES "^SIMD")

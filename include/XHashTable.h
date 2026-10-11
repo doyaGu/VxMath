@@ -696,7 +696,7 @@ public:
         Eq equalFunc;
 
         // we look for existing key
-        for (tEntry e = m_Table[index]; e != 0; e = e->m_Next) {
+        for (tEntry e = GetBucket(index); e != 0; e = e->m_Next) {
             if (equalFunc(e->m_Key, key)) {
                 e->m_Data = o;
                 return Iterator(e, this);
@@ -722,7 +722,7 @@ public:
 
         while (true) {
             int index = Index(key);
-            for (tEntry e = m_Table[index]; e != 0; e = e->m_Next) {
+            for (tEntry e = GetBucket(index); e != 0; e = e->m_Next) {
                 if (equalFunc(e->m_Key, key)) {
                     e->m_Data = std::move(o);
                     return Iterator(e, this);
@@ -751,7 +751,7 @@ public:
         Eq equalFunc;
 
         // we look for existing key
-        for (tEntry e = m_Table[index]; e != 0; e = e->m_Next) {
+        for (tEntry e = GetBucket(index); e != 0; e = e->m_Next) {
             if (equalFunc(e->m_Key, key)) {
                 return Pair(Iterator(e, this), 0);
             }
@@ -777,7 +777,7 @@ public:
 
         while (true) {
             int index = Index(key);
-            for (tEntry e = m_Table[index]; e != 0; e = e->m_Next) {
+            for (tEntry e = GetBucket(index); e != 0; e = e->m_Next) {
                 if (equalFunc(e->m_Key, key)) {
                     return Pair(Iterator(e, this), 0);
                 }
@@ -805,7 +805,7 @@ public:
         Eq equalFunc;
 
         // we look for existing key
-        for (tEntry e = m_Table[index]; e != 0; e = e->m_Next) {
+        for (tEntry e = GetBucket(index); e != 0; e = e->m_Next) {
             if (equalFunc(e->m_Key, key)) {
                 return Iterator(e, this);
             }
@@ -830,7 +830,7 @@ public:
 
         while (true) {
             int index = Index(key);
-            for (tEntry e = m_Table[index]; e != 0; e = e->m_Next) {
+            for (tEntry e = GetBucket(index); e != 0; e = e->m_Next) {
                 if (equalFunc(e->m_Key, key)) {
                     return Iterator(e, this);
                 }
@@ -889,7 +889,7 @@ public:
 
         // we look for existing key
         tEntry old = NULL;
-        for (tEntry e = m_Table[index]; e != 0; e = e->m_Next) {
+        for (tEntry e = GetBucket(index); e != 0; e = e->m_Next) {
             if (equalFunc(e->m_Key, key)) {
                 // This is the element to remove
 
@@ -933,7 +933,7 @@ public:
 
         // we look for existing key
         tEntry old = NULL;
-        for (tEntry e = m_Table[index]; e != 0; e = e->m_Next) {
+        for (tEntry e = GetBucket(index); e != 0; e = e->m_Next) {
             if (e == it.m_Node) {
                 // This is the element to remove
                 if (old) {
@@ -1166,6 +1166,11 @@ private:
      */
     tEntry *GetFirstBucket() const { return m_Table.Begin(); }
 
+    // A moved-from table has no buckets until its next insertion.
+    tEntry GetBucket(int index) const {
+        return m_Table.Size() ? m_Table[index] : NULL;
+    }
+
     /**
      * @brief Resizes and rehashes the entire table.
      * @param iSize The new number of buckets for the table.
@@ -1271,7 +1276,7 @@ private:
         Eq equalFunc;
 
         // we look for existing key
-        for (tEntry e = m_Table[index]; e != 0; e = e->m_Next) {
+        for (tEntry e = GetBucket(index); e != 0; e = e->m_Next) {
             if (equalFunc(e->m_Key, key)) {
                 return e;
             }

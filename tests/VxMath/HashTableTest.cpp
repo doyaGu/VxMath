@@ -458,6 +458,92 @@ TEST(XHashTable, CopyConstructorAndAssignmentIndependence) {
 }
 
 #if VX_HAS_CXX11
+namespace {
+
+static void ExpectMovedFromTableReusable(XHashTable<int, int> &source,
+                                        const XHashTable<int, int> &destination,
+                                        int initialCount, int insertionApi) {
+    ASSERT_EQ(source.Size(), 0);
+    EXPECT_EQ(source.Begin(), source.End());
+    const XHashTable<int, int> &empty = source;
+    EXPECT_EQ(empty.Begin(), empty.End());
+    EXPECT_EQ(empty.Find(999), empty.End());
+    EXPECT_EQ(empty.FindPtr(999), nullptr);
+    EXPECT_FALSE(empty.IsHere(999));
+    int output = -1;
+    EXPECT_FALSE(empty.LookUp(999, output));
+    EXPECT_EQ(output, -1);
+    source.Remove(999);
+
+    const int value = 42;
+    switch (insertionApi) {
+    case 0: EXPECT_TRUE(source.Insert(999, value, FALSE)); break;
+    case 1: EXPECT_TRUE(source.Insert(999, 42, FALSE)); break;
+    case 2: EXPECT_EQ(*source.Insert(999, value), 42); break;
+    case 3: EXPECT_EQ(*source.Insert(999, 42), 42); break;
+    case 4: EXPECT_EQ(*source.InsertUnique(999, value), 42); break;
+    case 5: EXPECT_EQ(*source.InsertUnique(999, 42), 42); break;
+    case 6: EXPECT_TRUE(source.TestInsert(999, value).m_New); break;
+    case 7: EXPECT_TRUE(source.TestInsert(999, 42).m_New); break;
+    case 8: source[999] = 42; break;
+    case 9: EXPECT_EQ(*source.Emplace(999, 42), 42); break;
+    case 10: EXPECT_EQ(*source.EmplaceUnique(999, 42), 42); break;
+    case 11: EXPECT_TRUE(source.TestEmplace(999, 42).m_New); break;
+    }
+    ASSERT_EQ(source.Size(), 1);
+    ASSERT_NE(source.FindPtr(999), nullptr);
+    EXPECT_EQ(*source.FindPtr(999), 42);
+    EXPECT_EQ(destination.Size(), initialCount);
+    ExpectAllPresent(destination, 0, initialCount, 13);
+    EXPECT_EQ(destination.FindPtr(999), nullptr);
+
+    // Reuse also survives further growth, removal, and another move.
+    for (int i = 0; i < 40; ++i)
+        source.Insert(i, i * 7);
+    EXPECT_EQ(source.Size(), 41);
+    source.Remove(999);
+    EXPECT_EQ(source.Size(), 40);
+    XHashTable<int, int> again(std::move(source));
+    ExpectAllPresent(again, 0, 40, 7);
+    source[1000] = 50;
+    ASSERT_NE(source.FindPtr(1000), nullptr);
+    EXPECT_EQ(*source.FindPtr(1000), 50);
+    EXPECT_EQ(again.FindPtr(1000), nullptr);
+}
+
+} // namespace
+
+TEST(XHashTable, MoveConstructorSourceSupportsEveryInsertionApi) {
+    for (int initialCount : {0, 32}) {
+        for (int insertionApi = 0; insertionApi < 12; ++insertionApi) {
+            SCOPED_TRACE(initialCount);
+            SCOPED_TRACE(insertionApi);
+            XHashTable<int, int> source(4);
+            for (int i = 0; i < initialCount; ++i)
+                source.Insert(i, i * 13);
+            XHashTable<int, int> destination(std::move(source));
+            ExpectMovedFromTableReusable(source, destination, initialCount, insertionApi);
+        }
+    }
+}
+
+TEST(XHashTable, MoveAssignmentSourceSupportsEveryInsertionApi) {
+    for (int initialCount : {0, 32}) {
+        for (int insertionApi = 0; insertionApi < 12; ++insertionApi) {
+            SCOPED_TRACE(initialCount);
+            SCOPED_TRACE(insertionApi);
+            XHashTable<int, int> source(4);
+            for (int i = 0; i < initialCount; ++i)
+                source.Insert(i, i * 13);
+            XHashTable<int, int> destination(4);
+            destination.Insert(-1, -13);
+            destination = std::move(source);
+            ExpectMovedFromTableReusable(source, destination, initialCount, insertionApi);
+            EXPECT_EQ(destination.FindPtr(-1), nullptr);
+        }
+    }
+}
+
 TEST(XHashTable, MoveConstructorAndAssignmentPreservesElements) {
     XHashTable<int, int> t(4);
     for (int i = 0; i < 300; ++i)
