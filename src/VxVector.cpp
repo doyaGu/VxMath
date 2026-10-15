@@ -51,16 +51,17 @@ inline float TableCos(float x) {
 }
 
 int radToAngle(float val) {
-    return static_cast<int>(val * (180.0f / PI));
+    // Native packed normal angles use 16384 units per complete turn.
+    return static_cast<int>(val * (16384.0f / (2.0f * PI)));
 }
 
 float Tsin(int angle) {
-    const float angleRad = static_cast<float>(angle) * (PI / 180.0f);
+    const float angleRad = static_cast<float>(angle & 0x3FFF) * (2.0f * PI / 16384.0f);
     return TableSin(angleRad);
 }
 
 float Tcos(int angle) {
-    const float angleRad = static_cast<float>(angle) * (PI / 180.0f);
+    const float angleRad = static_cast<float>(angle & 0x3FFF) * (2.0f * PI / 16384.0f);
     return TableCos(angleRad);
 }
 
