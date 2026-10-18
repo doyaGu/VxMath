@@ -544,16 +544,30 @@ void VxAddLibrarySearchPath(const char *path) {
     if (!path)
         return;
 #ifdef _WIN32
-    XArray<char> native;
-    if (!VxPathToUtf8(path, native))
+    XArray<wchar_t> native;
+    if (!VxPathToWide(path, GetACP(), native))
         return;
-    path = native.Begin();
-    const char *name = "PATH";
-    const char separator = ';';
+    DWORD previous = GetEnvironmentVariableW(L"PATH", NULL, 0);
+    size_t length = (size_t)native.Size() - 1;
+    if (length + previous + 1 > XString::MAX_LENGTH) {
+        SDL_SetError("Library search path exceeds the legacy string limit");
+        return;
+    }
+    XArray<wchar_t> combined;
+    combined.Resize((int)(length + previous + 1));
+    memcpy(combined.Begin(), native.Begin(), native.Size() * sizeof(wchar_t));
+    if (previous) {
+        DWORD written = GetEnvironmentVariableW(L"PATH", combined.Begin() + length + 1, previous);
+        if (!written || written >= previous) {
+            SDL_SetError("Cannot read the library search path");
+            return;
+        }
+        combined[(int)length] = L';';
+    }
+    SetEnvironmentVariableW(L"PATH", combined.Begin());
 #else
     const char *name = "LD_LIBRARY_PATH";
     const char separator = ':';
-#endif
     XArray<char> previous;
     if (strlen(path) > XString::MAX_LENGTH) {
         SDL_SetError("Library search path exceeds the legacy string limit");
@@ -567,11 +581,6 @@ void VxAddLibrarySearchPath(const char *path) {
         }
         combined << separator << previous.Begin();
     }
-#ifdef _WIN32
-    XArray<wchar_t> wide;
-    if (VxPathToWide(combined.CStr(), CP_UTF8, wide))
-        SetEnvironmentVariableW(L"PATH", wide.Begin());
-#else
     setenv(name, combined.CStr(), 1);
 #endif
 }
