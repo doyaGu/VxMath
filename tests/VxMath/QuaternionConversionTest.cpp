@@ -5,10 +5,9 @@
 #include "QuaternionConversionSamples.h"
 #include "TrigonometricReferenceSamples.h"
 
-namespace {
 class QuaternionConversionTest : public testing::TestWithParam<int> {};
 
-void SortThree(float (&values)[3]) {
+static void SortThree(float (&values)[3]) {
     for (int i = 0; i < 2; ++i) for (int j = i+1; j < 3; ++j) {
         if (values[j] < values[i]) {
             const float temp = values[i]; values[i] = values[j]; values[j] = temp;
@@ -16,7 +15,7 @@ void SortThree(float (&values)[3]) {
     }
 }
 
-void ExpectRotation(const VxMatrix &matrix) {
+static void ExpectRotation(const VxMatrix &matrix) {
     for (int i = 0; i < 3; ++i) for (int j = 0; j < 3; ++j) {
         double dot = 0;
         for (int k = 0; k < 3; ++k) dot += static_cast<double>(matrix[i][k])*matrix[j][k];
@@ -28,13 +27,13 @@ void ExpectRotation(const VxMatrix &matrix) {
     EXPECT_NEAR(determinant,1.0,16.0*FLT_EPSILON);
 }
 
-void ExpectRotationMatrix(const VxMatrix &actual, const double (&expected)[3][3]) {
+static void ExpectRotationMatrix(const VxMatrix &actual, const double (&expected)[3][3]) {
     ExpectRotation(actual);
     for (int i=0; i<3; ++i) for (int j=0; j<3; ++j)
         EXPECT_NEAR(actual[i][j],expected[i][j],32.0*FLT_EPSILON);
 }
 
-void QuaternionRotation(const float *q, double (&matrix)[3][3]) {
+static void QuaternionRotation(const float *q, double (&matrix)[3][3]) {
     double length=0;
     for (int i=0; i<4; ++i) length=std::hypot(length,static_cast<double>(q[i]));
     const double u[3]={q[0]/length,q[1]/length,q[2]/length}, w=q[3]/length;
@@ -55,7 +54,7 @@ void QuaternionRotation(const float *q, double (&matrix)[3][3]) {
     }
 }
 
-void ReferenceSinCos(float angle, double &sine, double &cosine) {
+static void ReferenceSinCos(float angle, double &sine, double &cosine) {
     if (std::fabs(angle) < 8192) {
         sine=std::sin(static_cast<double>(angle)); cosine=std::cos(static_cast<double>(angle));
         return;
@@ -68,7 +67,7 @@ void ReferenceSinCos(float angle, double &sine, double &cosine) {
     FAIL() << "Missing independent angle reference: " << angle;
 }
 
-void AxisRotation(const float *axis, float angle, double (&matrix)[3][3]) {
+static void AxisRotation(const float *axis, float angle, double (&matrix)[3][3]) {
     const double length=std::hypot(std::hypot(static_cast<double>(axis[0]),axis[1]),axis[2]);
     const double u[3]={axis[0]/length,axis[1]/length,axis[2]/length};
     double s,c; ReferenceSinCos(angle,s,c);
@@ -80,7 +79,7 @@ void AxisRotation(const float *axis, float angle, double (&matrix)[3][3]) {
     }
 }
 
-void EulerRotation(const float *angles, double (&matrix)[3][3]) {
+static void EulerRotation(const float *angles, double (&matrix)[3][3]) {
     for (int i=0; i<3; ++i) for (int j=0; j<3; ++j) matrix[i][j]=i==j ? 1.0 : 0.0;
     // The API composes Rx(-x) * Ry(-y) * Rz(-z).
     for (int axis=0; axis<3; ++axis) {
@@ -97,7 +96,7 @@ void EulerRotation(const float *angles, double (&matrix)[3][3]) {
 }
 
 // Build the symmetric scale tensor in double, independently of ToMatrix.
-void ScaleTensor(const VxQuaternion &q, const VxVector &scale, double (&tensor)[3][3]) {
+static void ScaleTensor(const VxQuaternion &q, const VxVector &scale, double (&tensor)[3][3]) {
     const double x=q.x, y=q.y, z=q.z, w=q.w;
     const double s=2.0/(x*x+y*y+z*z+w*w);
     const double r[3][3] = {
@@ -303,4 +302,3 @@ TEST(QuaternionConversionNumericsTest, LargeFiniteAnglesProduceProperRotations) 
         ExpectRotationMatrix(matrix,expected);
     }
 }
-} // namespace

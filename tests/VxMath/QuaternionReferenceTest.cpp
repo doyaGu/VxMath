@@ -4,13 +4,11 @@
 #include "QuaternionReferenceSamples.h"
 #include "TrigonometricReferenceSamples.h"
 
-namespace {
-
-VxQuaternion Quaternion(const float (&v)[4]) {
+static VxQuaternion Quaternion(const float (&v)[4]) {
     return VxQuaternion(v[0], v[1], v[2], v[3]);
 }
 
-void ExpectReference(const VxQuaternion &actual, const float (&expected)[4], float tolerance) {
+static void ExpectReference(const VxQuaternion &actual, const float (&expected)[4], float tolerance) {
     // Captures with zero tolerance measured x87 rounding, not an API contract.
     // A short float operation chain is allowed a small accumulated error.
     if (tolerance == 0.0f) tolerance = 16.0f * FLT_EPSILON;
@@ -251,5 +249,3 @@ TEST(QuaternionNumericsTest, TrigonometricPhaseMatchesIndependentDecimalReferenc
         EXPECT_NEAR(result.w,sample.cosine,4.0*FLT_EPSILON);
     }
 }
-
-} // namespace

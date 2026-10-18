@@ -4,7 +4,6 @@
 #include "VxMath.h"
 #include "MatrixDecompositionSamples.h"
 
-namespace {
 class MatrixDecompositionTest : public testing::TestWithParam<int> {};
 
 TEST_P(MatrixDecompositionTest, MatchesOriginalComponents) {
@@ -77,4 +76,3 @@ TEST_P(MatrixDecompositionTest, MatchesOriginalComponents) {
     }
 }
 INSTANTIATE_TEST_SUITE_P(Operations, MatrixDecompositionTest, testing::Range(0, 7));
-}

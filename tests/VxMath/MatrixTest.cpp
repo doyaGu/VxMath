@@ -10,9 +10,7 @@
 
 using namespace VxMathTest;
 
-namespace {
-
-float Determinant3x3Ref(const VxMatrix& m) {
+static float Determinant3x3Ref(const VxMatrix& m) {
     const float a00 = m[0][0], a01 = m[0][1], a02 = m[0][2];
     const float a10 = m[1][0], a11 = m[1][1], a12 = m[1][2];
     const float a20 = m[2][0], a21 = m[2][1], a22 = m[2][2];
@@ -21,7 +19,7 @@ float Determinant3x3Ref(const VxMatrix& m) {
            a02 * (a10 * a21 - a11 * a20);
 }
 
-void InverseAffineRef(VxMatrix& out, const VxMatrix& m) {
+static void InverseAffineRef(VxMatrix& out, const VxMatrix& m) {
     const float a00 = m[0][0], a01 = m[0][1], a02 = m[0][2];
     const float a10 = m[1][0], a11 = m[1][1], a12 = m[1][2];
     const float a20 = m[2][0], a21 = m[2][1], a22 = m[2][2];
@@ -54,8 +52,6 @@ void InverseAffineRef(VxMatrix& out, const VxMatrix& m) {
     out[3][2] = -(out[0][2] * tx + out[1][2] * ty + out[2][2] * tz);
     out[3][3] = 1.0f;
 }
-
-} // namespace
 
 class VxMatrixTest : public ::testing::Test {
 protected:
@@ -1607,4 +1603,3 @@ TEST_F(VxMatrixIntegrationTest, ProjectionAndViewTransformation) {
         EXPECT_NE(near_ndc_z, far_ndc_z);
     }
 }
-
