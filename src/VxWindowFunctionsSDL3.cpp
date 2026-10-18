@@ -225,6 +225,13 @@ char VxScanCodeToAscii(XDWORD scancode, unsigned char keystate[256]) {
     }
 }
 
+XBOOL VxIsKeyDown(XDWORD scancode) {
+    const SDL_Scancode key = VxScanCodeToSdlScancode(scancode);
+    int count = 0;
+    const bool *state = SDL_GetKeyboardState(&count);
+    return state && key != SDL_SCANCODE_UNKNOWN && key < count && state[key];
+}
+
 int VxScanCodeToName(XDWORD scancode, char *keyName) {
     if (!keyName)
         return 0;

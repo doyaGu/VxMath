@@ -39,6 +39,8 @@ VX_EXPORT char VxScanCodeToAscii(XDWORD scancode, unsigned char keystate[256]);
  * @return The length of the key name string.
  */
 VX_EXPORT int VxScanCodeToName(XDWORD scancode, char *keyName);
+// The current SDL keyboard state, using the same CK scan codes as above.
+VX_EXPORT XBOOL VxIsKeyDown(XDWORD scancode);
 
 // Cursor function
 
