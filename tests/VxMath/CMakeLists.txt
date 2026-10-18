@@ -194,6 +194,15 @@ if (NOT WIN32)
         # The font catalog must resolve relative to the executable, not CWD.
         set_tests_properties(${_test} PROPERTIES WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}")
     endforeach ()
+    add_executable(FontCollectionTest FontCollectionTest.cpp)
+    target_link_libraries(FontCollectionTest PRIVATE ${TEST_TARGET})
+    target_compile_definitions(FontCollectionTest PRIVATE TEST_FONT_DIR="${_font_directory}")
+    set_target_properties(FontCollectionTest PROPERTIES
+            RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/font-collection")
+    add_test(NAME FontCollectionReference COMMAND FontCollectionTest --reference)
+    add_test(NAME FontCollectionRoundTrip COMMAND FontCollectionTest --collection)
+    set_tests_properties(FontCollectionReference PROPERTIES FIXTURES_SETUP FontCollectionPixels)
+    set_tests_properties(FontCollectionRoundTrip PROPERTIES FIXTURES_REQUIRED FontCollectionPixels)
 endif ()
 vx_prepare_font_assets(_font_directory _font_files)
 add_test(NAME FontAssetsTest COMMAND ${CMAKE_COMMAND}
