@@ -8,8 +8,6 @@
 #include "XNHashTable.h"
 #include "XSHashTable.h"
 
-namespace {
-
 template <class Table>
 static std::set<int> CollectKeys(const Table& t) {
     std::set<int> keys;
@@ -26,27 +24,27 @@ static std::set<int> CollectKeys(const Table& t) {
     return keys;
 }
 
-struct Key {
+struct VxTestKey {
     int v;
 };
 
-struct KeyEq {
-    int operator()(const Key& a, const Key& b) const { return a.v == b.v; }
+struct VxTestKeyEq {
+    int operator()(const VxTestKey& a, const VxTestKey& b) const { return a.v == b.v; }
 };
 
-struct KeyHashIdentity {
-    int operator()(const Key& k) const { return k.v; }
+struct VxTestKeyHashIdentity {
+    int operator()(const VxTestKey& k) const { return k.v; }
 };
 
-struct KeyHashConstant {
-    int operator()(const Key&) const { return 0; }
+struct VxTestKeyHashConstant {
+    int operator()(const VxTestKey&) const { return 0; }
 };
 
-struct IntHashConstantZero {
+struct VxTestIntHashConstantZero {
     int operator()(const int&) const { return 0; }
 };
 
-struct IntHashNegativeOne {
+struct VxTestIntHashNegativeOne {
     int operator()(const int&) const { return -1; }
 };
 
@@ -236,7 +234,7 @@ TEST(XHashTable, RehashPreservesPointerPayloads) {
 
 TEST(XHashTable, RehashWithAllKeysInSingleBucketDoesNotCorruptChains) {
     // Force worst-case chaining: all keys land in same bucket.
-    XHashTable<int, int, IntHashConstantZero> t(4);
+    XHashTable<int, int, VxTestIntHashConstantZero> t(4);
 
     const int N = 2000;
     for (int i = 0; i < N; ++i)
@@ -308,7 +306,7 @@ TEST(XHashTable, EraseWhileIteratingSurvivesRehashPressure) {
 
 TEST(XHashTable, GetOccupationMatchesExpectedForSingleBucket) {
     // initialize=8 -> table has 8 buckets
-    XHashTable<int, int, IntHashConstantZero> t(8);
+    XHashTable<int, int, VxTestIntHashConstantZero> t(8);
     for (int i = 0; i < 5; ++i)
         t.Insert(i, i);
 
@@ -324,7 +322,7 @@ TEST(XHashTable, GetOccupationMatchesExpectedForSingleBucket) {
 
 TEST(XHashTable, NegativeHashProducesValidIndexAndIsStableAcrossRehash) {
     // For power-of-two buckets, -1 & (size-1) yields (size-1).
-    XHashTable<int, int, IntHashNegativeOne> t(4);
+    XHashTable<int, int, VxTestIntHashNegativeOne> t(4);
     for (int i = 0; i < 200; ++i)
         t.Insert(i, i * 2);
 
@@ -458,7 +456,6 @@ TEST(XHashTable, CopyConstructorAndAssignmentIndependence) {
 }
 
 #if VX_HAS_CXX11
-namespace {
 
 static void ExpectMovedFromTableReusable(XHashTable<int, int> &source,
                                         const XHashTable<int, int> &destination,
@@ -510,8 +507,6 @@ static void ExpectMovedFromTableReusable(XHashTable<int, int> &source,
     EXPECT_EQ(*source.FindPtr(1000), 50);
     EXPECT_EQ(again.FindPtr(1000), nullptr);
 }
-
-} // namespace
 
 TEST(XHashTable, MoveConstructorSourceSupportsEveryInsertionApi) {
     for (int initialCount : {0, 32}) {
@@ -586,25 +581,25 @@ TEST(XHashTable, Cxx11InitializerListAssignEmplaceRangeFor) {
 #endif
 
 TEST(XHashTable, CustomKeyHashEqBasicOperations) {
-    XHashTable<int, Key, KeyHashIdentity, KeyEq> t(4);
+    XHashTable<int, VxTestKey, VxTestKeyHashIdentity, VxTestKeyEq> t(4);
 
     for (int i = 0; i < 100; ++i)
-        t.Insert(Key{i}, i * 3);
+        t.Insert(VxTestKey{i}, i * 3);
     ASSERT_EQ(t.Size(), 100);
 
     for (int i = 0; i < 100; ++i) {
-        auto it = t.Find(Key{i});
+        auto it = t.Find(VxTestKey{i});
         ASSERT_NE(it, t.End());
         EXPECT_EQ(*it, i * 3);
     }
 
     // operator[] default insertion for absent key
-    EXPECT_FALSE(t.IsHere(Key{1000}));
-    int& v = t[Key{1000}];
-    EXPECT_TRUE(t.IsHere(Key{1000}));
+    EXPECT_FALSE(t.IsHere(VxTestKey{1000}));
+    int& v = t[VxTestKey{1000}];
+    EXPECT_TRUE(t.IsHere(VxTestKey{1000}));
     EXPECT_EQ(v, 0);
     v = 42;
-    EXPECT_EQ(*t.Find(Key{1000}), 42);
+    EXPECT_EQ(*t.Find(VxTestKey{1000}), 42);
 }
 
 // ==============================================================================
@@ -799,7 +794,7 @@ TEST(XNHashTable, RehashTriggeredAutomatically) {
 
 TEST(XNHashTable, RehashWithCollisions) {
     // All keys hash to same bucket (0)
-    XNHashTable<int, int, IntHashConstantZero> t(4);
+    XNHashTable<int, int, VxTestIntHashConstantZero> t(4);
     
     const int N = 500;
     for (int i = 0; i < N; ++i)
@@ -914,26 +909,26 @@ TEST(XNHashTable, LookUpFunctionality) {
 }
 
 TEST(XNHashTable, CustomKeyTypeWithCustomHashAndEq) {
-    XNHashTable<int, Key, KeyHashIdentity, KeyEq> t(8);
+    XNHashTable<int, VxTestKey, VxTestKeyHashIdentity, VxTestKeyEq> t(8);
     
     for (int i = 0; i < 50; ++i)
-        t.Insert(Key{i}, i * 3, TRUE);
+        t.Insert(VxTestKey{i}, i * 3, TRUE);
     ASSERT_EQ(t.Size(), 50);
     
     for (int i = 0; i < 50; ++i) {
-        auto it = t.Find(Key{i});
+        auto it = t.Find(VxTestKey{i});
         ASSERT_NE(it, t.End());
         EXPECT_EQ(*it, i * 3);
     }
     
-    EXPECT_FALSE(t.IsHere(Key{1000}));
-    int& v = t[Key{1000}];
-    EXPECT_TRUE(t.IsHere(Key{1000}));
+    EXPECT_FALSE(t.IsHere(VxTestKey{1000}));
+    int& v = t[VxTestKey{1000}];
+    EXPECT_TRUE(t.IsHere(VxTestKey{1000}));
     EXPECT_EQ(v, 0);
 }
 
 TEST(XNHashTable, NegativeHashValuesHandledCorrectly) {
-    XNHashTable<int, int, IntHashNegativeOne> t(8);
+    XNHashTable<int, int, VxTestIntHashNegativeOne> t(8);
     
     for (int i = 0; i < 100; ++i)
         t.Insert(i, i * 2, TRUE);
@@ -1157,7 +1152,7 @@ TEST(XSHashTable, AutomaticRehashOnLoadFactor) {
 
 TEST(XSHashTable, LinearProbingWithCollisions) {
     // All keys hash to same initial position
-    XSHashTable<int, int, IntHashConstantZero> t(16);
+    XSHashTable<int, int, VxTestIntHashConstantZero> t(16);
     
     const int N = 10;
     for (int i = 0; i < N; ++i)
@@ -1172,7 +1167,7 @@ TEST(XSHashTable, LinearProbingWithCollisions) {
 }
 
 TEST(XSHashTable, TombstonePreservesCollidingProbeChain) {
-    XSHashTable<int, int, IntHashConstantZero> t(16);
+    XSHashTable<int, int, VxTestIntHashConstantZero> t(16);
 
     ASSERT_TRUE(t.Insert(1, 10, FALSE));
     ASSERT_TRUE(t.Insert(2, 20, FALSE));
@@ -1348,28 +1343,28 @@ TEST(XSHashTable, LookUpFunctionality) {
 }
 
 TEST(XSHashTable, CustomKeyTypeWithCustomHashAndEq) {
-    XSHashTable<int, Key, KeyHashIdentity, KeyEq> t(16);
+    XSHashTable<int, VxTestKey, VxTestKeyHashIdentity, VxTestKeyEq> t(16);
     
     for (int i = 0; i < 50; ++i)
-        t.Insert(Key{i}, i * 3, TRUE);
+        t.Insert(VxTestKey{i}, i * 3, TRUE);
     ASSERT_EQ(t.Size(), 50);
     
     for (int i = 0; i < 50; ++i) {
-        auto it = t.Find(Key{i});
+        auto it = t.Find(VxTestKey{i});
         ASSERT_NE(it, t.End());
         EXPECT_EQ(*it, i * 3);
     }
     
-    EXPECT_FALSE(t.IsHere(Key{1000}));
-    int& v = t[Key{1000}];
-    EXPECT_TRUE(t.IsHere(Key{1000}));
+    EXPECT_FALSE(t.IsHere(VxTestKey{1000}));
+    int& v = t[VxTestKey{1000}];
+    EXPECT_TRUE(t.IsHere(VxTestKey{1000}));
     // Note: XSHashTable does not initialize value to 0
     v = 42;
-    EXPECT_EQ(*t.FindPtr(Key{1000}), 42);
+    EXPECT_EQ(*t.FindPtr(VxTestKey{1000}), 42);
 }
 
 TEST(XSHashTable, NegativeHashValuesHandledCorrectly) {
-    XSHashTable<int, int, IntHashNegativeOne> t(16);
+    XSHashTable<int, int, VxTestIntHashNegativeOne> t(16);
     
     for (int i = 0; i < 100; ++i)
         t.Insert(i, i * 2, TRUE);
@@ -1492,5 +1487,3 @@ TEST(XSHashTable, InvalidLoadFactorDefaultsToPointSevenFive) {
     EXPECT_EQ(t1.Size(), 50);
     EXPECT_EQ(t2.Size(), 50);
 }
-
-} // namespace
