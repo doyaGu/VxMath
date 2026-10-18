@@ -1,4 +1,5 @@
 #include "CKDirectoryParser.h"
+#include "VxPathEncoding.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -26,7 +27,7 @@ static char *DuplicateCString(const char *value) {
 static char *DuplicateDirectoryName(const char *dir) {
     char *copy = DuplicateCString(dir);
     size_t len = strlen(copy);
-    if (len > 0 && (copy[len - 1] == '\\' || copy[len - 1] == '/')) {
+    if (len > 0 && VxPathEndsWithSeparator(copy)) {
         copy[len - 1] = '\0';
     }
     return copy;
@@ -48,9 +49,10 @@ static char *JoinDirectoryPath(const char *dir, const char *leaf) {
     const char *directory = dir ? dir : "";
     const char *name = leaf ? leaf : "";
 
-    size_t directoryLength = strlen(directory);
-    while (directoryLength > 0 && IsPathSeparator(directory[directoryLength - 1]))
-        --directoryLength;
+    size_t directoryLength = 0;
+    for (const char *p = directory; *p; p = VxNextPathCharacter(p))
+        if (!IsPathSeparator(*p))
+            directoryLength = VxNextPathCharacter(p) - directory;
 
     const size_t nameLength = strlen(name);
     const XBOOL needSeparator = (directoryLength > 0 && nameLength > 0 && !IsPathSeparator(name[0]));

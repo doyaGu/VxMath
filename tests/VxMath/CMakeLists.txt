@@ -113,6 +113,7 @@ set(VXMATH_TEST_SOURCES
         StringTest.cpp
         ConfigurationTest.cpp
         PlatformCompatibilityTest.cpp
+        AnsiPathBoundaryTest.cpp
         PathParsingTest.cpp
         URLTest.cpp
         MemoryMappedFileTest.cpp
@@ -163,6 +164,9 @@ foreach (TEST_SOURCE ${VXMATH_TEST_SOURCES})
     endif()
     vx_copy_runtime_dependencies(${TEST_NAME})
 endforeach ()
+
+target_compile_definitions(AnsiPathBoundaryTest PRIVATE
+        VX_PATH_TEST_LIBRARY="$<TARGET_FILE:SDL3::SDL3>")
 
 # Static linkage lets the allocation-failure test intercept the pixel copy's
 # operator new[] on Windows as well as Unix.

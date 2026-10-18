@@ -8,6 +8,7 @@
  */
 
 #include "VxWindowFunctions.h"
+#include "VxPathEncoding.h"
 
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_filesystem.h>
@@ -515,27 +516,63 @@ void VxSetBaseFPUControlWord() {
 // Environment Variable Functions
 // ============================================================================
 
-void VxAddLibrarySearchPath(const char *path) {
-    const char *envVar;
+static XBOOL VxGetNativePathEnvironment(const char *name, XArray<char> &path) {
 #ifdef _WIN32
-    envVar = "PATH";
-    char separator = ';';
+    XArray<wchar_t> wideName;
+    if (!VxPathToWide(name, CP_UTF8, wideName))
+        return FALSE;
+    DWORD length = GetEnvironmentVariableW(wideName.Begin(), NULL, 0);
+    if (!length || length > INT_MAX)
+        return FALSE;
+    XArray<wchar_t> value;
+    value.Resize((int)length);
+    DWORD written = GetEnvironmentVariableW(wideName.Begin(), value.Begin(), length);
+    if (!written || written >= length)
+        return FALSE;
+    return VxPathFromWide(value.Begin(), CP_UTF8, path);
 #else
-    envVar = "LD_LIBRARY_PATH";
-    char separator = ':';
+    const char *value = getenv(name);
+    if (!value || !*value || strlen(value) >= INT_MAX)
+        return FALSE;
+    path.Resize((int)strlen(value) + 1);
+    memcpy(path.Begin(), value, path.Size());
+    return TRUE;
 #endif
-    
-    const char *currentPath = SDL_getenv(envVar);
-    XString newPath;
-    newPath << path;
-    if (currentPath && currentPath[0] != '\0') {
-        newPath << separator << currentPath;
-    }
-    // SDL3 doesn't have SDL_setenv, use platform-specific or putenv pattern
+}
+
+void VxAddLibrarySearchPath(const char *path) {
+    if (!path)
+        return;
 #ifdef _WIN32
-    SetEnvironmentVariableA(envVar, newPath.CStr());
+    XArray<char> native;
+    if (!VxPathToUtf8(path, native))
+        return;
+    path = native.Begin();
+    const char *name = "PATH";
+    const char separator = ';';
 #else
-    setenv(envVar, newPath.CStr(), 1);
+    const char *name = "LD_LIBRARY_PATH";
+    const char separator = ':';
+#endif
+    XArray<char> previous;
+    if (strlen(path) > XString::MAX_LENGTH) {
+        SDL_SetError("Library search path exceeds the legacy string limit");
+        return;
+    }
+    XString combined = path;
+    if (VxGetNativePathEnvironment(name, previous)) {
+        if (strlen(path) + strlen(previous.Begin()) + 1 > XString::MAX_LENGTH) {
+            SDL_SetError("Library search path exceeds the legacy string limit");
+            return;
+        }
+        combined << separator << previous.Begin();
+    }
+#ifdef _WIN32
+    XArray<wchar_t> wide;
+    if (VxPathToWide(combined.CStr(), CP_UTF8, wide))
+        SetEnvironmentVariableW(L"PATH", wide.Begin());
+#else
+    setenv(name, combined.CStr(), 1);
 #endif
 }
 
@@ -714,29 +751,29 @@ XBOOL VxMoveWindow(WIN_HANDLE Win, int x, int y, int Width, int Height, XBOOL Re
 // ============================================================================
 
 XString VxGetTempPath() {
-    // SDL3 doesn't have a direct temp path function, use platform-specific fallbacks
 #ifdef _WIN32
-    char buffer[512];
-    DWORD len = GetTempPathA(512, buffer);
-    if (len > 0 && len < 512) {
-        return XString(buffer);
-    }
-    return XString("C:\\Temp\\");
+    DWORD length = GetTempPathA(0, NULL);
+    if (!length || length >= INT_MAX)
+        return "";
+    XArray<char> path;
+    path.Resize((int)length);
+    DWORD written = GetTempPathA(length, path.Begin());
+    return written && written < length ? XString(path.Begin()) : XString("");
 #else
-    const char *tmpdir = SDL_getenv("TMPDIR");
-    if (tmpdir)
-        return XString(tmpdir);
-    tmpdir = SDL_getenv("TMP");
-    if (tmpdir)
-        return XString(tmpdir);
-    tmpdir = SDL_getenv("TEMP");
-    if (tmpdir)
-        return XString(tmpdir);
-    return XString("/tmp/");
+    const char *path = getenv("TMPDIR");
+    if (!path || !*path) path = getenv("TMP");
+    if (!path || !*path) path = getenv("TEMP");
+    return path && *path ? path : "/tmp/";
 #endif
 }
 
 XBOOL VxMakeDirectory(const char *path) {
+#ifdef _WIN32
+    XArray<char> native;
+    if (!VxPathToUtf8(path, native))
+        return FALSE;
+    path = native.Begin();
+#endif
     return SDL_CreateDirectory(path);
 }
 
@@ -825,12 +862,27 @@ static XBOOL VxDeleteDirectoryRecursive(const char *path) {
 }
 
 XBOOL VxDeleteDirectory(const char *path) {
+    if (!path || !*path)
+        return FALSE;
+#ifdef _WIN32
+    XString normalized(path);
+    for (char *p = normalized.Str(); *p; p = (char *)VxNextPathCharacter(p))
+        if (*p == '/') *p = '\\';
+    return VxDeleteDirectoryRecursive(normalized.CStr());
+#else
     return VxDeleteDirectoryRecursive(path);
+#endif
 }
 
 XBOOL VxFileExists(const char *path) {
     if (!path)
         return FALSE;
+#ifdef _WIN32
+    XArray<char> native;
+    if (!VxPathToUtf8(path, native))
+        return FALSE;
+    path = native.Begin();
+#endif
     SDL_PathInfo info;
     return SDL_GetPathInfo(path, &info) && info.type == SDL_PATHTYPE_FILE;
 }
@@ -838,6 +890,12 @@ XBOOL VxFileExists(const char *path) {
 XBOOL VxDirectoryExists(const char *path) {
     if (!path)
         return FALSE;
+#ifdef _WIN32
+    XArray<char> native;
+    if (!VxPathToUtf8(path, native))
+        return FALSE;
+    path = native.Begin();
+#endif
     SDL_PathInfo info;
     return SDL_GetPathInfo(path, &info) && info.type == SDL_PATHTYPE_DIRECTORY;
 }
@@ -868,8 +926,10 @@ XBOOL VxCopyFile(const char *src, const char *dst, XBOOL failIfExists) {
     }
     if (ferror(input))
         ok = FALSE;
-    fclose(output);
-    fclose(input);
+    if (fclose(output) != 0)
+        ok = FALSE;
+    if (fclose(input) != 0)
+        ok = FALSE;
     return ok;
 }
 
@@ -915,7 +975,12 @@ static XBOOL VxDirectoryNameMatches(const char *name, const char *mask) {
 
 static XString VxJoinPathString(const char *dir, const char *file) {
     XString result = dir ? dir : "";
-    if (result.Length() > 0 && result[result.Length() - 1] != '\\' && result[result.Length() - 1] != '/') {
+#ifdef _WIN32
+    if (result.Length() > 0 && !VxPathEndsWithSeparator(result.CStr())) {
+#else
+    // This helper joins native UTF-8 entries returned by opendir.
+    if (result.Length() > 0 && result.Back() != '/') {
+#endif
 #ifdef _WIN32
         result << '\\';
 #else
@@ -1070,12 +1135,15 @@ XBOOL VxGetApplicationBasePath(char *path, size_t pathSize) {
     if (!path || pathSize == 0)
         return FALSE;
     const char *basePath = SDL_GetBasePath();
-    if (!basePath)
+#ifdef _WIN32
+    XArray<char> ansi;
+    if (!VxPathFromUtf8(basePath, ansi))
         return FALSE;
-    size_t basePathLength = strlen(basePath);
-    if (basePathLength + 1 > pathSize)
+    basePath = ansi.Begin();
+#endif
+    if (!basePath || strlen(basePath) + 1 > pathSize)
         return FALSE;
-    memcpy(path, basePath, basePathLength + 1);
+    memcpy(path, basePath, strlen(basePath) + 1);
     return TRUE;
 }
 
@@ -1094,58 +1162,69 @@ XBOOL VxGetUserConfigPath(const char *appName, char *path, size_t pathSize) {
     return TRUE;
 }
 
+static XBOOL VxMakeNativeConfigPath(const XArray<char> &base, const char *prefix,
+                                  const char *name, XString &path) {
+    size_t length = strlen(base.Begin());
+    XBOOL separator = length && base[length - 1] != '/' && base[length - 1] != '\\';
+    if (length + (separator ? 1 : 0) + strlen(prefix) + strlen(name) + 1 > XString::MAX_LENGTH)
+        return SDL_SetError("Configuration path exceeds the legacy string limit");
+    path = base.Begin();
+    if (separator) path << '/';
+    path << prefix << name << '/';
+    return TRUE;
+}
+
 XBOOL VxGetUserConfigPath(const char *appName, XString &path) {
     path = "";
     const char *name = (appName && *appName) ? appName : "Ballance";
-    const char *overrideBase = getenv("BALLANCE_USER_CONFIG_HOME");
-    char *prefPath = NULL;
-    if (overrideBase && *overrideBase) {
-        path = overrideBase;
-        if (path[path.Length() - 1] != '/' && path[path.Length() - 1] != '\\')
-            path << '/';
-        path << name << '/';
-    } else if ((prefPath = SDL_GetPrefPath("", name)) != NULL) {
-        path = prefPath;
-        SDL_free(prefPath);
-    } else {
+    XArray<char> base;
 #ifdef _WIN32
-        const char *base = SDL_getenv("APPDATA");
-        if (!base)
-            base = SDL_getenv("USERPROFILE");
-        if (!base)
-            return FALSE;
-        path = base;
-        if (path.Length() > 0 && path[path.Length() - 1] != '\\' && path[path.Length() - 1] != '/')
-            path << '\\';
-        path << name << '\\';
-#elif defined(__APPLE__)
-        const char *home = SDL_getenv("HOME");
-        if (!home)
-            return FALSE;
-        path = home;
-        if (path.Length() > 0 && path[path.Length() - 1] != '/')
-            path << '/';
-        path << "Library/Application Support/" << name << '/';
-#else
-        const char *xdg = SDL_getenv("XDG_CONFIG_HOME");
-        const char *home = SDL_getenv("HOME");
-        if (xdg && *xdg) {
-            path = xdg;
-            if (path.Length() > 0 && path[path.Length() - 1] != '/')
-                path << '/';
-            path << name << '/';
-        } else if (home) {
-            path = home;
-            if (path.Length() > 0 && path[path.Length() - 1] != '/')
-                path << '/';
-            path << ".config/" << name << '/';
-        } else {
-            return FALSE;
-        }
+    XArray<char> nativeName;
+    if (!VxPathToUtf8(name, nativeName))
+        return FALSE;
+    name = nativeName.Begin();
 #endif
+    XString native;
+    if (VxGetNativePathEnvironment("BALLANCE_USER_CONFIG_HOME", base)) {
+        if (!VxMakeNativeConfigPath(base, "", name, native))
+            return FALSE;
+    } else {
+        char *prefPath = SDL_GetPrefPath("", name);
+        if (prefPath) {
+            if (strlen(prefPath) > XString::MAX_LENGTH) {
+                SDL_free(prefPath);
+                return FALSE;
+            }
+            native = prefPath;
+            SDL_free(prefPath);
+        } else {
+#ifdef _WIN32
+            if (!VxGetNativePathEnvironment("APPDATA", base) && !VxGetNativePathEnvironment("USERPROFILE", base))
+                return FALSE;
+            const char *prefix = "";
+#elif defined(__APPLE__)
+            if (!VxGetNativePathEnvironment("HOME", base)) return FALSE;
+            const char *prefix = "Library/Application Support/";
+#else
+            const char *prefix = "";
+            if (!VxGetNativePathEnvironment("XDG_CONFIG_HOME", base)) {
+                if (!VxGetNativePathEnvironment("HOME", base)) return FALSE;
+                prefix = ".config/";
+            }
+#endif
+            if (!VxMakeNativeConfigPath(base, prefix, name, native))
+                return FALSE;
+        }
     }
-    XString marker = VxJoinPathString(path.CStr(), "_marker_");
-    return VxCreateFileTree(marker.CStr());
+#ifdef _WIN32
+    XArray<char> ansi;
+    if (!VxPathFromUtf8(native.CStr(), ansi) || !VxAssignPath(ansi, path))
+        return FALSE;
+#else
+    path = native;
+#endif
+    XString marker;
+    return VxMakePath(marker, path.CStr(), "_marker_") && VxCreateFileTree(marker.CStr());
 }
 
 XBOOL VxSetCurrentDirectory(const char *path) {
@@ -1176,13 +1255,11 @@ XBOOL VxMakePath(char *fullpath, size_t fullpathSize, const char *path, const ch
 
 #ifdef _WIN32
     char separator = '\\';
-    char altSeparator = '/';
 #else
     char separator = '/';
-    char altSeparator = '\\';
 #endif
 
-    XBOOL needSeparator = (pathLen > 0 && path[pathLen - 1] != separator && path[pathLen - 1] != altSeparator);
+    XBOOL needSeparator = pathLen > 0 && !VxPathEndsWithSeparator(path);
     if (pathLen > ((size_t) -1) - (needSeparator ? 1 : 0))
         return FALSE;
     size_t totalLen = pathLen + (needSeparator ? 1 : 0);
@@ -1345,7 +1422,18 @@ XBOOL VxCreateFileTree(const char *file) {
     if (!file || file[0] == '\0')
         return FALSE;
 
+#ifdef _WIN32
+    XArray<char> native;
+    if (!VxPathToUtf8(file, native))
+        return FALSE;
+    XString filepath;
+    if (!VxAssignPath(native, filepath))
+        return FALSE;
+#else
     XString filepath = file;
+    for (char *p = filepath.Str(); *p; ++p)
+        if (*p == '\\') *p = '/';
+#endif
     if (filepath.Length() <= 1)
         return FALSE;
 

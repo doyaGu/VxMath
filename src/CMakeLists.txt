@@ -61,6 +61,7 @@ set(VXMATH_PUBLIC_HEADERS
 )
 
 set(VXMATH_PRIVATE_HEADERS
+        VxPathEncoding.h
         VxEigenMatrix.h
         VxBlitEngine.h
         VxBlitInternal.h

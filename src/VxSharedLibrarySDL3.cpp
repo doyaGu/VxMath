@@ -7,6 +7,7 @@
  */
 
 #include "VxSharedLibrary.h"
+#include "VxPathEncoding.h"
 
 #include <SDL3/SDL_loadso.h>
 
@@ -19,6 +20,14 @@ void VxSharedLibrary::Attach(INSTANCE_HANDLE LibraryHandle) {
 }
 
 INSTANCE_HANDLE VxSharedLibrary::Load(const char *LibraryName) {
+#ifdef _WIN32
+    XArray<char> native;
+    if (!VxPathToUtf8(LibraryName, native)) {
+        m_LibraryHandle = NULL;
+        return NULL;
+    }
+    LibraryName = native.Begin();
+#endif
     m_LibraryHandle = (INSTANCE_HANDLE)SDL_LoadObject(LibraryName);
     return m_LibraryHandle;
 }

@@ -1,4 +1,5 @@
 #include "CKPathSplitter.h"
+#include "VxPathEncoding.h"
 
 #include <stdlib.h>
 #include <stdio.h>
@@ -23,16 +24,11 @@ static void CopyBounded(char *dst, size_t dstSize, const char *src, size_t count
 }
 
 static const char *FindLastPathSeparator(const char *path) {
-    const char *lastSlash = strrchr(path, '/');
-    const char *lastBackslash = strrchr(path, '\\');
-
-    if (!lastSlash) {
-        return lastBackslash;
-    }
-    if (!lastBackslash) {
-        return lastSlash;
-    }
-    return (lastSlash > lastBackslash) ? lastSlash : lastBackslash;
+    const char *last = NULL;
+    for (const char *p = path; *p; p = VxNextPathCharacter(p))
+        if (*p == '/' || *p == '\\')
+            last = p;
+    return last;
 }
 
 static bool HasDrivePrefix(const char *path) {

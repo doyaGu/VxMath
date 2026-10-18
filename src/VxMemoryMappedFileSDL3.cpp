@@ -8,6 +8,7 @@
  */
 
 #include "VxMemoryMappedFile.h"
+#include "VxPathEncoding.h"
 
 #include <SDL3/SDL_iostream.h>
 #include <stdlib.h>
@@ -25,7 +26,14 @@ VxMemoryMappedFile::VxMemoryMappedFile(const char *pszFileName) {
         return;
     }
 
-    // Open file using SDL3's IOStream
+#ifdef _WIN32
+    XArray<char> native;
+    if (!VxPathToUtf8(pszFileName, native)) {
+        m_errCode = VxMMF_FileOpen;
+        return;
+    }
+    pszFileName = native.Begin();
+#endif
     SDL_IOStream *io = SDL_IOFromFile(pszFileName, "rb");
     if (!io) {
         m_errCode = VxMMF_FileOpen;
