@@ -9,21 +9,19 @@
 #include <string>
 #include <vector>
 
-namespace {
+static constexpr size_t kLegacyWindowsPathLimit = 260;
 
-constexpr size_t kLegacyWindowsPathLimit = 260;
-
-struct ListContext {
+struct VxDirectoryTestContext {
     std::vector<std::string> names;
 };
 
-XBOOL CollectEntry(const VxDirectoryEntry *entry, void *userData) {
-    ListContext *context = static_cast<ListContext *>(userData);
+static XBOOL CollectEntry(const VxDirectoryEntry *entry, void *userData) {
+    VxDirectoryTestContext *context = static_cast<VxDirectoryTestContext *>(userData);
     context->names.push_back(entry->Name.CStr());
     return TRUE;
 }
 
-std::filesystem::path ToLongFilesystemPath(const std::filesystem::path &path) {
+static std::filesystem::path ToLongFilesystemPath(const std::filesystem::path &path) {
 #if defined(_WIN32)
     std::string absolute = std::filesystem::absolute(path).string();
     std::replace(absolute.begin(), absolute.end(), '/', '\\');
@@ -35,7 +33,7 @@ std::filesystem::path ToLongFilesystemPath(const std::filesystem::path &path) {
 #endif
 }
 
-std::string ToRuntimePath(const std::filesystem::path &path) {
+static std::string ToRuntimePath(const std::filesystem::path &path) {
 #if defined(_WIN32)
     return ToLongFilesystemPath(path).string();
 #else
@@ -43,7 +41,7 @@ std::string ToRuntimePath(const std::filesystem::path &path) {
 #endif
 }
 
-std::filesystem::path BuildLongDirectory(const std::filesystem::path &root, const char *leafName) {
+static std::filesystem::path BuildLongDirectory(const std::filesystem::path &root, const char *leafName) {
     std::filesystem::path dir = root;
     int index = 0;
     while (ToRuntimePath(dir / leafName).size() <= kLegacyWindowsPathLimit + 32) {
@@ -52,9 +50,9 @@ std::filesystem::path BuildLongDirectory(const std::filesystem::path &root, cons
     return dir;
 }
 
-const char *kVxConfigTestBase = "Software\\Virtools\\UserConfig\\BallanceTest";
+static const char *kVxConfigTestBase = "Software\\Virtools\\UserConfig\\BallanceTest";
 
-std::vector<char> MakeRegistryFilePathBuffer() {
+static std::vector<char> MakeRegistryFilePathBuffer() {
     XString configPath;
     if (!VxGetUserConfigPath("Ballance", configPath))
         return std::vector<char>();
@@ -64,7 +62,7 @@ std::vector<char> MakeRegistryFilePathBuffer() {
     return std::vector<char>((size_t)registryPath.Length() + 1u, '\0');
 }
 
-XBOOL LoadRegistryConfig(VxConfiguration &config) {
+static XBOOL LoadRegistryConfig(VxConfiguration &config) {
     std::vector<char> path = MakeRegistryFilePathBuffer();
     if (path.empty() || !VxConfig::GetRegistryFilePath(path.data(), path.size()))
         return FALSE;
@@ -72,8 +70,6 @@ XBOOL LoadRegistryConfig(VxConfiguration &config) {
     int line = 0;
     return config.BuildFromFile(path.data(), line, error);
 }
-
-} // namespace
 
 TEST(VxConfigRegistryTest, TypedRoundTripAndDelete) {
     VxConfig config(VXCONFIG_ROOT_CURRENT_USER, kVxConfigTestBase);
@@ -222,7 +218,7 @@ TEST(VxPlatformFunctionsTest, FileDirectoryCopyDeleteAndList) {
     ASSERT_TRUE(VxCopyFile(src.string().c_str(), dst.string().c_str(), TRUE));
     ASSERT_TRUE(VxFileExists(dst.string().c_str()));
 
-    ListContext context;
+    VxDirectoryTestContext context;
     ASSERT_TRUE(VxListDirectory(root.string().c_str(), "*.txt", FALSE, CollectEntry, &context));
     EXPECT_GE(context.names.size(), 2u);
 
@@ -247,7 +243,7 @@ TEST(VxPlatformFunctionsTest, ListDirectoryHandlesLongDirectoryPath) {
         stream << "content";
     }
 
-    ListContext context;
+    VxDirectoryTestContext context;
     ASSERT_TRUE(VxListDirectory(ToRuntimePath(longDir).c_str(), "*.txt", FALSE, CollectEntry, &context));
     EXPECT_NE(std::find(context.names.begin(), context.names.end(), "listed.txt"), context.names.end());
 
