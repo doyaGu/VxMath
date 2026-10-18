@@ -176,6 +176,8 @@ VX_EXPORT BITMAP_HANDLE VxCreateBitmap(const VxImageDescEx &desc);
 /// @brief Deletes a bitmap handle and releases its resources.
 VX_EXPORT void VxDeleteBitmap(BITMAP_HANDLE Bitmap);
 /// @brief Converts a device-dependent bitmap to a device-independent format described by VxImageDescEx.
+// Returns an independent top-down 32-bit pixel copy on every platform.
+// The caller releases it with delete[]. desc.Image names the same copy.
 VX_EXPORT XBYTE *VxConvertBitmap(BITMAP_HANDLE Bitmap, VxImageDescEx &desc);
 /// @brief Converts a bitmap to a 24-bit color format.
 VX_EXPORT BITMAP_HANDLE VxConvertBitmapTo24(BITMAP_HANDLE Bitmap);

@@ -1453,8 +1453,20 @@ BITMAP_HANDLE VxCreateBitmap(const VxImageDescEx &desc) {
         VxDoBlitUpsideDown(desc, dstDesc);
     return bitmap;
 #else
-    // Create an SDL_Surface from the image description
-    SDL_Surface *surface = SDL_CreateSurface(desc.Width, desc.Height, SDL_PIXELFORMAT_RGBA32);
+    if (desc.Width <= 0 || desc.Height <= 0) return NULL;
+    SDL_Surface *surface = SDL_CreateSurface(desc.Width, desc.Height, SDL_PIXELFORMAT_ARGB8888);
+    if (!surface) return NULL;
+    if (desc.Image) {
+        VxImageDescEx target;
+        target.Width = surface->w;
+        target.Height = surface->h;
+        target.BitsPerPixel = 32;
+        target.BytesPerLine = surface->pitch;
+        target.RedMask = R_MASK; target.GreenMask = G_MASK;
+        target.BlueMask = B_MASK; target.AlphaMask = A_MASK;
+        target.Image = static_cast<XBYTE *>(surface->pixels);
+        VxDoBlit(desc, target);
+    }
     return (BITMAP_HANDLE)surface;
 #endif
 }
@@ -1499,7 +1511,14 @@ XBYTE *VxConvertBitmap(BITMAP_HANDLE Bitmap, VxImageDescEx &desc) {
     dstDesc.BytesPerLine = 4 * srcDesc.Width;
     dstDesc.BitsPerPixel = 32;
     dstDesc.AlphaMask = A_MASK;
-    XBYTE *newImage = new XBYTE[(size_t)dstDesc.BytesPerLine * (size_t)dstDesc.Height];
+    XBYTE *newImage;
+    try {
+        newImage = new XBYTE[(size_t)dstDesc.BytesPerLine * (size_t)dstDesc.Height];
+    } catch (...) {
+        if (bitmap24 != Bitmap)
+            DeleteObject(bitmap24);
+        throw;
+    }
     dstDesc.Image = newImage;
     VxDoBlitUpsideDown(srcDesc, dstDesc);
 
@@ -1512,13 +1531,27 @@ XBYTE *VxConvertBitmap(BITMAP_HANDLE Bitmap, VxImageDescEx &desc) {
     if (!surface)
         return NULL;
     
-    desc.Width = surface->w;
-    desc.Height = surface->h;
+    SDL_Surface *converted = SDL_ConvertSurface(surface, SDL_PIXELFORMAT_ARGB8888);
+    if (!converted) return NULL;
+    desc = VxImageDescEx();
+    desc.Width = converted->w;
+    desc.Height = converted->h;
     desc.BitsPerPixel = 32;
-    desc.BytesPerLine = surface->pitch;
-    
-    // Return pointer to surface pixels (caller should not free this)
-    return (XBYTE *)surface->pixels;
+    desc.BytesPerLine = converted->w * 4;
+    desc.RedMask = R_MASK; desc.GreenMask = G_MASK;
+    desc.BlueMask = B_MASK; desc.AlphaMask = A_MASK;
+    try {
+        desc.Image = new XBYTE[static_cast<size_t>(desc.BytesPerLine) * desc.Height];
+    } catch (...) {
+        SDL_DestroySurface(converted);
+        throw;
+    }
+    for (int row = 0; row < desc.Height; ++row)
+        memcpy(desc.Image + static_cast<size_t>(row) * desc.BytesPerLine,
+               static_cast<XBYTE *>(converted->pixels) + static_cast<size_t>(row) * converted->pitch,
+               desc.BytesPerLine);
+    SDL_DestroySurface(converted);
+    return desc.Image;
 #endif
 }
 
@@ -1613,18 +1646,18 @@ XBOOL VxCopyBitmap(BITMAP_HANDLE Bitmap, const VxImageDescEx &desc) {
     if (!surface || !desc.Image)
         return FALSE;
     
-    // Copy image data to surface
-    if (SDL_LockSurface(surface) == 0) {
-        size_t rowBytes = desc.Width * (desc.BitsPerPixel / 8);
-        for (int y = 0; y < desc.Height && y < surface->h; y++) {
-            memcpy((XBYTE *)surface->pixels + y * surface->pitch,
-                   desc.Image + y * desc.BytesPerLine,
-                   rowBytes < (size_t)surface->pitch ? rowBytes : surface->pitch);
-        }
-        SDL_UnlockSurface(surface);
-        return TRUE;
-    }
-    return FALSE;
+    if (!SDL_LockSurface(surface)) return FALSE;
+    const SDL_PixelFormatDetails *format = SDL_GetPixelFormatDetails(surface->format);
+    if (!format) { SDL_UnlockSurface(surface); return FALSE; }
+    VxImageDescEx source;
+    source.Width = surface->w; source.Height = surface->h;
+    source.BitsPerPixel = format->bits_per_pixel; source.BytesPerLine = surface->pitch;
+    source.RedMask = format->Rmask; source.GreenMask = format->Gmask;
+    source.BlueMask = format->Bmask; source.AlphaMask = format->Amask;
+    source.Image = static_cast<XBYTE *>(surface->pixels);
+    VxDoBlit(source, desc);
+    SDL_UnlockSurface(surface);
+    return TRUE;
 #endif
 }
 

@@ -164,6 +164,21 @@ foreach (TEST_SOURCE ${VXMATH_TEST_SOURCES})
     vx_copy_runtime_dependencies(${TEST_NAME})
 endforeach ()
 
+# Static linkage lets the allocation-failure test intercept the pixel copy's
+# operator new[] on Windows as well as Unix.
+add_executable(BitmapOwnershipTest BitmapOwnershipTest.cpp)
+if (TARGET VxMathStatic AND NOT TEST_TARGET STREQUAL "VxMath_GroundTruth")
+    target_link_libraries(BitmapOwnershipTest PRIVATE VxMathStatic gtest_main)
+else ()
+    target_link_libraries(BitmapOwnershipTest PRIVATE ${TEST_TARGET} gtest_main)
+endif ()
+set_target_properties(BitmapOwnershipTest PROPERTIES
+        FOLDER "Tests"
+        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
+)
+vx_copy_runtime_dependencies(BitmapOwnershipTest)
+add_test(NAME BitmapOwnershipTest COMMAND BitmapOwnershipTest)
+
 # Exercise the same original-DLL samples with header SIMD paths disabled.
 vx_add_test(QuaternionReferenceScalarTest SOURCES QuaternionReferenceTest.cpp)
 target_compile_definitions(QuaternionReferenceScalarTest PRIVATE VX_SIMD_NONE=1)
