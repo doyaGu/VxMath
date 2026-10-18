@@ -130,16 +130,14 @@ static void BlendGlyphPixel(SDL_Surface *image, int x, int y, Uint8 coverage, XD
     pixel[3] = static_cast<Uint8>(255 - ((255 - pixel[3]) * (255 - coverage) + 127) / 255);
 }
 // Prepare the complete text image before touching the caller's bitmap.
-static SDL_Surface *Rasterize(VxBitmapFont &font, const XArray<char> &text, XDWORD color, int &left) {
+static SDL_Surface *Rasterize(VxBitmapFont &font, const XArray<wchar_t> &text, XDWORD color, int &left) {
     XArray<VxFontGlyph> glyphs;
-    const char *cursor = text.Begin();
-    size_t remaining = static_cast<size_t>(text.Size() - 1);
     VxLoadedFontFace *previous = NULL;
     int previousGlyph = 0;
     float pen = 0, ascent = 0, descent = 0;
     int xMin = 0, xMax = 0;
-    while (remaining) {
-        Uint32 codepoint = SDL_StepUTF8(&cursor, &remaining);
+    for (int character = 0; character < text.Size() - 1; ++character) {
+        int codepoint = (int)text[character];
         if (codepoint == '\n' || codepoint == '\r') codepoint = ' ';
         VxLoadedFontFace *face = NULL;
         int index = 0;
@@ -223,10 +221,10 @@ FONT_HANDLE VxCreateFont(const char *FontName, int FontSize, int Weight, XBOOL i
 #else
     if (!FontName || !FontSize || FontSize == INT_MIN) return NULL;
     try {
-        XArray<char> family;
-        if (!VxDecodeAnsiFontText(FontName, family)) return NULL;
+        XString family;
+        if (!VxDecodeAnsiFontName(FontName, family)) return NULL;
         XP<VxBitmapFont> record(new VxBitmapFont);
-        VxGetFontFallbacks(VxGetSystemFonts(), family.Begin(), Weight, italic, record->candidates);
+        VxGetFontFallbacks(VxGetSystemFonts(), family.CStr(), Weight, italic, record->candidates);
         if (record->candidates.Size() == 0) return NULL;
         record->loaded.Resize(record->candidates.Size());
         for (int i = 0; i < record->loaded.Size(); ++i) record->loaded[i] = NULL;
@@ -299,7 +297,7 @@ XBOOL VxDrawBitmapText(BITMAP_HANDLE Bitmap, FONT_HANDLE Font, const char *strin
     return result != 0;
 #else
     if (!Bitmap || !Font || !string || !rect) return FALSE;
-    XArray<char> text;
+    XArray<wchar_t> text;
     try { if (!VxDecodeAnsiFontText(string, text)) return FALSE; } catch (...) { return FALSE; }
     SDL_Surface *destination = reinterpret_cast<SDL_Surface *>(Bitmap);
     SDL_Color background = {static_cast<Uint8>(BkColor & 255), static_cast<Uint8>((BkColor >> 8) & 255), static_cast<Uint8>((BkColor >> 16) & 255), 255};

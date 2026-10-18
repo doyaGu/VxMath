@@ -18,7 +18,7 @@ struct VxFontFace
     int directory = 0;
 };
 
-XBOOL VxDecodeAnsiFontText(const char *text, XArray<char> &result);
+XBOOL VxDecodeAnsiFontText(const char *text, XArray<wchar_t> &result);
 int VxGetFontCharacter(unsigned char character);
 XBOOL VxDecodeAnsiFontName(const char *name, XString &result);
 XBOOL VxEncodeAnsiFontName(const char *name, XString &result);

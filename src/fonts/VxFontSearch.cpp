@@ -432,14 +432,14 @@ static void ScanFontDirectory(const XString &directory,
         throw VxFontScanFailure();
 }
 
-XBOOL VxDecodeAnsiFontText(const char *text, XArray<char> &result)
+XBOOL VxDecodeAnsiFontText(const char *text, XArray<wchar_t> &result)
 {
     if (!text) return FALSE;
     size_t left = strlen(text);
-    if (left > (INT_MAX - 1) / 4) return FALSE;
-    XArray<char> buffer;
-    buffer.Resize((int)(left * 4 + 1));
-    char *output = buffer.Begin();
+    if (left > (INT_MAX - 1) / sizeof(wchar_t)) return FALSE;
+    XArray<wchar_t> buffer;
+    buffer.Resize((int)left + 1);
+    int count = 0;
     mbstate_t state = {};
     while (left)
     {
@@ -448,12 +448,12 @@ XBOOL VxDecodeAnsiFontText(const char *text, XArray<char> &result)
         if (length == (size_t)-1 || length == (size_t)-2 || !length ||
             character < 0 || character > 0x10FFFF || (character >= 0xD800 && character <= 0xDFFF))
             return FALSE;
-        output = SDL_UCS4ToUTF8((Uint32)character, output);
+        buffer[count++] = character;
         text += length;
         left -= length;
     }
-    *output = 0;
-    buffer.Resize((int)(output - buffer.Begin()) + 1);
+    buffer[count] = 0;
+    buffer.Resize(count + 1);
     result = buffer;
     return TRUE;
 }
@@ -470,10 +470,16 @@ int VxGetFontCharacter(unsigned char character)
 
 XBOOL VxDecodeAnsiFontName(const char *name, XString &result)
 {
-    XArray<char> text;
-    if (!VxDecodeAnsiFontText(name, text) || text.Size() - 1 > XString::MAX_LENGTH)
-        return FALSE;
-    result = text.Begin();
+    XArray<wchar_t> text;
+    if (!VxDecodeAnsiFontText(name, text) || text.Size() - 1 > XString::MAX_LENGTH) return FALSE;
+    XArray<char> bytes;
+    bytes.Resize((text.Size() - 1) * 4 + 1);
+    char *output = bytes.Begin();
+    for (int i = 0; i < text.Size() - 1; ++i)
+        output = SDL_UCS4ToUTF8((Uint32)text[i], output);
+    if (output - bytes.Begin() > XString::MAX_LENGTH) return FALSE;
+    *output = 0;
+    result = bytes.Begin();
     return TRUE;
 }
 
@@ -489,8 +495,9 @@ XBOOL VxEncodeAnsiFontName(const char *name, XString &result)
     {
         const char *start = name;
         Uint32 character = SDL_StepUTF8(&name, &remaining);
-        if (character == SDL_INVALID_UNICODE_CODEPOINT &&
-            (name - start != 3 || memcmp(start, "\xEF\xBF\xBD", 3))) return FALSE;
+        if (character > 0x10FFFF || (character >= 0xD800 && character <= 0xDFFF) ||
+            (character == SDL_INVALID_UNICODE_CODEPOINT &&
+             (name - start != 3 || memcmp(start, "\xEF\xBF\xBD", 3)))) return FALSE;
         char encoded[MB_LEN_MAX];
         size_t count = wcrtomb(encoded, (wchar_t)character, &state);
         if (count == (size_t)-1 || count > (size_t)(XString::MAX_LENGTH - length)) return FALSE;

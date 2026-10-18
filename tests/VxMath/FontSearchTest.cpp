@@ -95,21 +95,23 @@ TEST(FontSearchTest, TextNamesAndAtlasFollowTheCurrentRuntimeCharacterSet) {
             size_t count = mbrtowc(&expected, source, 1, &state);
             bool valid = count != (size_t)-1 && count != (size_t)-2;
             EXPECT_EQ(valid ? (int)expected : -1, VxGetFontCharacter((unsigned char)c));
-            XArray<char> text;
+            XArray<wchar_t> text;
             text.PushBack('x'); text.PushBack(0);
             XString name = "unchanged";
             EXPECT_EQ(valid, VxDecodeAnsiFontText(source, text) != FALSE);
             EXPECT_EQ(valid, VxDecodeAnsiFontName(source, name) != FALSE);
             if (valid) {
-                const char *cursor = text.Begin(); size_t left = text.Size() - 1;
-                EXPECT_EQ((Uint32)expected, SDL_StepUTF8(&cursor, &left));
-                EXPECT_EQ(0u, left);
-                EXPECT_STREQ(text.Begin(), name.CStr());
+                ASSERT_EQ(2, text.Size());
+                EXPECT_EQ(expected, text[0]);
+                EXPECT_EQ(0, text[1]);
+                char utf8[5] = {};
+                *SDL_UCS4ToUTF8((Uint32)expected, utf8) = 0;
+                EXPECT_STREQ(utf8, name.CStr());
                 XString original;
                 ASSERT_TRUE(VxEncodeAnsiFontName(name.CStr(), original));
                 EXPECT_STREQ(source, original.CStr());
             } else {
-                EXPECT_STREQ("x", text.Begin());
+                EXPECT_STREQ(L"x", text.Begin());
                 EXPECT_STREQ("unchanged", name.CStr());
             }
             EXPECT_EQ(c, (unsigned char)source[0]);
@@ -131,9 +133,11 @@ TEST(FontSearchTest, TextNamesAndAtlasFollowTheCurrentRuntimeCharacterSet) {
             EXPECT_STREQ(utf8, name.CStr());
             ASSERT_TRUE(VxEncodeAnsiFontName(name.CStr(), original));
             EXPECT_STREQ(native, original.CStr());
-            XArray<char> text;
+            XArray<wchar_t> text;
             ASSERT_TRUE(VxDecodeAnsiFontText(native, text));
-            EXPECT_STREQ(utf8, text.Begin());
+            ASSERT_EQ(2, text.Size());
+            EXPECT_EQ(values[v], text[0]);
+            EXPECT_EQ(0, text[1]);
         }
     }
 }
@@ -142,15 +146,20 @@ TEST(FontSearchTest, InvalidInputAndOversizedNamesDoNotChangeTheResult) {
     FontTestLocale locale("C");
     XString name = "unchanged";
     const char *invalid[] = {NULL, "\xC0\xAF", "\xED\xA0\x80", "\xF4\x90\x80\x80", "\xE2\x82"};
-    for (int i = 0; i < 5; ++i) {
-        EXPECT_FALSE(VxEncodeAnsiFontName(invalid[i], name));
-        EXPECT_STREQ("unchanged", name.CStr());
+    const char *locales[] = {"C", ""};
+    for (int l = 0; l < 2; ++l) {
+        FontTestLocale native(locales[l]);
+        for (int i = 0; i < 5; ++i) {
+            EXPECT_FALSE(VxEncodeAnsiFontName(invalid[i], name));
+            EXPECT_STREQ("unchanged", name.CStr());
+        }
     }
-    XArray<char> source, text;
+    XArray<char> source;
+    XArray<wchar_t> text;
     source.Resize(70001); memset(source.Begin(), 'A', 70000); source[70000] = 0;
     ASSERT_TRUE(VxDecodeAnsiFontText(source.Begin(), text));
     EXPECT_EQ(source.Size(), text.Size());
-    EXPECT_EQ(0, memcmp(source.Begin(), text.Begin(), source.Size()));
+    for (int i = 0; i < source.Size(); ++i) EXPECT_EQ(source[i], text[i]);
     EXPECT_FALSE(VxDecodeAnsiFontName(source.Begin(), name));
     EXPECT_FALSE(VxEncodeAnsiFontName(source.Begin(), name));
     EXPECT_STREQ("unchanged", name.CStr());
