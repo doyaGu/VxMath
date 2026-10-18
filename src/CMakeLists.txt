@@ -144,6 +144,7 @@ set(VXMATH_PLATFORM_SOURCES
         VxSharedLibrarySDL3.cpp
         VxMemoryMappedFileSDL3.cpp
         VxWindowFunctionsSDL3.cpp
+        VxFontFunctions.cpp
         VxTimeProfilerSDL3.cpp
         VxMutexSDL3.cpp
         VxThreadSDL3.cpp
@@ -155,7 +156,22 @@ set(VXMATH_SOURCES
         ${VXMATH_PLATFORM_SOURCES}
 )
 
+# Share the private font search rules with the Interface texture-font backend.
+function(vx_add_font_search TARGET_NAME)
+    if (NOT TARGET SDL3::SDL3)
+        find_package(SDL3 CONFIG REQUIRED)
+    endif ()
+    target_sources(${TARGET_NAME} PRIVATE
+            "${VXMATH_SOURCE_DIR}/fonts/VxFontSearch.cpp"
+            "${VXMATH_SOURCE_DIR}/fonts/VxFontSearch.h")
+    target_include_directories(${TARGET_NAME} PRIVATE "${VXMATH_SOURCE_DIR}/fonts")
+    target_link_libraries(${TARGET_NAME} PRIVATE stb SDL3::SDL3)
+endfunction()
+
 function(vx_configure_target TARGET_NAME)
+    if (NOT WIN32)
+        vx_add_font_search(${TARGET_NAME})
+    endif ()
     target_compile_features(${TARGET_NAME} PRIVATE cxx_std_17)
 
     target_sources(${TARGET_NAME} PRIVATE

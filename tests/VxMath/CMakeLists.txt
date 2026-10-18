@@ -179,6 +179,22 @@ set_target_properties(BitmapOwnershipTest PROPERTIES
 vx_copy_runtime_dependencies(BitmapOwnershipTest)
 add_test(NAME BitmapOwnershipTest COMMAND BitmapOwnershipTest)
 
+vx_add_test(FontTest SOURCES FontTest.cpp)
+vx_copy_runtime_dependencies(FontTest)
+if (NOT WIN32)
+    vx_prepare_font_assets(_font_directory _font_files)
+    target_compile_definitions(FontTest PRIVATE TEST_REGULAR_FONT_FILE="${_font_directory}/NotoSans-Regular.ttf")
+    vx_add_test(FontSearchTest SOURCES FontSearchTest.cpp)
+    vx_add_font_search(FontSearchTest)
+    foreach (_test FontTest FontSearchTest)
+        add_custom_command(TARGET ${_test} POST_BUILD
+                COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:${_test}>/data/fonts"
+                COMMAND ${CMAKE_COMMAND} -E copy_if_different ${_font_files} "$<TARGET_FILE_DIR:${_test}>/data/fonts"
+                COMMAND_EXPAND_LISTS VERBATIM)
+        # The font catalog must resolve relative to the executable, not CWD.
+        set_tests_properties(${_test} PROPERTIES WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}")
+    endforeach ()
+endif ()
 vx_prepare_font_assets(_font_directory _font_files)
 add_test(NAME FontAssetsTest COMMAND ${CMAKE_COMMAND}
         "-DFONT_SOURCE=${_font_directory}"
