@@ -22,8 +22,6 @@
 
 #if defined(VX_SIMD_SSE)
 
-namespace {
-
 using namespace SIMDTest;
 
 class SIMDVectorTest : public SIMDTest::SIMDTestBase {};
@@ -769,7 +767,5 @@ TEST_F(SIMDVectorTest, StressTest_ManyOperations) {
     float len = v.Magnitude();
     EXPECT_NEAR(len, 1.0f, SIMD_ACCUMULATED_TOL);
 }
-
-} // namespace
 
 #endif // VX_SIMD_SSE

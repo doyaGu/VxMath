@@ -16,8 +16,6 @@
 #include "VxSIMD.h"
 #include "SIMDTestCommon.h"
 
-namespace {
-
 //=============================================================================
 // Feature Detection Tests
 //=============================================================================
@@ -280,5 +278,3 @@ TEST(SIMDInlineFunctions, Vector4OperationsWork) {
 }
 
 #endif // VX_SIMD_SSE
-
-} // namespace

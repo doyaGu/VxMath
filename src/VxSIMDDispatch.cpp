@@ -7,28 +7,29 @@
 #include "VxMutex.h"
 #include "VxSIMD.h"
 
-namespace {
-
-struct SIMDDispatchState {
+#if defined(__GNUC__)
+#pragma GCC visibility push(hidden)
+#endif
+struct VxSIMDDispatchState {
     VxMutex lock;
     volatile int requestedMode;
     volatile int effectiveMode;
     volatile int generation;
     volatile int initialized;
 
-    SIMDDispatchState()
+    VxSIMDDispatchState()
         : requestedMode(VX_SIMD_MODE_AUTO),
           effectiveMode(VX_SIMD_MODE_NONE),
           generation(0),
           initialized(0) {}
 };
 
-SIMDDispatchState &GetSIMDDispatchState() {
-    static SIMDDispatchState state;
+static VxSIMDDispatchState &GetSIMDDispatchState() {
+    static VxSIMDDispatchState state;
     return state;
 }
 
-bool IsValidSIMDMode(int mode) {
+static bool IsValidSIMDMode(int mode) {
     return mode == VX_SIMD_MODE_AUTO ||
            mode == VX_SIMD_MODE_NONE ||
            mode == VX_SIMD_MODE_SSE2 ||
@@ -38,7 +39,7 @@ bool IsValidSIMDMode(int mode) {
            mode == VX_SIMD_MODE_AVX2;
 }
 
-bool IsSIMDModeAvailable(int mode, const VxSIMDFeatures &features) {
+static bool IsSIMDModeAvailable(int mode, const VxSIMDFeatures &features) {
     switch (mode) {
         case VX_SIMD_MODE_NONE:
             return true;
@@ -115,7 +116,7 @@ bool IsSIMDModeAvailable(int mode, const VxSIMDFeatures &features) {
     }
 }
 
-int ResolveSIMDModeFromChain(const int *chain, int count, const VxSIMDFeatures &features) {
+static int ResolveSIMDModeFromChain(const int *chain, int count, const VxSIMDFeatures &features) {
     for (int i = 0; i < count; ++i) {
         if (IsSIMDModeAvailable(chain[i], features)) {
             return chain[i];
@@ -124,7 +125,7 @@ int ResolveSIMDModeFromChain(const int *chain, int count, const VxSIMDFeatures &
     return VX_SIMD_MODE_NONE;
 }
 
-int ResolveSIMDMode(int requestedMode, const VxSIMDFeatures &features) {
+static int ResolveSIMDMode(int requestedMode, const VxSIMDFeatures &features) {
     if (!IsValidSIMDMode(requestedMode)) {
         requestedMode = VX_SIMD_MODE_AUTO;
     }
@@ -195,7 +196,7 @@ int ResolveSIMDMode(int requestedMode, const VxSIMDFeatures &features) {
     return VX_SIMD_MODE_NONE;
 }
 
-void RebuildAllLocked(SIMDDispatchState &state) {
+static void RebuildAllLocked(VxSIMDDispatchState &state) {
     const int effectiveMode = VxAtomicLoadInt(&state.effectiveMode);
     VxMathDispatchRebuild(effectiveMode);
     VxDistanceDispatchRebuild(effectiveMode);
@@ -205,7 +206,7 @@ void RebuildAllLocked(SIMDDispatchState &state) {
     VxAtomicIncrementInt(&state.generation);
 }
 
-void EnsureInitializedLocked(SIMDDispatchState &state) {
+static void EnsureInitializedLocked(VxSIMDDispatchState &state) {
     if (VxAtomicLoadInt(&state.initialized) != 0) {
         return;
     }
@@ -216,8 +217,8 @@ void EnsureInitializedLocked(SIMDDispatchState &state) {
     VxAtomicStoreInt(&state.initialized, 1);
 }
 
-void EnsureInitialized() {
-    SIMDDispatchState &state = GetSIMDDispatchState();
+static void EnsureInitialized() {
+    VxSIMDDispatchState &state = GetSIMDDispatchState();
     if (VxAtomicLoadInt(&state.initialized) != 0) {
         return;
     }
@@ -225,17 +226,19 @@ void EnsureInitialized() {
     EnsureInitializedLocked(state);
 }
 
-} // namespace
+#if defined(__GNUC__)
+#pragma GCC visibility pop
+#endif
 
 void VxSIMDDispatchInitialize() {
-    SIMDDispatchState &state = GetSIMDDispatchState();
+    VxSIMDDispatchState &state = GetSIMDDispatchState();
     VxMutexLock lock(state.lock);
     EnsureInitializedLocked(state);
     RebuildAllLocked(state);
 }
 
 void VxSIMDDispatchRebuildAll() {
-    SIMDDispatchState &state = GetSIMDDispatchState();
+    VxSIMDDispatchState &state = GetSIMDDispatchState();
     VxMutexLock lock(state.lock);
     EnsureInitializedLocked(state);
     RebuildAllLocked(state);
@@ -256,7 +259,7 @@ XBOOL VxSetSIMDOverride(int mode) {
         return FALSE;
     }
 
-    SIMDDispatchState &state = GetSIMDDispatchState();
+    VxSIMDDispatchState &state = GetSIMDDispatchState();
     VxMutexLock lock(state.lock);
     EnsureInitializedLocked(state);
 

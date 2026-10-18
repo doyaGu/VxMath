@@ -9,21 +9,19 @@
 
 #include "VxMath.h"
 
-namespace {
-
 #if defined(VX_SIMD_USE_SIMDE)
-constexpr float kDispatchTightTolerance = 4.0e-6f;
-constexpr float kDispatchRectTolerance = 1.5e-4f;
-constexpr float kDispatchScreenTolerance = 2.0e-5f;
+static constexpr float kDispatchTightTolerance = 4.0e-6f;
+static constexpr float kDispatchRectTolerance = 1.5e-4f;
+static constexpr float kDispatchScreenTolerance = 2.0e-5f;
 #else
-constexpr float kDispatchTightTolerance = 1.0e-6f;
-constexpr float kDispatchRectTolerance = 1.0e-5f;
-constexpr float kDispatchScreenTolerance = 1.0e-6f;
+static constexpr float kDispatchTightTolerance = 1.0e-6f;
+static constexpr float kDispatchRectTolerance = 1.0e-5f;
+static constexpr float kDispatchScreenTolerance = 1.0e-6f;
 #endif
 
-constexpr float kDispatchPlaneNearestTolerance = 2.0e-5f;
+static constexpr float kDispatchPlaneNearestTolerance = 2.0e-5f;
 
-VxVector MultiplyVec3Scalar(const VxMatrix &m, const VxVector &v) {
+static VxVector MultiplyVec3Scalar(const VxMatrix &m, const VxVector &v) {
     return VxVector(
         v.x * m[0][0] + v.y * m[1][0] + v.z * m[2][0] + m[3][0],
         v.x * m[0][1] + v.y * m[1][1] + v.z * m[2][1] + m[3][1],
@@ -31,7 +29,7 @@ VxVector MultiplyVec3Scalar(const VxMatrix &m, const VxVector &v) {
     );
 }
 
-VxVector RotateVec3Scalar(const VxMatrix &m, const VxVector &v) {
+static VxVector RotateVec3Scalar(const VxMatrix &m, const VxVector &v) {
     return VxVector(
         v.x * m[0][0] + v.y * m[1][0] + v.z * m[2][0],
         v.x * m[0][1] + v.y * m[1][1] + v.z * m[2][1],
@@ -39,7 +37,7 @@ VxVector RotateVec3Scalar(const VxMatrix &m, const VxVector &v) {
     );
 }
 
-VxQuaternion MultiplyQuaternionScalar(const VxQuaternion &left, const VxQuaternion &right) {
+static VxQuaternion MultiplyQuaternionScalar(const VxQuaternion &left, const VxQuaternion &right) {
     return VxQuaternion(
         left.w * right.x + left.x * right.w + left.y * right.z - left.z * right.y,
         left.w * right.y - left.x * right.z + left.y * right.w + left.z * right.x,
@@ -48,7 +46,7 @@ VxQuaternion MultiplyQuaternionScalar(const VxQuaternion &left, const VxQuaterni
     );
 }
 
-VxQuaternion NormalizeQuaternionScalar(VxQuaternion q) {
+static VxQuaternion NormalizeQuaternionScalar(VxQuaternion q) {
     const float norm = std::sqrt(q.x * q.x + q.y * q.y + q.z * q.z + q.w * q.w);
     if (norm == 0.0f) {
         return VxQuaternion(0.0f, 0.0f, 0.0f, 1.0f);
@@ -58,7 +56,7 @@ VxQuaternion NormalizeQuaternionScalar(VxQuaternion q) {
     return VxQuaternion(q.x * invNorm, q.y * invNorm, q.z * invNorm, q.w * invNorm);
 }
 
-VxQuaternion SlerpQuaternionScalar(float t, const VxQuaternion &a, const VxQuaternion &b) {
+static VxQuaternion SlerpQuaternionScalar(float t, const VxQuaternion &a, const VxQuaternion &b) {
     float cosOmega = a.x * b.x + a.y * b.y + a.z * b.z + a.w * b.w;
     float k0;
     float k1;
@@ -95,16 +93,16 @@ VxQuaternion SlerpQuaternionScalar(float t, const VxQuaternion &a, const VxQuate
     );
 }
 
-float RandomRange(std::mt19937 &rng, float lo, float hi) {
+static float RandomRange(std::mt19937 &rng, float lo, float hi) {
     std::uniform_real_distribution<float> dist(lo, hi);
     return dist(rng);
 }
 
-VxVector RandomVector3(std::mt19937 &rng, float lo, float hi) {
+static VxVector RandomVector3(std::mt19937 &rng, float lo, float hi) {
     return VxVector(RandomRange(rng, lo, hi), RandomRange(rng, lo, hi), RandomRange(rng, lo, hi));
 }
 
-VxMatrix MakeAffineMatrix(float tx, float ty, float tz, float rx, float ry, float rz, float sx, float sy, float sz) {
+static VxMatrix MakeAffineMatrix(float tx, float ty, float tz, float rx, float ry, float rz, float sx, float sy, float sz) {
     VxMatrix m;
     Vx3DMatrixFromEulerAngles(m, rx, ry, rz);
     m[0][0] *= sx; m[0][1] *= sx; m[0][2] *= sx;
@@ -117,7 +115,7 @@ VxMatrix MakeAffineMatrix(float tx, float ty, float tz, float rx, float ry, floa
     return m;
 }
 
-float ScalarRaySquareDistance(const VxRay &ray, const VxVector &point) {
+static float ScalarRaySquareDistance(const VxRay &ray, const VxVector &point) {
     const VxVector v = point - ray.GetOrigin();
     const float aa = v.SquareMagnitude();
     const float dd = ray.GetDirection().SquareMagnitude();
@@ -129,20 +127,20 @@ float ScalarRaySquareDistance(const VxRay &ray, const VxVector &point) {
     return (sq > 0.0f) ? sq : 0.0f;
 }
 
-float ScalarRayDistance(const VxRay &ray, const VxVector &point) {
+static float ScalarRayDistance(const VxRay &ray, const VxVector &point) {
     return std::sqrt(ScalarRaySquareDistance(ray, point));
 }
 
-void ScalarRayInterpolate(VxVector &point, const VxRay &ray, float t) {
+static void ScalarRayInterpolate(VxVector &point, const VxRay &ray, float t) {
     point = ray.GetOrigin() + ray.GetDirection() * t;
 }
 
-void ScalarRayTransform(VxRay &dest, const VxRay &ray, const VxMatrix &mat) {
+static void ScalarRayTransform(VxRay &dest, const VxRay &ray, const VxMatrix &mat) {
     Vx3DMultiplyMatrixVector(&dest.m_Origin, mat, &ray.m_Origin);
     Vx3DRotateVector(&dest.m_Direction, mat, &ray.m_Direction);
 }
 
-void ScalarPlaneCreateFromPoint(VxPlane &plane, const VxVector &normal, const VxVector &point) {
+static void ScalarPlaneCreateFromPoint(VxPlane &plane, const VxVector &normal, const VxVector &point) {
     VxVector n = normal;
     const float magSq = n.SquareMagnitude();
     if (magSq > EPSILON) {
@@ -152,7 +150,7 @@ void ScalarPlaneCreateFromPoint(VxPlane &plane, const VxVector &normal, const Vx
     plane.m_D = -DotProduct(n, point);
 }
 
-void ScalarPlaneCreateFromTriangle(VxPlane &plane, const VxVector &a, const VxVector &b, const VxVector &c) {
+static void ScalarPlaneCreateFromTriangle(VxPlane &plane, const VxVector &a, const VxVector &b, const VxVector &c) {
     VxVector edge1 = b - a;
     VxVector edge2 = c - a;
     VxVector n = CrossProduct(edge1, edge2);
@@ -165,19 +163,19 @@ void ScalarPlaneCreateFromTriangle(VxPlane &plane, const VxVector &a, const VxVe
     ScalarPlaneCreateFromPoint(plane, n, a);
 }
 
-float ScalarPlaneClassifyPoint(const VxPlane &plane, const VxVector &point) {
+static float ScalarPlaneClassifyPoint(const VxPlane &plane, const VxVector &point) {
     return DotProduct(plane.m_Normal, point) + plane.m_D;
 }
 
-float ScalarPlaneDistance(const VxPlane &plane, const VxVector &point) {
+static float ScalarPlaneDistance(const VxPlane &plane, const VxVector &point) {
     return std::fabs(ScalarPlaneClassifyPoint(plane, point));
 }
 
-VxVector ScalarPlaneNearestPoint(const VxPlane &plane, const VxVector &point) {
+static VxVector ScalarPlaneNearestPoint(const VxPlane &plane, const VxVector &point) {
     return point - plane.m_Normal * ScalarPlaneClassifyPoint(plane, point);
 }
 
-float ScalarPlaneXClassify(const VxPlane &plane, const VxVector boxAxis[4]) {
+static float ScalarPlaneXClassify(const VxPlane &plane, const VxVector boxAxis[4]) {
     const float radius =
         std::fabs(DotProduct(plane.m_Normal, boxAxis[0])) +
         std::fabs(DotProduct(plane.m_Normal, boxAxis[1])) +
@@ -192,7 +190,7 @@ float ScalarPlaneXClassify(const VxPlane &plane, const VxVector boxAxis[4]) {
     return 0.0f;
 }
 
-void ScalarFrustumComputeVertices(const VxFrustum &frustum, VxVector *vertices) {
+static void ScalarFrustumComputeVertices(const VxFrustum &frustum, VxVector *vertices) {
     const VxVector nearDirVec = frustum.GetDir() * frustum.GetDMin();
     const VxVector rightVec = frustum.GetRight() * frustum.GetRBound();
     const VxVector upVec = frustum.GetUp() * frustum.GetUBound();
@@ -212,7 +210,7 @@ void ScalarFrustumComputeVertices(const VxFrustum &frustum, VxVector *vertices) 
     }
 }
 
-void ScalarFrustumTransform(VxFrustum &frustum, const VxMatrix &invWorldMat) {
+static void ScalarFrustumTransform(VxFrustum &frustum, const VxMatrix &invWorldMat) {
     VxVector rightScaled = frustum.GetRight() * frustum.GetRBound();
     VxVector upScaled = frustum.GetUp() * frustum.GetUBound();
     VxVector dirScaled = frustum.GetDir() * frustum.GetDMin();
@@ -260,7 +258,7 @@ void ScalarFrustumTransform(VxFrustum &frustum, const VxMatrix &invWorldMat) {
     frustum.Update();
 }
 
-XBOOL ScalarTransformBox2DReference(const VxMatrix &worldProjection, const VxBbox &box, const VxRect *screenSize, VxRect *extents, VXCLIP_FLAGS &orClipFlags, VXCLIP_FLAGS &andClipFlags) {
+static XBOOL ScalarTransformBox2DReference(const VxMatrix &worldProjection, const VxBbox &box, const VxRect *screenSize, VxRect *extents, VXCLIP_FLAGS &orClipFlags, VXCLIP_FLAGS &andClipFlags) {
     if (!box.IsValid()) {
         orClipFlags = VXCLIP_ALL;
         andClipFlags = VXCLIP_ALL;
@@ -361,7 +359,7 @@ XBOOL ScalarTransformBox2DReference(const VxMatrix &worldProjection, const VxBbo
     return !(allVerticesFlagsAnded & VXCLIP_ALL);
 }
 
-XBOOL ProjectedTransformBox2DReference(const VxMatrix &worldProjection, const VxBbox &box, const VxRect *screenSize, VxRect *extents, VXCLIP_FLAGS &orClipFlags, VXCLIP_FLAGS &andClipFlags) {
+static XBOOL ProjectedTransformBox2DReference(const VxMatrix &worldProjection, const VxBbox &box, const VxRect *screenSize, VxRect *extents, VXCLIP_FLAGS &orClipFlags, VXCLIP_FLAGS &andClipFlags) {
     VxVector4 transformedVertices[8];
     Vx3DMultiplyMatrixVector4(&transformedVertices[0], worldProjection, &box.Min);
 
@@ -458,7 +456,7 @@ XBOOL ProjectedTransformBox2DReference(const VxMatrix &worldProjection, const Vx
     return !(allVerticesFlagsAnded & VXCLIP_ALL);
 }
 
-void ScalarRectTransform(VxRect &rect, const VxRect &destScreen, const VxRect &srcScreen) {
+static void ScalarRectTransform(VxRect &rect, const VxRect &destScreen, const VxRect &srcScreen) {
     const float srcInvW = 1.0f / (srcScreen.right - srcScreen.left);
     const float srcInvH = 1.0f / (srcScreen.bottom - srcScreen.top);
     const VxRect r((rect.left - srcScreen.left) * srcInvW,
@@ -473,7 +471,7 @@ void ScalarRectTransform(VxRect &rect, const VxRect &destScreen, const VxRect &s
     rect.bottom = r.bottom * dstH + destScreen.bottom;
 }
 
-void ScalarRectTransformBySize(VxRect &rect, const Vx2DVector &destScreenSize, const Vx2DVector &srcScreenSize) {
+static void ScalarRectTransformBySize(VxRect &rect, const Vx2DVector &destScreenSize, const Vx2DVector &srcScreenSize) {
     const float invW = 1.0f / srcScreenSize.x;
     const float invH = 1.0f / srcScreenSize.y;
     rect.left *= invW * destScreenSize.x;
@@ -482,7 +480,7 @@ void ScalarRectTransformBySize(VxRect &rect, const Vx2DVector &destScreenSize, c
     rect.bottom *= invH * destScreenSize.y;
 }
 
-void ScalarRectTransformToHomogeneous(VxRect &rect, const VxRect &screen) {
+static void ScalarRectTransformToHomogeneous(VxRect &rect, const VxRect &screen) {
     const float invW = 1.0f / (screen.right - screen.left);
     const float invH = 1.0f / (screen.bottom - screen.top);
     const float width = rect.right - rect.left;
@@ -493,7 +491,7 @@ void ScalarRectTransformToHomogeneous(VxRect &rect, const VxRect &screen) {
     rect.bottom = rect.top + height * invH;
 }
 
-void ScalarRectTransformFromHomogeneous(VxRect &rect, const VxRect &screen) {
+static void ScalarRectTransformFromHomogeneous(VxRect &rect, const VxRect &screen) {
     const float sW = screen.right - screen.left;
     const float sH = screen.bottom - screen.top;
     const float width = rect.right - rect.left;
@@ -504,7 +502,7 @@ void ScalarRectTransformFromHomogeneous(VxRect &rect, const VxRect &screen) {
     rect.bottom = rect.top + height * sH;
 }
 
-void ScalarBboxTransformTo(const VxBbox &self, VxVector *points, const VxMatrix &mat) {
+static void ScalarBboxTransformTo(const VxBbox &self, VxVector *points, const VxMatrix &mat) {
     Vx3DMultiplyMatrixVector(&points[0], mat, &self.Min);
     const float sizeX = self.Max.x - self.Min.x;
     const float sizeY = self.Max.y - self.Min.y;
@@ -521,7 +519,7 @@ void ScalarBboxTransformTo(const VxBbox &self, VxVector *points, const VxMatrix 
     points[7] = points[6] + zVec;
 }
 
-void ScalarBboxTransformFrom(VxBbox &dest, const VxBbox &src, const VxMatrix &mat) {
+static void ScalarBboxTransformFrom(VxBbox &dest, const VxBbox &src, const VxMatrix &mat) {
     VxVector center((src.Min.x + src.Max.x) * 0.5f,
                     (src.Min.y + src.Max.y) * 0.5f,
                     (src.Min.z + src.Max.z) * 0.5f);
@@ -545,7 +543,7 @@ void ScalarBboxTransformFrom(VxBbox &dest, const VxBbox &src, const VxMatrix &ma
     dest.Min.z = dest.Min.z - halfZ;
 }
 
-void ScalarProjectBoxZExtents(const VxMatrix &worldProjection, const VxBbox &box, float &zhMin, float &zhMax) {
+static void ScalarProjectBoxZExtents(const VxMatrix &worldProjection, const VxBbox &box, float &zhMin, float &zhMax) {
     zhMin = 1.0e10f;
     zhMax = -1.0e10f;
 
@@ -2008,5 +2006,3 @@ TEST(SIMDDispatchTest, ProjectBoxZExtentsSIMDUsesFourCornersForAnyFlatAxis) {
     EXPECT_NEAR(simdMax, scalarMax, 1.0e-5f);
 }
 #endif
-
-} // namespace
