@@ -11,16 +11,15 @@
 #include <Windows.h>
 #endif
 
-namespace {
 #ifdef VX_LIB
-bool FailArrayAllocation = false;
+static bool FailArrayAllocation = false;
 #endif
 
-const XDWORD Colors[] = {
+static const XDWORD Colors[] = {
     0xff102030, 0xffabcdef, 0xff334455, 0xffa0b0c0, 0xff778899, 0xfffedcba
 };
 
-VxImageDescEx Image(void *pixels) {
+static VxImageDescEx Image(void *pixels) {
     VxImageDescEx desc;
     desc.Width = 2; desc.Height = 3;
     desc.BitsPerPixel = 32; desc.BytesPerLine = 8;
@@ -30,17 +29,17 @@ VxImageDescEx Image(void *pixels) {
     return desc;
 }
 
-class Bitmap {
+class BitmapOwnershipTestBitmap {
 public:
     BITMAP_HANDLE handle;
-    Bitmap() : handle(VxCreateBitmap(Image(const_cast<XDWORD *>(Colors)))) {}
-    ~Bitmap() { VxDeleteBitmap(handle); }
+    BitmapOwnershipTestBitmap() : handle(VxCreateBitmap(Image(const_cast<XDWORD *>(Colors)))) {}
+    ~BitmapOwnershipTestBitmap() { VxDeleteBitmap(handle); }
 private:
-    Bitmap(const Bitmap &);
-    Bitmap &operator=(const Bitmap &);
+    BitmapOwnershipTestBitmap(const BitmapOwnershipTestBitmap &);
+    BitmapOwnershipTestBitmap &operator=(const BitmapOwnershipTestBitmap &);
 };
 
-void ExpectColors(const VxImageDescEx &desc) {
+static void ExpectColors(const VxImageDescEx &desc) {
     ASSERT_NE(nullptr, desc.Image);
     ASSERT_EQ(2, desc.Width); ASSERT_EQ(3, desc.Height);
     ASSERT_EQ(32, desc.BitsPerPixel); ASSERT_EQ(8, desc.BytesPerLine);
@@ -50,7 +49,7 @@ void ExpectColors(const VxImageDescEx &desc) {
 }
 
 #ifdef VX_LIB
-int BitmapResources() {
+static int BitmapResources() {
 #ifdef _WIN32
     return static_cast<int>(GetGuiResources(GetCurrentProcess(), GR_GDIOBJECTS));
 #else
@@ -58,7 +57,6 @@ int BitmapResources() {
 #endif
 }
 #endif
-} // namespace
 
 #ifdef VX_LIB
 void *operator new[](std::size_t bytes) {
@@ -75,7 +73,7 @@ void operator delete[](void *address, std::size_t) noexcept { std::free(address)
 #endif
 
 TEST(BitmapOwnershipTest, ConversionsOwnIndependentTopDownPixelsAfterBitmapDeletion) {
-    Bitmap bitmap;
+    BitmapOwnershipTestBitmap bitmap;
     ASSERT_NE(nullptr, bitmap.handle);
     VxImageDescEx first, second;
     XAP<XBYTE> firstPixels(VxConvertBitmap(bitmap.handle, first));
@@ -89,7 +87,7 @@ TEST(BitmapOwnershipTest, ConversionsOwnIndependentTopDownPixelsAfterBitmapDelet
 }
 
 TEST(BitmapOwnershipTest, CopyReadsBitmapWithoutChangingItAndConvertsColorMasks) {
-    Bitmap bitmap;
+    BitmapOwnershipTestBitmap bitmap;
     ASSERT_NE(nullptr, bitmap.handle);
     XDWORD output[6] = {};
     VxImageDescEx target = Image(output);
@@ -108,7 +106,7 @@ TEST(BitmapOwnershipTest, CopyReadsBitmapWithoutChangingItAndConvertsColorMasks)
 
 #ifdef VX_LIB
 TEST(BitmapOwnershipTest, PixelAllocationFailureReleasesTemporaryBitmapAndRetainsSource) {
-    Bitmap bitmap;
+    BitmapOwnershipTestBitmap bitmap;
     ASSERT_NE(nullptr, bitmap.handle);
 #ifdef _WIN32
     // VxCreateBitmap returns 24-bit GDI storage. An external 32-bit bitmap
