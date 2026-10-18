@@ -1,7 +1,7 @@
 # =============================================================================
 # VxMath - Virtools Math Library
 # =============================================================================
-cmake_minimum_required(VERSION 3.16)
+cmake_minimum_required(VERSION 3.19)
 
 project(VxMath
         VERSION 0.1.0
@@ -247,6 +247,11 @@ set(VX_SOURCE_DIR "${VXMATH_SOURCE_DIR}" CACHE INTERNAL "")
 # =============================================================================
 add_subdirectory(deps)
 add_subdirectory(src)
+include(cmake/VxFontAssets.cmake)
+if (VXMATH_INSTALL)
+    vx_prepare_font_assets(_vx_font_directory _vx_font_files)
+    install(FILES ${_vx_font_files} DESTINATION Bin/data/fonts COMPONENT Runtime)
+endif ()
 
 set(VXMATH_SIMDE_ENABLED ${VXMATH_SIMDE_ENABLED} CACHE INTERNAL "Whether VxMath configured bundled SIMDe")
 set(VXMATH_SIMDE_INCLUDE_DIR "${VXMATH_SIMDE_INCLUDE_DIR}" CACHE INTERNAL "Bundled SIMDe include directory exported by VxMath")

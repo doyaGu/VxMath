@@ -179,6 +179,13 @@ set_target_properties(BitmapOwnershipTest PROPERTIES
 vx_copy_runtime_dependencies(BitmapOwnershipTest)
 add_test(NAME BitmapOwnershipTest COMMAND BitmapOwnershipTest)
 
+vx_prepare_font_assets(_font_directory _font_files)
+add_test(NAME FontAssetsTest COMMAND ${CMAKE_COMMAND}
+        "-DFONT_SOURCE=${_font_directory}"
+        "-DFONT_MODULE=${PROJECT_SOURCE_DIR}/cmake/VxFontAssets.cmake"
+        "-DTEST_ROOT=${CMAKE_CURRENT_BINARY_DIR}/font-assets-test"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/FontAssetsTest.cmake")
+
 # Exercise the same original-DLL samples with header SIMD paths disabled.
 vx_add_test(QuaternionReferenceScalarTest SOURCES QuaternionReferenceTest.cpp)
 target_compile_definitions(QuaternionReferenceScalarTest PRIVATE VX_SIMD_NONE=1)
