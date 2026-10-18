@@ -1321,6 +1321,19 @@ INSTANCE_HANDLE VxGetModuleHandle(const char *filename) {
 #endif
 }
 
+#ifdef _WIN32
+static bool IsFileTreeSeparator(char value) { return value == '\\' || value == '/'; }
+static int SkipFileTreeUncRoot(const XString &filepath, int componentStart) {
+    int pos = componentStart;
+    for (int component = 0; component < 2; ++component) {
+        while (pos < filepath.Length() && !IsFileTreeSeparator(filepath[pos])) ++pos;
+        if (pos >= filepath.Length()) return static_cast<int>(filepath.Length());
+        ++pos;
+    }
+    return pos;
+}
+#endif
+
 XBOOL VxCreateFileTree(const char *file) {
     if (!file || file[0] == '\0')
         return FALSE;
@@ -1332,34 +1345,23 @@ XBOOL VxCreateFileTree(const char *file) {
 #ifdef _WIN32
     char separator = '\\';
     int startPos = 0;
-    const auto isSeparator = [](char value) { return value == '\\' || value == '/'; };
-    const auto skipUncRoot = [&filepath, &isSeparator](int componentStart) {
-        int pos = componentStart;
-        for (int component = 0; component < 2; ++component) {
-            while (pos < filepath.Length() && !isSeparator(filepath[pos]))
-                ++pos;
-            if (pos >= filepath.Length())
-                return static_cast<int>(filepath.Length());
-            ++pos;
-        }
-        return pos;
-    };
+
 
     if (filepath.Length() >= 8 && strncmp(filepath.CStr(), "\\\\?\\", 4) == 0 &&
         (filepath[4] == 'U' || filepath[4] == 'u') &&
         (filepath[5] == 'N' || filepath[5] == 'n') &&
-        (filepath[6] == 'C' || filepath[6] == 'c') && isSeparator(filepath[7])) {
-        startPos = skipUncRoot(8); // Skip \\?\UNC\server\share\.
+        (filepath[6] == 'C' || filepath[6] == 'c') && IsFileTreeSeparator(filepath[7])) {
+        startPos = SkipFileTreeUncRoot(filepath, 8); // Skip \\?\UNC\server\share\.
     } else if (filepath.Length() >= 7 && strncmp(filepath.CStr(), "\\\\?\\", 4) == 0 &&
         isalpha((unsigned char)filepath[4]) && filepath[5] == ':' &&
-        isSeparator(filepath[6])) {
+        IsFileTreeSeparator(filepath[6])) {
         startPos = 7; // Skip the extended-length drive prefix (\\?\C:\).
     } else if (filepath.Length() >= 3 && isalpha((unsigned char)filepath[0]) &&
-               filepath[1] == ':' && isSeparator(filepath[2])) {
+               filepath[1] == ':' && IsFileTreeSeparator(filepath[2])) {
         startPos = 3; // Skip a normal drive root (C:\).
-    } else if (filepath.Length() >= 2 && isSeparator(filepath[0]) && isSeparator(filepath[1])) {
-        startPos = skipUncRoot(2); // Skip \\server\share\.
-    } else if (isSeparator(filepath[0])) {
+    } else if (filepath.Length() >= 2 && IsFileTreeSeparator(filepath[0]) && IsFileTreeSeparator(filepath[1])) {
+        startPos = SkipFileTreeUncRoot(filepath, 2); // Skip \\server\share\.
+    } else if (IsFileTreeSeparator(filepath[0])) {
         startPos = 1; // Root-relative path (\directory\file).
     }
 #else
