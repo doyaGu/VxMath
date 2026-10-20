@@ -424,7 +424,10 @@ void CopyAlpha_32_SSE(const VxBlitInfo *info) {
     const int alphaShift = info->alphaShiftDst;
     const XDWORD alphaMask = info->dstAlphaMask;
     const XDWORD alphaMaskInv = info->alphaMaskInv;
+    const int alphaBits = (int)GetBitCountLocal(alphaMask);
+    const int downShift = alphaBits < 8 ? 8 - alphaBits : 0;
 
+    const __m128i vAlphaMask = _mm_set1_epi32(alphaMask);
     const __m128i vAlphaMaskInv = _mm_set1_epi32(alphaMaskInv);
     const __m128i zero = _mm_setzero_si128();
     int x = 0;
@@ -433,7 +436,9 @@ void CopyAlpha_32_SSE(const VxBlitInfo *info) {
         __m128i alphas = _mm_cvtsi32_si128(*(const int *)(src + x));
         alphas = _mm_unpacklo_epi8(alphas, zero);
         alphas = _mm_unpacklo_epi16(alphas, zero);
+        alphas = _mm_srl_epi32(alphas, _mm_cvtsi32_si128(downShift));
         alphas = _mm_sll_epi32(alphas, _mm_cvtsi32_si128(alphaShift));
+        alphas = _mm_and_si128(alphas, vAlphaMask);
 
         __m128i pixels = _mm_loadu_si128((const __m128i *)(dst + x));
         pixels = _mm_and_si128(pixels, vAlphaMaskInv);

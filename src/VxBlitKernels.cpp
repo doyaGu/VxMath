@@ -988,20 +988,22 @@ void CopyAlpha_8(const VxBlitInfo *info) {
     const int alphaShift = info->alphaShiftDst;
     const XBYTE alphaMask = (XBYTE)info->dstAlphaMask;
     const XBYTE alphaMaskInv = (XBYTE)info->alphaMaskInv;
+    const int alphaBits = (int)GetBitCountLocal(alphaMask);
+    const int downShift = alphaBits < 8 ? 8 - alphaBits : 0;
 
     int x = 0;
     for (; x + 4 <= width; x += 4) {
-        const XBYTE a0 = (XBYTE)((src[x + 0] << alphaShift) & alphaMask);
-        const XBYTE a1 = (XBYTE)((src[x + 1] << alphaShift) & alphaMask);
-        const XBYTE a2 = (XBYTE)((src[x + 2] << alphaShift) & alphaMask);
-        const XBYTE a3 = (XBYTE)((src[x + 3] << alphaShift) & alphaMask);
+        const XBYTE a0 = (XBYTE)(((src[x + 0] >> downShift) << alphaShift) & alphaMask);
+        const XBYTE a1 = (XBYTE)(((src[x + 1] >> downShift) << alphaShift) & alphaMask);
+        const XBYTE a2 = (XBYTE)(((src[x + 2] >> downShift) << alphaShift) & alphaMask);
+        const XBYTE a3 = (XBYTE)(((src[x + 3] >> downShift) << alphaShift) & alphaMask);
         dst[x + 0] = (dst[x + 0] & alphaMaskInv) | a0;
         dst[x + 1] = (dst[x + 1] & alphaMaskInv) | a1;
         dst[x + 2] = (dst[x + 2] & alphaMaskInv) | a2;
         dst[x + 3] = (dst[x + 3] & alphaMaskInv) | a3;
     }
     for (; x < width; ++x) {
-        XBYTE alpha = (XBYTE)((src[x] << alphaShift) & alphaMask);
+        XBYTE alpha = (XBYTE)(((src[x] >> downShift) << alphaShift) & alphaMask);
         dst[x] = (dst[x] & alphaMaskInv) | alpha;
     }
 }
@@ -1058,9 +1060,11 @@ void CopyAlpha_32(const VxBlitInfo *info) {
     const int alphaShift = info->alphaShiftDst;
     const XDWORD alphaMask = info->dstAlphaMask;
     const XDWORD alphaMaskInv = info->alphaMaskInv;
+    const int alphaBits = (int)GetBitCountLocal(alphaMask);
+    const int downShift = alphaBits < 8 ? 8 - alphaBits : 0;
 
     for (int x = 0; x < width; ++x) {
-        XDWORD alpha = ((XDWORD)src[x] << alphaShift) & alphaMask;
+        XDWORD alpha = (((XDWORD)src[x] >> downShift) << alphaShift) & alphaMask;
         dst[x] = (dst[x] & alphaMaskInv) | alpha;
     }
 }
@@ -1068,8 +1072,10 @@ void CopyAlpha_32(const VxBlitInfo *info) {
 // Tail variant for SSE/AVX2.
 void CopyAlpha_32_Scalar(const XBYTE *src, XDWORD *dst, int startX, int width,
                           int alphaShift, XDWORD alphaMask, XDWORD alphaMaskInv) {
+    const int alphaBits = (int)GetBitCountLocal(alphaMask);
+    const int downShift = alphaBits < 8 ? 8 - alphaBits : 0;
     for (int x = startX; x < width; ++x) {
-        XDWORD alpha = ((XDWORD)src[x] << alphaShift) & alphaMask;
+        XDWORD alpha = (((XDWORD)src[x] >> downShift) << alphaShift) & alphaMask;
         dst[x] = (dst[x] & alphaMaskInv) | alpha;
     }
 }
