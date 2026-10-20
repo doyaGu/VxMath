@@ -430,9 +430,10 @@ static XDWORD PackNormalToPixel(const float *normal, float height) {
     int nz_color = (int) (normal[2] * 127.0f + 128.0f);
     int alpha = (int) (height * -255.0f);
 
-    // Pack as ARGB: (alpha << 24) | (red << 16) | (green << 8) | blue
-    // Original packs: ((nx - alpha<<8) << 8 + ny) << 8 + nz
-    return (XDWORD) (((((nx_color - (alpha << 8)) << 8) + ny_color) << 8) + nz_color);
+    // The original subtracts the negative height term. Use unsigned packing
+    // so neither that term nor a high alpha byte causes a signed left shift.
+    return ((0u - (XDWORD) alpha) << 24) | ((XDWORD) nx_color << 16)
+        | ((XDWORD) ny_color << 8) | (XDWORD) nz_color;
 }
 
 static XDWORD ReadPixel24(const XBYTE *pixel) {
@@ -521,7 +522,7 @@ static XBOOL ConvertToNormalMapScalar(const VxImageDescEx &image, XDWORD ColorMa
             memcpy(
                 Image + (Height - 1) * image.BytesPerLine,
                 Image + (Height - 2) * image.BytesPerLine,
-                image.BytesPerLine
+                Width * 3
             );
         }
 
@@ -612,7 +613,7 @@ static XBOOL ConvertToNormalMapScalar(const VxImageDescEx &image, XDWORD ColorMa
         memcpy(
             Image + (Height - 1) * image.BytesPerLine,
             Image + (Height - 2) * image.BytesPerLine,
-            image.BytesPerLine
+            Width * 4
         );
     }
 
@@ -741,7 +742,7 @@ static XBOOL ConvertToNormalMapLuminanceCached(
     memcpy(
         image.Image + (image.Height - 1) * image.BytesPerLine,
         image.Image + (image.Height - 2) * image.BytesPerLine,
-        image.BytesPerLine
+        image.Width * bytesPerPixel
     );
     return TRUE;
 }
