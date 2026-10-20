@@ -350,12 +350,7 @@ void VxBlitEngine::ApplySIMDMode(int effectiveMode) {
 //==============================================================================
 
 VX_PIXELFORMAT VxBlitEngine::GetPixelFormat(const VxImageDescEx &desc) {
-    // Check for DXT/bump formats first
-    if (desc.Flags >= _DXT1 && desc.Flags < MAX_PIXEL_FORMATS) {
-        return static_cast<VX_PIXELFORMAT>(desc.Flags);
-    }
-
-    // Search through standard formats
+    // Concrete color layouts take priority over stale special-format flags.
     const XDWORD bpp = desc.BitsPerPixel;
     const XDWORD rmask = desc.RedMask;
     const XDWORD gmask = desc.GreenMask;
@@ -371,6 +366,21 @@ VX_PIXELFORMAT VxBlitEngine::GetPixelFormat(const VxImageDescEx &desc) {
             fmt.AlphaMask == amask) {
             return static_cast<VX_PIXELFORMAT>(i);
         }
+    }
+
+    // Bump layouts ignore alpha, but still require the storage depth and masks.
+    for (int i = _16_V8U8; i < NUM_PIXEL_FORMATS; ++i) {
+        const PixelFormatDef &fmt = s_PixelFormats[i];
+        if (fmt.BitsPerPixel == bpp &&
+            fmt.RedMask == rmask &&
+            fmt.GreenMask == gmask &&
+            fmt.BlueMask == bmask) {
+            return static_cast<VX_PIXELFORMAT>(i);
+        }
+    }
+
+    if (desc.Flags >= _DXT1 && desc.Flags < MAX_PIXEL_FORMATS) {
+        return static_cast<VX_PIXELFORMAT>(desc.Flags);
     }
 
     return UNKNOWN_PF;

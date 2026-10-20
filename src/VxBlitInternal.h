@@ -114,22 +114,22 @@ static const PixelFormatDef s_PixelFormats[] = {
     {32, 0x000000FF, 0x0000FF00, 0x00FF0000, 0xFF000000, "32 bits ABGR 8888", "_32_ABGR8888"},
     {32, 0xFF000000, 0x00FF0000, 0x0000FF00, 0x000000FF, "32 bits RGBA 8888", "_32_RGBA8888"},
     {32, 0x0000FF00, 0x00FF0000, 0xFF000000, 0x000000FF, "32 bits BGRA 8888", "_32_BGRA8888"},
-    {32, 0x0000FF00, 0x00FF0000, 0xFF000000, 0x00000000, "32 bits BGR  888", "_32_BGR888"},
+    {32, 0x000000FF, 0x0000FF00, 0x00FF0000, 0x00000000, "32 bits BGR  888", "_32_BGR888"},
     {24, 0x000000FF, 0x0000FF00, 0x00FF0000, 0x00000000, "24 bits BGR  888", "_24_BGR888"},
     {16, 0x001F,     0x07E0,     0xF800,     0x0000,     "16 bits BGR  565", "_16_BGR565"},
     {16, 0x001F,     0x03E0,     0x7C00,     0x0000,     "16 bits BGR  555", "_16_BGR555"},
     {16, 0x001F,     0x03E0,     0x7C00,     0x8000,     "16 bits ABGR 1555", "_16_ABGR1555"},
     {16, 0x000F,     0x00F0,     0x0F00,     0xF000,     "16 bits ABGR 4444", "_16_ABGR4444"},
     // DXT formats
-    {4,  0, 0, 0, 0, "Compressed DXT1", "_DXT1"},
-    {8,  0, 0, 0, 0, "Compressed DXT2", "_DXT2"},
-    {8,  0, 0, 0, 0, "Compressed DXT3", "_DXT3"},
-    {8,  0, 0, 0, 0, "Compressed DXT4", "_DXT4"},
-    {8,  0, 0, 0, 0, "Compressed DXT5", "_DXT5"},
+    {0,  0, 0, 0, 0, "Compressed DXT1", "_DXT1"},
+    {0,  0, 0, 0, 0, "Compressed DXT2", "_DXT2"},
+    {0,  0, 0, 0, 0, "Compressed DXT3", "_DXT3"},
+    {0,  0, 0, 0, 0, "Compressed DXT4", "_DXT4"},
+    {0,  0, 0, 0, 0, "Compressed DXT5", "_DXT5"},
     // Bump map formats
     {16, 0x00FF,     0xFF00,     0x0000,     0x0000,     "V8U8 BumpMap", "_16_V8U8"},
     {32, 0xFFFF,     0xFFFF0000, 0x0000,     0x0000,     "V16U16 BumpMap", "_32_V16U16"},
-    {16, 0x001F,     0x03E0,     0x7C00,     0x0000,     "L6V5U5 BumpMap", "_16_L6V5U5"},
+    {16, 0x001F,     0x03E0,     0xFC00,     0x0000,     "L6V5U5 BumpMap", "_16_L6V5U5"},
     {32, 0x000000FF, 0x0000FF00, 0x00FF0000, 0x00000000, "L8V8U8 BumpMap", "_32_X8L8V8U8"}
 };
 
