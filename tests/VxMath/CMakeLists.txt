@@ -133,6 +133,7 @@ set(VXMATH_TEST_SOURCES
         PackedPaletteReferenceTest.cpp
         GenericBlitReferenceTest.cpp
         ByteLayoutBlitReferenceTest.cpp
+        Packed16BlitReferenceTest.cpp
         # SIMD Tests
         SIMDFeatureTest.cpp
         SIMDUtilityTest.cpp
