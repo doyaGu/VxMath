@@ -126,11 +126,6 @@ void VxGraphicDispatchRebuild(int effectiveMode) {
 XDWORD GetBitCount(XDWORD dwMask) {
     if (dwMask == 0) return 0;
 
-#if defined(_MSC_VER) && (defined(_M_IX86) || defined(_M_X64))
-    return __popcnt(dwMask);
-#elif defined(__GNUC__) || defined(__clang__)
-    return __builtin_popcount(dwMask);
-#else
     XDWORD count = 0;
 
     // Skip trailing zeros until first set bit
@@ -145,7 +140,6 @@ XDWORD GetBitCount(XDWORD dwMask) {
     }
 
     return count;
-#endif
 }
 
 XDWORD GetBitShift(XDWORD dwMask) {
@@ -202,13 +196,6 @@ const char *VxPixelFormat2String(VX_PIXELFORMAT Pf) {
 
 void VxBppToMask(VxImageDescEx &desc) {
     switch (desc.BitsPerPixel) {
-    case 8:
-        // RGB 332 format
-        desc.AlphaMask = 0x00;
-        desc.RedMask = 0xE0;
-        desc.GreenMask = 0x1C;
-        desc.BlueMask = 0x03;
-        break;
     case 15:
     case 16:
         desc.AlphaMask = 0x0000;

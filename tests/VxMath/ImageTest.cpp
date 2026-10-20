@@ -481,12 +481,12 @@ TEST(PixelFormatTests, BitCountsAndShifts) {
 TEST(PixelFormatTests, VxBppToMask) {
     VxImageDescEx desc;
 
-    // Test 8-bit
+    // An 8-bit description does not imply a direct-color format.
     desc.BitsPerPixel = 8;
     VxBppToMask(desc);
-    EXPECT_EQ(desc.RedMask, 0xE0);
-    EXPECT_EQ(desc.GreenMask, 0x1C);
-    EXPECT_EQ(desc.BlueMask, 0x03);
+    EXPECT_EQ(desc.RedMask, 0x00);
+    EXPECT_EQ(desc.GreenMask, 0x00);
+    EXPECT_EQ(desc.BlueMask, 0x00);
     EXPECT_EQ(desc.AlphaMask, 0x00);
 
     // Test 16-bit

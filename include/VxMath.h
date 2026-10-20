@@ -240,9 +240,9 @@ VX_EXPORT XBOOL VxConvertToNormalMap(const VxImageDescEx &image, XDWORD ColorMas
 VX_EXPORT XBOOL VxConvertToBumpMap(const VxImageDescEx &image);
 
 /**
- * @brief Gets the number of set bits in a mask.
+ * @brief Gets the width of the lowest contiguous set-bit run in a mask.
  * @param dwMask The mask to count bits in.
- * @return The number of set bits.
+ * @return The run width, or zero for an empty mask.
  */
 VX_EXPORT XDWORD GetBitCount(XDWORD dwMask);
 
@@ -282,7 +282,7 @@ VX_EXPORT const char *VxPixelFormat2String(VX_PIXELFORMAT Pf);
 VX_EXPORT VX_PIXELFORMAT VxString2PixelFormat(const char *Name);
 
 /**
- * @brief Fills the color masks in an image description based on its bits-per-pixel value.
+ * @brief Fills masks for 15/16/24/32-bit images; leaves other depths unchanged.
  * @param desc The image description to modify.
  */
 VX_EXPORT void VxBppToMask(VxImageDescEx &desc);
