@@ -130,6 +130,7 @@ set(VXMATH_TEST_SOURCES
         QuantizationSamplingReferenceTest.cpp
         QuantizeImageReferenceTest.cpp
         Paletted32ReferenceTest.cpp
+        PackedPaletteReferenceTest.cpp
         # SIMD Tests
         SIMDFeatureTest.cpp
         SIMDUtilityTest.cpp

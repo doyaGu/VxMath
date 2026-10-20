@@ -497,6 +497,37 @@ void CopyLine_4444ARGB_32ARGB_Scalar(const VxBlitInfo *info, int startX) {
 //  Section 5 -- Paletted Image Blitting Functions
 //==============================================================================
 
+static void CopyLine_PalettedPacked_32ARGB(const VxBlitInfo *info, int bits) {
+    const int pixelsPerByte = 8 / bits;
+    const int indexMask = (1 << bits) - 1;
+    const int entries = XMin(1 << bits, info->colorMapEntries);
+    XDWORD palette32[16] = {};
+    for (int i = 0; i < entries; ++i) {
+        const XBYTE *entry = info->colorMap + i * info->bytesPerColorEntry;
+        const XDWORD b = entry[0], g = entry[1], r = entry[2];
+        const XDWORD a = info->bytesPerColorEntry == 4 ? entry[3] : 0xFFu;
+        palette32[i] = ((r << info->redShiftDst) & info->dstRedMask) |
+                       ((g << info->greenShiftDst) & info->dstGreenMask) |
+                       ((b << info->blueShiftDst) & info->dstBlueMask) |
+                       ((a << info->alphaShiftDst) & info->dstAlphaMask);
+    }
+
+    XDWORD *dst = reinterpret_cast<XDWORD *>(info->dstLine);
+    for (int x = 0; x < info->width; ++x) {
+        const int shift = (pixelsPerByte - 1 - x % pixelsPerByte) * bits;
+        const int index = (info->srcLine[x / pixelsPerByte] >> shift) & indexMask;
+        dst[x] = palette32[index];
+    }
+}
+
+void CopyLine_Paletted1_32ARGB(const VxBlitInfo *info) {
+    CopyLine_PalettedPacked_32ARGB(info, 1);
+}
+
+void CopyLine_Paletted4_32ARGB(const VxBlitInfo *info) {
+    CopyLine_PalettedPacked_32ARGB(info, 4);
+}
+
 // 8-bit paletted -> 32-bit ARGB
 void CopyLine_Paletted8_32ARGB(const VxBlitInfo *info) {
     const XBYTE *src = info->srcLine;

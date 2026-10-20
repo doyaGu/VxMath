@@ -501,6 +501,14 @@ VxBlitLineFunc VxBlitEngine::GetBlitFunction(const VxImageDescEx &src_desc,
 
     // Check for paletted source image
     if (src_desc.ColorMapEntries > 0 && src_desc.ColorMap != nullptr) {
+        if (src_desc.BitsPerPixel == 1 || src_desc.BitsPerPixel == 4) {
+            if (dst_desc.BitsPerPixel == 32 &&
+                (src_desc.BytesPerColorEntry == 3 || src_desc.BytesPerColorEntry == 4)) {
+                return src_desc.BitsPerPixel == 1 ? CopyLine_Paletted1_32ARGB : CopyLine_Paletted4_32ARGB;
+            }
+            return nullptr;
+        }
+
         int srcBpp = src_desc.BitsPerPixel / 8;
         int dstBpp = dst_desc.BitsPerPixel / 8;
 
