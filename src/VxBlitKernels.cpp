@@ -35,13 +35,12 @@ static inline XDWORD ConvertComponent(XDWORD value, int srcBits, int dstBits, in
     } else if (srcBits < dstBits) {
         // Expand: replicate bits to fill
         // E.g., 5-bit 0x1F to 8-bit should give 0xFF
-        int shift = dstBits - srcBits;
-        XDWORD expanded = value << shift;
-        // Replicate lower bits for proper expansion
-        if (srcBits > 0 && shift > 0) {
-            const int replicateBits = (srcBits < shift) ? srcBits : shift;
-            XDWORD rep = value >> (srcBits - replicateBits);
-            expanded |= rep;
+        XDWORD expanded = value;
+        int filledBits = srcBits;
+        while (filledBits < dstBits) {
+            const int take = XMin(srcBits, dstBits - filledBits);
+            expanded = (expanded << take) | (value >> (srcBits - take));
+            filledBits += take;
         }
         value = expanded;
     }
@@ -68,14 +67,14 @@ static void CopyLineGeneric(const VxBlitInfo *info) {
         XDWORD r = info->srcRedMask ? ((pixel & info->srcRedMask) >> info->redShiftSrc) : 0;
         XDWORD g = info->srcGreenMask ? ((pixel & info->srcGreenMask) >> info->greenShiftSrc) : 0;
         XDWORD b = info->srcBlueMask ? ((pixel & info->srcBlueMask) >> info->blueShiftSrc) : 0;
-        XDWORD a = info->srcAlphaMask ? ((pixel & info->srcAlphaMask) >> info->alphaShiftSrc) :
-                   (info->alphaBitsDst > 0 ? ((1u << info->alphaBitsDst) - 1) : 0);
+        XDWORD a = info->srcAlphaMask ?
+            ConvertComponent((pixel & info->srcAlphaMask) >> info->alphaShiftSrc,
+                             info->alphaBitsSrc, info->alphaBitsDst, info->alphaShiftDst) : info->dstAlphaMask;
 
         // Convert bit widths and position
         XDWORD dstPixel = ConvertComponent(r, info->redBitsSrc, info->redBitsDst, info->redShiftDst) |
                           ConvertComponent(g, info->greenBitsSrc, info->greenBitsDst, info->greenShiftDst) |
-                          ConvertComponent(b, info->blueBitsSrc, info->blueBitsDst, info->blueShiftDst) |
-                          ConvertComponent(a, info->alphaBitsSrc, info->alphaBitsDst, info->alphaShiftDst);
+                          ConvertComponent(b, info->blueBitsSrc, info->blueBitsDst, info->blueShiftDst) | a;
 
         WritePixel(dst, DstBpp, dstPixel);
 
