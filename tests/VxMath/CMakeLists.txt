@@ -139,6 +139,7 @@ set(VXMATH_TEST_SOURCES
         PackedPaletteCrossByteReferenceTest.cpp
         DXTPayloadReferenceTest.cpp
         IndexedLifecycleReferenceTest.cpp
+        BlitClosureReferenceTest.cpp
         # SIMD Tests
         SIMDFeatureTest.cpp
         SIMDUtilityTest.cpp
@@ -166,6 +167,10 @@ foreach (TEST_SOURCE ${VXMATH_TEST_SOURCES})
 
     # Do NOT add VxMath as a dependency - we use TEST_TARGET (which is VxMath_GroundTruth)
     vx_add_test(${TEST_NAME} SOURCES ${TEST_SOURCE})
+    if (TEST_NAME STREQUAL "BlitClosureReferenceTest")
+        # NeuQuant is internal; test its real implementation without exporting it.
+        target_sources(${TEST_NAME} PRIVATE ${PROJECT_SOURCE_DIR}/src/NeuQuant.cpp)
+    endif ()
 
     # MSVC otherwise reports C++98 and silently skips the hash table move tests.
     if (MSVC AND TEST_NAME STREQUAL "HashTableTest")
