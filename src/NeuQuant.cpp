@@ -81,10 +81,12 @@ void NeuQuant::initnet(const XBYTE *thepicture, int len, int sample) {
  * @brief Main learning loop - trains network on image samples
  */
 void NeuQuant::learn() {
-    if (m_LengthCount < 4) return;
+    if (m_LengthCount < 3) return;
 
-    int alphadec = 30 + (m_SampleFactor - 1) / 3;
-    int samplepixels = m_LengthCount / (3 * m_SampleFactor);
+    // The short-image path steps through every RGB pixel; train every pixel too.
+    const int sampleFactor = m_LengthCount < 4 * PRIME1 ? 1 : m_SampleFactor;
+    int alphadec = 30 + (sampleFactor - 1) / 3;
+    int samplepixels = m_LengthCount / (3 * sampleFactor);
     int delta = samplepixels / NCYCLES;
     if (delta == 0) delta = 1;
 

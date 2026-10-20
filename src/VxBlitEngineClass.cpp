@@ -17,6 +17,7 @@
 #include "VxMath.h"
 #include "VxSIMD.h"
 #include "NeuQuant.h"
+#include <limits.h>
 
 int GetQuantizationSamplingFactor();
 
@@ -1779,16 +1780,18 @@ XBOOL VxBlitEngine::QuantizeImage(const VxImageDescEx &src_desc, const VxImageDe
     VxMutexLock lock(m_Lock);
 
     // Quantization requires 256 color palette
+    if (dst_desc.BitsPerPixel != 8) return FALSE;
     if (dst_desc.ColorMapEntries != 256) return FALSE;
     if (!dst_desc.ColorMap) return FALSE;
     if (dst_desc.BytesPerColorEntry < 3) return FALSE;
 
+    if (src_desc.BitsPerPixel != 24 && src_desc.BitsPerPixel != 32) return FALSE;
     int srcBpp = src_desc.BitsPerPixel / 8;
-    if (srcBpp != 3 && srcBpp != 4) return FALSE;
 
     if (!src_desc.Image || !dst_desc.Image) return FALSE;
     if (src_desc.Width <= 0 || src_desc.Height <= 0) return FALSE;
     if (dst_desc.Width != src_desc.Width || dst_desc.Height != src_desc.Height) return FALSE;
+    if (src_desc.Width > INT_MAX / 3 / src_desc.Height) return FALSE;
 
     const int totalPixels = src_desc.Width * src_desc.Height;
 
