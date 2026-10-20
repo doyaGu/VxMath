@@ -56,6 +56,31 @@ static inline XDWORD GetBitCountLocal(XDWORD dwMask) {
 }
 
 //==============================================================================
+// Palette Channel Packing
+//==============================================================================
+
+static inline XDWORD PackPaletteComponent(XDWORD value, int bits, int shift) {
+    if (!bits) return 0;
+    if (bits < 8) return (value >> (8 - bits)) << shift;
+    XDWORD expanded = value;
+    int filled = 8;
+    while (filled < bits) {
+        const int take = XMin(8, bits - filled);
+        expanded = (expanded << take) | (value >> (8 - take));
+        filled += take;
+    }
+    return expanded << shift;
+}
+
+static inline XDWORD PackPaletteEntry(const VxBlitInfo *info, const XBYTE *entry) {
+    const XDWORD alpha = info->bytesPerColorEntry == 4 ? entry[3] : 0xFFu;
+    return (PackPaletteComponent(entry[2], info->redBitsDst, info->redShiftDst) & info->dstRedMask) |
+           (PackPaletteComponent(entry[1], info->greenBitsDst, info->greenShiftDst) & info->dstGreenMask) |
+           (PackPaletteComponent(entry[0], info->blueBitsDst, info->blueShiftDst) & info->dstBlueMask) |
+           (PackPaletteComponent(alpha, info->alphaBitsDst, info->alphaShiftDst) & info->dstAlphaMask);
+}
+
+//==============================================================================
 // Variable-Width Pixel I/O
 //==============================================================================
 
@@ -223,6 +248,7 @@ void CopyLine_32BGRA_32ARGB(const VxBlitInfo *info);
 
 // Paletted conversions
 void CopyLine_Paletted1_32ARGB(const VxBlitInfo *info);
+void CopyLine_Paletted2_32ARGB(const VxBlitInfo *info);
 void CopyLine_Paletted4_32ARGB(const VxBlitInfo *info);
 void CopyLine_Paletted8_32ARGB(const VxBlitInfo *info);
 void CopyLine_Paletted8_24RGB(const VxBlitInfo *info);

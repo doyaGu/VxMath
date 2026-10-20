@@ -170,14 +170,7 @@ void CopyLine_Paletted8_32ARGB_AVX2(const VxBlitInfo *info) {
     XDWORD palette32[256] = {};
     for (int i = 0; i < entries; ++i) {
         const XBYTE *entry = colorMap + i * bpc;
-        const XDWORD b = entry[0];
-        const XDWORD g = entry[1];
-        const XDWORD r = entry[2];
-        const XDWORD a = (bpc >= 4) ? entry[3] : 0xFFu;
-        palette32[i] = ((r << info->redShiftDst) & info->dstRedMask) |
-                       ((g << info->greenShiftDst) & info->dstGreenMask) |
-                       ((b << info->blueShiftDst) & info->dstBlueMask) |
-                       ((a << info->alphaShiftDst) & info->dstAlphaMask);
+        palette32[i] = PackPaletteEntry(info, entry);
     }
 
     int x = 0;

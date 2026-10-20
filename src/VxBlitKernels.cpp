@@ -503,12 +503,7 @@ static void CopyLine_PalettedPacked_32ARGB(const VxBlitInfo *info, int bits) {
     XDWORD palette32[16] = {};
     for (int i = 0; i < entries; ++i) {
         const XBYTE *entry = info->colorMap + i * info->bytesPerColorEntry;
-        const XDWORD b = entry[0], g = entry[1], r = entry[2];
-        const XDWORD a = info->bytesPerColorEntry == 4 ? entry[3] : 0xFFu;
-        palette32[i] = ((r << info->redShiftDst) & info->dstRedMask) |
-                       ((g << info->greenShiftDst) & info->dstGreenMask) |
-                       ((b << info->blueShiftDst) & info->dstBlueMask) |
-                       ((a << info->alphaShiftDst) & info->dstAlphaMask);
+        palette32[i] = PackPaletteEntry(info, entry);
     }
 
     XDWORD *dst = reinterpret_cast<XDWORD *>(info->dstLine);
@@ -521,6 +516,10 @@ static void CopyLine_PalettedPacked_32ARGB(const VxBlitInfo *info, int bits) {
 
 void CopyLine_Paletted1_32ARGB(const VxBlitInfo *info) {
     CopyLine_PalettedPacked_32ARGB(info, 1);
+}
+
+void CopyLine_Paletted2_32ARGB(const VxBlitInfo *info) {
+    CopyLine_PalettedPacked_32ARGB(info, 2);
 }
 
 void CopyLine_Paletted4_32ARGB(const VxBlitInfo *info) {
@@ -541,12 +540,7 @@ void CopyLine_Paletted8_32ARGB(const VxBlitInfo *info) {
     XDWORD palette32[256] = {};
     for (int i = 0; i < entries; ++i) {
         const XBYTE *entry = colorMap + i * bpc;
-        const XDWORD b = entry[0], g = entry[1], r = entry[2];
-        const XDWORD a = bpc >= 4 ? entry[3] : 0xFFu;
-        palette32[i] = ((r << info->redShiftDst) & info->dstRedMask) |
-                       ((g << info->greenShiftDst) & info->dstGreenMask) |
-                       ((b << info->blueShiftDst) & info->dstBlueMask) |
-                       ((a << info->alphaShiftDst) & info->dstAlphaMask);
+        palette32[i] = PackPaletteEntry(info, entry);
     }
 
     int x = 0;

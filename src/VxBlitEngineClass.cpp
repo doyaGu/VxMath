@@ -499,41 +499,6 @@ VxBlitLineFunc VxBlitEngine::GetBlitFunction(const VxImageDescEx &src_desc,
     VX_PIXELFORMAT srcFmt = GetPixelFormat(src_desc);
     VX_PIXELFORMAT dstFmt = GetPixelFormat(dst_desc);
 
-    // Check for paletted source image
-    if (src_desc.ColorMapEntries > 0 && src_desc.ColorMap != nullptr) {
-        if (src_desc.BitsPerPixel == 1 || src_desc.BitsPerPixel == 4) {
-            if (dst_desc.BitsPerPixel == 32 &&
-                (src_desc.BytesPerColorEntry == 3 || src_desc.BytesPerColorEntry == 4)) {
-                return src_desc.BitsPerPixel == 1 ? CopyLine_Paletted1_32ARGB : CopyLine_Paletted4_32ARGB;
-            }
-            return nullptr;
-        }
-
-        int srcBpp = src_desc.BitsPerPixel / 8;
-        int dstBpp = dst_desc.BitsPerPixel / 8;
-
-        // Only 8-bit paletted sources are currently supported
-        if (srcBpp == 1 && dstBpp >= 1 && dstBpp <= 4) {
-            // Index copy does not require palette entry expansion.
-            if (dstBpp == 1) {
-                VxBlitLineFunc func = m_PalettedBlitTable[0][0];
-                if (func) return func;
-            }
-
-            // RGB expansion paths read B,G,R from each entry.
-            if (src_desc.BytesPerColorEntry < 3) {
-                return nullptr;
-            }
-
-            // For 16-bit destinations with alpha (1555, 4444), use alpha-aware function
-            if (dstBpp == 2 && dst_desc.AlphaMask != 0) {
-                return CopyLine_Paletted8_16Alpha;
-            }
-            VxBlitLineFunc func = m_PalettedBlitTable[0][dstBpp - 1];
-            if (func) return func;
-        }
-    }
-
     // Same format -- use memcpy
     if (srcFmt == dstFmt && srcFmt != UNKNOWN_PF) {
         return CopyLineSame;
@@ -550,6 +515,44 @@ VxBlitLineFunc VxBlitEngine::GetBlitFunction(const VxImageDescEx &src_desc,
     if ((srcFmt >= _DXT1 && srcFmt <= _DXT5) ||
         (dstFmt >= _DXT1 && dstFmt <= _DXT5)) {
         return nullptr;
+    }
+
+    // Check for paletted source image
+    if (src_desc.BytesPerColorEntry != 0 &&
+        src_desc.ColorMapEntries > 0 && src_desc.ColorMap != nullptr) {
+        if (src_desc.BitsPerPixel == 1 || src_desc.BitsPerPixel == 2 || src_desc.BitsPerPixel == 4) {
+            if (dst_desc.BitsPerPixel == 32 &&
+                (src_desc.BytesPerColorEntry == 3 || src_desc.BytesPerColorEntry == 4)) {
+                if (src_desc.BitsPerPixel == 1) return CopyLine_Paletted1_32ARGB;
+                if (src_desc.BitsPerPixel == 2) return CopyLine_Paletted2_32ARGB;
+                return CopyLine_Paletted4_32ARGB;
+            }
+            return nullptr;
+        }
+
+        int srcBpp = src_desc.BitsPerPixel / 8;
+        int dstBpp = dst_desc.BitsPerPixel / 8;
+
+        // Only 8-bit paletted sources are currently supported
+        if (srcBpp == 1 && dstBpp >= 1 && dstBpp <= 4) {
+            // Index copy does not require palette entry expansion.
+            if (dstBpp == 1) {
+                VxBlitLineFunc func = m_PalettedBlitTable[0][0];
+                if (func) return func;
+            }
+
+            // Original palette entries contain three BGR bytes and optional alpha.
+            if (src_desc.BytesPerColorEntry != 3 && src_desc.BytesPerColorEntry != 4) {
+                return nullptr;
+            }
+
+            // For 16-bit destinations with alpha (1555, 4444), use alpha-aware function
+            if (dstBpp == 2 && dst_desc.AlphaMask != 0) {
+                return CopyLine_Paletted8_16Alpha;
+            }
+            VxBlitLineFunc func = m_PalettedBlitTable[0][dstBpp - 1];
+            if (func) return func;
+        }
     }
 
     // Fall back to generic function
