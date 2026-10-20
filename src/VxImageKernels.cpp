@@ -243,7 +243,7 @@ static XBOOL GenerateMipMap32Scalar(const VxImageDescEx &src_desc, XBYTE *Buffer
 
                 *(XDWORD *) dstPtr = rbAvg | agAvg;
 
-                dstPtr += BytesPerLine;
+                dstPtr += 4;
                 srcPtr += BytesPerLine * 2;
                 --h;
             }
@@ -411,6 +411,7 @@ void VxGenerateMipMapKernel(const VxImageDescEx &src_desc, XBYTE *Buffer, int si
         return;
     }
 
+    if (src_desc.BitsPerPixel != 32) return;
     if (backend->MipMap32 && backend->MipMap32(src_desc, Buffer)) return;
     GenerateMipMap32Scalar(src_desc, Buffer);
 }

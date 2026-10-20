@@ -185,5 +185,85 @@ TEST_P(GraphicImageReferenceTest, ResizedBlitConvertsFiltered32BitRowsTo24Bit) {
     Guard(output, 0, 8);
     Guard(output, 11, 32);
 }
+TEST_P(GraphicImageReferenceTest, MipmapSingleColumnWritesTightRowsDespitePaddedSource) {
+    XDWORD source[24];
+    for (int y = 0; y < 8; ++y) {
+        source[y * 3] = y % 2 ? 0xff646464u : 0xff000000u;
+        source[y * 3 + 1] = source[y * 3 + 2] = 0xeeeeeeeeu;
+    }
+    XBYTE output[128];
+    std::memset(output, 0xcd, sizeof(output));
+    VxImageDescEx s = GraphicImageDesc(1, 8, 12, 32, (XBYTE *)source);
+    VxGenerateMipMap(s, output + 16);
+    const XDWORD expected[] = {0xff323232u, 0xff323232u, 0xff323232u, 0xff323232u};
+    EXPECT_EQ(0, std::memcmp(expected, output + 16, sizeof(expected)));
+    Guard(output, 0, 16);
+    Guard(output, 32, 128);
+}
+TEST_P(GraphicImageReferenceTest, MipmapPaddedOddSurfaceDiscardsOnlyIncompleteEdges) {
+    XDWORD source[18];
+    for (int y = 0; y < 3; ++y) {
+        for (int x = 0; x < 5; ++x)
+            source[y * 6 + x] = XDWORD(y * 5 + x) * 0x01010101u;
+        source[y * 6 + 5] = 0xeeeeeeeeu;
+    }
+    XBYTE output[32];
+    std::memset(output, 0xcd, sizeof(output));
+    VxImageDescEx s = GraphicImageDesc(5, 3, 24, 32, (XBYTE *)source);
+    VxGenerateMipMap(s, output + 8);
+    EXPECT_EQ(0x03030303u, *(XDWORD *)(output + 8));
+    EXPECT_EQ(0x05050505u, *(XDWORD *)(output + 12));
+    Guard(output, 0, 8);
+    Guard(output, 16, 32);
+
+    XDWORD singleRow[] = {0xff0a0a0au, 0xff1e1e1eu, 0xff323232u, 0xff464646u,
+                          0xff5a5a5au, 0xff6e6e6eu, 0xfffafafau, 0xeeeeeeeeu};
+    std::memset(output, 0xcd, sizeof(output));
+    s = GraphicImageDesc(7, 1, 32, 32, (XBYTE *)singleRow);
+    VxGenerateMipMap(s, output + 8);
+    const XDWORD expected[] = {0xff141414u, 0xff3c3c3cu, 0xff646464u};
+    EXPECT_EQ(0, std::memcmp(expected, output + 8, sizeof(expected)));
+    Guard(output, 0, 8);
+    Guard(output, 20, 32);
+}
+TEST_P(GraphicImageReferenceTest, MipmapTerminalPixelLeavesOutputUntouched) {
+    XDWORD pixel = 0xff123456u;
+    XBYTE output[16];
+    std::memset(output, 0xcd, sizeof(output));
+    VxImageDescEx s = GraphicImageDesc(1, 1, 4, 32, (XBYTE *)&pixel);
+    VxGenerateMipMap(s, output + 4);
+    Guard(output, 0, 16);
+}
+TEST_P(GraphicImageReferenceTest, Mipmap24And565KeepTheirExistingFormatContracts) {
+    XBYTE source24[32];
+    std::memset(source24, 0xee, sizeof(source24));
+    for (int y = 0; y < 4; ++y)
+        for (int c = 0; c < 3; ++c)
+            source24[y * 8 + c] = y % 2 ? 100 : 0;
+    XBYTE output[32];
+    std::memset(output, 0xcd, sizeof(output));
+    VxImageDescEx s = GraphicImageDesc(1, 4, 8, 24, source24);
+    VxGenerateMipMap(s, output + 8);
+    for (int i = 8; i < 14; ++i)
+        EXPECT_EQ(50, output[i]);
+    Guard(output, 0, 8);
+    Guard(output, 14, 32);
+    XWORD source16[] = {0xf800u, 0xeeeeu, 0x001fu, 0xeeeeu, 0xf800u, 0xeeeeu, 0x001fu, 0xeeeeu};
+    std::memset(output, 0xcd, sizeof(output));
+    s = GraphicImageDesc(1, 4, 4, 16, (XBYTE *)source16);
+    VxGenerateMipMap(s, output + 8);
+    EXPECT_EQ(0x780fu, *(XWORD *)(output + 8));
+    EXPECT_EQ(0x780fu, *(XWORD *)(output + 10));
+    Guard(output, 0, 8);
+    Guard(output, 12, 32);
+}
+TEST_P(GraphicImageReferenceTest, UnsupportedMipmapDepthDoesNotInterpretIndicesAsDwords) {
+    XBYTE source[16] = {};
+    XBYTE output[32];
+    std::memset(output, 0xcd, sizeof(output));
+    VxImageDescEx s = GraphicImageDesc(2, 2, 8, 8, source);
+    VxGenerateMipMap(s, output + 8);
+    Guard(output, 0, 32);
+}
 INSTANTIATE_TEST_SUITE_P(ScalarAndSSE2, GraphicImageReferenceTest,
                          ::testing::Values(VX_SIMD_MODE_NONE, VX_SIMD_MODE_SSE2));

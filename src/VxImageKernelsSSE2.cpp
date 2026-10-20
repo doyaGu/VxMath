@@ -229,7 +229,7 @@ XBOOL VxGenerateMipMap32SSE2(const VxImageDescEx &src_desc, XBYTE *Buffer) {
             int h = dstHeight;
             while (h > 0) {
                 *(XDWORD *) dst = Average32HorizontalScalar(*(XDWORD *) src, *(XDWORD *) (src + bytesPerLine));
-                dst += bytesPerLine;
+                dst += 4;
                 src += bytesPerLine * 2;
                 --h;
             }
