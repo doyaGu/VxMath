@@ -594,6 +594,8 @@ VxBlitLineFunc VxBlitEngine::GetCopyAlphaFunction(const VxImageDescEx &dst_desc)
 //  High-Level Blit Operations
 //==============================================================================
 
+static XBOOL QuantizeIndexedImage(const VxImageDescEx &src_desc, const VxImageDescEx &dst_desc, bool upsideDown);
+
 static void CopyDXTPayload(const VxImageDescEx &src_desc, const VxImageDescEx &dst_desc) {
     if (src_desc.TotalImageSize <= 0 || dst_desc.TotalImageSize < src_desc.TotalImageSize) return;
     if (src_desc.Image == dst_desc.Image) return;
@@ -617,8 +619,10 @@ void VxBlitEngine::DoBlit(const VxImageDescEx &src_desc, const VxImageDescEx &ds
 
     // Truecolor -> paletted conversion goes through quantization and is complete.
     // Do not continue with a second blit pass (it would overwrite palette indices).
-    if (dst_desc.ColorMapEntries > 0 && src_desc.ColorMapEntries == 0) {
-        QuantizeImage(src_desc, dst_desc);
+    if (dst_desc.ColorMapEntries > 0 &&
+        (src_desc.ColorMapEntries == 0 || (src_desc.BytesPerColorEntry == 0 &&
+         (src_desc.BitsPerPixel == 24 || src_desc.BitsPerPixel == 32)))) {
+        QuantizeIndexedImage(src_desc, dst_desc, false);
         return;
     }
 
@@ -686,24 +690,11 @@ void VxBlitEngine::DoBlitUpsideDown(const VxImageDescEx &src_desc, const VxImage
     if (!src_desc.Image || !dst_desc.Image) return;
     if (src_desc.Width <= 0 || src_desc.Height <= 0) return;
 
-    // Truecolor -> paletted upside-down path:
-    // quantize into a temporary paletted buffer, then run regular upside-down copy.
-    if (dst_desc.ColorMapEntries > 0 && src_desc.ColorMapEntries == 0) {
-        const int tempSize = dst_desc.BytesPerLine * dst_desc.Height;
-        if (tempSize <= 0) {
-            return;
-        }
-
-        XArray<XBYTE> quantizedIndices;
-        quantizedIndices.Resize(tempSize);
-
-        VxImageDescEx quantizedDesc = dst_desc;
-        quantizedDesc.Image = quantizedIndices.Begin();
-        if (!QuantizeImage(src_desc, quantizedDesc)) {
-            return;
-        }
-
-        DoBlitUpsideDown(quantizedDesc, dst_desc);
+    // Train in source order, then map reversed rows directly into the destination.
+    if (dst_desc.ColorMapEntries > 0 &&
+        (src_desc.ColorMapEntries == 0 || (src_desc.BytesPerColorEntry == 0 &&
+         (src_desc.BitsPerPixel == 24 || src_desc.BitsPerPixel == 32)))) {
+        QuantizeIndexedImage(src_desc, dst_desc, true);
         return;
     }
 
@@ -1815,6 +1806,11 @@ static inline int ColorDistSq(int r1, int g1, int b1, int r2, int g2, int b2) {
 XBOOL VxBlitEngine::QuantizeImage(const VxImageDescEx &src_desc, const VxImageDescEx &dst_desc) {
     VxMutexLock lock(m_Lock);
 
+    if (dst_desc.Width != src_desc.Width || dst_desc.Height != src_desc.Height) return FALSE;
+    return QuantizeIndexedImage(src_desc, dst_desc, false);
+}
+
+static XBOOL QuantizeIndexedImage(const VxImageDescEx &src_desc, const VxImageDescEx &dst_desc, bool upsideDown) {
     // Quantization requires 256 color palette
     if (dst_desc.BitsPerPixel != 8) return FALSE;
     if (dst_desc.ColorMapEntries != 256) return FALSE;
@@ -1826,10 +1822,15 @@ XBOOL VxBlitEngine::QuantizeImage(const VxImageDescEx &src_desc, const VxImageDe
 
     if (!src_desc.Image || !dst_desc.Image) return FALSE;
     if (src_desc.Width <= 0 || src_desc.Height <= 0) return FALSE;
-    if (dst_desc.Width != src_desc.Width || dst_desc.Height != src_desc.Height) return FALSE;
+    if (dst_desc.Width <= 0 || dst_desc.Height <= 0) return FALSE;
+    const bool resize = dst_desc.Width != src_desc.Width || dst_desc.Height != src_desc.Height;
+    if (resize && (upsideDown || src_desc.BitsPerPixel != 32)) return FALSE;
     if (src_desc.Width > INT_MAX / 3 / src_desc.Height) return FALSE;
+    if (resize && dst_desc.Width > INT_MAX / static_cast<int>(sizeof(XDWORD))) return FALSE;
 
     const int totalPixels = src_desc.Width * src_desc.Height;
+    XArray<XDWORD> resizedRow;
+    if (resize) resizedRow.Resize(dst_desc.Width);
 
     // Step 1: Convert image to RGB buffer for NeuQuant
     // NeuQuant expects RGB triplets (R, G, B order)
@@ -1881,15 +1882,21 @@ XBOOL VxBlitEngine::QuantizeImage(const VxImageDescEx &src_desc, const VxImageDe
         }
     }
 
-    // Step 4: Map pixels to palette indices
-    srcRow = src_desc.Image;
+    // Step 4: Map colors with this same network. Resizing must not retrain the palette.
     XBYTE *dstRow = dst_desc.Image;
 
-    for (int y = 0; y < src_desc.Height; ++y) {
-        const XBYTE *src = srcRow;
+    for (int y = 0; y < dst_desc.Height; ++y) {
+        const XBYTE *src;
+        if (resize) {
+            FilterImage32Row(src_desc, dst_desc.Width, dst_desc.Height, y, resizedRow.Begin());
+            src = reinterpret_cast<const XBYTE *>(resizedRow.Begin());
+        } else {
+            const int sourceY = upsideDown ? src_desc.Height - 1 - y : y;
+            src = src_desc.Image + static_cast<ptrdiff_t>(sourceY) * src_desc.BytesPerLine;
+        }
         XBYTE *dst = dstRow;
 
-        for (int x = 0; x < src_desc.Width; ++x) {
+        for (int x = 0; x < dst_desc.Width; ++x) {
             // Source is BGR(A)
             int b = src[0];
             int g = src[1];
@@ -1903,7 +1910,6 @@ XBOOL VxBlitEngine::QuantizeImage(const VxImageDescEx &src_desc, const VxImageDe
             dst++;
         }
 
-        srcRow += src_desc.BytesPerLine;
         dstRow += dst_desc.BytesPerLine;
     }
 

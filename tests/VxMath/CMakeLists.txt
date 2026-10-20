@@ -138,6 +138,7 @@ set(VXMATH_TEST_SOURCES
         PaletteDispatchReferenceTest.cpp
         PackedPaletteCrossByteReferenceTest.cpp
         DXTPayloadReferenceTest.cpp
+        IndexedLifecycleReferenceTest.cpp
         # SIMD Tests
         SIMDFeatureTest.cpp
         SIMDUtilityTest.cpp
