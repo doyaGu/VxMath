@@ -594,6 +594,13 @@ VxBlitLineFunc VxBlitEngine::GetCopyAlphaFunction(const VxImageDescEx &dst_desc)
 //  High-Level Blit Operations
 //==============================================================================
 
+static void CopyDXTPayload(const VxImageDescEx &src_desc, const VxImageDescEx &dst_desc) {
+    if (src_desc.TotalImageSize <= 0 || dst_desc.TotalImageSize < src_desc.TotalImageSize) return;
+    if (src_desc.Image == dst_desc.Image) return;
+    // The pitch union holds the entire compressed payload, not a pixel-row stride.
+    memcpy(dst_desc.Image, src_desc.Image, static_cast<size_t>(src_desc.TotalImageSize));
+}
+
 void VxBlitEngine::DoBlit(const VxImageDescEx &src_desc, const VxImageDescEx &dst_desc) {
     VxMutexLock lock(m_Lock);
 
@@ -618,6 +625,12 @@ void VxBlitEngine::DoBlit(const VxImageDescEx &src_desc, const VxImageDescEx &ds
     // Get blit function
     VxBlitLineFunc blitFunc = GetBlitFunction(src_desc, dst_desc);
     if (!blitFunc) return;
+
+    const VX_PIXELFORMAT srcFormat = GetPixelFormat(src_desc);
+    if (srcFormat >= _DXT1 && srcFormat <= _DXT5) {
+        if (!sizeMismatch) CopyDXTPayload(src_desc, dst_desc);
+        return;
+    }
 
     // Setup blit info
     SetupBlitInfo(m_BlitInfo, src_desc, dst_desc);
@@ -696,6 +709,14 @@ void VxBlitEngine::DoBlitUpsideDown(const VxImageDescEx &src_desc, const VxImage
 
     VxBlitLineFunc blitFunc = GetBlitFunction(src_desc, dst_desc);
     if (!blitFunc) return;
+
+    const VX_PIXELFORMAT srcFormat = GetPixelFormat(src_desc);
+    if (srcFormat >= _DXT1 && srcFormat <= _DXT5) {
+        // A single pixel row is unchanged by inversion. Compressed block flipping
+        // is not implemented by the original copy kernel or this path.
+        if (src_desc.Height == 1) CopyDXTPayload(src_desc, dst_desc);
+        return;
+    }
 
     SetupBlitInfo(m_BlitInfo, src_desc, dst_desc);
     m_BlitInfo.srcBytesPerLine = src_desc.BytesPerLine;
