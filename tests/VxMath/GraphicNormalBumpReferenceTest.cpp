@@ -13,6 +13,14 @@ static VxImageDescEx MapImage(int width, int height, int pitch, XBYTE *image, in
     return desc;
 }
 
+static const XBYTE BumpHeights[12] = {0, 1, 10, 50, 70, 100, 130, 160, 190, 220, 250, 255};
+// Literal results from original VxMath.dll 2.1.0.14, not a second implementation.
+static const XDWORD NativeBumpGrid[12] = {
+    0x0031787f, 0x00f6787f, 0x00cf783f, 0x00325f3f,
+    0x003c423f, 0x00c4253f, 0x00c4103f, 0x005a333f,
+    0x0023463f, 0x00c4633f, 0x00dd783f, 0x00416e3f
+};
+
 class GraphicNormalBumpReferenceTest : public ::testing::TestWithParam<int> {
 protected:
     int PreviousMode;
@@ -127,6 +135,63 @@ TEST_P(GraphicNormalBumpReferenceTest, NormalZeroMaskWritesAFlatZeroHeightNormal
     VxImageDescEx desc = MapImage(2, 2, 8, (XBYTE *)pixels);
     ASSERT_TRUE(VxConvertToNormalMap(desc, 0));
     for (int i = 0; i < 4; ++i) EXPECT_EQ(0x008080ffu, pixels[i]);
+}
+
+TEST_P(GraphicNormalBumpReferenceTest, BumpBlueHeightGridMatchesNativeEdgesAndVerticalWrap) {
+    XDWORD pixels[12];
+    for (int i = 0; i < 12; ++i) pixels[i] = 0x9b000000 | BumpHeights[i];
+    VxImageDescEx desc = MapImage(4, 3, 16, (XBYTE *)pixels), before = desc;
+    ASSERT_TRUE(VxConvertToBumpMap(desc));
+    for (int i = 0; i < 12; ++i) EXPECT_EQ(NativeBumpGrid[i], pixels[i]) << "pixel " << i;
+    EXPECT_EQ(0, std::memcmp(&before, &desc, sizeof(desc)));
+}
+
+TEST_P(GraphicNormalBumpReferenceTest, BumpIgnoresOtherChannelsAndPreservesRowPadding) {
+    XBYTE storage[104];
+    std::memset(storage, 0xa5, sizeof(storage));
+    for (int y = 0; y < 3; ++y) {
+        for (int x = 0; x < 4; ++x) {
+            const XDWORD value = (XDWORD(7 + x * 47) << 24) | (XDWORD(201 - y * 31) << 16)
+                | (XDWORD(13 + x * 7) << 8) | BumpHeights[y * 4 + x];
+            Store(storage + 8 + y * 24 + x * 4, value);
+        }
+        std::memset(storage + 8 + y * 24 + 16, 0x31 + y, 8);
+    }
+    VxImageDescEx desc = MapImage(4, 3, 24, storage + 8);
+    ASSERT_TRUE(VxConvertToBumpMap(desc));
+    for (int y = 0; y < 3; ++y) {
+        for (int x = 0; x < 4; ++x) EXPECT_EQ(NativeBumpGrid[y * 4 + x], Pixel(storage + 8 + y * 24 + x * 4));
+        Guard(storage, 8 + y * 24 + 16, 8 + (y + 1) * 24, XBYTE(0x31 + y));
+    }
+    Guard(storage, 0, 8);
+    Guard(storage, 80, 104);
+}
+
+TEST_P(GraphicNormalBumpReferenceTest, BumpTwoPixelRowsKeepTheNativeEndpointRule) {
+    XDWORD pixels[] = {3, 13, 23, 33};
+    VxImageDescEx desc = MapImage(2, 2, 8, (XBYTE *)pixels);
+    ASSERT_TRUE(VxConvertToBumpMap(desc));
+    const XDWORD expected[] = {0x0000003f, 0x000a003f, 0x0000003f, 0x000a003f};
+    EXPECT_EQ(0, std::memcmp(expected, pixels, sizeof(pixels)));
+}
+
+TEST_P(GraphicNormalBumpReferenceTest, BumpSingleRowUsesItsOwnVerticalNeighbors) {
+    XDWORD pixels[] = {0, 1, 10, 50};
+    VxImageDescEx desc = MapImage(4, 1, 16, (XBYTE *)pixels);
+    ASSERT_TRUE(VxConvertToBumpMap(desc));
+    const XDWORD expected[] = {0x0031007f, 0x00f6007f, 0x00cf003f, 0x0032003f};
+    EXPECT_EQ(0, std::memcmp(expected, pixels, sizeof(pixels)));
+}
+
+TEST_P(GraphicNormalBumpReferenceTest, BumpBlueZeroAndOneUseTheNativeBrightnessClass) {
+    XDWORD pixels[] = {0x00ffff00, 0x00ffff01, 0x00ffff02, 0x00ffffff,
+                       0x00ffff00, 0x00ffff01, 0x00ffff02, 0x00ffffff};
+    VxImageDescEx desc = MapImage(4, 2, 16, (XBYTE *)pixels);
+    ASSERT_TRUE(VxConvertToBumpMap(desc));
+    const XDWORD expected[] = {0x00fe007f, 0x00fe007f, 0x0002003f, 0x00ff003f};
+    for (int y = 0; y < 2; ++y) {
+        for (int x = 0; x < 4; ++x) EXPECT_EQ(expected[x], pixels[y * 4 + x]);
+    }
 }
 
 TEST_P(GraphicNormalBumpReferenceTest, UnsupportedDepthsAndBumpSingleColumnDoNotPartiallyWrite) {

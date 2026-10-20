@@ -631,6 +631,13 @@ static void FillLuminance32Row(const XBYTE *row, int width, int *luminance) {
     }
 }
 
+static void FillBumpHeight32Row(const XBYTE *row, int width, int *height) {
+    // The original bump converter reads blue, not the RGB sum used by normals.
+    for (int x = 0; x < width; ++x) {
+        height[x] = row[x * 4];
+    }
+}
+
 typedef XBOOL (*VxFillLuminanceKernelFn)(const XBYTE *, int, int *);
 
 struct VxLuminanceRowBuffers {
@@ -815,8 +822,8 @@ static void WriteBumpMap32Row(
     const int *belowLum
 ) {
     dstRow[0] = (XBYTE) ((currentLum[0] <= 1) ? 127 : 63);
-    dstRow[1] = (XBYTE) (aboveLum[0] - belowLum[0] + currentLum[width - 1] - belowLum[1]);
-    dstRow[2] = (XBYTE) (currentLum[width - 1] - currentLum[0]);
+    dstRow[1] = (XBYTE) (aboveLum[0] - belowLum[0]);
+    dstRow[2] = (XBYTE) (currentLum[width - 1] - currentLum[1]);
     dstRow[3] = 0;
 
     for (int x = 1; x < width - 1; ++x) {
@@ -830,7 +837,7 @@ static void WriteBumpMap32Row(
     XBYTE *dst = dstRow + (width - 1) * 4;
     dst[0] = (XBYTE) ((currentLum[width - 1] <= 1) ? 127 : 63);
     dst[1] = (XBYTE) (aboveLum[width - 1] - belowLum[width - 1]);
-    dst[2] = (XBYTE) (currentLum[width - 2] - currentLum[0]);
+    dst[2] = (XBYTE) (currentLum[width - 1] - currentLum[0]);
     dst[3] = 0;
 }
 
@@ -1000,20 +1007,18 @@ static XBOOL ConvertToBumpMap32(const VxImageDescEx &image) {
 
     XBYTE *dstRow = image.Image;
     XBYTE *lastRow = tempImage.Data + BytesPerLine * (Height - 1);
-    FillCachedLuminanceRow(lastRow, Width, 4, aboveLum, NULL);
-    FillCachedLuminanceRow(tempImage.Data, Width, 4, currentLum, NULL);
-    FillCachedLuminanceRow((Height > 1) ? (tempImage.Data + BytesPerLine) : tempImage.Data, Width, 4, belowLum, NULL);
+    FillBumpHeight32Row(lastRow, Width, aboveLum);
+    FillBumpHeight32Row(tempImage.Data, Width, currentLum);
+    FillBumpHeight32Row((Height > 1) ? (tempImage.Data + BytesPerLine) : tempImage.Data, Width, belowLum);
 
     for (int y = 0; y < Height; ++y) {
-        const int *actualBelowLum = (y != Height - 1) ? belowLum : currentLum;
-        WriteBumpMap32Row(dstRow, Width, aboveLum, currentLum, actualBelowLum);
+        WriteBumpMap32Row(dstRow, Width, aboveLum, currentLum, belowLum);
         dstRow += BytesPerLine;
 
         if (y + 1 < Height) {
             RotateLuminanceRowsForward(aboveLum, currentLum, belowLum);
-            if (y + 2 < Height) {
-                FillCachedLuminanceRow(tempImage.Data + (y + 2) * BytesPerLine, Width, 4, belowLum, NULL);
-            }
+            const int nextRow = (y + 2 < Height) ? y + 2 : 0;
+            FillBumpHeight32Row(tempImage.Data + nextRow * BytesPerLine, Width, belowLum);
         }
     }
 
