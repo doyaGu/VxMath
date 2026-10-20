@@ -497,20 +497,28 @@ void CopyLine_4444ARGB_32ARGB_Scalar(const VxBlitInfo *info, int startX) {
 //==============================================================================
 
 static void CopyLine_PalettedPacked_32ARGB(const VxBlitInfo *info, int bits) {
-    const int pixelsPerByte = 8 / bits;
     const int indexMask = (1 << bits) - 1;
     const int entries = XMin(1 << bits, info->colorMapEntries);
-    XDWORD palette32[16] = {};
+    XDWORD palette32[128] = {};
     for (int i = 0; i < entries; ++i) {
         const XBYTE *entry = info->colorMap + i * info->bytesPerColorEntry;
         palette32[i] = PackPaletteEntry(info, entry);
     }
 
-    XDWORD *dst = reinterpret_cast<XDWORD *>(info->dstLine);
+    const XBYTE *src = info->srcLine;
+    XBYTE *dst = info->dstLine;
+    int remaining = 8;
     for (int x = 0; x < info->width; ++x) {
-        const int shift = (pixelsPerByte - 1 - x % pixelsPerByte) * bits;
-        const int index = (info->srcLine[x / pixelsPerByte] >> shift) & indexMask;
-        dst[x] = palette32[index];
+        remaining -= bits;
+        // Only a crossing field needs the next byte; row padding is never read.
+        const int index = remaining >= 0 ? (src[0] >> remaining) & indexMask :
+            ((src[0] << -remaining) | (src[1] >> (8 + remaining))) & indexMask;
+        std::memcpy(dst, &palette32[index], sizeof(XDWORD));
+        dst += sizeof(XDWORD);
+        if (remaining <= 0) {
+            ++src;
+            remaining += 8;
+        }
     }
 }
 
@@ -522,8 +530,24 @@ void CopyLine_Paletted2_32ARGB(const VxBlitInfo *info) {
     CopyLine_PalettedPacked_32ARGB(info, 2);
 }
 
+void CopyLine_Paletted3_32ARGB(const VxBlitInfo *info) {
+    CopyLine_PalettedPacked_32ARGB(info, 3);
+}
+
 void CopyLine_Paletted4_32ARGB(const VxBlitInfo *info) {
     CopyLine_PalettedPacked_32ARGB(info, 4);
+}
+
+void CopyLine_Paletted5_32ARGB(const VxBlitInfo *info) {
+    CopyLine_PalettedPacked_32ARGB(info, 5);
+}
+
+void CopyLine_Paletted6_32ARGB(const VxBlitInfo *info) {
+    CopyLine_PalettedPacked_32ARGB(info, 6);
+}
+
+void CopyLine_Paletted7_32ARGB(const VxBlitInfo *info) {
+    CopyLine_PalettedPacked_32ARGB(info, 7);
 }
 
 // 8-bit paletted -> 32-bit ARGB

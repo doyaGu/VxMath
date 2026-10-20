@@ -249,7 +249,11 @@ void CopyLine_32BGRA_32ARGB(const VxBlitInfo *info);
 // Paletted conversions
 void CopyLine_Paletted1_32ARGB(const VxBlitInfo *info);
 void CopyLine_Paletted2_32ARGB(const VxBlitInfo *info);
+void CopyLine_Paletted3_32ARGB(const VxBlitInfo *info);
 void CopyLine_Paletted4_32ARGB(const VxBlitInfo *info);
+void CopyLine_Paletted5_32ARGB(const VxBlitInfo *info);
+void CopyLine_Paletted6_32ARGB(const VxBlitInfo *info);
+void CopyLine_Paletted7_32ARGB(const VxBlitInfo *info);
 void CopyLine_Paletted8_32ARGB(const VxBlitInfo *info);
 void CopyLine_Paletted8_24RGB(const VxBlitInfo *info);
 void CopyLine_Paletted8_565RGB(const VxBlitInfo *info);
