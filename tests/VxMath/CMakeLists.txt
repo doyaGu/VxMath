@@ -126,6 +126,7 @@ set(VXMATH_TEST_SOURCES
         GraphicNormalBumpReferenceTest.cpp
         GraphicMaskReferenceTest.cpp
         GraphicFormatReferenceTest.cpp
+        GraphicFormatStringReferenceTest.cpp
         # SIMD Tests
         SIMDFeatureTest.cpp
         SIMDUtilityTest.cpp

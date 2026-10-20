@@ -404,7 +404,7 @@ void VxBlitEngine::ConvertPixelFormat(VX_PIXELFORMAT Pf, VxImageDescEx &desc) {
 }
 
 const char *VxBlitEngine::PixelFormat2String(VX_PIXELFORMAT Pf) {
-    if (Pf < 0 || Pf >= NUM_PIXEL_FORMATS) {
+    if (Pf <= UNKNOWN_PF || Pf >= NUM_PIXEL_FORMATS) {
         return "";
     }
     return s_PixelFormats[Pf].Description;
