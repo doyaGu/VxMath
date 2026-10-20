@@ -121,6 +121,7 @@ set(VXMATH_TEST_SOURCES
         TimeProfilerTest.cpp
         WindowTest.cpp
         ImageTest.cpp
+        GraphicImageReferenceTest.cpp
         # SIMD Tests
         SIMDFeatureTest.cpp
         SIMDUtilityTest.cpp

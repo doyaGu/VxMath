@@ -3,7 +3,7 @@
  * @brief VxBlitEngine class implementation -- dispatch table setup, high-level
  *        image operations (blit, resize, quantize, alpha, fill, etc.).
  *
- * All per-pixel kernel work is delegated to:
+ * Most per-pixel kernel work is delegated to:
  *   - VxBlitKernels.cpp     (scalar / C++)
  *   - VxBlitEngineSSE2.cpp  (SSE2)
  *   - VxBlitEngineSSSE3.cpp (SSSE3 -- runtime-dispatched)
@@ -1271,118 +1271,65 @@ void VxBlitEngine::MultiplyBlend(const VxImageDescEx &src_desc, const VxImageDes
 //  Resize Operations
 //==============================================================================
 
-void VxBlitEngine::DoBlitWithResize(const VxImageDescEx &src_desc, const VxImageDescEx &dst_desc,
-                                     VxBlitLineFunc blitFunc) {
-    // Store destination width for line blit
-    m_BlitInfo.width = dst_desc.Width;
-    m_BlitInfo.copyBytes = dst_desc.Width * 4;
+// Shrinking integrates the covered source pixels; enlargement interpolates
+// adjacent pixels and repeats the final edge. Coordinates use destination units
+// so fractional reductions neither lose coverage nor dim a constant channel.
+static void FilterImage32Row(const VxImageDescEx &source, int width, int height, int y, XDWORD *output) {
+    const bool shrinkX = source.Width > width;
+    const bool shrinkY = source.Height > height;
+    const int64_t top = (int64_t) y * source.Height;
+    const int64_t bottom = top + source.Height;
+    const int firstY = (int) (top / height);
+    const int lastY = shrinkY ? (int) ((bottom - 1) / height) : XMin(firstY + 1, source.Height - 1);
+    const uint64_t divisorY = shrinkY ? source.Height : height;
 
-    // Ensure resize buffer is large enough
-    int bufferSize = src_desc.Width + dst_desc.Width + 1;
-    if (m_ResizeBuffer.Size() < bufferSize) {
-        m_ResizeBuffer.Reserve(bufferSize);
-    }
+    for (int x = 0; x < width; ++x) {
+        const int64_t left = (int64_t) x * source.Width;
+        const int64_t right = left + source.Width;
+        const int firstX = (int) (left / width);
+        const int lastX = shrinkX ? (int) ((right - 1) / width) : XMin(firstX + 1, source.Width - 1);
+        const uint64_t divisorX = shrinkX ? source.Width : width;
+        uint64_t channels[4] = {};
 
-    // Setup resize info (fixed-point 16.16)
-    VxResizeInfo resizeInfo;
-    resizeInfo.w1 = src_desc.Width;
-    resizeInfo.w2 = dst_desc.Width;
-    resizeInfo.h1 = src_desc.Height;
-    resizeInfo.h2 = dst_desc.Height;
-    resizeInfo.wr1 = (src_desc.Width << 16) / dst_desc.Width;
-    resizeInfo.hr1 = (src_desc.Height << 16) / dst_desc.Height;
-    resizeInfo.srcPitch = src_desc.BytesPerLine >> 2;  // Source pitch in DWORDs
-
-    // Intermediate buffer: resized horizontal line stored here before format conversion
-    resizeInfo.dstRow = m_ResizeBuffer.Begin() + src_desc.Width;  // Output buffer for resize
-
-    // Setup pointers for the blit function
-    m_BlitInfo.srcLine = (const XBYTE *)resizeInfo.dstRow;
-    XBYTE *dstRow = dst_desc.Image;
-
-    const XDWORD *srcImage = (const XDWORD *)src_desc.Image;
-    int srcHeight = src_desc.Height;
-    int dstHeight = dst_desc.Height;
-
-    // Select resize function based on X dimension relationship
-    typedef void (*ResizeLineFunc)(const VxResizeInfo *);
-    ResizeLineFunc growYFunc, shrinkYFunc, equalYFunc;
-
-    if (src_desc.Width == dst_desc.Width) {
-        growYFunc = ResizeHLine_GrowY_EqualX_32Bpp;
-        shrinkYFunc = ResizeHLine_ShrinkY_EqualX_32Bpp;
-        equalYFunc = ResizeHLine_EqualY_EqualX_32Bpp;
-    } else if (src_desc.Width < dst_desc.Width) {
-        growYFunc = ResizeHLine_GrowY_GrowX_32Bpp;
-        shrinkYFunc = ResizeHLine_ShrinkY_GrowX_32Bpp;
-        equalYFunc = ResizeHLine_EqualY_GrowX_32Bpp;
-    } else {
-        growYFunc = ResizeHLine_GrowY_ShrinkX_32Bpp;
-        shrinkYFunc = ResizeHLine_ShrinkY_ShrinkX_32Bpp;
-        equalYFunc = ResizeHLine_EqualY_ShrinkX_32Bpp;
-    }
-
-    if (srcHeight < dstHeight) {
-        // Growing Y: interpolate vertically
-        int yAccum = 0;
-        int yMax = (srcHeight << 16) - 0x10000;
-        int outY = 0;
-
-        // Phase 1: while we haven't reached the last source row
-        while (yAccum < yMax && yAccum >= 0 && outY < dstHeight) {
-            int srcY = yAccum >> 16;
-            resizeInfo.srcRow = srcImage + srcY * resizeInfo.srcPitch;
-            growYFunc(&resizeInfo);
-
-            // Blit the resized line to destination
-            m_BlitInfo.dstLine = dstRow;
-            blitFunc(&m_BlitInfo);
-
-            dstRow += dst_desc.BytesPerLine;
-            yAccum += resizeInfo.hr1;
-            ++outY;
-        }
-
-        // Phase 2: fill remaining rows with last source row (equal Y copy)
-        if (outY < dstHeight) {
-            resizeInfo.srcRow = srcImage + (srcHeight - 1) * resizeInfo.srcPitch;
-            while (outY < dstHeight) {
-                equalYFunc(&resizeInfo);
-
-                m_BlitInfo.dstLine = dstRow;
-                blitFunc(&m_BlitInfo);
-
-                dstRow += dst_desc.BytesPerLine;
-                yAccum += resizeInfo.hr1;
-                ++outY;
+        for (int sy = firstY; sy <= lastY; ++sy) {
+            const uint64_t weightY = shrinkY
+                ? XMin(bottom, (int64_t) (sy + 1) * height) - XMax(top, (int64_t) sy * height)
+                : firstY == lastY ? height : sy == firstY ? height - top % height : top % height;
+            const XDWORD *row = (const XDWORD *) (source.Image + (ptrdiff_t) sy * source.BytesPerLine);
+            for (int sx = firstX; sx <= lastX; ++sx) {
+                const uint64_t weightX = shrinkX
+                    ? XMin(right, (int64_t) (sx + 1) * width) - XMax(left, (int64_t) sx * width)
+                    : firstX == lastX ? width : sx == firstX ? width - left % width : left % width;
+                const uint64_t weight = weightX * weightY;
+                const XDWORD pixel = row[sx];
+                for (int channel = 0; channel < 4; ++channel) {
+                    channels[channel] += ((pixel >> (channel * 8)) & 0xff) * weight;
+                }
             }
         }
-    } else if (srcHeight > dstHeight) {
-        // Shrinking Y: skip source rows
-        int yAccum = 0;
-        for (int y = 0; y < dstHeight; ++y) {
-            int srcY = yAccum >> 16;
-            resizeInfo.srcRow = srcImage + srcY * resizeInfo.srcPitch;
-            shrinkYFunc(&resizeInfo);
 
-            m_BlitInfo.dstLine = dstRow;
-            blitFunc(&m_BlitInfo);
-
-            dstRow += dst_desc.BytesPerLine;
-            yAccum += resizeInfo.hr1;
+        const uint64_t divisor = divisorX * divisorY;
+        XDWORD pixel = 0;
+        for (int channel = 0; channel < 4; ++channel) {
+            pixel |= (XDWORD) (channels[channel] / divisor) << (channel * 8);
         }
-    } else {
-        // Equal Y: 1:1 vertical mapping
-        resizeInfo.srcRow = srcImage;
-        for (int y = 0; y < srcHeight; ++y) {
-            equalYFunc(&resizeInfo);
+        output[x] = pixel;
+    }
+}
 
-            m_BlitInfo.dstLine = dstRow;
-            blitFunc(&m_BlitInfo);
-
-            dstRow += dst_desc.BytesPerLine;
-            resizeInfo.srcRow += resizeInfo.srcPitch;
-        }
+void VxBlitEngine::DoBlitWithResize(const VxImageDescEx &src_desc, const VxImageDescEx &dst_desc,
+                                 VxBlitLineFunc blitFunc) {
+    m_BlitInfo.width = dst_desc.Width;
+    m_BlitInfo.copyBytes = dst_desc.Width * 4;
+    m_ResizeBuffer.Reserve(dst_desc.Width);
+    XDWORD *resizedRow = m_ResizeBuffer.Begin();
+    m_BlitInfo.srcLine = (const XBYTE *) resizedRow;
+    XBYTE *destination = dst_desc.Image;
+    for (int y = 0; y < dst_desc.Height; ++y) {
+        FilterImage32Row(src_desc, dst_desc.Width, dst_desc.Height, y, resizedRow);
+        m_BlitInfo.dstLine = destination;
+        blitFunc(&m_BlitInfo);
+        destination += dst_desc.BytesPerLine;
     }
 }
 
@@ -1394,13 +1341,13 @@ void VxBlitEngine::ResizeImage(const VxImageDescEx &src_desc, const VxImageDescE
     if (dst_desc.Width <= 0 || dst_desc.Height <= 0) return;
 
     // Hybrid resize policy:
-    // - direct bilinear for 24/32 same-format
+    // - area reduction / bilinear enlargement for 32-bit, bilinear for 24-bit
     // - nearest-neighbor for same-format low-bpp (8/16) for performance
     // - 32-bit conversion path for mixed-format resize
     int srcChannels = src_desc.BitsPerPixel / 8;
     int dstChannels = dst_desc.BitsPerPixel / 8;
 
-    // Handle 32-bit images directly with optimized bilinear interpolation
+    // Handle 32-bit images directly with area reduction or bilinear enlargement.
     if (srcChannels == 4 && dstChannels == 4) {
         ResizeBilinear32(src_desc, dst_desc);
         return;
@@ -1481,6 +1428,14 @@ void VxBlitEngine::ResizeBilinear32(const VxImageDescEx &src_desc, const VxImage
     const int srcH = src_desc.Height;
     const int dstW = dst_desc.Width;
     const int dstH = dst_desc.Height;
+
+    if (srcW > dstW || srcH > dstH) {
+        for (int y = 0; y < dstH; ++y) {
+            XDWORD *row = (XDWORD *) (dst_desc.Image + (ptrdiff_t) y * dst_desc.BytesPerLine);
+            FilterImage32Row(src_desc, dstW, dstH, y, row);
+        }
+        return;
+    }
 
     // Fixed-point scale factors (16.16 format)
     const int scaleX = (srcW << 16) / dstW;
