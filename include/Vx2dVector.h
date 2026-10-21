@@ -31,11 +31,11 @@ struct Vx2DVector {
     /**
      * @brief Calculates the length (magnitude) of the vector.
      * @return The length of the vector.
-     * @remarks A null vector has length zero.
+     * @remarks A null vector has length zero; intermediate products use double precision.
      * @see Normalize, SquareMagnitude
      */
     float Magnitude() const {
-        return sqrtf(SquareMagnitude());
+        return (float) sqrt((double) x * x + (double) y * y);
     }
 
     /**
@@ -57,11 +57,11 @@ struct Vx2DVector {
      * @see Magnitude
      */
     Vx2DVector &Normalize() {
-        float m = Magnitude();
-        if (m != 0.00000f) {
-            m = 1.0f / m;
-            x *= m;
-            y *= m;
+        const double length = sqrt((double) x * x + (double) y * y);
+        if (length != 0.0) {
+            const double inverse = 1.0 / length;
+            x = (float) (x * inverse);
+            y = (float) (y * inverse);
         }
         return *this;
     }

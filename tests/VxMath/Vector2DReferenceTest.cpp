@@ -50,6 +50,20 @@ static Vector2DSamples Vector2DArithmeticDataset() {
     return r;
 }
 
+static Vector2DSamples Vector2DLengthDataset() {
+    Vector2DSamples r;
+    const int triples[][3]={{3,4,5},{5,12,13},{8,15,17},{7,24,25}};
+    const int exponents[]={-120,-100,-75,-50,-10,0,10,50,75,100,120,123};
+    for (const auto &triple:triples) for (int exponent:exponents) for (int signs=0;signs<4;++signs) {
+        const float scale=std::ldexp(1.0f,exponent);
+        Vx2DVector v(triple[0]*scale*(signs&1?-1:1),triple[1]*scale*(signs&2?-1:1));
+        const double x=v.x,y=v.y,m=std::sqrt(x*x+y*y);
+        Observe2D(r,v.Magnitude(),m);v.Normalize();Observe2D(r,v.x,x/m);Observe2D(r,v.y,y/m);
+        Observe2D(r,v.SquareMagnitude(),1);++r.samples;
+    }
+    return r;
+}
+
 #ifndef VX_VECTOR2D_NATIVE_PROBE
 static void ExpectVector2D(const Vx2DVector &v,float x,float y) { EXPECT_FLOAT_EQ(v.x,x);EXPECT_FLOAT_EQ(v.y,y); }
 static void RecordVector2D(const Vector2DSamples &r) {
@@ -155,4 +169,32 @@ TEST(Vector2DReferenceTest, ArithmeticDatasetMatchesTheOriginalSdkAndIndependent
     const Vector2DSamples r=Vector2DArithmeticDataset();EXPECT_EQ(r.samples,1344);RecordVector2D(r);
 }
 
+TEST(Vector2DReferenceTest, LargeFiniteMagnitudeDoesNotOverflowAnIntermediateSquare) {
+    const Vx2DVector v(3e20f,4e20f);const double expected=std::sqrt(double(v.x)*v.x+double(v.y)*v.y);
+    EXPECT_TRUE(std::isfinite(v.Magnitude()));EXPECT_NEAR(v.Magnitude(),expected,expected*1e-6);
+    EXPECT_TRUE(std::isinf(v.SquareMagnitude()));
+}
+
+TEST(Vector2DReferenceTest, TinyFiniteMagnitudeDoesNotUnderflowAnIntermediateSquare) {
+    const Vx2DVector v(3e-30f,4e-30f);const double expected=std::sqrt(double(v.x)*v.x+double(v.y)*v.y);
+    EXPECT_GT(v.Magnitude(),0);EXPECT_NEAR(v.Magnitude(),expected,expected*1e-6);
+    EXPECT_FLOAT_EQ(v.SquareMagnitude(),0);
+}
+
+TEST(Vector2DReferenceTest, LargeFiniteVectorNormalizesWithoutLosingItsDirection) {
+    Vx2DVector v(3e20f,4e20f);v.Normalize();ExpectVector2D(v,0.6f,0.8f);
+}
+
+TEST(Vector2DReferenceTest, TinyFiniteVectorNormalizesInsteadOfRemainingUnchanged) {
+    Vx2DVector v(3e-30f,4e-30f);v.Normalize();ExpectVector2D(v,0.6f,0.8f);
+}
+
+TEST(Vector2DReferenceTest, DirectionRemainsRepresentableWhenMagnitudeExceedsFloatRange) {
+    Vx2DVector v(FLT_MAX,FLT_MAX);EXPECT_TRUE(std::isinf(v.Magnitude()));v.Normalize();
+    const float component=float(std::sqrt(0.5));ExpectVector2D(v,component,component);
+}
+
+TEST(Vector2DReferenceTest, LengthDatasetKeepsPythagoreanDirectionsAcrossFloatScales) {
+    const Vector2DSamples r=Vector2DLengthDataset();EXPECT_EQ(r.samples,192);RecordVector2D(r);
+}
 #endif
