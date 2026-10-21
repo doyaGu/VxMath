@@ -150,6 +150,7 @@ set(VXMATH_TEST_SOURCES
         RectClipReferenceTest.cpp
         RectCoreReferenceTest.cpp
         Vector2DReferenceTest.cpp
+        IntegerRegionReferenceTest.cpp
         # SIMD Tests
         SIMDFeatureTest.cpp
         SIMDUtilityTest.cpp
