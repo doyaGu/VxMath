@@ -47,7 +47,7 @@ public:
     /// @brief Finds the intersection points of an infinite line with an AABB.
     VX_EXPORT static XBOOL LineBox(const VxRay &ray, const VxBbox &box, VxVector &inpoint, VxVector *outpoint = NULL, VxVector *innormal = NULL, VxVector *outnormal = NULL);
 
-    /// @brief Checks for intersection between two AABBs.
+    /// @brief Tests closed AABBs; face/edge/corner contact and zero extents count as intersection.
     VX_EXPORT static XBOOL AABBAABB(const VxBbox &box1, const VxBbox &box2);
     /// @brief Checks for intersection between an AABB and an oriented bounding box (OBB).
     VX_EXPORT static XBOOL AABBOBB(const VxBbox &box1, const VxOBB &box2);
