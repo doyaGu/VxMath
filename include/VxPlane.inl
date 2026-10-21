@@ -110,7 +110,24 @@ inline float VxPlane::Classify(const VxBbox &box, const VxMatrix &mat) const {
     axis[2] = mat[2] * ((box.Max.z - box.Min.z) * 0.5f);
     VxVector center = box.GetCenter();
     Vx3DMultiplyMatrixVector(axis + 3, mat, &center);
-    return XClassify(axis);
+#if defined(VX_SIMD_SSE)
+    const __m128 normal = VxSIMDLoadFloat3(&m_Normal.x);
+    __m128 radius = _mm_and_ps(VxSIMDDotProduct3(normal, VxSIMDLoadFloat3(&axis[0].x)), VX_SIMD_ABS_MASK);
+    radius = _mm_add_ss(radius, _mm_and_ps(VxSIMDDotProduct3(normal, VxSIMDLoadFloat3(&axis[1].x)), VX_SIMD_ABS_MASK));
+    radius = _mm_add_ss(radius, _mm_and_ps(VxSIMDDotProduct3(normal, VxSIMDLoadFloat3(&axis[2].x)), VX_SIMD_ABS_MASK));
+    const __m128 distance = _mm_add_ss(VxSIMDDotProduct3(normal, VxSIMDLoadFloat3(&axis[3].x)), _mm_set_ss(m_D));
+    const float d = _mm_cvtss_f32(distance), r = _mm_cvtss_f32(radius);
+    if (d > r) return _mm_cvtss_f32(_mm_sub_ss(distance, radius));
+    if (d < -r) return _mm_cvtss_f32(_mm_add_ss(distance, radius));
+#else
+    const float radius = XAbs(DotProduct(m_Normal, axis[0])) +
+                         XAbs(DotProduct(m_Normal, axis[1])) +
+                         XAbs(DotProduct(m_Normal, axis[2]));
+    const float distance = DotProduct(m_Normal, axis[3]) + m_D;
+    if (distance > radius) return distance - radius;
+    if (distance < -radius) return distance + radius;
+#endif
+    return 0.0f;
 }
 
 inline float VxPlane::ClassifyFace(const VxVector &pt0, const VxVector &pt1, const VxVector &pt2) const {

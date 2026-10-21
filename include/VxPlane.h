@@ -82,7 +82,9 @@ public:
     /**
      * @brief Classifies a point with respect to the plane.
      * @param p A point in space.
-     * @return The signed distance to the plane. A positive value means the point is in front of the plane (in the direction of the normal), a negative value means it is behind, and zero means it is on the plane.
+     * @return The signed equation value n dot p + D. This is a signed distance
+     * when the normal has unit length. Positive means in front, negative behind,
+     * and zero on the plane.
      * @see Distance
      */
     float Classify(const VxVector &p) const;
@@ -118,6 +120,8 @@ public:
      * @brief Returns the absolute distance from a point to the plane.
      * @param p A point in space.
      * @return The perpendicular distance from the point to the plane.
+     * @remarks Requires a unit normal for geometric distance. Returns the
+     * absolute equation value without normalizing the coefficients.
      * @see Classify
      */
     float Distance(const VxVector &p) const;
@@ -126,6 +130,8 @@ public:
      * @brief Returns the point on the plane that is closest to a given point.
      * @param p A point in space.
      * @return The projection of point p onto the plane.
+     * @remarks Requires a unit normal. Uses p - n * Classify(p) without
+     * dividing by the squared normal length.
      * @see Classify
      */
     const VxVector NearestPoint(const VxVector &p) const;
@@ -142,7 +148,8 @@ public:
     /**
      * @brief Internal classification method for an oriented box represented by its transformed axes and center.
      * @param boxaxis An array of 4 vectors: the 3 scaled and rotated axes and the transformed center point.
-     * @return A negative value if intersecting, a positive value if completely outside.
+     * @return Zero if touching or crossing the plane; otherwise the signed
+     * equation value at the center, rather than the nearest box boundary.
      */
     float XClassify(const VxVector boxaxis[4]) const;
 
