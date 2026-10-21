@@ -142,6 +142,7 @@ set(VXMATH_TEST_SOURCES
         BlitClosureReferenceTest.cpp
         ImageDescriptorReferenceTest.cpp
         ColorReferenceTest.cpp
+        Mipmap32ReferenceTest.cpp
         RectTransformReferenceTest.cpp
         RectTransformScalarReferenceTest.cpp
         RectClipReferenceTest.cpp
