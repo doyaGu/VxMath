@@ -140,6 +140,8 @@ set(VXMATH_TEST_SOURCES
         DXTPayloadReferenceTest.cpp
         IndexedLifecycleReferenceTest.cpp
         BlitClosureReferenceTest.cpp
+        RectTransformReferenceTest.cpp
+        RectTransformScalarReferenceTest.cpp
         # SIMD Tests
         SIMDFeatureTest.cpp
         SIMDUtilityTest.cpp

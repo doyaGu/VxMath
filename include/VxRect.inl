@@ -441,7 +441,7 @@ VX_SIMD_INLINE void VxSIMDRectTransformToHomogeneous(VxRect *rect, const VxRect 
     __m128 screenVec = _mm_loadu_ps(&screen->left);
 
     __m128 screenRightBottom = _mm_shuffle_ps(screenVec, screenVec, _MM_SHUFFLE(3, 2, 3, 2));
-    __m128 screenSize = _mm_sub_ps(screenRightBottom, screenVec);
+    __m128 screenSize = _mm_sub_ps(screenRightBottom, _mm_movelh_ps(screenVec, screenVec));
     __m128 screenInvSize = _mm_div_ps(_mm_set1_ps(1.0f), screenSize);
 
     __m128 minTransformed = _mm_mul_ps(_mm_sub_ps(rectVec, screenVec), screenInvSize);
