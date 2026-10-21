@@ -35,7 +35,10 @@ public:
      * @return True if the point is inside or on the sphere, false otherwise.
      */
     bool IsPointInside(const VxVector &iPoint) {
-        return (SquareMagnitude(iPoint - m_Center) <= (m_Radius * m_Radius));
+        const double x = double(iPoint.x) - m_Center.x;
+        const double y = double(iPoint.y) - m_Center.y;
+        const double z = double(iPoint.z) - m_Center.z;
+        return x * x + y * y + z * z <= double(m_Radius) * m_Radius;
     }
 
     /**
@@ -44,12 +47,13 @@ public:
      * @return True if the box is totally inside the sphere, false otherwise.
      */
     bool IsBoxTotallyInside(const VxBbox &iBox) {
-        VxVector minD = m_Center - iBox.Min;
-        VxVector maxD = m_Center - iBox.Max;
-        minD.Absolute();
-        maxD.Absolute();
-        maxD = Maximize(minD, maxD);
-        return (maxD.SquareMagnitude() < (m_Radius * m_Radius));
+        const double minX = double(m_Center.x) - iBox.Min.x, maxX = double(m_Center.x) - iBox.Max.x;
+        const double minY = double(m_Center.y) - iBox.Min.y, maxY = double(m_Center.y) - iBox.Max.y;
+        const double minZ = double(m_Center.z) - iBox.Min.z, maxZ = double(m_Center.z) - iBox.Max.z;
+        const double x2 = XMax(minX * minX, maxX * maxX);
+        const double y2 = XMax(minY * minY, maxY * maxY);
+        const double z2 = XMax(minZ * minZ, maxZ * maxZ);
+        return x2 + y2 + z2 < double(m_Radius) * m_Radius;
     }
 
     /**
@@ -58,7 +62,10 @@ public:
      * @return True if the point is on the surface, false otherwise.
      */
     bool IsPointOnSurface(const VxVector &iPoint) {
-        return (SquareMagnitude(iPoint - m_Center) == (m_Radius * m_Radius));
+        const double x = double(iPoint.x) - m_Center.x;
+        const double y = double(iPoint.y) - m_Center.y;
+        const double z = double(iPoint.z) - m_Center.z;
+        return x * x + y * y + z * z == double(m_Radius) * m_Radius;
     }
 
     /// @brief Equality operator.
