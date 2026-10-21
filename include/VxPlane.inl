@@ -25,6 +25,25 @@ VX_SIMD_INLINE float VxSIMDPlaneXClassify(const VxPlane *plane, const VxVector b
 // Part 1 - Scalar Inline Implementations
 // =============================================================================
 
+inline void VxPlaneCreateFromTriangle(VxPlane &plane, const VxVector &a, const VxVector &b, const VxVector &c) {
+    const double ax = a.x, ay = a.y, az = a.z;
+    const double bx = double(b.x) - ax, by = double(b.y) - ay, bz = double(b.z) - az;
+    const double cx = double(c.x) - ax, cy = double(c.y) - ay, cz = double(c.z) - az;
+    const double nx = by * cz - bz * cy;
+    const double ny = bz * cx - bx * cz;
+    const double nz = bx * cy - by * cx;
+    const double lengthSquared = nx * nx + ny * ny + nz * nz;
+    VxVector normal;
+    if (lengthSquared != 0.0) {
+        const double inverseLength = 1.0 / sqrt(lengthSquared);
+        normal.Set(float(nx * inverseLength), float(ny * inverseLength), float(nz * inverseLength));
+    } else {
+        normal.Set(0.0f, 0.0f, 1.0f);
+    }
+    const VxVector anchor{float(ax), float(ay), float(az)};
+    plane.Create(normal, anchor);
+}
+
 inline VxPlane::VxPlane() : m_Normal(0.0f, 0.0f, 0.0f), m_D(0.0f) {}
 
 inline VxPlane::VxPlane(const VxVector &n, float d) : m_Normal(n), m_D(d) {}
@@ -134,12 +153,9 @@ inline void VxPlane::Create(const VxVector &n, const VxVector &p) {
 #if defined(VX_SIMD_SSE)
     VxSIMDPlaneCreateFromPoint(this, &n, &p);
 #else
+    const float d = float(-(double(n.x) * p.x + double(n.y) * p.y + double(n.z) * p.z));
     m_Normal = n;
-    const float magSq = m_Normal.SquareMagnitude();
-    if (magSq > EPSILON) {
-        m_Normal *= 1.0f / sqrtf(magSq);
-    }
-    m_D = -DotProduct(m_Normal, p);
+    m_D = d;
 #endif
 }
 
@@ -147,16 +163,7 @@ inline void VxPlane::Create(const VxVector &a, const VxVector &b, const VxVector
 #if defined(VX_SIMD_SSE)
     VxSIMDPlaneCreateFromTriangle(this, &a, &b, &c);
 #else
-    VxVector edge1 = b - a;
-    VxVector edge2 = c - a;
-    VxVector n = CrossProduct(edge1, edge2);
-    const float magSq = n.SquareMagnitude();
-    if (magSq > EPSILON) {
-        n *= 1.0f / sqrtf(magSq);
-    } else {
-        n = VxVector(0.0f, 0.0f, 1.0f);
-    }
-    Create(n, a);
+    VxPlaneCreateFromTriangle(*this, a, b, c);
 #endif
 }
 
@@ -192,32 +199,71 @@ inline float VxPlane::XClassify(const VxVector boxaxis[4]) const {
 
 #include "VxSIMD.h"
 
-VX_SIMD_INLINE void VxSIMDPlaneCreateFromPoint(VxPlane *plane, const VxVector *normal, const VxVector *point) noexcept {
-    __m128 n = VxSIMDLoadFloat3(&normal->x);
-    n = VxSIMDNormalizeChecked(n, VxSIMDDotProduct3(n, n));
-    VxSIMDStoreFloat3(&plane->m_Normal.x, n);
+#if defined(VX_SIMD_SSE2)
+VX_SIMD_INLINE float VxSIMDPlaneNegativeDot3(__m128 normal, __m128 point) noexcept {
+    const __m128d xy = _mm_mul_pd(_mm_cvtps_pd(normal), _mm_cvtps_pd(point));
+    const __m128d z = _mm_mul_sd(_mm_cvtps_pd(_mm_movehl_ps(normal, normal)),
+                                _mm_cvtps_pd(_mm_movehl_ps(point, point)));
+    const __m128d dot = _mm_add_sd(_mm_add_sd(xy, _mm_unpackhi_pd(xy, xy)), z);
+    const __m128d negative = _mm_xor_pd(dot, _mm_set_sd(-0.0));
+    return _mm_cvtss_f32(_mm_cvtsd_ss(_mm_setzero_ps(), negative));
+}
+#endif
 
+VX_SIMD_INLINE void VxSIMDPlaneCreateFromPoint(VxPlane *plane, const VxVector *normal, const VxVector *point) noexcept {
+    const __m128 n = VxSIMDLoadFloat3(&normal->x);
     const __m128 p = VxSIMDLoadFloat3(&point->x);
-    plane->m_D = -_mm_cvtss_f32(VxSIMDDotProduct3(n, p));
+#if defined(VX_SIMD_SSE2)
+    const float d = VxSIMDPlaneNegativeDot3(n, p);
+#else
+    const float d = -_mm_cvtss_f32(VxSIMDDotProduct3(n, p));
+#endif
+    VxSIMDStoreFloat3(&plane->m_Normal.x, n);
+    plane->m_D = d;
 }
 
 VX_SIMD_INLINE void VxSIMDPlaneCreateFromTriangle(VxPlane *plane, const VxVector *a, const VxVector *b, const VxVector *c) noexcept {
     const __m128 va = VxSIMDLoadFloat3(&a->x);
     const __m128 vb = VxSIMDLoadFloat3(&b->x);
     const __m128 vc = VxSIMDLoadFloat3(&c->x);
-    const __m128 edge1 = _mm_sub_ps(vb, va);
-    const __m128 edge2 = _mm_sub_ps(vc, va);
-
-    __m128 n = VxSIMDCrossProduct3(edge1, edge2);
-    const __m128 magSq = VxSIMDDotProduct3(n, n);
-    if (_mm_cvtss_f32(magSq) > EPSILON) {
-        n = _mm_mul_ps(n, VxSIMDReciprocalSqrtAccurate(magSq));
+    __m128 normal;
+#if defined(VX_SIMD_SSE2)
+    const __m128d axy = _mm_cvtps_pd(va);
+    const __m128d az = _mm_cvtps_pd(_mm_movehl_ps(va, va));
+    const __m128d bxy = _mm_sub_pd(_mm_cvtps_pd(vb), axy);
+    const __m128d bz = _mm_sub_pd(_mm_cvtps_pd(_mm_movehl_ps(vb, vb)), az);
+    const __m128d cxy = _mm_sub_pd(_mm_cvtps_pd(vc), axy);
+    const __m128d cz = _mm_sub_pd(_mm_cvtps_pd(_mm_movehl_ps(vc, vc)), az);
+    const __m128d nxy = _mm_sub_pd(
+        _mm_mul_pd(_mm_shuffle_pd(bxy, bz, 1), _mm_shuffle_pd(cz, cxy, 0)),
+        _mm_mul_pd(_mm_shuffle_pd(bz, bxy, 0), _mm_shuffle_pd(cxy, cz, 1)));
+    const __m128d zProducts = _mm_mul_pd(bxy, _mm_shuffle_pd(cxy, cxy, 1));
+    const __m128d nz = _mm_unpacklo_pd(_mm_sub_sd(zProducts, _mm_unpackhi_pd(zProducts, zProducts)),
+                                      _mm_setzero_pd());
+    const __m128d xySquared = _mm_mul_pd(nxy, nxy);
+    const __m128d lengthSquared = _mm_add_sd(
+        _mm_add_sd(xySquared, _mm_unpackhi_pd(xySquared, xySquared)), _mm_mul_sd(nz, nz));
+    if (_mm_cvtsd_f64(lengthSquared) != 0.0) {
+        const __m128d inverse = _mm_div_sd(_mm_set_sd(1.0), _mm_sqrt_sd(lengthSquared, lengthSquared));
+        const __m128 xy = _mm_cvtpd_ps(_mm_mul_pd(nxy, _mm_unpacklo_pd(inverse, inverse)));
+        const __m128 z = _mm_cvtsd_ss(_mm_setzero_ps(), _mm_mul_sd(nz, inverse));
+        normal = _mm_movelh_ps(xy, z);
     } else {
-        n = _mm_setr_ps(0.0f, 0.0f, 1.0f, 0.0f);
+        normal = _mm_setr_ps(0.0f, 0.0f, 1.0f, 0.0f);
     }
-
-    VxSIMDStoreFloat3(&plane->m_Normal.x, n);
-    plane->m_D = -_mm_cvtss_f32(VxSIMDDotProduct3(n, va));
+    const float d = VxSIMDPlaneNegativeDot3(normal, va);
+#else
+    normal = VxSIMDCrossProduct3(_mm_sub_ps(vb, va), _mm_sub_ps(vc, va));
+    const __m128 lengthSquared = VxSIMDDotProduct3(normal, normal);
+    if (_mm_cvtss_f32(lengthSquared) != 0.0f) {
+        normal = _mm_mul_ps(normal, VxSIMDReciprocalSqrtAccurate(lengthSquared));
+    } else {
+        normal = _mm_setr_ps(0.0f, 0.0f, 1.0f, 0.0f);
+    }
+    const float d = -_mm_cvtss_f32(VxSIMDDotProduct3(normal, va));
+#endif
+    VxSIMDStoreFloat3(&plane->m_Normal.x, normal);
+    plane->m_D = d;
 }
 
 VX_SIMD_INLINE float VxSIMDPlaneClassifyPoint(const VxPlane *plane, const VxVector *point) noexcept {

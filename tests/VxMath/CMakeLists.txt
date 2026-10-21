@@ -153,6 +153,7 @@ set(VXMATH_TEST_SOURCES
         IntegerRegionReferenceTest.cpp
         SphereReferenceTest.cpp
         RayReferenceTest.cpp
+        PlaneCreateReferenceTest.cpp
         # SIMD Tests
         SIMDFeatureTest.cpp
         SIMDUtilityTest.cpp
@@ -258,6 +259,9 @@ vx_copy_runtime_dependencies(SphereScalarReferenceTest)
 vx_add_test(RayScalarReferenceTest SOURCES RayReferenceTest.cpp)
 target_compile_definitions(RayScalarReferenceTest PRIVATE VX_SIMD_NONE=1)
 vx_copy_runtime_dependencies(RayScalarReferenceTest)
+vx_add_test(PlaneCreateScalarReferenceTest SOURCES PlaneCreateReferenceTest.cpp)
+target_compile_definitions(PlaneCreateScalarReferenceTest PRIVATE VX_SIMD_NONE=1)
+vx_copy_runtime_dependencies(PlaneCreateScalarReferenceTest)
 
 # Exercise the same original-DLL samples with header SIMD paths disabled.
 vx_add_test(QuaternionReferenceScalarTest SOURCES QuaternionReferenceTest.cpp)

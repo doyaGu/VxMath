@@ -32,11 +32,12 @@ TEST_F(VxPlaneTest, Construction) {
 
     // 4. Normal and point constructor
     VxVector point_on_plane(10, 20, 5); // A point on the z=5 plane
-    VxPlane plane_from_np(VxVector(0, 0, 1), point_on_plane);
+    VxPlane plane_from_np(VxVector(0, 0, 2), point_on_plane);
     // Check if the point itself lies on the generated plane
     EXPECT_NEAR(plane_from_np.Classify(point_on_plane), 0.0f, EPSILON);
-    // The normal should be normalized by Create()
-    EXPECT_NEAR(plane_from_np.m_Normal.Magnitude(), 1.0f, EPSILON);
+    // Normal/point creation preserves the supplied equation coefficients.
+    EXPECT_EQ(plane_from_np.m_Normal, VxVector(0, 0, 2));
+    EXPECT_FLOAT_EQ(plane_from_np.m_D, -10.0f);
 
     // 5. Three points constructor
     VxVector p1(1, 0, 0), p2(0, 1, 0), p3(0, 0, 1);
