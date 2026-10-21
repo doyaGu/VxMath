@@ -51,7 +51,7 @@ public:
     VX_EXPORT static XBOOL AABBAABB(const VxBbox &box1, const VxBbox &box2);
     /// @brief Tests closed AABB/OBB overlap with unit orthogonal OBB axes and nonnegative half-extents.
     VX_EXPORT static XBOOL AABBOBB(const VxBbox &box1, const VxOBB &box2);
-    /// @brief Checks for intersection between two OBBs.
+    /// @brief Tests closed OBB overlap with unit orthogonal axes and nonnegative half-extents.
     VX_EXPORT static XBOOL OBBOBB(const VxOBB &box1, const VxOBB &box2);
     /// @brief Checks for intersection between an AABB and a triangle face.
     VX_EXPORT static XBOOL AABBFace(const VxBbox &box1, const VxVector &A0, const VxVector &A1, const VxVector &A2, const VxVector &N);

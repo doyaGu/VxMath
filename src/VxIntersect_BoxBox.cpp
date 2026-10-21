@@ -1178,6 +1178,7 @@ namespace {
 
 template <bool kUseSIMD>
 static XBOOL OBBOBBCore(const VxOBB &box1, const VxOBB &box2) {
+#if defined(VX_SIMD_SSE) && !defined(VX_SIMD_SSE2)
     float Tx = 0.0f;
     float Ty = 0.0f;
     float Tz = 0.0f;
@@ -1356,6 +1357,77 @@ static XBOOL OBBOBBCore(const VxOBB &box1, const VxOBB &box2) {
 
     // No separating axis found, boxes must intersect
     return TRUE;
+#else
+    // Retain the original fifteen SAT directions. Use the actual axes for
+    // their supports: a float rotation basis is not exactly orthonormal, so
+    // identities involving its rounded dot matrix can create false separation.
+    const double extent[2][3] = {
+        {box1.m_Extents.x, box1.m_Extents.y, box1.m_Extents.z},
+        {box2.m_Extents.x, box2.m_Extents.y, box2.m_Extents.z}
+    };
+#if defined(VX_SIMD_SSE2)
+    if constexpr (kUseSIMD) {
+        const __m128 centerA = VxSIMDLoadVector3(box1.m_Center), centerB = VxSIMDLoadVector3(box2.m_Center);
+        const __m128d deltaXY = _mm_sub_pd(_mm_cvtps_pd(centerB), _mm_cvtps_pd(centerA));
+        const __m128d deltaZ = _mm_sub_sd(_mm_cvtps_pd(_mm_movehl_ps(centerB, centerB)), _mm_cvtps_pd(_mm_movehl_ps(centerA, centerA)));
+        __m128d basisXY[2][3], basisZ[2][3];
+        for (int j = 0; j < 3; ++j) {
+            const __m128 a = VxSIMDLoadVector3(box1.m_Axis[j]), b = VxSIMDLoadVector3(box2.m_Axis[j]);
+            basisXY[0][j] = _mm_cvtps_pd(a); basisZ[0][j] = _mm_cvtps_pd(_mm_movehl_ps(a, a));
+            basisXY[1][j] = _mm_cvtps_pd(b); basisZ[1][j] = _mm_cvtps_pd(_mm_movehl_ps(b, b));
+        }
+        const __m128d sign = _mm_set1_pd(-0.0);
+        for (int n = 0; n < 15; ++n) {
+            __m128d axisXY, axisZ;
+            if (n < 6) {
+                axisXY = basisXY[n / 3][n % 3]; axisZ = basisZ[n / 3][n % 3];
+            } else {
+                const int i = (n - 6) / 3, j = (n - 6) % 3;
+                const __m128d a = basisXY[0][i], az = basisZ[0][i], b = basisXY[1][j], bz = basisZ[1][j];
+                axisXY = _mm_sub_pd(_mm_mul_pd(_mm_shuffle_pd(a, az, 1), _mm_shuffle_pd(bz, b, 0)),
+                    _mm_mul_pd(_mm_shuffle_pd(az, a, 0), _mm_shuffle_pd(b, bz, 1)));
+                axisZ = _mm_sub_sd(_mm_mul_sd(a, _mm_unpackhi_pd(b, b)), _mm_mul_sd(_mm_unpackhi_pd(a, a), b));
+            }
+            const __m128d products = _mm_mul_pd(deltaXY, axisXY);
+            const __m128d projection = _mm_add_sd(_mm_add_sd(products, _mm_unpackhi_pd(products, products)), _mm_mul_sd(deltaZ, axisZ));
+            __m128d radius[2] = {_mm_setzero_pd(), _mm_setzero_pd()};
+            for (int box = 0; box < 2; ++box) for (int j = 0; j < 3; ++j) {
+                const __m128d supportProducts = _mm_mul_pd(basisXY[box][j], axisXY);
+                const __m128d supportDot = _mm_add_sd(_mm_add_sd(supportProducts, _mm_unpackhi_pd(supportProducts, supportProducts)),
+                    _mm_mul_sd(basisZ[box][j], axisZ));
+                radius[box] = _mm_add_sd(radius[box], _mm_mul_sd(_mm_andnot_pd(sign, supportDot), _mm_set_sd(extent[box][j])));
+            }
+            if (_mm_movemask_pd(_mm_cmpgt_sd(_mm_andnot_pd(sign, projection), _mm_add_sd(radius[0], radius[1]))) & 1) return FALSE;
+        }
+        return TRUE;
+    }
+#endif
+    double delta[3], basis[2][3][3];
+    for (int k = 0; k < 3; ++k) {
+        delta[k] = double(box2.m_Center[k]) - box1.m_Center[k];
+        for (int j = 0; j < 3; ++j) { basis[0][j][k] = box1.m_Axis[j][k]; basis[1][j][k] = box2.m_Axis[j][k]; }
+    }
+    for (int n = 0; n < 15; ++n) {
+        double axis[3];
+        if (n < 6) {
+            for (int k = 0; k < 3; ++k) axis[k] = basis[n / 3][n % 3][k];
+        } else {
+            const int i = (n - 6) / 3, j = (n - 6) % 3;
+            for (int k = 0; k < 3; ++k) {
+                const int u = (k + 1) % 3, v = (k + 2) % 3;
+                axis[k] = basis[0][i][u] * basis[1][j][v] - basis[0][i][v] * basis[1][j][u];
+            }
+        }
+        const double projection = delta[0] * axis[0] + delta[1] * axis[1] + delta[2] * axis[2];
+        double radius[2] = {};
+        for (int box = 0; box < 2; ++box) for (int j = 0; j < 3; ++j) {
+            const double support = basis[box][j][0] * axis[0] + basis[box][j][1] * axis[1] + basis[box][j][2] * axis[2];
+            radius[box] += extent[box][j] * fabs(support);
+        }
+        if (fabs(projection) > radius[0] + radius[1]) return FALSE;
+    }
+    return TRUE;
+#endif
 }
 
 } // namespace

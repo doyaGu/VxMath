@@ -166,6 +166,7 @@ set(VXMATH_TEST_SOURCES
         QuadraticReferenceTest.cpp
         AabbIntersectionReferenceTest.cpp
         AabbObbIntersectionReferenceTest.cpp
+        ObbIntersectionReferenceTest.cpp
         # SIMD Tests
         SIMDFeatureTest.cpp
         SIMDUtilityTest.cpp
@@ -307,6 +308,9 @@ vx_copy_runtime_dependencies(AabbIntersectionScalarReferenceTest)
 vx_add_test(AabbObbIntersectionScalarReferenceTest SOURCES AabbObbIntersectionReferenceTest.cpp)
 target_compile_definitions(AabbObbIntersectionScalarReferenceTest PRIVATE VX_SIMD_NONE=1)
 vx_copy_runtime_dependencies(AabbObbIntersectionScalarReferenceTest)
+vx_add_test(ObbIntersectionScalarReferenceTest SOURCES ObbIntersectionReferenceTest.cpp)
+target_compile_definitions(ObbIntersectionScalarReferenceTest PRIVATE VX_SIMD_NONE=1)
+vx_copy_runtime_dependencies(ObbIntersectionScalarReferenceTest)
 
 # Exercise the same original-DLL samples with header SIMD paths disabled.
 vx_add_test(QuaternionReferenceScalarTest SOURCES QuaternionReferenceTest.cpp)
