@@ -106,7 +106,9 @@ public:
 
     //--------- Frustum
 
-    /// @brief Checks for intersection between a frustum and a triangle face.
+    /// @brief Conservative visibility test: rejects a face only when all three
+    /// vertices lie strictly outside the same frustum plane. TRUE can include
+    /// disjoint triangles near a frustum edge; coplanar vertices are retained.
     VX_EXPORT static XBOOL FrustumFace(const VxFrustum &frustum, const VxVector &pt0, const VxVector &pt1, const VxVector &pt2);
     /// @brief Checks for intersection between a frustum and an AABB.
     VX_EXPORT static XBOOL FrustumAABB(const VxFrustum &frustum, const VxBbox &box);
