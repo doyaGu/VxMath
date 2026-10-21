@@ -130,107 +130,122 @@ const VxIntersectSphereDispatchTable *GetVxIntersectSphereDispatchTable() {
 
 static XBOOL SphereSphereScalarCore(const VxSphere &iS1, const VxVector &iP1, const VxSphere &iS2, const VxVector &iP2,
                                     float *oCollisionTime1, float *oCollisionTime2) {
-    float fallbackCollisionTime1 = 0.0f;
-    float fallbackCollisionTime2 = 0.0f;
-    float *collisionTime1 = (oCollisionTime1 != nullptr) ? oCollisionTime1 : &fallbackCollisionTime1;
-    float *collisionTime2 = (oCollisionTime2 != nullptr) ? oCollisionTime2 : &fallbackCollisionTime2;
-
-    VxVector movement1 = iP1 - iS1.Center();
-    VxVector movement2 = iP2 - iS2.Center();
-    VxVector centerDiff = iS2.Center() - iS1.Center();
-    VxVector relativeMovement = movement2 - movement1;
-
-    float radiusSum = iS1.Radius() + iS2.Radius();
-    float radiusSumSquared = radiusSum * radiusSum;
-    float centerDistSquared = SquareMagnitude(centerDiff);
-
-    if (centerDistSquared <= radiusSumSquared) {
-        *collisionTime1 = 0.0f;
-        *collisionTime2 = 0.0f;
-        return TRUE;
+    double delta[3], speed[3], squaredDistance = 0, a = 0, projection = 0;
+    for (int i = 0; i < 3; ++i) {
+        delta[i] = double(iS2.Center()[i]) - iS1.Center()[i];
+        speed[i] = (double(iP2[i]) - iS2.Center()[i]) - (double(iP1[i]) - iS1.Center()[i]);
+        squaredDistance += delta[i] * delta[i];
+        a += speed[i] * speed[i];
+        projection += delta[i] * speed[i];
     }
-
-    float c = centerDistSquared - radiusSumSquared;
-    float b = 2.0f * DotProduct(relativeMovement, centerDiff);
-    float a = SquareMagnitude(relativeMovement);
-
-    if (!QuadraticFormula(a, b, c, collisionTime1, collisionTime2))
-        return FALSE;
-
-    if (*collisionTime1 > *collisionTime2) {
-        float temp = *collisionTime1;
-        *collisionTime1 = *collisionTime2;
-        *collisionTime2 = temp;
+    const double radius = double(iS1.Radius()) + iS2.Radius();
+    const double radiusSquared = radius * radius;
+    if (squaredDistance <= radiusSquared || a == 0) {
+        if (oCollisionTime1) *oCollisionTime1 = 0;
+        if (oCollisionTime2) *oCollisionTime2 = 0;
+        return squaredDistance <= radiusSquared;
     }
-
-    return (*collisionTime1 <= 1.0f && *collisionTime1 >= 0.0f);
+    const double crossX = delta[1] * speed[2] - delta[2] * speed[1];
+    const double crossY = delta[2] * speed[0] - delta[0] * speed[2];
+    const double crossZ = delta[0] * speed[1] - delta[1] * speed[0];
+    const double discriminant = radiusSquared * a - (crossX * crossX + crossY * crossY + crossZ * crossZ);
+    if (discriminant < 0) return FALSE;
+    const double centerT = -projection / a;
+    const double offsetT = sqrt(discriminant) / a;
+    const double enter = centerT - offsetT, exit = centerT + offsetT;
+    if (oCollisionTime1) *oCollisionTime1 = float(enter);
+    if (oCollisionTime2) *oCollisionTime2 = float(exit);
+    return enter >= 0 && enter <= 1;
 }
 
 static int RaySphereScalarCore(const VxRay &iRay, const VxSphere &iSphere, VxVector *oInter1, VxVector *oInter2) {
-    const float dirMagnitudeSq = SquareMagnitude(iRay.m_Direction);
-    if (dirMagnitudeSq <= EPSILON) {
-        return 0;
+    double delta[3], direction[3], a = 0, projection = 0;
+    for (int i = 0; i < 3; ++i) {
+        delta[i] = double(iRay.m_Origin[i]) - iSphere.Center()[i];
+        direction[i] = iRay.m_Direction[i];
+        a += direction[i] * direction[i];
+        projection += delta[i] * direction[i];
     }
+    if (a == 0) return 0;
+    const double crossX = delta[1] * direction[2] - delta[2] * direction[1];
+    const double crossY = delta[2] * direction[0] - delta[0] * direction[2];
+    const double crossZ = delta[0] * direction[1] - delta[1] * direction[0];
+    const double discriminant = double(iSphere.Radius()) * iSphere.Radius() * a -
+        (crossX * crossX + crossY * crossY + crossZ * crossZ);
+    if (discriminant < 0) return 0;
 
-    const float invMagnitude = 1.0f / sqrtf(dirMagnitudeSq);
-    const VxVector normalizedDir = iRay.m_Direction * invMagnitude;
-
-    const VxVector &center = iSphere.Center();
-    float toCenterX = center.x - iRay.m_Origin.x;
-    float toCenterY = center.y - iRay.m_Origin.y;
-    float toCenterZ = center.z - iRay.m_Origin.z;
-
-    float projection = normalizedDir.z * toCenterZ + normalizedDir.y * toCenterY + toCenterX * normalizedDir.x;
-    float radius = iSphere.Radius();
-    float radiusSquared = radius * radius;
-    float discriminant = radiusSquared - (toCenterZ * toCenterZ + toCenterY * toCenterY + toCenterX * toCenterX - projection * projection);
-
-    if (discriminant < 0.0f)
-        return 0;
-
-    if (discriminant == 0.0f) {
-        const VxVector hit = iRay.m_Origin + normalizedDir * projection;
-        if (oInter1) {
-            *oInter1 = hit;
-        } else if (oInter2) {
-            *oInter2 = hit;
-        }
+    const double closestT = -projection / a;
+    const double offsetT = sqrt(discriminant) / a;
+    VxVector first, second;
+    for (int i = 0; i < 3; ++i) {
+        // Keep the radius offset separate from the large origin/projection.
+        const double closest = double(iRay.m_Origin[i]) + direction[i] * closestT;
+        const double offset = direction[i] * offsetT;
+        first[i] = float(closest - offset);
+        second[i] = float(closest + offset);
+    }
+    if (discriminant == 0) {
+        if (oInter1) *oInter1 = first;
+        else if (oInter2) *oInter2 = first;
         return 1;
     }
-
-    float sqrtDiscriminant = sqrtf(discriminant);
-    float t1 = projection - sqrtDiscriminant;
-    float t2 = projection + sqrtDiscriminant;
-    if (oInter1) {
-        *oInter1 = iRay.m_Origin + normalizedDir * t1;
-    }
-    if (oInter2) {
-        *oInter2 = iRay.m_Origin + normalizedDir * t2;
-    }
+    if (oInter1) *oInter1 = first;
+    if (oInter2) *oInter2 = second;
     return 2;
 }
 
 static XBOOL SphereAABBScalarCore(const VxSphere &iSphere, const VxBbox &iBox) {
-    const VxVector &center = iSphere.Center();
-    float sqDist = 0.0f;
-
+    double squaredDistance = 0;
     for (int i = 0; i < 3; ++i) {
-        if (center[i] < iBox.Min[i]) {
-            const float delta = iBox.Min[i] - center[i];
-            sqDist += delta * delta;
-        } else if (center[i] > iBox.Max[i]) {
-            const float delta = center[i] - iBox.Max[i];
-            sqDist += delta * delta;
-        }
+        double delta = 0;
+        if (iSphere.Center()[i] < iBox.Min[i]) delta = double(iBox.Min[i]) - iSphere.Center()[i];
+        else if (iSphere.Center()[i] > iBox.Max[i]) delta = double(iSphere.Center()[i]) - iBox.Max[i];
+        squaredDistance += delta * delta;
     }
-
-    const float radius = iSphere.Radius();
-    return (sqDist <= radius * radius);
+    return squaredDistance <= double(iSphere.Radius()) * iSphere.Radius();
 }
 
 #if defined(VX_SIMD_SSE)
 static XBOOL SphereSphereSIMDCore(const VxSphere &iS1, const VxVector &iP1, const VxSphere &iS2, const VxVector &iP2,
                                   float *oCollisionTime1, float *oCollisionTime2) {
+#if defined(VX_SIMD_SSE2)
+    const __m128 c1 = VxSIMDLoadFloat3(&iS1.Center().x), c2 = VxSIMDLoadFloat3(&iS2.Center().x);
+    const __m128 p1 = VxSIMDLoadFloat3(&iP1.x), p2 = VxSIMDLoadFloat3(&iP2.x);
+    const __m128d deltaXY = _mm_sub_pd(_mm_cvtps_pd(c2), _mm_cvtps_pd(c1));
+    const __m128d deltaZ = _mm_sub_sd(_mm_cvtps_pd(_mm_movehl_ps(c2, c2)), _mm_cvtps_pd(_mm_movehl_ps(c1, c1)));
+    const __m128d speedXY = _mm_sub_pd(_mm_sub_pd(_mm_cvtps_pd(p2), _mm_cvtps_pd(c2)), _mm_sub_pd(_mm_cvtps_pd(p1), _mm_cvtps_pd(c1)));
+    const __m128d speedZ = _mm_sub_sd(_mm_sub_sd(_mm_cvtps_pd(_mm_movehl_ps(p2, p2)), _mm_cvtps_pd(_mm_movehl_ps(c2, c2))),
+                                    _mm_sub_sd(_mm_cvtps_pd(_mm_movehl_ps(p1, p1)), _mm_cvtps_pd(_mm_movehl_ps(c1, c1))));
+    const __m128d distanceXY = _mm_mul_pd(deltaXY, deltaXY), squareXY = _mm_mul_pd(speedXY, speedXY);
+    const __m128d distanceSquared = _mm_add_sd(_mm_add_sd(distanceXY, _mm_unpackhi_pd(distanceXY, distanceXY)), _mm_mul_sd(deltaZ, deltaZ));
+    const __m128d a = _mm_add_sd(_mm_add_sd(squareXY, _mm_unpackhi_pd(squareXY, squareXY)), _mm_mul_sd(speedZ, speedZ));
+    const __m128d radius = _mm_set_sd(double(iS1.Radius()) + iS2.Radius());
+    const __m128d radiusSquared = _mm_mul_sd(radius, radius);
+    const bool overlapping = _mm_cvtsd_f64(distanceSquared) <= _mm_cvtsd_f64(radiusSquared);
+    if (overlapping || _mm_cvtsd_f64(a) == 0) {
+        if (oCollisionTime1) *oCollisionTime1 = 0;
+        if (oCollisionTime2) *oCollisionTime2 = 0;
+        return overlapping;
+    }
+    double d[3], v[3];
+    _mm_storeu_pd(d, deltaXY); d[2] = _mm_cvtsd_f64(deltaZ);
+    _mm_storeu_pd(v, speedXY); v[2] = _mm_cvtsd_f64(speedZ);
+    const __m128d crossXY = _mm_sub_pd(_mm_mul_pd(_mm_setr_pd(d[1], d[2]), _mm_setr_pd(v[2], v[0])),
+                                     _mm_mul_pd(_mm_setr_pd(d[2], d[0]), _mm_setr_pd(v[1], v[2])));
+    const __m128d crossZ = _mm_sub_sd(_mm_mul_sd(_mm_set_sd(d[0]), _mm_set_sd(v[1])), _mm_mul_sd(_mm_set_sd(d[1]), _mm_set_sd(v[0])));
+    const __m128d crossSquareXY = _mm_mul_pd(crossXY, crossXY);
+    const __m128d crossSquared = _mm_add_sd(_mm_add_sd(crossSquareXY, _mm_unpackhi_pd(crossSquareXY, crossSquareXY)), _mm_mul_sd(crossZ, crossZ));
+    const __m128d discriminant = _mm_sub_sd(_mm_mul_sd(radiusSquared, a), crossSquared);
+    if (_mm_cvtsd_f64(discriminant) < 0) return FALSE;
+    const __m128d projectedXY = _mm_mul_pd(deltaXY, speedXY);
+    const __m128d projection = _mm_add_sd(_mm_add_sd(projectedXY, _mm_unpackhi_pd(projectedXY, projectedXY)), _mm_mul_sd(deltaZ, speedZ));
+    const __m128d centerT = _mm_div_sd(_mm_sub_sd(_mm_setzero_pd(), projection), a);
+    const __m128d offsetT = _mm_div_sd(_mm_sqrt_sd(discriminant, discriminant), a);
+    const double enter = _mm_cvtsd_f64(_mm_sub_sd(centerT, offsetT)), exit = _mm_cvtsd_f64(_mm_add_sd(centerT, offsetT));
+    if (oCollisionTime1) *oCollisionTime1 = float(enter);
+    if (oCollisionTime2) *oCollisionTime2 = float(exit);
+    return enter >= 0 && enter <= 1;
+#else
     float fallbackCollisionTime1 = 0.0f;
     float fallbackCollisionTime2 = 0.0f;
     float *collisionTime1 = (oCollisionTime1 != nullptr) ? oCollisionTime1 : &fallbackCollisionTime1;
@@ -266,9 +281,56 @@ static XBOOL SphereSphereSIMDCore(const VxSphere &iS1, const VxVector &iP1, cons
     }
 
     return (*collisionTime1 <= 1.0f && *collisionTime1 >= 0.0f);
+#endif
 }
 
 static int RaySphereSIMDCore(const VxRay &iRay, const VxSphere &iSphere, VxVector *oInter1, VxVector *oInter2) {
+#if defined(VX_SIMD_SSE2)
+    const __m128 origin = VxSIMDLoadFloat3(&iRay.m_Origin.x);
+    const __m128 direction = VxSIMDLoadFloat3(&iRay.m_Direction.x);
+    const __m128 center = VxSIMDLoadFloat3(&iSphere.Center().x);
+    const __m128d originXY = _mm_cvtps_pd(origin);
+    const __m128d originZ = _mm_cvtps_pd(_mm_movehl_ps(origin, origin));
+    const __m128d directionXY = _mm_cvtps_pd(direction);
+    const __m128d directionZ = _mm_cvtps_pd(_mm_movehl_ps(direction, direction));
+    const __m128d deltaXY = _mm_sub_pd(originXY, _mm_cvtps_pd(center));
+    const __m128d deltaZ = _mm_sub_sd(originZ, _mm_cvtps_pd(_mm_movehl_ps(center, center)));
+    const __m128d squareXY = _mm_mul_pd(directionXY, directionXY);
+    const __m128d a = _mm_add_sd(_mm_add_sd(squareXY, _mm_unpackhi_pd(squareXY, squareXY)), _mm_mul_sd(directionZ, directionZ));
+    if (_mm_cvtsd_f64(a) == 0) return 0;
+    double d[3], v[3];
+    _mm_storeu_pd(d, deltaXY); d[2] = _mm_cvtsd_f64(deltaZ);
+    _mm_storeu_pd(v, directionXY); v[2] = _mm_cvtsd_f64(directionZ);
+    const __m128d crossXY = _mm_sub_pd(_mm_mul_pd(_mm_setr_pd(d[1], d[2]), _mm_setr_pd(v[2], v[0])),
+                                     _mm_mul_pd(_mm_setr_pd(d[2], d[0]), _mm_setr_pd(v[1], v[2])));
+    const __m128d crossZ = _mm_sub_sd(_mm_mul_sd(_mm_set_sd(d[0]), _mm_set_sd(v[1])), _mm_mul_sd(_mm_set_sd(d[1]), _mm_set_sd(v[0])));
+    const __m128d crossSquareXY = _mm_mul_pd(crossXY, crossXY);
+    const __m128d crossSquared = _mm_add_sd(_mm_add_sd(crossSquareXY, _mm_unpackhi_pd(crossSquareXY, crossSquareXY)), _mm_mul_sd(crossZ, crossZ));
+    const __m128d radius = _mm_set_sd(iSphere.Radius());
+    const __m128d discriminant = _mm_sub_sd(_mm_mul_sd(_mm_mul_sd(radius, radius), a), crossSquared);
+    const double disc = _mm_cvtsd_f64(discriminant);
+    if (disc < 0) return 0;
+    const __m128d projectedXY = _mm_mul_pd(deltaXY, directionXY);
+    const __m128d projection = _mm_add_sd(_mm_add_sd(projectedXY, _mm_unpackhi_pd(projectedXY, projectedXY)), _mm_mul_sd(deltaZ, directionZ));
+    const __m128d closestT = _mm_div_sd(_mm_sub_sd(_mm_setzero_pd(), projection), a);
+    const __m128d offsetT = _mm_div_sd(_mm_sqrt_sd(discriminant, discriminant), a);
+    const __m128d closestXY = _mm_add_pd(originXY, _mm_mul_pd(directionXY, _mm_unpacklo_pd(closestT, closestT)));
+    const __m128d closestZ = _mm_add_sd(originZ, _mm_mul_sd(directionZ, closestT));
+    const __m128d offsetXY = _mm_mul_pd(directionXY, _mm_unpacklo_pd(offsetT, offsetT));
+    const __m128d offsetZ = _mm_mul_sd(directionZ, offsetT);
+    const __m128 first = _mm_movelh_ps(_mm_cvtpd_ps(_mm_sub_pd(closestXY, offsetXY)), _mm_cvtsd_ss(_mm_setzero_ps(), _mm_sub_sd(closestZ, offsetZ)));
+    if (disc == 0) {
+        if (oInter1) VxSIMDStoreFloat3(&oInter1->x, first);
+        else if (oInter2) VxSIMDStoreFloat3(&oInter2->x, first);
+        return 1;
+    }
+    if (oInter1) VxSIMDStoreFloat3(&oInter1->x, first);
+    if (oInter2) {
+        const __m128 second = _mm_movelh_ps(_mm_cvtpd_ps(_mm_add_pd(closestXY, offsetXY)), _mm_cvtsd_ss(_mm_setzero_ps(), _mm_add_sd(closestZ, offsetZ)));
+        VxSIMDStoreFloat3(&oInter2->x, second);
+    }
+    return 2;
+#else
     const float dirMagnitudeSq = VxSIMDDot3Scalar(iRay.m_Direction, iRay.m_Direction);
     if (dirMagnitudeSq <= EPSILON) {
         return 0;
@@ -314,9 +376,21 @@ static int RaySphereSIMDCore(const VxRay &iRay, const VxSphere &iSphere, VxVecto
         *oInter2 = VxSIMDAddScaledVector3(iRay.m_Origin, normalizedDir, t2);
     }
     return 2;
+#endif
 }
 
 static XBOOL SphereAABBMSIMDCore(const VxSphere &iSphere, const VxBbox &iBox) {
+#if defined(VX_SIMD_SSE2)
+    const __m128d center = _mm_cvtps_pd(VxSIMDLoadFloat3(&iSphere.Center().x));
+    const __m128d minimum = _mm_cvtps_pd(VxSIMDLoadFloat3(&iBox.Min.x));
+    const __m128d maximum = _mm_cvtps_pd(VxSIMDLoadFloat3(&iBox.Max.x));
+    const __m128d delta = _mm_sub_pd(center, _mm_min_pd(_mm_max_pd(center, minimum), maximum));
+    const __m128d square = _mm_mul_pd(delta, delta);
+    const double z = iSphere.Center().z, lowZ = iBox.Min.z, highZ = iBox.Max.z;
+    const double deltaZ = z < lowZ ? z - lowZ : z > highZ ? z - highZ : 0;
+    const double squaredDistance = _mm_cvtsd_f64(_mm_add_sd(square, _mm_unpackhi_pd(square, square))) + deltaZ * deltaZ;
+    return squaredDistance <= double(iSphere.Radius()) * iSphere.Radius();
+#else
     const __m128 minV = VxSIMDLoadFloat3(&iBox.Min.x);
     const __m128 maxV = VxSIMDLoadFloat3(&iBox.Max.x);
     const __m128 sphereCenter = VxSIMDLoadFloat3(&iSphere.Center().x);
@@ -325,6 +399,7 @@ static XBOOL SphereAABBMSIMDCore(const VxSphere &iSphere, const VxBbox &iBox) {
     const float sqDist = _mm_cvtss_f32(VxSIMDDotProduct3(delta, delta));
     const float radius = iSphere.Radius();
     return (sqDist <= radius * radius);
+#endif
 }
 #endif
 

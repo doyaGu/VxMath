@@ -129,7 +129,9 @@ public:
     //--------- Spheres
     /// @brief Checks for collision between two moving spheres.
     VX_EXPORT static XBOOL SphereSphere(const VxSphere &iS1, const VxVector &iP1, const VxSphere &iS2, const VxVector &iP2, float *oCollisionTime1, float *oCollisionTime2);
-    /// @brief Finds the intersection points of a ray with a sphere. Returns the number of intersections (0, 1, or 2).
+    /// @brief Original line/sphere test: returns both intersections along the
+    /// direction, including points behind the origin. Returns 0, 1, or 2;
+    /// a miss preserves outputs, and a tangent writes the first available output.
     VX_EXPORT static int RaySphere(const VxRay &iRay, const VxSphere &iSphere, VxVector *oInter1, VxVector *oInter2);
     /// @brief Checks for intersection between a sphere and an AABB.
     VX_EXPORT static int SphereAABB(const VxSphere &iSphere, const VxBbox &iBox);
