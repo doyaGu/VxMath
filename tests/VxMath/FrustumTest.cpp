@@ -1,5 +1,4 @@
 #include <gtest/gtest.h>
-#include <gmock/gmock.h>
 
 #include <cmath>
 #include <random>
@@ -110,32 +109,22 @@ static XBOOL FrustumOBBReference(const VxFrustum &frustum, const VxBbox &box, co
 }
 
 static XBOOL FrustumBoxReference(const VxFrustum &frustum, const VxBbox &box, const VxMatrix &mat) {
-    VxVector axis[4];
-    axis[0] = mat[0] * ((box.Max.x - box.Min.x) * 0.5f);
-    axis[1] = mat[1] * ((box.Max.y - box.Min.y) * 0.5f);
-    axis[2] = mat[2] * ((box.Max.z - box.Min.z) * 0.5f);
-
-    VxVector center = box.GetCenter();
-    Vx3DMultiplyMatrixVector(axis + 3, mat, &center);
-
-    const float nearResult = frustum.GetNearPlane().XClassify(axis);
-    if (nearResult < 0.0f) return TRUE;
-    if (nearResult > 0.0f) return FALSE;
-
-    const float farResult = frustum.GetFarPlane().XClassify(axis);
-    if (farResult < 0.0f) return TRUE;
-    if (farResult > 0.0f) return FALSE;
-
-    const float leftResult = frustum.GetLeftPlane().XClassify(axis);
-    if (leftResult < 0.0f) return TRUE;
-    if (leftResult > 0.0f) return FALSE;
-
-    const float rightResult = frustum.GetRightPlane().XClassify(axis);
-    if (rightResult < 0.0f) return TRUE;
-    if (rightResult > 0.0f) return FALSE;
-
-    if (frustum.GetUpPlane().XClassify(axis) >= 0.0f) return FALSE;
-    if (frustum.GetBottomPlane().XClassify(axis) >= 0.0f) return FALSE;
+    const VxPlane *planes[] = {&frustum.GetNearPlane(), &frustum.GetFarPlane(), &frustum.GetLeftPlane(), &frustum.GetRightPlane(), &frustum.GetUpPlane(), &frustum.GetBottomPlane()};
+    for (const VxPlane *plane : planes) {
+        double low = 1e300, high = -1e300;
+        for (int v = 0; v < 8; ++v) {
+            const double p[] = {v & 1 ? box.Max.x : box.Min.x, v & 2 ? box.Max.y : box.Min.y, v & 4 ? box.Max.z : box.Min.z};
+            double distance = plane->m_D;
+            for (int c = 0; c < 3; ++c) {
+                const double world = mat[3][c] + p[0] * mat[0][c] + p[1] * mat[1][c] + p[2] * mat[2][c];
+                distance += world * plane->m_Normal[c];
+            }
+            if (distance < low) low = distance;
+            if (distance > high) high = distance;
+        }
+        if (low > 0.0) return FALSE;
+        if (high >= 0.0) return TRUE;
+    }
     return TRUE;
 }
 

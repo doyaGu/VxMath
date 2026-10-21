@@ -115,8 +115,9 @@ public:
     /// @brief Checks for intersection between a frustum and an OBB.
     VX_EXPORT static XBOOL FrustumOBB(const VxFrustum &frustum, const VxBbox &box, const VxMatrix &mat);
     /**
-     * @brief Checks for intersection between a frustum and a box (OBB).
-     * @deprecated Use FrustumOBB instead.
+     * @brief Legacy ordered-plane visibility test. Accepts on the first
+     * crossing/touching plane, rejects on the first strictly outside plane.
+     * @deprecated Prefer FrustumOBB for its distinct eight-axis overlap test.
      */
     VX_EXPORT static XBOOL FrustumBox(const VxFrustum &frustum, const VxBbox &box, const VxMatrix &mat);
 
