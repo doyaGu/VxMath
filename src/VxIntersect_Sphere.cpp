@@ -43,9 +43,11 @@ static inline VxVector VxSIMDAddScaledVector3(const VxVector& a, const VxVector&
  * @param a - coefficient of x^2
  * @param b - coefficient of x  
  * @param c - constant term
- * @param t1 - pointer to store first solution
- * @param t2 - pointer to store second solution
+ * @param t1 - receives the plus-square-root solution (not necessarily smaller)
+ * @param t2 - receives the minus-square-root solution
  * @return 1 if solutions found, 0 if no real solutions
+ * A negative discriminant leaves both outputs unchanged. A constant equation
+ * has no selected root and writes zero to both outputs.
  */
 XBOOL QuadraticFormula(float a, float b, float c, float *t1, float *t2) {
     // Treat a == 0 OR unordered(a, 0) (i.e., NaN) as a linear equation.
@@ -67,9 +69,17 @@ XBOOL QuadraticFormula(float a, float b, float c, float *t1, float *t2) {
     // Two distinct real solutions only when disc > 0.
     if (disc > 0.0) {
         const double sqrt_disc = sqrt(disc);
-        const double inv2a = 1.0 / ((double)a + (double)a);
-        *t1 = (float)((sqrt_disc - (double)b) * inv2a);
-        *t2 = (float)((-(double)b - sqrt_disc) * inv2a);
+        // Compute the root without subtracting nearly equal numbers, then use
+        // the product of the roots for its companion. Keep the original slots
+        // even when a is negative: they are plus/minus roots, not sorted roots.
+        const double q = -0.5 * (b >= 0.0f ? (double)b + sqrt_disc : (double)b - sqrt_disc);
+        if (b >= 0.0f) {
+            *t1 = (float)((double)c / q);
+            *t2 = (float)(q / (double)a);
+        } else {
+            *t1 = (float)(q / (double)a);
+            *t2 = (float)((double)c / q);
+        }
         return 1;
     }
 
@@ -81,8 +91,6 @@ XBOOL QuadraticFormula(float a, float b, float c, float *t1, float *t2) {
         return 1;
     }
 
-    *t1 = 0.0f;
-    *t2 = 0.0f;
     return 0;
 }
 

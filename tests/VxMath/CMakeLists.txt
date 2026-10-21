@@ -163,6 +163,7 @@ set(VXMATH_TEST_SOURCES
         PlaneIntersectionReferenceTest.cpp
         PlaneSystemReferenceTest.cpp
         SphereIntersectionReferenceTest.cpp
+        QuadraticReferenceTest.cpp
         # SIMD Tests
         SIMDFeatureTest.cpp
         SIMDUtilityTest.cpp
