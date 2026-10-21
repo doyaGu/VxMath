@@ -74,7 +74,8 @@ typedef struct VxBbox {
     /**
      * @brief Resets the box to an invalid state, ready for merging.
      * @remarks This sets Min to a large positive value and Max to a large negative
-     * value, ensuring any subsequent `Merge` operation will correctly define the box.
+     * value (1e6 for Min and -1e6 for Max), preserving the original finite
+     * merge sentinel rather than an unbounded empty interval.
      */
     void Reset();
 
@@ -108,7 +109,8 @@ typedef struct VxBbox {
      * @brief Classifies the relative position of two boxes from a viewpoint.
      * @param box2 The other box.
      * @param pt The viewpoint.
-     * @return 2 if `box2` is on the opposite side of this box from `pt`, 1 if `box2` is inside, 0 otherwise.
+     * @return The original signed viewpoint/containment relation (-1, 0, or 1).
+     * Zero denotes an unresolved ordering; this is not a 0/1/2 classification.
      */
     inline int Classify(const VxBbox &box2, const VxVector &pt) const;
 
@@ -117,7 +119,8 @@ typedef struct VxBbox {
      * @param iVcount The number of vertices to classify.
      * @param iVertices Pointer to the start of the vertex data.
      * @param iStride The byte offset between consecutive vertices.
-     * @param oFlags An output array to be filled with `VXCLIP_FLAGS` for each vertex.
+     * @param oFlags An output array of `VXCLIP_BOXFLAGS`: below x/y/z uses
+     * bits 1/2/4 and above x/y/z uses bits 8/16/32.
      */
     inline void ClassifyVertices(const int iVcount, XBYTE *iVertices, XDWORD iStride, XDWORD *oFlags) const;
 
@@ -127,7 +130,7 @@ typedef struct VxBbox {
      * @param iVertices Pointer to the vertex data.
      * @param iStride The byte offset between vertices.
      * @param iAxis The axis to test against (0=x, 1=y, 2=z).
-     * @param oFlags An output array to be filled with flags (0x01 if < min, 0x10 if > max).
+     * @param oFlags An output array to be filled with flags (1 if < min, 2 if > max).
      */
     inline void ClassifyVerticesOneAxis(const int iVcount, XBYTE *iVertices, XDWORD iStride, const int iAxis, XDWORD *oFlags) const;
 

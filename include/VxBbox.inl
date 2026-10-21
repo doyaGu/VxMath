@@ -59,26 +59,53 @@ inline VxVector VxBbox::GetSize() const {
 }
 
 inline VxVector VxBbox::GetHalfSize() const {
+#if defined(VX_SIMD_SSE2)
+    const __m128 low = VxSIMDLoadFloat3(&Min.x), high = VxSIMDLoadFloat3(&Max.x);
+    const __m128 xy = _mm_cvtpd_ps(_mm_mul_pd(_mm_sub_pd(_mm_cvtps_pd(high), _mm_cvtps_pd(low)), _mm_set1_pd(0.5)));
+    const __m128d z = _mm_sub_sd(_mm_cvtps_pd(_mm_movehl_ps(high, high)), _mm_cvtps_pd(_mm_movehl_ps(low, low)));
+    const __m128 value = _mm_movelh_ps(xy, _mm_cvtsd_ss(_mm_setzero_ps(), _mm_mul_sd(z, _mm_set_sd(0.5))));
+    VxVector result; VxSIMDStoreFloat3(&result.x, value); return result;
+#elif defined(VX_SIMD_SSE)
     return (Max - Min) * 0.5f;
+#else
+    return VxVector(float((double(Max.x) - Min.x) * 0.5),
+                    float((double(Max.y) - Min.y) * 0.5),
+                    float((double(Max.z) - Min.z) * 0.5));
+#endif
 }
 
 inline VxVector VxBbox::GetCenter() const {
+#if defined(VX_SIMD_SSE2)
+    const __m128 low = VxSIMDLoadFloat3(&Min.x), high = VxSIMDLoadFloat3(&Max.x);
+    const __m128 xy = _mm_cvtpd_ps(_mm_mul_pd(_mm_add_pd(_mm_cvtps_pd(high), _mm_cvtps_pd(low)), _mm_set1_pd(0.5)));
+    const __m128d z = _mm_add_sd(_mm_cvtps_pd(_mm_movehl_ps(high, high)), _mm_cvtps_pd(_mm_movehl_ps(low, low)));
+    const __m128 value = _mm_movelh_ps(xy, _mm_cvtsd_ss(_mm_setzero_ps(), _mm_mul_sd(z, _mm_set_sd(0.5))));
+    VxVector result; VxSIMDStoreFloat3(&result.x, value); return result;
+#elif defined(VX_SIMD_SSE)
     return (Max + Min) * 0.5f;
+#else
+    return VxVector(float((double(Max.x) + Min.x) * 0.5),
+                    float((double(Max.y) + Min.y) * 0.5),
+                    float((double(Max.z) + Min.z) * 0.5));
+#endif
 }
 
 inline void VxBbox::SetCorners(const VxVector &min, const VxVector &max) {
+    const VxVector newMax = max;
     Min = min;
-    Max = max;
+    Max = newMax;
 }
 
 inline void VxBbox::SetDimension(const VxVector &position, const VxVector &size) {
+    const VxVector newMax = position + size;
     Min = position;
-    Max = position + size;
+    Max = newMax;
 }
 
 inline void VxBbox::SetCenter(const VxVector &center, const VxVector &halfsize) {
+    const VxVector newMax = center + halfsize;
     Min = center - halfsize;
-    Max = center + halfsize;
+    Max = newMax;
 }
 
 inline void VxBbox::Reset() {
@@ -218,9 +245,9 @@ inline void VxBbox::ClassifyVertices(const int iVcount, XBYTE *iVertices, XDWORD
     for (int i = 0; i < iVcount; i++) {
         const float *v = reinterpret_cast<const float *>(iVertices + i*iStride);
         XDWORD flag = 0;
-        if (v[2] < minZ) flag |= VXCLIP_BACK; else if (v[2] > maxZ) flag |= VXCLIP_FRONT;
-        if (v[1] < minY) flag |= VXCLIP_BOTTOM; else if (v[1] > maxY) flag |= VXCLIP_TOP;
-        if (v[0] < minX) flag |= VXCLIP_LEFT; else if (v[0] > maxX) flag |= VXCLIP_RIGHT;
+        if (v[2] < minZ) flag |= VXCLIP_BOXBACK; else if (v[2] > maxZ) flag |= VXCLIP_BOXFRONT;
+        if (v[1] < minY) flag |= VXCLIP_BOXBOTTOM; else if (v[1] > maxY) flag |= VXCLIP_BOXTOP;
+        if (v[0] < minX) flag |= VXCLIP_BOXLEFT; else if (v[0] > maxX) flag |= VXCLIP_BOXRIGHT;
         oFlags[i] = flag;
     }
 #endif
@@ -324,8 +351,8 @@ inline void VxBbox::TransformFrom(const VxBbox &sbox, const VxMatrix &Mat) {
     VxSIMDBboxTransformFrom(this, &sbox, &Mat);
 #else
     VxVector center((sbox.Min.x+sbox.Max.x)*0.5f, (sbox.Min.y+sbox.Max.y)*0.5f, (sbox.Min.z+sbox.Max.z)*0.5f);
-    Vx3DMultiplyMatrixVector(&Min, Mat, &center);
     const float sizeX=sbox.Max.x-sbox.Min.x, sizeY=sbox.Max.y-sbox.Min.y, sizeZ=sbox.Max.z-sbox.Min.z;
+    Vx3DMultiplyMatrixVector(&Min, Mat, &center);
     const VxVector xVec(sizeX*Mat[0][0], sizeX*Mat[0][1], sizeX*Mat[0][2]);
     const VxVector yVec(sizeY*Mat[1][0], sizeY*Mat[1][1], sizeY*Mat[1][2]);
     const VxVector zVec(sizeZ*Mat[2][0], sizeZ*Mat[2][1], sizeZ*Mat[2][2]);
@@ -425,64 +452,47 @@ VX_SIMD_INLINE void VxSIMDBboxClassifyVertices(const VxBbox *self, int count, co
         int lessFlags = _mm_movemask_ps(lessThanMin);
         int greaterFlags = _mm_movemask_ps(greaterThanMax);
 
-        XDWORD flag = 0;
-        if (lessFlags & 4) flag |= VXCLIP_BACK;
-        else if (greaterFlags & 4) flag |= VXCLIP_FRONT;
-        if (lessFlags & 2) flag |= VXCLIP_BOTTOM;
-        else if (greaterFlags & 2) flag |= VXCLIP_TOP;
-        if (lessFlags & 1) flag |= VXCLIP_LEFT;
-        else if (greaterFlags & 1) flag |= VXCLIP_RIGHT;
-
-        flags[i] = flag;
+        flags[i] = XDWORD((lessFlags & 7) | ((greaterFlags & ~lessFlags & 7) << 3));
     }
 }
 
 VX_SIMD_INLINE void VxSIMDBboxTransformTo(const VxBbox *self, VxVector *points, const VxMatrix *mat) noexcept {
-    VxSIMDMultiplyMatrixVector(&points[0], mat, &self->Min);
-
-    const float sizeX = self->Max.x - self->Min.x;
-    const float sizeY = self->Max.y - self->Min.y;
-    const float sizeZ = self->Max.z - self->Min.z;
-
-    const VxVector xVec(sizeX * (*mat)[0][0], sizeX * (*mat)[0][1], sizeX * (*mat)[0][2]);
-    const VxVector yVec(sizeY * (*mat)[1][0], sizeY * (*mat)[1][1], sizeY * (*mat)[1][2]);
-    const VxVector zVec(sizeZ * (*mat)[2][0], sizeZ * (*mat)[2][1], sizeZ * (*mat)[2][2]);
-
-    points[1] = points[0] + zVec;
-    points[2] = points[0] + yVec;
-    points[3] = points[2] + zVec;
-    points[4] = points[0] + xVec;
-    points[5] = points[4] + zVec;
-    points[6] = points[4] + yVec;
-    points[7] = points[6] + zVec;
+    const __m128 low = VxSIMDLoadFloat3(&self->Min.x);
+    const __m128 size = _mm_sub_ps(VxSIMDLoadFloat3(&self->Max.x), low);
+    const __m128 row0 = _mm_loadu_ps(&(*mat)[0][0]), row1 = _mm_loadu_ps(&(*mat)[1][0]);
+    const __m128 row2 = _mm_loadu_ps(&(*mat)[2][0]), translation = _mm_loadu_ps(&(*mat)[3][0]);
+    __m128 base = _mm_add_ps(_mm_mul_ps(row2, _mm_shuffle_ps(low, low, _MM_SHUFFLE(2,2,2,2))), translation);
+    base = _mm_add_ps(base, _mm_mul_ps(row1, _mm_shuffle_ps(low, low, _MM_SHUFFLE(1,1,1,1))));
+    base = _mm_add_ps(base, _mm_mul_ps(row0, _mm_shuffle_ps(low, low, _MM_SHUFFLE(0,0,0,0))));
+    const __m128 x = _mm_mul_ps(row0, _mm_shuffle_ps(size, size, _MM_SHUFFLE(0,0,0,0)));
+    const __m128 y = _mm_mul_ps(row1, _mm_shuffle_ps(size, size, _MM_SHUFFLE(1,1,1,1)));
+    const __m128 z = _mm_mul_ps(row2, _mm_shuffle_ps(size, size, _MM_SHUFFLE(2,2,2,2)));
+    const __m128 xy = _mm_add_ps(_mm_add_ps(base, x), y);
+    VxSIMDStoreFloat3(&points[0].x, base);
+    VxSIMDStoreFloat3(&points[1].x, _mm_add_ps(base, z));
+    VxSIMDStoreFloat3(&points[2].x, _mm_add_ps(base, y));
+    VxSIMDStoreFloat3(&points[3].x, _mm_add_ps(_mm_add_ps(base, y), z));
+    VxSIMDStoreFloat3(&points[4].x, _mm_add_ps(base, x));
+    VxSIMDStoreFloat3(&points[5].x, _mm_add_ps(_mm_add_ps(base, x), z));
+    VxSIMDStoreFloat3(&points[6].x, xy);
+    VxSIMDStoreFloat3(&points[7].x, _mm_add_ps(xy, z));
 }
 
 VX_SIMD_INLINE void VxSIMDBboxTransformFrom(VxBbox *dest, const VxBbox *src, const VxMatrix *mat) noexcept {
-    VxVector center((src->Min.x + src->Max.x) * 0.5f,
-                    (src->Min.y + src->Max.y) * 0.5f,
-                    (src->Min.z + src->Max.z) * 0.5f);
-
-    VxSIMDMultiplyMatrixVector(&dest->Min, mat, &center);
-
-    const float sizeX = src->Max.x - src->Min.x;
-    const float sizeY = src->Max.y - src->Min.y;
-    const float sizeZ = src->Max.z - src->Min.z;
-
-    const VxVector xVec(sizeX * (*mat)[0][0], sizeX * (*mat)[0][1], sizeX * (*mat)[0][2]);
-    const VxVector yVec(sizeY * (*mat)[1][0], sizeY * (*mat)[1][1], sizeY * (*mat)[1][2]);
-    const VxVector zVec(sizeZ * (*mat)[2][0], sizeZ * (*mat)[2][1], sizeZ * (*mat)[2][2]);
-
-    const float halfX = (fabsf(xVec.x) + fabsf(yVec.x) + fabsf(zVec.x)) * 0.5f;
-    const float halfY = (fabsf(xVec.y) + fabsf(yVec.y) + fabsf(zVec.y)) * 0.5f;
-    const float halfZ = (fabsf(xVec.z) + fabsf(yVec.z) + fabsf(zVec.z)) * 0.5f;
-
-    dest->Max.x = dest->Min.x + halfX;
-    dest->Max.y = dest->Min.y + halfY;
-    dest->Max.z = dest->Min.z + halfZ;
-
-    dest->Min.x = dest->Min.x - halfX;
-    dest->Min.y = dest->Min.y - halfY;
-    dest->Min.z = dest->Min.z - halfZ;
+    const __m128 low = VxSIMDLoadFloat3(&src->Min.x), high = VxSIMDLoadFloat3(&src->Max.x);
+    const __m128 center = _mm_mul_ps(_mm_add_ps(low, high), _mm_set1_ps(0.5f));
+    const __m128 size = _mm_sub_ps(high, low);
+    const __m128 row0 = _mm_loadu_ps(&(*mat)[0][0]), row1 = _mm_loadu_ps(&(*mat)[1][0]);
+    const __m128 row2 = _mm_loadu_ps(&(*mat)[2][0]), translation = _mm_loadu_ps(&(*mat)[3][0]);
+    __m128 world = _mm_add_ps(_mm_mul_ps(row2, _mm_shuffle_ps(center, center, _MM_SHUFFLE(2,2,2,2))), translation);
+    world = _mm_add_ps(world, _mm_mul_ps(row1, _mm_shuffle_ps(center, center, _MM_SHUFFLE(1,1,1,1))));
+    world = _mm_add_ps(world, _mm_mul_ps(row0, _mm_shuffle_ps(center, center, _MM_SHUFFLE(0,0,0,0))));
+    const __m128 x = _mm_and_ps(_mm_mul_ps(row0, _mm_shuffle_ps(size, size, _MM_SHUFFLE(0,0,0,0))), VX_SIMD_ABS_MASK);
+    const __m128 y = _mm_and_ps(_mm_mul_ps(row1, _mm_shuffle_ps(size, size, _MM_SHUFFLE(1,1,1,1))), VX_SIMD_ABS_MASK);
+    const __m128 z = _mm_and_ps(_mm_mul_ps(row2, _mm_shuffle_ps(size, size, _MM_SHUFFLE(2,2,2,2))), VX_SIMD_ABS_MASK);
+    const __m128 half = _mm_mul_ps(_mm_add_ps(_mm_add_ps(x, y), z), _mm_set1_ps(0.5f));
+    VxSIMDStoreFloat3(&dest->Max.x, _mm_add_ps(world, half));
+    VxSIMDStoreFloat3(&dest->Min.x, _mm_sub_ps(world, half));
 }
 
 #endif // VX_SIMD_SSE
