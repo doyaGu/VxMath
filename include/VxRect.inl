@@ -88,10 +88,12 @@ inline Vx2DVector &VxRect::GetBottomRight() { return (Vx2DVector &)*(Vx2DVector 
 inline void VxRect::Clear() { SetCorners(0, 0, 0, 0); }
 
 inline void VxRect::SetCorners(const Vx2DVector &topleft, const Vx2DVector &bottomright) {
-    left = topleft.x;
-    top = topleft.y;
-    right = bottomright.x;
-    bottom = bottomright.y;
+    const float l = topleft.x, t = topleft.y;
+    const float r = bottomright.x, b = bottomright.y;
+    left = l;
+    top = t;
+    right = r;
+    bottom = b;
 }
 
 inline void VxRect::SetCorners(float l, float t, float r, float b) {
@@ -102,10 +104,12 @@ inline void VxRect::SetCorners(float l, float t, float r, float b) {
 }
 
 inline void VxRect::SetDimension(const Vx2DVector &position, const Vx2DVector &size) {
-    left = position.x;
-    top = position.y;
-    right = left + size.x;
-    bottom = top + size.y;
+    const float x = position.x, y = position.y;
+    const float width = size.x, height = size.y;
+    left = x;
+    top = y;
+    right = x + width;
+    bottom = y + height;
 }
 
 inline void VxRect::SetDimension(float x, float y, float w, float h) {
@@ -116,10 +120,12 @@ inline void VxRect::SetDimension(float x, float y, float w, float h) {
 }
 
 inline void VxRect::SetCenter(const Vx2DVector &center, const Vx2DVector &halfsize) {
-    left = center.x - halfsize.x;
-    top = center.y - halfsize.y;
-    right = center.x + halfsize.x;
-    bottom = center.y + halfsize.y;
+    const float x = center.x, y = center.y;
+    const float hw = halfsize.x, hh = halfsize.y;
+    left = x - hw;
+    top = y - hh;
+    right = x + hw;
+    bottom = y + hh;
 }
 
 inline void VxRect::SetCenter(float cx, float cy, float hw, float hh) {
@@ -145,8 +151,9 @@ inline void VxRect::CopyTo(CKRECT *oRect) const {
 }
 
 inline void VxRect::Bounding(const Vx2DVector &p1, const Vx2DVector &p2) {
-    if (p1.x < p2.x) { left = p1.x; right = p2.x; } else { left = p2.x; right = p1.x; }
-    if (p1.y < p2.y) { top = p1.y; bottom = p2.y; } else { top = p2.y; bottom = p1.y; }
+    const float x1 = p1.x, y1 = p1.y, x2 = p2.x, y2 = p2.y;
+    if (x1 < x2) { left = x1; right = x2; } else { left = x2; right = x1; }
+    if (y1 < y2) { top = y1; bottom = y2; } else { top = y2; bottom = y1; }
 }
 
 inline void VxRect::Normalize() {
@@ -155,17 +162,19 @@ inline void VxRect::Normalize() {
 }
 
 inline void VxRect::Move(const Vx2DVector &pos) {
-    right += (pos.x - left);
-    bottom += (pos.y - top);
-    left = pos.x;
-    top = pos.y;
+    const float x = pos.x, y = pos.y;
+    right += (x - left);
+    bottom += (y - top);
+    left = x;
+    top = y;
 }
 
 inline void VxRect::Translate(const Vx2DVector &t) {
-    left += t.x;
-    right += t.x;
-    top += t.y;
-    bottom += t.y;
+    const float x = t.x, y = t.y;
+    left += x;
+    right += x;
+    top += y;
+    bottom += y;
 }
 
 inline void VxRect::HMove(float h) {
@@ -199,10 +208,11 @@ inline void VxRect::Scale(const Vx2DVector &s) {
 }
 
 inline void VxRect::Inflate(const Vx2DVector &pt) {
-    left -= pt.x;
-    right += pt.x;
-    top -= pt.y;
-    bottom += pt.y;
+    const float x = pt.x, y = pt.y;
+    left -= x;
+    right += x;
+    top -= y;
+    bottom += y;
 }
 
 inline void VxRect::Interpolate(float value, const VxRect &a) {
@@ -335,26 +345,29 @@ inline void VxRect::TransformFromHomogeneous(const VxRect &screen) {
 }
 
 inline VxRect &VxRect::operator+=(const Vx2DVector &t) {
-    left += t.x;
-    right += t.x;
-    top += t.y;
-    bottom += t.y;
+    const float x = t.x, y = t.y;
+    left += x;
+    right += x;
+    top += y;
+    bottom += y;
     return *this;
 }
 
 inline VxRect &VxRect::operator-=(const Vx2DVector &t) {
-    left -= t.x;
-    right -= t.x;
-    top -= t.y;
-    bottom -= t.y;
+    const float x = t.x, y = t.y;
+    left -= x;
+    right -= x;
+    top -= y;
+    bottom -= y;
     return *this;
 }
 
 inline VxRect &VxRect::operator*=(const Vx2DVector &t) {
-    left *= t.x;
-    right *= t.x;
-    top *= t.y;
-    bottom *= t.y;
+    const float x = t.x, y = t.y;
+    left *= x;
+    right *= x;
+    top *= y;
+    bottom *= y;
     return *this;
 }
 
