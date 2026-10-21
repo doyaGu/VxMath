@@ -922,6 +922,7 @@ namespace {
 
 template <bool kUseSIMD>
 static XBOOL AABBOBBCore(const VxBbox &box1, const VxOBB &box2) {
+#if defined(VX_SIMD_SSE) && !defined(VX_SIMD_SSE2)
     float aabbHalfX = 0.0f;
     float aabbHalfY = 0.0f;
     float aabbHalfZ = 0.0f;
@@ -1079,6 +1080,91 @@ static XBOOL AABBOBBCore(const VxBbox &box1, const VxOBB &box2) {
         return FALSE;
 
     return TRUE;
+#else
+    // The original SAT assumes unit, mutually perpendicular OBB axes. Keep
+    // its fifteen axes and strict separation test, with wide intermediates
+    // so finite centers/half-sizes do not overflow before comparison.
+    double half[3], delta[3], axis[3][3], absAxis[3][3];
+    const double extent[3] = {box2.m_Extents.x, box2.m_Extents.y, box2.m_Extents.z};
+    for (int j = 0; j < 3; ++j) for (int i = 0; i < 3; ++i) {
+        axis[j][i] = box2.m_Axis[j][i];
+        absAxis[j][i] = fabs(axis[j][i]);
+    }
+#if defined(VX_SIMD_SSE2)
+    if constexpr (kUseSIMD) {
+        const __m128 low = VxSIMDLoadVector3(box1.Min), high = VxSIMDLoadVector3(box1.Max);
+        const __m128 center = VxSIMDLoadVector3(box2.m_Center);
+        const __m128d lowXY = _mm_cvtps_pd(low), highXY = _mm_cvtps_pd(high);
+        const __m128d halfXY = _mm_mul_pd(_mm_sub_pd(highXY, lowXY), _mm_set1_pd(0.5));
+        const __m128d deltaXY = _mm_sub_pd(_mm_cvtps_pd(center), _mm_mul_pd(_mm_add_pd(highXY, lowXY), _mm_set1_pd(0.5)));
+        const __m128d lowZ = _mm_cvtps_pd(_mm_movehl_ps(low, low)), highZ = _mm_cvtps_pd(_mm_movehl_ps(high, high));
+        const __m128d halfZ = _mm_mul_sd(_mm_sub_sd(highZ, lowZ), _mm_set_sd(0.5));
+        const __m128d deltaZ = _mm_sub_sd(_mm_cvtps_pd(_mm_movehl_ps(center, center)), _mm_mul_sd(_mm_add_sd(highZ, lowZ), _mm_set_sd(0.5)));
+        _mm_storeu_pd(half, halfXY); half[2] = _mm_cvtsd_f64(halfZ);
+        _mm_storeu_pd(delta, deltaXY); delta[2] = _mm_cvtsd_f64(deltaZ);
+        const __m128d sign = _mm_set1_pd(-0.0);
+        __m128d supportXY = halfXY;
+        for (int j = 0; j < 3; ++j)
+            supportXY = _mm_add_pd(supportXY, _mm_mul_pd(_mm_setr_pd(absAxis[j][0], absAxis[j][1]), _mm_set1_pd(extent[j])));
+        if (_mm_movemask_pd(_mm_cmpgt_pd(_mm_andnot_pd(sign, deltaXY), supportXY))) return FALSE;
+        const __m128d zProducts = _mm_mul_pd(_mm_setr_pd(absAxis[0][2], absAxis[1][2]), _mm_setr_pd(extent[0], extent[1]));
+        const __m128d supportZ = _mm_add_sd(_mm_add_sd(halfZ, _mm_add_sd(zProducts, _mm_unpackhi_pd(zProducts, zProducts))),
+            _mm_mul_sd(_mm_set_sd(absAxis[2][2]), _mm_set_sd(extent[2])));
+        if (_mm_movemask_pd(_mm_cmpgt_sd(_mm_andnot_pd(sign, deltaZ), supportZ)) & 1) return FALSE;
+        for (int j = 0; j < 3; ++j) {
+            const __m128d products = _mm_mul_pd(deltaXY, _mm_setr_pd(axis[j][0], axis[j][1]));
+            const __m128d projection = _mm_add_sd(_mm_add_sd(products, _mm_unpackhi_pd(products, products)), _mm_mul_sd(deltaZ, _mm_set_sd(axis[j][2])));
+            const __m128d supportProducts = _mm_mul_pd(halfXY, _mm_setr_pd(absAxis[j][0], absAxis[j][1]));
+            const __m128d support = _mm_add_sd(_mm_add_sd(_mm_set_sd(extent[j]), _mm_add_sd(supportProducts, _mm_unpackhi_pd(supportProducts, supportProducts))),
+                _mm_mul_sd(halfZ, _mm_set_sd(absAxis[j][2])));
+            if (_mm_movemask_pd(_mm_cmpgt_sd(_mm_andnot_pd(sign, projection), support)) & 1) return FALSE;
+        }
+        for (int j = 0; j < 3; ++j) {
+            const int k = (j + 1) % 3, l = (j + 2) % 3;
+            // Test world X/Y cross OBB_j together, then world Z cross OBB_j.
+            const __m128d projectionXY = _mm_sub_pd(
+                _mm_mul_pd(_mm_setr_pd(delta[2], delta[0]), _mm_setr_pd(axis[j][1], axis[j][2])),
+                _mm_mul_pd(_mm_setr_pd(delta[1], delta[2]), _mm_setr_pd(axis[j][2], axis[j][0])));
+            const __m128d radiusXY = _mm_add_pd(
+                _mm_add_pd(_mm_mul_pd(_mm_setr_pd(half[1], half[0]), _mm_set1_pd(absAxis[j][2])),
+                    _mm_mul_pd(_mm_set1_pd(half[2]), _mm_setr_pd(absAxis[j][1], absAxis[j][0]))),
+                _mm_add_pd(_mm_mul_pd(_mm_set1_pd(extent[k]), _mm_setr_pd(absAxis[l][0], absAxis[l][1])),
+                    _mm_mul_pd(_mm_set1_pd(extent[l]), _mm_setr_pd(absAxis[k][0], absAxis[k][1]))));
+            if (_mm_movemask_pd(_mm_cmpgt_pd(_mm_andnot_pd(sign, projectionXY), radiusXY))) return FALSE;
+            const __m128d projectionZ = _mm_sub_sd(_mm_mul_sd(_mm_set_sd(delta[1]), _mm_set_sd(axis[j][0])),
+                _mm_mul_sd(_mm_set_sd(delta[0]), _mm_set_sd(axis[j][1])));
+            const __m128d radiusZParts = _mm_add_pd(
+                _mm_mul_pd(_mm_setr_pd(half[0], half[1]), _mm_setr_pd(absAxis[j][1], absAxis[j][0])),
+                _mm_mul_pd(_mm_setr_pd(extent[k], extent[l]), _mm_setr_pd(absAxis[l][2], absAxis[k][2])));
+            const __m128d radiusZ = _mm_add_sd(radiusZParts, _mm_unpackhi_pd(radiusZParts, radiusZParts));
+            if (_mm_movemask_pd(_mm_cmpgt_sd(_mm_andnot_pd(sign, projectionZ), radiusZ)) & 1) return FALSE;
+        }
+        return TRUE;
+    }
+#endif
+    for (int i = 0; i < 3; ++i) {
+        half[i] = (double(box1.Max[i]) - box1.Min[i]) * 0.5;
+        delta[i] = double(box2.m_Center[i]) - (double(box1.Max[i]) + box1.Min[i]) * 0.5;
+    }
+    for (int i = 0; i < 3; ++i) {
+        double support = half[i];
+        for (int j = 0; j < 3; ++j) support += absAxis[j][i] * extent[j];
+        if (fabs(delta[i]) > support) return FALSE;
+    }
+    for (int j = 0; j < 3; ++j) {
+        double projection = 0, support = extent[j];
+        for (int i = 0; i < 3; ++i) { projection += delta[i] * axis[j][i]; support += half[i] * absAxis[j][i]; }
+        if (fabs(projection) > support) return FALSE;
+    }
+    for (int i = 0; i < 3; ++i) for (int j = 0; j < 3; ++j) {
+        const int u = (i + 1) % 3, v = (i + 2) % 3, k = (j + 1) % 3, l = (j + 2) % 3;
+        const double projection = delta[v] * axis[j][u] - delta[u] * axis[j][v];
+        const double support = half[u] * absAxis[j][v] + half[v] * absAxis[j][u] +
+            extent[k] * absAxis[l][i] + extent[l] * absAxis[k][i];
+        if (fabs(projection) > support) return FALSE;
+    }
+    return TRUE;
+#endif
 }
 
 } // namespace

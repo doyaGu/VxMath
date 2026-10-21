@@ -49,7 +49,7 @@ public:
 
     /// @brief Tests closed AABBs; face/edge/corner contact and zero extents count as intersection.
     VX_EXPORT static XBOOL AABBAABB(const VxBbox &box1, const VxBbox &box2);
-    /// @brief Checks for intersection between an AABB and an oriented bounding box (OBB).
+    /// @brief Tests closed AABB/OBB overlap with unit orthogonal OBB axes and nonnegative half-extents.
     VX_EXPORT static XBOOL AABBOBB(const VxBbox &box1, const VxOBB &box2);
     /// @brief Checks for intersection between two OBBs.
     VX_EXPORT static XBOOL OBBOBB(const VxOBB &box1, const VxOBB &box2);
