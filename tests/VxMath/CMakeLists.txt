@@ -140,6 +140,7 @@ set(VXMATH_TEST_SOURCES
         DXTPayloadReferenceTest.cpp
         IndexedLifecycleReferenceTest.cpp
         BlitClosureReferenceTest.cpp
+        ImageDescriptorReferenceTest.cpp
         RectTransformReferenceTest.cpp
         RectTransformScalarReferenceTest.cpp
         RectClipReferenceTest.cpp
