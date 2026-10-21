@@ -160,6 +160,7 @@ set(VXMATH_TEST_SOURCES
         FrustumReferenceTest.cpp
         FrustumFaceReferenceTest.cpp
         FrustumBoxReferenceTest.cpp
+        PlaneIntersectionReferenceTest.cpp
         # SIMD Tests
         SIMDFeatureTest.cpp
         SIMDUtilityTest.cpp
@@ -286,6 +287,9 @@ vx_copy_runtime_dependencies(FrustumFaceScalarReferenceTest)
 vx_add_test(FrustumBoxScalarReferenceTest SOURCES FrustumBoxReferenceTest.cpp)
 target_compile_definitions(FrustumBoxScalarReferenceTest PRIVATE VX_SIMD_NONE=1)
 vx_copy_runtime_dependencies(FrustumBoxScalarReferenceTest)
+vx_add_test(PlaneIntersectionScalarReferenceTest SOURCES PlaneIntersectionReferenceTest.cpp)
+target_compile_definitions(PlaneIntersectionScalarReferenceTest PRIVATE VX_SIMD_NONE=1)
+vx_copy_runtime_dependencies(PlaneIntersectionScalarReferenceTest)
 
 # Exercise the same original-DLL samples with header SIMD paths disabled.
 vx_add_test(QuaternionReferenceScalarTest SOURCES QuaternionReferenceTest.cpp)

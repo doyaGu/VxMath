@@ -106,68 +106,99 @@ const VxIntersectPlaneDispatchTable *GetVxIntersectPlaneDispatchTable() {
 }
 
 static XBOOL RayPlaneScalarCore(const VxRay &ray, const VxPlane &plane, VxVector &point, float &dist) {
-    float denom = DotProduct(plane.m_Normal, ray.m_Direction);
-    if (XAbs(denom) < kPlaneParallelEps)
+    const double denom = double(plane.m_Normal.x) * ray.m_Direction.x +
+        double(plane.m_Normal.y) * ray.m_Direction.y + double(plane.m_Normal.z) * ray.m_Direction.z;
+    if (fabs(denom) < kPlaneParallelEps)
         return FALSE;
 
-    dist = -(DotProduct(plane.m_Normal, ray.m_Origin) + plane.m_D) / denom;
-    if (dist < -kPlaneParallelEps)
+    const double numerator = double(plane.m_Normal.x) * ray.m_Origin.x +
+        double(plane.m_Normal.y) * ray.m_Origin.y + double(plane.m_Normal.z) * ray.m_Origin.z + plane.m_D;
+    const double t = -numerator / denom;
+    dist = float(t);
+    if (t < -kPlaneParallelEps)
         return FALSE;
 
-    point = ray.m_Origin + ray.m_Direction * dist;
+    point.Set(float(double(ray.m_Origin.x) + double(ray.m_Direction.x) * t),
+              float(double(ray.m_Origin.y) + double(ray.m_Direction.y) * t),
+              float(double(ray.m_Origin.z) + double(ray.m_Direction.z) * t));
     return TRUE;
 }
 
 static XBOOL RayPlaneCulledScalarCore(const VxRay &ray, const VxPlane &plane, VxVector &point, float &dist) {
-    float denom = DotProduct(plane.m_Normal, ray.m_Direction);
+    const double denom = double(plane.m_Normal.x) * ray.m_Direction.x +
+        double(plane.m_Normal.y) * ray.m_Direction.y + double(plane.m_Normal.z) * ray.m_Direction.z;
     if (denom > -kPlaneParallelEps)
         return FALSE;
 
-    dist = -(DotProduct(plane.m_Normal, ray.m_Origin) + plane.m_D) / denom;
-    if (dist < -kPlaneParallelEps)
+    const double numerator = double(plane.m_Normal.x) * ray.m_Origin.x +
+        double(plane.m_Normal.y) * ray.m_Origin.y + double(plane.m_Normal.z) * ray.m_Origin.z + plane.m_D;
+    const double t = -numerator / denom;
+    dist = float(t);
+    if (t < -kPlaneParallelEps)
         return FALSE;
 
-    point = ray.m_Origin + ray.m_Direction * dist;
+    point.Set(float(double(ray.m_Origin.x) + double(ray.m_Direction.x) * t),
+              float(double(ray.m_Origin.y) + double(ray.m_Direction.y) * t),
+              float(double(ray.m_Origin.z) + double(ray.m_Direction.z) * t));
     return TRUE;
 }
 
 static XBOOL SegmentPlaneScalarCore(const VxRay &ray, const VxPlane &plane, VxVector &point, float &dist) {
-    float denom = DotProduct(plane.m_Normal, ray.m_Direction);
-    if (XAbs(denom) < kPlaneParallelEps)
+    const double denom = double(plane.m_Normal.x) * ray.m_Direction.x +
+        double(plane.m_Normal.y) * ray.m_Direction.y + double(plane.m_Normal.z) * ray.m_Direction.z;
+    if (fabs(denom) < kPlaneParallelEps)
         return FALSE;
 
-    dist = -(DotProduct(plane.m_Normal, ray.m_Origin) + plane.m_D) / denom;
-    if (dist < -kPlaneParallelEps)
+    const double numerator = double(plane.m_Normal.x) * ray.m_Origin.x +
+        double(plane.m_Normal.y) * ray.m_Origin.y + double(plane.m_Normal.z) * ray.m_Origin.z + plane.m_D;
+    const double t = -numerator / denom;
+    dist = float(t);
+    if (t < -kPlaneParallelEps)
         return FALSE;
-    if (dist > kSegmentMaxT)
+    if (t > kSegmentMaxT)
         return FALSE;
 
-    point = ray.m_Origin + ray.m_Direction * dist;
+    point.Set(float(double(ray.m_Origin.x) + double(ray.m_Direction.x) * t),
+              float(double(ray.m_Origin.y) + double(ray.m_Direction.y) * t),
+              float(double(ray.m_Origin.z) + double(ray.m_Direction.z) * t));
     return TRUE;
 }
 
 static XBOOL SegmentPlaneCulledScalarCore(const VxRay &ray, const VxPlane &plane, VxVector &point, float &dist) {
-    float denom = DotProduct(plane.m_Normal, ray.m_Direction);
+    const double denom = double(plane.m_Normal.x) * ray.m_Direction.x +
+        double(plane.m_Normal.y) * ray.m_Direction.y + double(plane.m_Normal.z) * ray.m_Direction.z;
     if (denom > -kPlaneParallelEps)
         return FALSE;
 
-    dist = -(DotProduct(plane.m_Normal, ray.m_Origin) + plane.m_D) / denom;
-    if (dist < -kPlaneParallelEps)
+    const double numerator = double(plane.m_Normal.x) * ray.m_Origin.x +
+        double(plane.m_Normal.y) * ray.m_Origin.y + double(plane.m_Normal.z) * ray.m_Origin.z + plane.m_D;
+    const double t = -numerator / denom;
+    dist = float(t);
+    if (t < -kPlaneParallelEps)
         return FALSE;
-    if (dist > kSegmentMaxT)
+    if (t > kSegmentMaxT)
         return FALSE;
 
-    point = ray.m_Origin + ray.m_Direction * dist;
+    point.Set(float(double(ray.m_Origin.x) + double(ray.m_Direction.x) * t),
+              float(double(ray.m_Origin.y) + double(ray.m_Direction.y) * t),
+              float(double(ray.m_Origin.z) + double(ray.m_Direction.z) * t));
     return TRUE;
 }
 
 static XBOOL LinePlaneScalarCore(const VxRay &ray, const VxPlane &plane, VxVector &point, float &dist) {
-    float denom = DotProduct(plane.m_Normal, ray.m_Direction);
-    if (XAbs(denom) < kPlaneParallelEps)
+    const double denom = double(plane.m_Normal.x) * ray.m_Direction.x +
+        double(plane.m_Normal.y) * ray.m_Direction.y + double(plane.m_Normal.z) * ray.m_Direction.z;
+    if (fabs(denom) < kPlaneParallelEps)
         return FALSE;
 
-    dist = -(DotProduct(plane.m_Normal, ray.m_Origin) + plane.m_D) / denom;
-    point = ray.m_Origin + ray.m_Direction * dist;
+    const double numerator = double(plane.m_Normal.x) * ray.m_Origin.x +
+        double(plane.m_Normal.y) * ray.m_Origin.y + double(plane.m_Normal.z) * ray.m_Origin.z + plane.m_D;
+    const double t = -numerator / denom;
+    dist = float(t);
+
+    point.Set(float(double(ray.m_Origin.x) + double(ray.m_Direction.x) * t),
+              float(double(ray.m_Origin.y) + double(ray.m_Direction.y) * t),
+              float(double(ray.m_Origin.z) + double(ray.m_Direction.z) * t));
     return TRUE;
 }
 
@@ -236,79 +267,209 @@ static XBOOL PlanesScalarCore(const VxPlane &plane1, const VxPlane &plane2, cons
 
 #if defined(VX_SIMD_SSE)
 static XBOOL RayPlaneSIMDCore(const VxRay &ray, const VxPlane &plane, VxVector &point, float &dist) {
+#if defined(VX_SIMD_SSE2)
+    const __m128 normal = VxSIMDLoadFloat3(&plane.m_Normal.x);
+    const __m128 direction = VxSIMDLoadFloat3(&ray.m_Direction.x);
+    const __m128 origin = VxSIMDLoadFloat3(&ray.m_Origin.x);
+    const __m128d normalXY = _mm_cvtps_pd(normal);
+    const __m128d normalZ = _mm_cvtps_pd(_mm_movehl_ps(normal, normal));
+    const __m128d directionXY = _mm_cvtps_pd(direction);
+    const __m128d directionZ = _mm_cvtps_pd(_mm_movehl_ps(direction, direction));
+    const __m128d denominatorXY = _mm_mul_pd(normalXY, directionXY);
+    const double denom = _mm_cvtsd_f64(_mm_add_sd(_mm_add_sd(denominatorXY, _mm_unpackhi_pd(denominatorXY, denominatorXY)), _mm_mul_sd(normalZ, directionZ)));
+#else
     const float denom = VxSIMDDot3Scalar(plane.m_Normal, ray.m_Direction);
-    if (XAbs(denom) < kPlaneParallelEps) {
+#endif
+    if (fabs(denom) < kPlaneParallelEps)
         return FALSE;
-    }
 
-    dist = -(VxSIMDDot3Scalar(plane.m_Normal, ray.m_Origin) + plane.m_D) / denom;
-    if (dist < -kPlaneParallelEps) {
+#if defined(VX_SIMD_SSE2)
+    const __m128d originXY = _mm_cvtps_pd(origin);
+    const __m128d originZ = _mm_cvtps_pd(_mm_movehl_ps(origin, origin));
+    const __m128d numeratorXY = _mm_mul_pd(normalXY, originXY);
+    const double numerator = _mm_cvtsd_f64(_mm_add_sd(_mm_add_sd(numeratorXY, _mm_unpackhi_pd(numeratorXY, numeratorXY)), _mm_mul_sd(normalZ, originZ))) + plane.m_D;
+    const double t = -numerator / denom;
+#else
+    const float t = -(VxSIMDDot3Scalar(plane.m_Normal, ray.m_Origin) + plane.m_D) / denom;
+#endif
+    dist = float(t);
+    if (t < -kPlaneParallelEps)
         return FALSE;
-    }
 
-    point = VxSIMDPointOnRay(ray, dist);
+#if defined(VX_SIMD_SSE2)
+    const __m128d parameter = _mm_set1_pd(t);
+    const __m128d pointXY = _mm_add_pd(originXY, _mm_mul_pd(directionXY, parameter));
+    const __m128d pointZ = _mm_add_sd(originZ, _mm_mul_sd(directionZ, parameter));
+    VxSIMDStoreFloat3(&point.x, _mm_movelh_ps(_mm_cvtpd_ps(pointXY), _mm_cvtsd_ss(_mm_setzero_ps(), pointZ)));
+#else
+    point = VxSIMDPointOnRay(ray, t);
+#endif
     return TRUE;
 }
 
 static XBOOL RayPlaneCulledSIMDCore(const VxRay &ray, const VxPlane &plane, VxVector &point, float &dist) {
+#if defined(VX_SIMD_SSE2)
+    const __m128 normal = VxSIMDLoadFloat3(&plane.m_Normal.x);
+    const __m128 direction = VxSIMDLoadFloat3(&ray.m_Direction.x);
+    const __m128 origin = VxSIMDLoadFloat3(&ray.m_Origin.x);
+    const __m128d normalXY = _mm_cvtps_pd(normal);
+    const __m128d normalZ = _mm_cvtps_pd(_mm_movehl_ps(normal, normal));
+    const __m128d directionXY = _mm_cvtps_pd(direction);
+    const __m128d directionZ = _mm_cvtps_pd(_mm_movehl_ps(direction, direction));
+    const __m128d denominatorXY = _mm_mul_pd(normalXY, directionXY);
+    const double denom = _mm_cvtsd_f64(_mm_add_sd(_mm_add_sd(denominatorXY, _mm_unpackhi_pd(denominatorXY, denominatorXY)), _mm_mul_sd(normalZ, directionZ)));
+#else
     const float denom = VxSIMDDot3Scalar(plane.m_Normal, ray.m_Direction);
-    if (denom > -kPlaneParallelEps) {
+#endif
+    if (denom > -kPlaneParallelEps)
         return FALSE;
-    }
 
-    dist = -(VxSIMDDot3Scalar(plane.m_Normal, ray.m_Origin) + plane.m_D) / denom;
-    if (dist < -kPlaneParallelEps) {
+#if defined(VX_SIMD_SSE2)
+    const __m128d originXY = _mm_cvtps_pd(origin);
+    const __m128d originZ = _mm_cvtps_pd(_mm_movehl_ps(origin, origin));
+    const __m128d numeratorXY = _mm_mul_pd(normalXY, originXY);
+    const double numerator = _mm_cvtsd_f64(_mm_add_sd(_mm_add_sd(numeratorXY, _mm_unpackhi_pd(numeratorXY, numeratorXY)), _mm_mul_sd(normalZ, originZ))) + plane.m_D;
+    const double t = -numerator / denom;
+#else
+    const float t = -(VxSIMDDot3Scalar(plane.m_Normal, ray.m_Origin) + plane.m_D) / denom;
+#endif
+    dist = float(t);
+    if (t < -kPlaneParallelEps)
         return FALSE;
-    }
 
-    point = VxSIMDPointOnRay(ray, dist);
+#if defined(VX_SIMD_SSE2)
+    const __m128d parameter = _mm_set1_pd(t);
+    const __m128d pointXY = _mm_add_pd(originXY, _mm_mul_pd(directionXY, parameter));
+    const __m128d pointZ = _mm_add_sd(originZ, _mm_mul_sd(directionZ, parameter));
+    VxSIMDStoreFloat3(&point.x, _mm_movelh_ps(_mm_cvtpd_ps(pointXY), _mm_cvtsd_ss(_mm_setzero_ps(), pointZ)));
+#else
+    point = VxSIMDPointOnRay(ray, t);
+#endif
     return TRUE;
 }
 
 static XBOOL SegmentPlaneSIMDCore(const VxRay &ray, const VxPlane &plane, VxVector &point, float &dist) {
+#if defined(VX_SIMD_SSE2)
+    const __m128 normal = VxSIMDLoadFloat3(&plane.m_Normal.x);
+    const __m128 direction = VxSIMDLoadFloat3(&ray.m_Direction.x);
+    const __m128 origin = VxSIMDLoadFloat3(&ray.m_Origin.x);
+    const __m128d normalXY = _mm_cvtps_pd(normal);
+    const __m128d normalZ = _mm_cvtps_pd(_mm_movehl_ps(normal, normal));
+    const __m128d directionXY = _mm_cvtps_pd(direction);
+    const __m128d directionZ = _mm_cvtps_pd(_mm_movehl_ps(direction, direction));
+    const __m128d denominatorXY = _mm_mul_pd(normalXY, directionXY);
+    const double denom = _mm_cvtsd_f64(_mm_add_sd(_mm_add_sd(denominatorXY, _mm_unpackhi_pd(denominatorXY, denominatorXY)), _mm_mul_sd(normalZ, directionZ)));
+#else
     const float denom = VxSIMDDot3Scalar(plane.m_Normal, ray.m_Direction);
-    if (XAbs(denom) < kPlaneParallelEps) {
+#endif
+    if (fabs(denom) < kPlaneParallelEps)
         return FALSE;
-    }
 
-    dist = -(VxSIMDDot3Scalar(plane.m_Normal, ray.m_Origin) + plane.m_D) / denom;
-    if (dist < -kPlaneParallelEps) {
+#if defined(VX_SIMD_SSE2)
+    const __m128d originXY = _mm_cvtps_pd(origin);
+    const __m128d originZ = _mm_cvtps_pd(_mm_movehl_ps(origin, origin));
+    const __m128d numeratorXY = _mm_mul_pd(normalXY, originXY);
+    const double numerator = _mm_cvtsd_f64(_mm_add_sd(_mm_add_sd(numeratorXY, _mm_unpackhi_pd(numeratorXY, numeratorXY)), _mm_mul_sd(normalZ, originZ))) + plane.m_D;
+    const double t = -numerator / denom;
+#else
+    const float t = -(VxSIMDDot3Scalar(plane.m_Normal, ray.m_Origin) + plane.m_D) / denom;
+#endif
+    dist = float(t);
+    if (t < -kPlaneParallelEps)
         return FALSE;
-    }
-    if (dist > kSegmentMaxT) {
+    if (t > kSegmentMaxT)
         return FALSE;
-    }
 
-    point = VxSIMDPointOnRay(ray, dist);
+#if defined(VX_SIMD_SSE2)
+    const __m128d parameter = _mm_set1_pd(t);
+    const __m128d pointXY = _mm_add_pd(originXY, _mm_mul_pd(directionXY, parameter));
+    const __m128d pointZ = _mm_add_sd(originZ, _mm_mul_sd(directionZ, parameter));
+    VxSIMDStoreFloat3(&point.x, _mm_movelh_ps(_mm_cvtpd_ps(pointXY), _mm_cvtsd_ss(_mm_setzero_ps(), pointZ)));
+#else
+    point = VxSIMDPointOnRay(ray, t);
+#endif
     return TRUE;
 }
 
 static XBOOL SegmentPlaneCulledSIMDCore(const VxRay &ray, const VxPlane &plane, VxVector &point, float &dist) {
+#if defined(VX_SIMD_SSE2)
+    const __m128 normal = VxSIMDLoadFloat3(&plane.m_Normal.x);
+    const __m128 direction = VxSIMDLoadFloat3(&ray.m_Direction.x);
+    const __m128 origin = VxSIMDLoadFloat3(&ray.m_Origin.x);
+    const __m128d normalXY = _mm_cvtps_pd(normal);
+    const __m128d normalZ = _mm_cvtps_pd(_mm_movehl_ps(normal, normal));
+    const __m128d directionXY = _mm_cvtps_pd(direction);
+    const __m128d directionZ = _mm_cvtps_pd(_mm_movehl_ps(direction, direction));
+    const __m128d denominatorXY = _mm_mul_pd(normalXY, directionXY);
+    const double denom = _mm_cvtsd_f64(_mm_add_sd(_mm_add_sd(denominatorXY, _mm_unpackhi_pd(denominatorXY, denominatorXY)), _mm_mul_sd(normalZ, directionZ)));
+#else
     const float denom = VxSIMDDot3Scalar(plane.m_Normal, ray.m_Direction);
-    if (denom > -kPlaneParallelEps) {
+#endif
+    if (denom > -kPlaneParallelEps)
         return FALSE;
-    }
 
-    dist = -(VxSIMDDot3Scalar(plane.m_Normal, ray.m_Origin) + plane.m_D) / denom;
-    if (dist < -kPlaneParallelEps) {
+#if defined(VX_SIMD_SSE2)
+    const __m128d originXY = _mm_cvtps_pd(origin);
+    const __m128d originZ = _mm_cvtps_pd(_mm_movehl_ps(origin, origin));
+    const __m128d numeratorXY = _mm_mul_pd(normalXY, originXY);
+    const double numerator = _mm_cvtsd_f64(_mm_add_sd(_mm_add_sd(numeratorXY, _mm_unpackhi_pd(numeratorXY, numeratorXY)), _mm_mul_sd(normalZ, originZ))) + plane.m_D;
+    const double t = -numerator / denom;
+#else
+    const float t = -(VxSIMDDot3Scalar(plane.m_Normal, ray.m_Origin) + plane.m_D) / denom;
+#endif
+    dist = float(t);
+    if (t < -kPlaneParallelEps)
         return FALSE;
-    }
-    if (dist > kSegmentMaxT) {
+    if (t > kSegmentMaxT)
         return FALSE;
-    }
 
-    point = VxSIMDPointOnRay(ray, dist);
+#if defined(VX_SIMD_SSE2)
+    const __m128d parameter = _mm_set1_pd(t);
+    const __m128d pointXY = _mm_add_pd(originXY, _mm_mul_pd(directionXY, parameter));
+    const __m128d pointZ = _mm_add_sd(originZ, _mm_mul_sd(directionZ, parameter));
+    VxSIMDStoreFloat3(&point.x, _mm_movelh_ps(_mm_cvtpd_ps(pointXY), _mm_cvtsd_ss(_mm_setzero_ps(), pointZ)));
+#else
+    point = VxSIMDPointOnRay(ray, t);
+#endif
     return TRUE;
 }
 
 static XBOOL LinePlaneSIMDCore(const VxRay &ray, const VxPlane &plane, VxVector &point, float &dist) {
+#if defined(VX_SIMD_SSE2)
+    const __m128 normal = VxSIMDLoadFloat3(&plane.m_Normal.x);
+    const __m128 direction = VxSIMDLoadFloat3(&ray.m_Direction.x);
+    const __m128 origin = VxSIMDLoadFloat3(&ray.m_Origin.x);
+    const __m128d normalXY = _mm_cvtps_pd(normal);
+    const __m128d normalZ = _mm_cvtps_pd(_mm_movehl_ps(normal, normal));
+    const __m128d directionXY = _mm_cvtps_pd(direction);
+    const __m128d directionZ = _mm_cvtps_pd(_mm_movehl_ps(direction, direction));
+    const __m128d denominatorXY = _mm_mul_pd(normalXY, directionXY);
+    const double denom = _mm_cvtsd_f64(_mm_add_sd(_mm_add_sd(denominatorXY, _mm_unpackhi_pd(denominatorXY, denominatorXY)), _mm_mul_sd(normalZ, directionZ)));
+#else
     const float denom = VxSIMDDot3Scalar(plane.m_Normal, ray.m_Direction);
-    if (XAbs(denom) < kPlaneParallelEps) {
+#endif
+    if (fabs(denom) < kPlaneParallelEps)
         return FALSE;
-    }
 
-    dist = -(VxSIMDDot3Scalar(plane.m_Normal, ray.m_Origin) + plane.m_D) / denom;
-    point = VxSIMDPointOnRay(ray, dist);
+#if defined(VX_SIMD_SSE2)
+    const __m128d originXY = _mm_cvtps_pd(origin);
+    const __m128d originZ = _mm_cvtps_pd(_mm_movehl_ps(origin, origin));
+    const __m128d numeratorXY = _mm_mul_pd(normalXY, originXY);
+    const double numerator = _mm_cvtsd_f64(_mm_add_sd(_mm_add_sd(numeratorXY, _mm_unpackhi_pd(numeratorXY, numeratorXY)), _mm_mul_sd(normalZ, originZ))) + plane.m_D;
+    const double t = -numerator / denom;
+#else
+    const float t = -(VxSIMDDot3Scalar(plane.m_Normal, ray.m_Origin) + plane.m_D) / denom;
+#endif
+    dist = float(t);
+
+#if defined(VX_SIMD_SSE2)
+    const __m128d parameter = _mm_set1_pd(t);
+    const __m128d pointXY = _mm_add_pd(originXY, _mm_mul_pd(directionXY, parameter));
+    const __m128d pointZ = _mm_add_sd(originZ, _mm_mul_sd(directionZ, parameter));
+    VxSIMDStoreFloat3(&point.x, _mm_movelh_ps(_mm_cvtpd_ps(pointXY), _mm_cvtsd_ss(_mm_setzero_ps(), pointZ)));
+#else
+    point = VxSIMDPointOnRay(ray, t);
+#endif
     return TRUE;
 }
 

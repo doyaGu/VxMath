@@ -58,6 +58,10 @@ public:
 
     //---------- Planes
 
+    // The five ray/segment/line tests return the parameter t in origin + t*direction,
+    // not a metric distance. They retain the original absolute 2^-23 parallel
+    // and endpoint tolerances. Parallel/backface rejection leaves both outputs
+    // unchanged; a parameter-range rejection writes t but preserves point.
     /// @brief Intersects a ray with a plane.
     VX_EXPORT static XBOOL RayPlane(const VxRay &ray, const VxPlane &plane, VxVector &point, float &dist);
     /// @brief Intersects a ray with a plane, culled by the plane's normal.
