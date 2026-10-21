@@ -64,10 +64,26 @@ public:
      * @brief Creates the OBB from an axis-aligned box and a transformation matrix.
      * @param box The source AABB.
      * @param mat The transformation matrix.
+     * @remarks Geometric OBB queries require nonzero, mutually perpendicular
+     * matrix axes. A shear is not converted into an orthogonal box.
      */
     void Create(const VxBbox &box, const VxMatrix &mat) {
         VxVector v = box.GetCenter();
         Vx3DMultiplyMatrixVector(&m_Center, mat, &v);
+#if defined(VX_SIMD_SSE2)
+        for (int i = 0; i < 3; ++i) {
+            const __m128 axis = VxSIMDLoadFloat3(&mat[i][0]);
+            const __m128d xy = _mm_cvtps_pd(axis), z = _mm_cvtps_pd(_mm_movehl_ps(axis, axis));
+            const __m128d squaredXY = _mm_mul_pd(xy, xy);
+            const __m128d squared = _mm_add_sd(_mm_add_sd(squaredXY, _mm_unpackhi_pd(squaredXY, squaredXY)), _mm_mul_sd(z, z));
+            const __m128d length = _mm_sqrt_sd(squared, squared);
+            const __m128 normalizedXY = _mm_cvtpd_ps(_mm_div_pd(xy, _mm_unpacklo_pd(length, length)));
+            const __m128 normalizedZ = _mm_cvtsd_ss(_mm_setzero_ps(), _mm_div_sd(z, length));
+            VxSIMDStoreFloat3(&m_Axis[i].x, _mm_movelh_ps(normalizedXY, normalizedZ));
+            const double halfsize = (double(box.Max[i]) - box.Min[i]) * 0.5;
+            m_Extents[i] = _mm_cvtss_f32(_mm_cvtsd_ss(_mm_setzero_ps(), _mm_mul_sd(length, _mm_set_sd(halfsize))));
+        }
+#elif defined(VX_SIMD_SSE)
         m_Axis[0] = *(VxVector *) &mat[0][0];
         m_Axis[1] = *(VxVector *) &mat[1][0];
         m_Axis[2] = *(VxVector *) &mat[2][0];
@@ -80,6 +96,14 @@ public:
         m_Extents[0] *= 0.5f * (box.Max[0] - box.Min[0]);
         m_Extents[1] *= 0.5f * (box.Max[1] - box.Min[1]);
         m_Extents[2] *= 0.5f * (box.Max[2] - box.Min[2]);
+#else
+        for (int i = 0; i < 3; ++i) {
+            const double x = mat[i][0], y = mat[i][1], z = mat[i][2];
+            const double length = sqrt(x * x + y * y + z * z);
+            m_Axis[i].Set(float(x / length), float(y / length), float(z / length));
+            m_Extents[i] = float(length * ((double(box.Max[i]) - box.Min[i]) * 0.5));
+        }
+#endif
     }
 
     /**
@@ -88,8 +112,46 @@ public:
      * @return TRUE if the point is inside the box, FALSE otherwise.
      */
     XBOOL VectorIn(const VxVector &iV) const {
+#if defined(VX_SIMD_SSE2)
+        const __m128 point = VxSIMDLoadFloat3(&iV.x), center = VxSIMDLoadFloat3(&m_Center.x);
+        const __m128d xy = _mm_sub_pd(_mm_cvtps_pd(point), _mm_cvtps_pd(center));
+        const __m128d z = _mm_sub_sd(_mm_cvtps_pd(_mm_movehl_ps(point, point)), _mm_cvtps_pd(_mm_movehl_ps(center, center)));
+        const __m128d limit = _mm_set1_pd(double(FLT_MAX) * 0.25);
+        // Unit axes and displacements below this bound keep all three float
+        // dot-product terms within range. Retain that path's boundary rounding.
+        const bool wide = _mm_movemask_pd(_mm_cmpgt_pd(_mm_andnot_pd(_mm_set1_pd(-0.0), xy), limit)) != 0 ||
+                          (_mm_movemask_pd(_mm_cmpgt_pd(_mm_andnot_pd(_mm_set1_pd(-0.0), z), limit)) & 1) != 0;
+        if (wide) {
+            for (int i = 0; i < 3; ++i) {
+                const __m128 axis = VxSIMDLoadFloat3(&m_Axis[i].x);
+                const __m128d products = _mm_mul_pd(xy, _mm_cvtps_pd(axis));
+                const __m128d dot = _mm_add_sd(_mm_add_sd(products, _mm_unpackhi_pd(products, products)),
+                    _mm_mul_sd(z, _mm_cvtps_pd(_mm_movehl_ps(axis, axis))));
+                const float projection = _mm_cvtss_f32(_mm_cvtsd_ss(_mm_setzero_ps(), dot));
+                if (XAbs(projection) > m_Extents[i]) return FALSE;
+            }
+        } else {
+            const __m128 d = _mm_movelh_ps(_mm_cvtpd_ps(xy), _mm_cvtsd_ss(_mm_setzero_ps(), z));
+            for (int i = 0; i < 3; ++i) {
+                if (XAbs(_mm_cvtss_f32(VxSIMDDotProduct3(d, VxSIMDLoadFloat3(&m_Axis[i].x)))) > m_Extents[i]) return FALSE;
+            }
+        }
+        return TRUE;
+#elif !defined(VX_SIMD_SSE)
+        const double x = double(iV.x) - m_Center.x, y = double(iV.y) - m_Center.y, z = double(iV.z) - m_Center.z;
+        if (fabs(x) > double(FLT_MAX) * 0.25 || fabs(y) > double(FLT_MAX) * 0.25 || fabs(z) > double(FLT_MAX) * 0.25) {
+            for (int i = 0; i < 3; ++i) {
+                const float projection = float(x * m_Axis[i].x + y * m_Axis[i].y + z * m_Axis[i].z);
+                if (XAbs(projection) > m_Extents[i]) return FALSE;
+            }
+            return TRUE;
+        }
+        const VxVector d{float(x), float(y), float(z)};
+#else
         VxVector d = (iV - m_Center);
+#endif
 
+#if !defined(VX_SIMD_SSE2)
         float xRes = DotProduct(d, m_Axis[0]);
         if (XAbs(xRes) > m_Extents[0]) return FALSE;
         float yRes = DotProduct(d, m_Axis[1]);
@@ -97,6 +159,7 @@ public:
         float zRes = DotProduct(d, m_Axis[2]);
         if (XAbs(zRes) > m_Extents[2]) return FALSE;
         return TRUE;
+#endif
     }
 
     /**
