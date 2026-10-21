@@ -142,6 +142,7 @@ set(VXMATH_TEST_SOURCES
         BlitClosureReferenceTest.cpp
         RectTransformReferenceTest.cpp
         RectTransformScalarReferenceTest.cpp
+        RectClipReferenceTest.cpp
         # SIMD Tests
         SIMDFeatureTest.cpp
         SIMDUtilityTest.cpp
