@@ -248,21 +248,18 @@ inline void VxFrustum::Update() {
     m_NearPlane.Create(nearNormal, nbl);
     m_FarPlane.Create(m_Dir, farVertex);
 
-    VxVector leftNormal = CrossProduct(nbl_rel, ntl_rel);
-    leftNormal.Normalize();
-    m_LeftPlane.Create(leftNormal, m_Origin);
-
-    VxVector rightNormal = CrossProduct(ntr_rel, nbr_rel);
-    rightNormal.Normalize();
-    m_RightPlane.Create(rightNormal, m_Origin);
-
-    VxVector bottomNormal = CrossProduct(nbr_rel, nbl_rel);
-    bottomNormal.Normalize();
-    m_BottomPlane.Create(bottomNormal, m_Origin);
-
-    VxVector topNormal = CrossProduct(ntl_rel, ntr_rel);
-    topNormal.Normalize();
-    m_UpPlane.Create(topNormal, m_Origin);
+    // Construct in relative coordinates: translation must not erase small edges.
+    // The triangle kernel normalizes in double (packed double on SSE2), without
+    // the vector Normalize epsilon or a float squared-cross overflow/underflow.
+    const VxVector zero(0.0f, 0.0f, 0.0f);
+    m_LeftPlane.Create(zero, nbl_rel, ntl_rel);
+    m_LeftPlane.Create(m_LeftPlane.m_Normal, m_Origin);
+    m_RightPlane.Create(zero, ntr_rel, nbr_rel);
+    m_RightPlane.Create(m_RightPlane.m_Normal, m_Origin);
+    m_BottomPlane.Create(zero, nbr_rel, nbl_rel);
+    m_BottomPlane.Create(m_BottomPlane.m_Normal, m_Origin);
+    m_UpPlane.Create(zero, ntl_rel, ntr_rel);
+    m_UpPlane.Create(m_UpPlane.m_Normal, m_Origin);
 }
 
 inline void VxFrustum::ComputeVertices(VxVector vertices[8]) const {
@@ -304,18 +301,24 @@ inline void VxFrustum::Transform(const VxMatrix &invworldmat) {
     VxVector resultVectors[3];
     Vx3DRotateVectorMany(resultVectors, invworldmat, &m_Right, 3, sizeof(VxVector));
 
-    const float newRBound = Magnitude(resultVectors[0]);
-    const float newUBound = Magnitude(resultVectors[1]);
-    const float newDMin   = Magnitude(resultVectors[2]);
+    double lengths[3];
+    for (int i = 0; i < 3; ++i) {
+        const double x = resultVectors[i].x, y = resultVectors[i].y, z = resultVectors[i].z;
+        lengths[i] = sqrt(x * x + y * y + z * z);
+        if (lengths[i] > 0.0) {
+            resultVectors[i].Set(float(x / lengths[i]), float(y / lengths[i]), float(z / lengths[i]));
+        } else {
+            resultVectors[i] = VxVector::axis0();
+        }
+    }
+    const float newRBound = float(lengths[0]);
+    const float newUBound = float(lengths[1]);
+    const float newDMin   = float(lengths[2]);
 
     m_RBound = newRBound;
     m_UBound = newUBound;
     m_DMax   = newDMin * m_DRatio;
     m_DMin   = newDMin;
-
-    if (newRBound > 0.0f) resultVectors[0] /= newRBound; else resultVectors[0] = VxVector::axis0();
-    if (newUBound > 0.0f) resultVectors[1] /= newUBound; else resultVectors[1] = VxVector::axis0();
-    if (newDMin   > 0.0f) resultVectors[2] /= newDMin;   else resultVectors[2] = VxVector::axis0();
 
     m_Right = resultVectors[0];
     m_Up    = resultVectors[1];
@@ -406,6 +409,30 @@ VX_SIMD_INLINE void VxSIMDFrustumTransform(VxFrustum *frustum, const VxMatrix *i
     const __m128 rotatedUp = VxSIMDMatrixRotateVector3(matData, upScaled);
     const __m128 rotatedDir = VxSIMDMatrixRotateVector3(matData, dirScaled);
 
+#if defined(VX_SIMD_SSE2)
+    const __m128 rotated[3] = {rotatedRight, rotatedUp, rotatedDir};
+    VxVector *axes[3] = {&right, &up, &dir};
+    float lengths[3];
+    for (int i = 0; i < 3; ++i) {
+        const __m128d xy = _mm_cvtps_pd(rotated[i]);
+        const __m128d z = _mm_cvtps_pd(_mm_movehl_ps(rotated[i], rotated[i]));
+        const __m128d squareXY = _mm_mul_pd(xy, xy);
+        const __m128d sum = _mm_add_sd(_mm_add_sd(squareXY, _mm_unpackhi_pd(squareXY, squareXY)), _mm_mul_sd(z, z));
+        const __m128d length = _mm_sqrt_sd(sum, sum);
+        lengths[i] = _mm_cvtss_f32(_mm_cvtsd_ss(_mm_setzero_ps(), length));
+        if (_mm_comigt_sd(length, _mm_setzero_pd())) {
+            const __m128 normalizedXY = _mm_cvtpd_ps(_mm_div_pd(xy, _mm_unpacklo_pd(length, length)));
+            const __m128 normalizedZ = _mm_cvtsd_ss(_mm_setzero_ps(), _mm_div_sd(z, length));
+            VxSIMDStoreFloat3(&axes[i]->x, _mm_movelh_ps(normalizedXY, normalizedZ));
+        } else {
+            *axes[i] = VxVector::axis0();
+        }
+    }
+    rBound = lengths[0];
+    uBound = lengths[1];
+    dMin = lengths[2];
+    dMax = lengths[2] * dRatio;
+#else
     const float newRBound = VxSIMDLength3(rotatedRight);
     const float newUBound = VxSIMDLength3(rotatedUp);
     const float newDMin = VxSIMDLength3(rotatedDir);
@@ -430,6 +457,7 @@ VX_SIMD_INLINE void VxSIMDFrustumTransform(VxFrustum *frustum, const VxMatrix *i
     } else {
         dir = VxVector::axis0();
     }
+#endif
 
     frustum->Update();
 }

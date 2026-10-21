@@ -31,8 +31,8 @@ public:
      * @param dir The viewing direction vector.
      * @param nearplane The distance to the near clipping plane.
      * @param farplane The distance to the far clipping plane.
-     * @param fov The vertical field of view, in radians.
-     * @param aspectratio The aspect ratio (width / height).
+     * @param fov The horizontal field of view, in radians.
+     * @param aspectratio The aspect ratio (height / width).
      */
     inline VxFrustum(const VxVector &origin, const VxVector &right, const VxVector &up, const VxVector &dir, float nearplane, float farplane, float fov, float aspectratio);
 
@@ -106,7 +106,8 @@ public:
     /**
      * @brief Classifies an axis-aligned bounding box (AABB) against the frustum.
      * @param v The AABB to classify.
-     * @return A negative value if intersecting, a positive value if completely outside, and 0 if on a plane.
+     * @return A negative value if wholly inside, a positive value if outside a plane,
+     *         and 0 if crossing or touching a plane without being outside another.
      */
     float Classify(const VxBbox &v) const;
 
@@ -114,7 +115,8 @@ public:
      * @brief Classifies an oriented bounding box (OBB) against the frustum.
      * @param b The original AABB of the box.
      * @param mat The transformation matrix applied to the box.
-     * @return A negative value if intersecting, a positive value if completely outside, and 0 if on a plane.
+     * @return A negative value if wholly inside, a positive value if outside a plane,
+     *         and 0 if crossing or touching a plane without being outside another.
      */
     float Classify(const VxBbox &b, const VxMatrix &mat) const;
 
@@ -154,7 +156,7 @@ protected:
      * @brief Classifies an OBB against a single plane.
      * @param axis The transformed axes and center of the OBB.
      * @param plane The plane to classify against.
-     * @return A negative value if intersecting, a positive value if completely outside, and 0 if on the plane.
+     * @return The signed center distance if wholly on either side, or 0 if crossing or touching.
      */
     static float XClassify(const VxVector axis[4], const VxPlane &plane);
 
