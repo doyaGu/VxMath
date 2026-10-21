@@ -144,6 +144,7 @@ set(VXMATH_TEST_SOURCES
         ColorReferenceTest.cpp
         Mipmap32ReferenceTest.cpp
         NormalRowCacheReferenceTest.cpp
+        GraphicDispatchReferenceTest.cpp
         RectTransformReferenceTest.cpp
         RectTransformScalarReferenceTest.cpp
         RectClipReferenceTest.cpp
