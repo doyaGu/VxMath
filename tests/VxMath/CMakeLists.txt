@@ -152,6 +152,7 @@ set(VXMATH_TEST_SOURCES
         Vector2DReferenceTest.cpp
         IntegerRegionReferenceTest.cpp
         SphereReferenceTest.cpp
+        RayReferenceTest.cpp
         # SIMD Tests
         SIMDFeatureTest.cpp
         SIMDUtilityTest.cpp
@@ -254,6 +255,9 @@ add_test(NAME FontAssetsTest COMMAND ${CMAKE_COMMAND}
 vx_add_test(SphereScalarReferenceTest SOURCES SphereReferenceTest.cpp)
 target_compile_definitions(SphereScalarReferenceTest PRIVATE VX_SIMD_NONE=1)
 vx_copy_runtime_dependencies(SphereScalarReferenceTest)
+vx_add_test(RayScalarReferenceTest SOURCES RayReferenceTest.cpp)
+target_compile_definitions(RayScalarReferenceTest PRIVATE VX_SIMD_NONE=1)
+vx_copy_runtime_dependencies(RayScalarReferenceTest)
 
 # Exercise the same original-DLL samples with header SIMD paths disabled.
 vx_add_test(QuaternionReferenceScalarTest SOURCES QuaternionReferenceTest.cpp)
