@@ -31,7 +31,7 @@ struct Vx2DVector {
     /**
      * @brief Calculates the length (magnitude) of the vector.
      * @return The length of the vector.
-     * @warning Calling this function with a null vector (0,0) will result in NaN (Not a Number).
+     * @remarks A null vector has length zero.
      * @see Normalize, SquareMagnitude
      */
     float Magnitude() const {
@@ -53,7 +53,7 @@ struct Vx2DVector {
      * @brief Normalizes the vector to a unit length of 1.0.
      * @return A reference to the modified vector.
      * @remarks This method modifies the vector in place.
-     * @warning Calling this function on a null vector (0,0) will result in a vector with NaN components.
+     * @remarks A null vector is left unchanged, including the signs of zero components.
      * @see Magnitude
      */
     Vx2DVector &Normalize() {
@@ -240,12 +240,12 @@ struct Vx2DVector {
         return (x <= v.x) && (y <= v.y);
     }
 
-    /// @brief Checks for bitwise equality between two vectors.
+    /// @brief Checks for component-wise numeric equality between two vectors.
     bool operator==(const Vx2DVector &v) const {
         return (x == v.x) && (y == v.y);
     }
 
-    /// @brief Checks for bitwise inequality between two vectors.
+    /// @brief Checks for component-wise numeric inequality between two vectors.
     bool operator!=(const Vx2DVector &v) const {
         return (x != v.x) || (y != v.y);
     }

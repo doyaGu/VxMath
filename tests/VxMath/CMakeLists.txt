@@ -144,6 +144,7 @@ set(VXMATH_TEST_SOURCES
         RectTransformScalarReferenceTest.cpp
         RectClipReferenceTest.cpp
         RectCoreReferenceTest.cpp
+        Vector2DReferenceTest.cpp
         # SIMD Tests
         SIMDFeatureTest.cpp
         SIMDUtilityTest.cpp
