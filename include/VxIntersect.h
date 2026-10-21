@@ -79,6 +79,7 @@ public:
     /// @brief Checks for intersection between a triangle face and a plane.
     // VX_EXPORT static XBOOL FacePlane(const VxVector &A0, const VxVector &A1, const VxVector &A2, const VxPlane &plane);
     /// @brief Finds the intersection point of three planes.
+    /// @return FALSE when there is no unique solution; p is then unchanged.
     VX_EXPORT static XBOOL Planes(const VxPlane &plane1, const VxPlane &plane2, const VxPlane &plane3, VxVector &p);
 
     //---------- Faces

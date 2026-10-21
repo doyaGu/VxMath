@@ -203,65 +203,49 @@ static XBOOL LinePlaneScalarCore(const VxRay &ray, const VxPlane &plane, VxVecto
 }
 
 static XBOOL BoxPlaneScalarCore(const VxBbox &box, const VxPlane &plane) {
-    VxVector minPt = box.Min;
-    VxVector maxPt = box.Max;
-
-    for (int i = 0; i < 3; i++) {
-        if (plane.m_Normal[i] < 0.0f) {
-            minPt[i] = box.Max[i];
-            maxPt[i] = box.Min[i];
-        }
+    double low = plane.m_D, high = plane.m_D;
+    for (int i = 0; i < 3; ++i) {
+        const double normal = plane.m_Normal[i];
+        low += normal * (normal < 0 ? box.Max[i] : box.Min[i]);
+        high += normal * (normal < 0 ? box.Min[i] : box.Max[i]);
     }
-
-    float minDist = DotProduct(plane.m_Normal, minPt) + plane.m_D;
-    float maxDist = DotProduct(plane.m_Normal, maxPt) + plane.m_D;
-    return (minDist <= 0.0f && maxDist >= 0.0f) || (maxDist == 0.0f);
+    return low <= 0 && high >= 0;
 }
 
 static XBOOL BoxPlaneMatrixScalarCore(const VxBbox &box, const VxMatrix &mat, const VxPlane &plane) {
-    VxVector halfSize = box.GetHalfSize();
-
-    float radius = XAbs(DotProduct(plane.m_Normal, mat[0] * halfSize.x)) +
-                   XAbs(DotProduct(plane.m_Normal, mat[1] * halfSize.y)) +
-                   XAbs(DotProduct(plane.m_Normal, mat[2] * halfSize.z));
-
-    VxVector center = box.GetCenter();
-    VxVector transformedCenter;
-    Vx3DMultiplyMatrixVector(&transformedCenter, mat, &center);
-
-    float dist = DotProduct(plane.m_Normal, transformedCenter) + plane.m_D;
-    return XAbs(dist) <= radius;
+    // Pull the plane back through the affine map. This keeps the support
+    // interval representable when a transformed coordinate alone overflows.
+    double coefficients[4];
+    for (int i = 0; i < 4; ++i) {
+        coefficients[i] = double(plane.m_Normal.x) * mat[i].x +
+            double(plane.m_Normal.y) * mat[i].y + double(plane.m_Normal.z) * mat[i].z;
+    }
+    double low = coefficients[3] + plane.m_D, high = low;
+    for (int i = 0; i < 3; ++i) {
+        low += coefficients[i] * (coefficients[i] < 0 ? box.Max[i] : box.Min[i]);
+        high += coefficients[i] * (coefficients[i] < 0 ? box.Min[i] : box.Max[i]);
+    }
+    return low <= 0 && high >= 0;
 }
 
 static XBOOL PlanesScalarCore(const VxPlane &plane1, const VxPlane &plane2, const VxPlane &plane3, VxVector &p) {
-    VxMatrix mat;
-    mat[0][0] = plane1.m_Normal.x; mat[0][1] = plane1.m_Normal.y; mat[0][2] = plane1.m_Normal.z;
-    mat[1][0] = plane2.m_Normal.x; mat[1][1] = plane2.m_Normal.y; mat[1][2] = plane2.m_Normal.z;
-    mat[2][0] = plane3.m_Normal.x; mat[2][1] = plane3.m_Normal.y; mat[2][2] = plane3.m_Normal.z;
-
-    float det = Vx3DMatrixDeterminant(mat);
-    if (det == 0.0f)
+    const VxPlane *planes[] = {&plane1, &plane2, &plane3};
+    double cross[3][3];
+    for (int i = 0; i < 3; ++i) {
+        const VxVector &b = planes[(i + 1) % 3]->m_Normal;
+        const VxVector &c = planes[(i + 2) % 3]->m_Normal;
+        cross[i][0] = double(b.y) * c.z - double(b.z) * c.y;
+        cross[i][1] = double(b.z) * c.x - double(b.x) * c.z;
+        cross[i][2] = double(b.x) * c.y - double(b.y) * c.x;
+    }
+    const double determinant = double(plane1.m_Normal.x) * cross[0][0] +
+        double(plane1.m_Normal.y) * cross[0][1] + double(plane1.m_Normal.z) * cross[0][2];
+    if (determinant == 0)
         return FALSE;
 
-    mat[0][0] = -plane1.m_D; mat[0][1] = plane1.m_Normal.y; mat[0][2] = plane1.m_Normal.z;
-    mat[1][0] = -plane2.m_D; mat[1][1] = plane2.m_Normal.y; mat[1][2] = plane2.m_Normal.z;
-    mat[2][0] = -plane3.m_D; mat[2][1] = plane3.m_Normal.y; mat[2][2] = plane3.m_Normal.z;
-    float detX = Vx3DMatrixDeterminant(mat);
-
-    mat[0][0] = plane1.m_Normal.x; mat[0][1] = -plane1.m_D; mat[0][2] = plane1.m_Normal.z;
-    mat[1][0] = plane2.m_Normal.x; mat[1][1] = -plane2.m_D; mat[1][2] = plane2.m_Normal.z;
-    mat[2][0] = plane3.m_Normal.x; mat[2][1] = -plane3.m_D; mat[2][2] = plane3.m_Normal.z;
-    float detY = Vx3DMatrixDeterminant(mat);
-
-    mat[0][0] = plane1.m_Normal.x; mat[0][1] = plane1.m_Normal.y; mat[0][2] = -plane1.m_D;
-    mat[1][0] = plane2.m_Normal.x; mat[1][1] = plane2.m_Normal.y; mat[1][2] = -plane2.m_D;
-    mat[2][0] = plane3.m_Normal.x; mat[2][1] = plane3.m_Normal.y; mat[2][2] = -plane3.m_D;
-    float detZ = Vx3DMatrixDeterminant(mat);
-
-    float invDet = 1.0f / det;
-    p.x = detX * invDet;
-    p.y = detY * invDet;
-    p.z = detZ * invDet;
+    p.Set(float((-double(plane1.m_D) * cross[0][0] - double(plane2.m_D) * cross[1][0] - double(plane3.m_D) * cross[2][0]) / determinant),
+          float((-double(plane1.m_D) * cross[0][1] - double(plane2.m_D) * cross[1][1] - double(plane3.m_D) * cross[2][1]) / determinant),
+          float((-double(plane1.m_D) * cross[0][2] - double(plane2.m_D) * cross[1][2] - double(plane3.m_D) * cross[2][2]) / determinant));
     return TRUE;
 }
 
@@ -474,6 +458,19 @@ static XBOOL LinePlaneSIMDCore(const VxRay &ray, const VxPlane &plane, VxVector 
 }
 
 static XBOOL BoxPlaneSIMDCore(const VxBbox &box, const VxPlane &plane) {
+#if defined(VX_SIMD_SSE2)
+    const __m128d coefficientXY = _mm_cvtps_pd(VxSIMDLoadFloat3(&plane.m_Normal.x));
+    const double coefficientZ = plane.m_Normal.z;
+    const double constant = plane.m_D;
+    const __m128d minimum = _mm_cvtps_pd(VxSIMDLoadFloat3(&box.Min.x));
+    const __m128d maximum = _mm_cvtps_pd(VxSIMDLoadFloat3(&box.Max.x));
+    const __m128d negative = _mm_cmplt_pd(coefficientXY, _mm_setzero_pd());
+    const __m128d lowXY = _mm_mul_pd(coefficientXY, _mm_or_pd(_mm_and_pd(negative, maximum), _mm_andnot_pd(negative, minimum)));
+    const __m128d highXY = _mm_mul_pd(coefficientXY, _mm_or_pd(_mm_and_pd(negative, minimum), _mm_andnot_pd(negative, maximum)));
+    const double low = constant + _mm_cvtsd_f64(_mm_add_sd(lowXY, _mm_unpackhi_pd(lowXY, lowXY))) + coefficientZ * (coefficientZ < 0 ? box.Max.z : box.Min.z);
+    const double high = constant + _mm_cvtsd_f64(_mm_add_sd(highXY, _mm_unpackhi_pd(highXY, highXY))) + coefficientZ * (coefficientZ < 0 ? box.Min.z : box.Max.z);
+    return low <= 0 && high >= 0;
+#else
     const __m128 n = VxSIMDLoadFloat3(&plane.m_Normal.x);
     const __m128 minV = VxSIMDLoadFloat3(&box.Min.x);
     const __m128 maxV = VxSIMDLoadFloat3(&box.Max.x);
@@ -485,9 +482,33 @@ static XBOOL BoxPlaneSIMDCore(const VxBbox &box, const VxPlane &plane) {
     const float minDist = VxSIMDExtractX(_mm_add_ss(VxSIMDDotProduct3(n, minPt), _mm_set_ss(plane.m_D)));
     const float maxDist = VxSIMDExtractX(_mm_add_ss(VxSIMDDotProduct3(n, maxPt), _mm_set_ss(plane.m_D)));
     return ((minDist <= 0.0f) && (maxDist >= 0.0f)) || (maxDist == 0.0f);
+#endif
 }
 
 static XBOOL BoxPlaneMatrixSIMDCore(const VxBbox &box, const VxMatrix &mat, const VxPlane &plane) {
+#if defined(VX_SIMD_SSE2)
+    const __m128 normal = VxSIMDLoadFloat3(&plane.m_Normal.x);
+    const __m128d normalXY = _mm_cvtps_pd(normal);
+    const __m128d normalZ = _mm_cvtps_pd(_mm_movehl_ps(normal, normal));
+    double coefficients[4];
+    for (int i = 0; i < 4; ++i) {
+        const __m128 row = VxSIMDLoadFloat3(&mat[i].x);
+        const __m128d xy = _mm_mul_pd(normalXY, _mm_cvtps_pd(row));
+        const __m128d z = _mm_mul_sd(normalZ, _mm_cvtps_pd(_mm_movehl_ps(row, row)));
+        coefficients[i] = _mm_cvtsd_f64(_mm_add_sd(_mm_add_sd(xy, _mm_unpackhi_pd(xy, xy)), z));
+    }
+    const __m128d coefficientXY = _mm_loadu_pd(coefficients);
+    const double coefficientZ = coefficients[2];
+    const double constant = coefficients[3] + plane.m_D;
+    const __m128d minimum = _mm_cvtps_pd(VxSIMDLoadFloat3(&box.Min.x));
+    const __m128d maximum = _mm_cvtps_pd(VxSIMDLoadFloat3(&box.Max.x));
+    const __m128d negative = _mm_cmplt_pd(coefficientXY, _mm_setzero_pd());
+    const __m128d lowXY = _mm_mul_pd(coefficientXY, _mm_or_pd(_mm_and_pd(negative, maximum), _mm_andnot_pd(negative, minimum)));
+    const __m128d highXY = _mm_mul_pd(coefficientXY, _mm_or_pd(_mm_and_pd(negative, minimum), _mm_andnot_pd(negative, maximum)));
+    const double low = constant + _mm_cvtsd_f64(_mm_add_sd(lowXY, _mm_unpackhi_pd(lowXY, lowXY))) + coefficientZ * (coefficientZ < 0 ? box.Max.z : box.Min.z);
+    const double high = constant + _mm_cvtsd_f64(_mm_add_sd(highXY, _mm_unpackhi_pd(highXY, highXY))) + coefficientZ * (coefficientZ < 0 ? box.Min.z : box.Max.z);
+    return low <= 0 && high >= 0;
+#else
     const VxVector halfSize = box.GetHalfSize();
     const __m128 n = VxSIMDLoadFloat3(&plane.m_Normal.x);
 
@@ -504,9 +525,38 @@ static XBOOL BoxPlaneMatrixSIMDCore(const VxBbox &box, const VxMatrix &mat, cons
     const __m128 transformedCenter = VxSIMDMatrixMultiplyVector3(&mat[0][0], VxSIMDLoadFloat3(&center.x));
     const float dist = VxSIMDExtractX(_mm_add_ss(VxSIMDDotProduct3(n, transformedCenter), _mm_set_ss(plane.m_D)));
     return XAbs(dist) <= radius;
+#endif
 }
 
 static XBOOL PlanesSIMDCore(const VxPlane &plane1, const VxPlane &plane2, const VxPlane &plane3, VxVector &p) {
+#if defined(VX_SIMD_SSE2)
+    const VxPlane *planes[] = {&plane1, &plane2, &plane3};
+    __m128d crossXY[3], crossZ[3];
+    for (int i = 0; i < 3; ++i) {
+        const VxVector &b = planes[(i + 1) % 3]->m_Normal;
+        const VxVector &c = planes[(i + 2) % 3]->m_Normal;
+        crossXY[i] = _mm_sub_pd(_mm_mul_pd(_mm_setr_pd(b.y, b.z), _mm_setr_pd(c.z, c.x)),
+                                _mm_mul_pd(_mm_setr_pd(b.z, b.x), _mm_setr_pd(c.y, c.z)));
+        crossZ[i] = _mm_sub_sd(_mm_mul_sd(_mm_set_sd(b.x), _mm_set_sd(c.y)),
+                              _mm_mul_sd(_mm_set_sd(b.y), _mm_set_sd(c.x)));
+    }
+    const __m128d determinantXY = _mm_mul_pd(_mm_cvtps_pd(VxSIMDLoadFloat3(&plane1.m_Normal.x)), crossXY[0]);
+    const __m128d determinantZ = _mm_mul_sd(_mm_set_sd(plane1.m_Normal.z), crossZ[0]);
+    const double determinant = _mm_cvtsd_f64(_mm_add_sd(_mm_add_sd(determinantXY, _mm_unpackhi_pd(determinantXY, determinantXY)), determinantZ));
+    if (determinant == 0)
+        return FALSE;
+
+    __m128d numeratorXY = _mm_mul_pd(crossXY[0], _mm_set1_pd(-double(plane1.m_D)));
+    __m128d numeratorZ = _mm_mul_sd(crossZ[0], _mm_set_sd(-double(plane1.m_D)));
+    for (int i = 1; i < 3; ++i) {
+        numeratorXY = _mm_add_pd(numeratorXY, _mm_mul_pd(crossXY[i], _mm_set1_pd(-double(planes[i]->m_D))));
+        numeratorZ = _mm_add_sd(numeratorZ, _mm_mul_sd(crossZ[i], _mm_set_sd(-double(planes[i]->m_D))));
+    }
+    const __m128 xy = _mm_cvtpd_ps(_mm_div_pd(numeratorXY, _mm_set1_pd(determinant)));
+    const __m128 z = _mm_cvtsd_ss(_mm_setzero_ps(), _mm_div_sd(numeratorZ, _mm_set_sd(determinant)));
+    VxSIMDStoreFloat3(&p.x, _mm_movelh_ps(xy, z));
+    return TRUE;
+#else
     const __m128 n1 = VxSIMDLoadFloat3(&plane1.m_Normal.x);
     const __m128 n2 = VxSIMDLoadFloat3(&plane2.m_Normal.x);
     const __m128 n3 = VxSIMDLoadFloat3(&plane3.m_Normal.x);
@@ -526,6 +576,7 @@ static XBOOL PlanesSIMDCore(const VxPlane &plane1, const VxPlane &plane2, const 
 
     VxSIMDStoreFloat3(&p.x, sum);
     return TRUE;
+#endif
 }
 #endif
 
