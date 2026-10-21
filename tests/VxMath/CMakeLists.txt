@@ -141,6 +141,7 @@ set(VXMATH_TEST_SOURCES
         IndexedLifecycleReferenceTest.cpp
         BlitClosureReferenceTest.cpp
         ImageDescriptorReferenceTest.cpp
+        ColorReferenceTest.cpp
         RectTransformReferenceTest.cpp
         RectTransformScalarReferenceTest.cpp
         RectClipReferenceTest.cpp
