@@ -133,24 +133,24 @@ static inline XBOOL PointInAABB_OutCode_SIMD(const VxBbox& box, const VxVector& 
     const __m128 maxV = VxSIMDLoadVector3(box.Max);
 
     const int lessMask = _mm_movemask_ps(_mm_cmplt_ps(pV, minV)) & 0x7;
-    const int geMask = _mm_movemask_ps(_mm_cmpnlt_ps(pV, maxV)) & 0x7;
+    const int greaterMask = _mm_movemask_ps(_mm_cmpgt_ps(pV, maxV)) & 0x7;
 
     unsigned int code = 0;
     if ((lessMask & 0x1) != 0) {
         code |= 0x02;
-    } else if ((geMask & 0x1) != 0) {
+    } else if ((greaterMask & 0x1) != 0) {
         code |= 0x01;
     }
 
     if ((lessMask & 0x2) != 0) {
         code |= 0x08;
-    } else if ((geMask & 0x2) != 0) {
+    } else if ((greaterMask & 0x2) != 0) {
         code |= 0x04;
     }
 
     if ((lessMask & 0x4) != 0) {
         code |= 0x10;
-    } else if ((geMask & 0x4) != 0) {
+    } else if ((greaterMask & 0x4) != 0) {
         code |= 0x20;
     }
 
@@ -206,25 +206,25 @@ static inline float OppositeDirSign(float dir) {
 
 static inline XBOOL PointInAABB_OutCode(const VxBbox &box, const VxVector &p, unsigned int &outCode) {
     // Encodes outside-ness:
-    // X: <Min -> 0x02, >=Max -> 0x01
-    // Y: <Min -> 0x08, >=Max -> 0x04
-    // Z: <Min -> 0x10, >=Max -> 0x20
+    // X: <Min -> 0x02, >Max -> 0x01
+    // Y: <Min -> 0x08, >Max -> 0x04
+    // Z: <Min -> 0x10, >Max -> 0x20
     unsigned int code = 0;
     if (p.x < box.Min.x) {
         code |= 0x02;
-    } else if (!(p.x < box.Max.x)) {
+    } else if (p.x > box.Max.x) {
         code |= 0x01;
     }
 
     if (p.y < box.Min.y) {
         code |= 0x08;
-    } else if (!(p.y < box.Max.y)) {
+    } else if (p.y > box.Max.y) {
         code |= 0x04;
     }
 
     if (p.z < box.Min.z) {
         code |= 0x10;
-    } else if (!(p.z < box.Max.z)) {
+    } else if (p.z > box.Max.z) {
         code |= 0x20;
     }
 
@@ -1441,9 +1441,7 @@ namespace {
 
 template <bool kUseSIMD>
 static XBOOL AABBFaceCore(const VxBbox &box, const VxVector &A0, const VxVector &A1, const VxVector &A2, const VxVector &N) {
-    // Implements a hybrid of trivial rejection + triangle-edge vs box
-    // tests, and finally tests the most "planar" box diagonal vs the triangle.
-
+    // Closed box boundaries, including Max, match the original outcodes.
     unsigned int code0 = 0, code1 = 0, code2 = 0;
 #if defined(VX_SIMD_SSE)
     if constexpr (kUseSIMD) {
@@ -1468,6 +1466,8 @@ static XBOOL AABBFaceCore(const VxBbox &box, const VxVector &A0, const VxVector 
     if ((code0 & code1 & code2) != 0)
         return FALSE;
 
+#if defined(VX_SIMD_SSE) && !defined(VX_SIMD_SSE2)
+    // Keep the SSE1 path's original edge/diagonal construction.
     // Test triangle edges against box.
     VxRay edge;
     edge.m_Origin = A0;
@@ -1497,8 +1497,7 @@ static XBOOL AABBFaceCore(const VxBbox &box, const VxVector &A0, const VxVector 
         VxVector(box.Max.x, box.Max.y, box.Max.z)  // 7
     };
 
-    // Choose among the 4 body diagonals the one whose direction is most
-    // orthogonal to the triangle normal (min |dot(diagonal, N)|).
+    // The original chooses the diagonal with maximum |dot(diagonal, N)|.
     int bestA = 0;
     int bestB = 7;
 #if defined(VX_SIMD_SSE)
@@ -1518,7 +1517,7 @@ static XBOOL AABBFaceCore(const VxBbox &box, const VxVector &A0, const VxVector 
 #else
         const float s = fabsf(DotProduct(corners[a] - corners[b], N));
 #endif
-        if (s < bestScore) {
+        if (s > bestScore) {
             bestScore = s;
             bestA = a;
             bestB = b;
@@ -1533,7 +1532,7 @@ static XBOOL AABBFaceCore(const VxBbox &box, const VxVector &A0, const VxVector 
 #else
         const float s = fabsf(DotProduct(corners[a] - corners[b], N));
 #endif
-        if (s < bestScore) {
+        if (s > bestScore) {
             bestScore = s;
             bestA = a;
             bestB = b;
@@ -1548,7 +1547,7 @@ static XBOOL AABBFaceCore(const VxBbox &box, const VxVector &A0, const VxVector 
 #else
         const float s = fabsf(DotProduct(corners[a] - corners[b], N));
 #endif
-        if (s < bestScore) {
+        if (s > bestScore) {
             bestScore = s;
             bestA = a;
             bestB = b;
@@ -1563,6 +1562,90 @@ static XBOOL AABBFaceCore(const VxBbox &box, const VxVector &A0, const VxVector 
     hit.z = 0.0f;
     float dist = bestScore;
     return VxIntersect::SegmentFace(diag, A0, A1, A2, N, hit, dist) ? TRUE : FALSE;
+#else
+    // The outcodes tested the three box axes. Finish the triangle/box SAT
+    // with its normal and nine edge/box-axis crosses. Unlike the diagonal
+    // construction this also handles a coplanar flat box or a point box.
+    // Form differences and supports in double to avoid float overflow and
+    // dependence on an absolute SegmentPlane parallel threshold.
+    const VxVector *points[3] = {&A0, &A1, &A2};
+#if defined(VX_SIMD_SSE2)
+    if constexpr (kUseSIMD) {
+        const __m128 minV = VxSIMDLoadVector3(box.Min), maxV = VxSIMDLoadVector3(box.Max);
+        const __m128d minXY = _mm_cvtps_pd(minV), maxXY = _mm_cvtps_pd(maxV);
+        const __m128d minZ = _mm_cvtps_pd(_mm_movehl_ps(minV, minV)), maxZ = _mm_cvtps_pd(_mm_movehl_ps(maxV, maxV));
+        const __m128d halfXY = _mm_mul_pd(_mm_sub_pd(maxXY, minXY), _mm_set1_pd(0.5));
+        const __m128d halfZ = _mm_mul_sd(_mm_sub_sd(maxZ, minZ), _mm_set_sd(0.5));
+        const __m128d centerXY = _mm_mul_pd(_mm_add_pd(maxXY, minXY), _mm_set1_pd(0.5));
+        const __m128d centerZ = _mm_mul_sd(_mm_add_sd(maxZ, minZ), _mm_set_sd(0.5));
+        __m128d worldXY[3], worldZ[3], vertexXY[3], vertexZ[3];
+        for (int j = 0; j < 3; ++j) {
+            const __m128 p = VxSIMDLoadVector3(*points[j]);
+            worldXY[j] = _mm_cvtps_pd(p); worldZ[j] = _mm_cvtps_pd(_mm_movehl_ps(p, p));
+            vertexXY[j] = _mm_sub_pd(worldXY[j], centerXY); vertexZ[j] = _mm_sub_sd(worldZ[j], centerZ);
+        }
+        const __m128 normal = VxSIMDLoadVector3(N);
+        const __m128d sign = _mm_set1_pd(-0.0);
+        for (int n = 0; n < 10; ++n) {
+            __m128d axisXY, axisZ;
+            if (n == 0) {
+                axisXY = _mm_cvtps_pd(normal); axisZ = _mm_cvtps_pd(_mm_movehl_ps(normal, normal));
+            } else {
+                const int j = (n - 1) / 3, k = (n - 1) % 3;
+                const __m128d edgeXY = _mm_sub_pd(worldXY[(j + 1) % 3], worldXY[j]);
+                const __m128d edgeZ = _mm_sub_sd(worldZ[(j + 1) % 3], worldZ[j]);
+                if (k == 0) {
+                    axisXY = _mm_unpacklo_pd(_mm_setzero_pd(), edgeZ);
+                    axisZ = _mm_sub_sd(_mm_setzero_pd(), _mm_unpackhi_pd(edgeXY, edgeXY));
+                } else if (k == 1) {
+                    axisXY = _mm_sub_sd(_mm_setzero_pd(), edgeZ); axisZ = edgeXY;
+                } else {
+                    axisXY = _mm_xor_pd(_mm_shuffle_pd(edgeXY, edgeXY, 1), _mm_set_pd(-0.0, 0.0)); axisZ = _mm_setzero_pd();
+                }
+            }
+            __m128d low = _mm_setzero_pd(), high = _mm_setzero_pd();
+            for (int j = 0; j < 3; ++j) {
+                const __m128d products = _mm_mul_pd(vertexXY[j], axisXY);
+                const __m128d projection = _mm_add_sd(_mm_add_sd(products, _mm_unpackhi_pd(products, products)), _mm_mul_sd(vertexZ[j], axisZ));
+                low = j == 0 ? projection : _mm_min_sd(low, projection);
+                high = j == 0 ? projection : _mm_max_sd(high, projection);
+            }
+            const __m128d supportXY = _mm_mul_pd(halfXY, _mm_andnot_pd(sign, axisXY));
+            const __m128d radius = _mm_add_sd(_mm_add_sd(supportXY, _mm_unpackhi_pd(supportXY, supportXY)), _mm_mul_sd(halfZ, _mm_andnot_pd(sign, axisZ)));
+            const __m128d separated = _mm_or_pd(_mm_cmpgt_sd(low, radius), _mm_cmplt_sd(high, _mm_sub_sd(_mm_setzero_pd(), radius)));
+            if (_mm_movemask_pd(separated) & 1) return FALSE;
+        }
+        return TRUE;
+    }
+#endif
+    double half[3], vertex[3][3], edge[3][3];
+    for (int k = 0; k < 3; ++k) {
+        const double center = (double(box.Max[k]) + box.Min[k]) * 0.5;
+        half[k] = (double(box.Max[k]) - box.Min[k]) * 0.5;
+        for (int j = 0; j < 3; ++j) {
+            vertex[j][k] = double((*points[j])[k]) - center;
+            edge[j][k] = double((*points[(j + 1) % 3])[k]) - (*points[j])[k];
+        }
+    }
+    for (int n = 0; n < 10; ++n) {
+        double axis[3] = {};
+        if (n == 0) {
+            for (int k = 0; k < 3; ++k) axis[k] = N[k];
+        } else {
+            const int j = (n - 1) / 3, k = (n - 1) % 3, u = (k + 1) % 3, v = (k + 2) % 3;
+            axis[u] = edge[j][v]; axis[v] = -edge[j][u];
+        }
+        double low = 0.0, high = 0.0;
+        for (int j = 0; j < 3; ++j) {
+            const double projection = vertex[j][0] * axis[0] + vertex[j][1] * axis[1] + vertex[j][2] * axis[2];
+            if (j == 0 || projection < low) low = projection;
+            if (j == 0 || projection > high) high = projection;
+        }
+        const double radius = half[0] * fabs(axis[0]) + half[1] * fabs(axis[1]) + half[2] * fabs(axis[2]);
+        if (low > radius || high < -radius) return FALSE;
+    }
+    return TRUE;
+#endif
 }
 
 } // namespace

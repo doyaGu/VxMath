@@ -14,6 +14,7 @@
 #include "VxVector.h"
 
 #include "VxMathTestHelpers.h"
+#include "AabbFaceClippingOracle.h"
 
 using namespace VxMathTest;
 
@@ -296,95 +297,8 @@ bool PointInAABB_OutCodeRef(const VxBbox& box, const VxVector& p, unsigned int& 
     return code == 0;
 }
 
-bool AABBFaceRef(const VxBbox& box, const VxVector& a0, const VxVector& a1, const VxVector& a2, const VxVector& n) {
-    unsigned int code0 = 0;
-    unsigned int code1 = 0;
-    unsigned int code2 = 0;
-    if (PointInAABB_OutCodeRef(box, a0, code0)) {
-        return true;
-    }
-    if (PointInAABB_OutCodeRef(box, a1, code1)) {
-        return true;
-    }
-    if (PointInAABB_OutCodeRef(box, a2, code2)) {
-        return true;
-    }
-
-    if ((code0 & code1 & code2) != 0) {
-        return false;
-    }
-
-    VxRay edge;
-    edge.m_Origin = a0;
-    edge.m_Direction = a1 - a0;
-    if (VxIntersect::SegmentBox(edge, box)) {
-        return true;
-    }
-
-    edge.m_Origin = a1;
-    edge.m_Direction = a2 - a1;
-    if (VxIntersect::SegmentBox(edge, box)) {
-        return true;
-    }
-
-    edge.m_Origin = a0;
-    edge.m_Direction = a2 - a0;
-    if (VxIntersect::SegmentBox(edge, box)) {
-        return true;
-    }
-
-    const VxVector corners[8] = {
-        VxVector(box.Min.x, box.Min.y, box.Min.z),
-        VxVector(box.Min.x, box.Min.y, box.Max.z),
-        VxVector(box.Min.x, box.Max.y, box.Min.z),
-        VxVector(box.Min.x, box.Max.y, box.Max.z),
-        VxVector(box.Max.x, box.Min.y, box.Min.z),
-        VxVector(box.Max.x, box.Min.y, box.Max.z),
-        VxVector(box.Max.x, box.Max.y, box.Min.z),
-        VxVector(box.Max.x, box.Max.y, box.Max.z)
-    };
-
-    int bestA = 0;
-    int bestB = 7;
-    float bestScore = std::fabs(Dot3Ref(corners[bestA] - corners[bestB], n));
-
-    {
-        const int bA = 1;
-        const int bB = 6;
-        const float score = std::fabs(Dot3Ref(corners[bA] - corners[bB], n));
-        if (score < bestScore) {
-            bestScore = score;
-            bestA = bA;
-            bestB = bB;
-        }
-    }
-    {
-        const int bA = 2;
-        const int bB = 5;
-        const float score = std::fabs(Dot3Ref(corners[bA] - corners[bB], n));
-        if (score < bestScore) {
-            bestScore = score;
-            bestA = bA;
-            bestB = bB;
-        }
-    }
-    {
-        const int bA = 3;
-        const int bB = 4;
-        const float score = std::fabs(Dot3Ref(corners[bA] - corners[bB], n));
-        if (score < bestScore) {
-            bestScore = score;
-            bestA = bA;
-            bestB = bB;
-        }
-    }
-
-    VxRay diag;
-    diag.m_Origin = corners[bestA];
-    diag.m_Direction = corners[bestB] - corners[bestA];
-    VxVector hit = VxVector::axis0();
-    float dist = bestScore;
-    return VxIntersect::SegmentFace(diag, a0, a1, a2, n, hit, dist) != FALSE;
+bool AABBFaceRef(const VxBbox& box, const VxVector& a0, const VxVector& a1, const VxVector& a2, const VxVector&) {
+    return AabbFaceClippingOracle(box,a0,a1,a2);
 }
 
 bool PointInFaceRef(
@@ -1376,7 +1290,7 @@ TEST(VxIntersect_Boxes, AABBFace_TriangleIntersection) {
         N));
 }
 
-TEST(VxIntersect_SIMDConsistency, AABBFace_MatchScalarReferenceRandomized) {
+TEST(VxIntersect_SIMDConsistency, AABBFace_MatchesClippingOracleRandomized) {
     std::mt19937 rng(20260223u);
     std::uniform_real_distribution<float> boxBaseDist(-8.0f, 8.0f);
     std::uniform_real_distribution<float> boxExtDist(0.1f, 5.0f);
