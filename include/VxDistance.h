@@ -60,6 +60,11 @@ public:
      * @param t0 Pointer to a float to store the parameter of the closest point on the line. Can be NULL.
      * @param t1 Pointer to a float to store the parameter of the closest point on the segment. Can be NULL.
      * @return The squared distance between the line and the segment.
+     * @remarks The line parameter is unbounded, the segment parameter is in
+     * [0,1]. Endpoint tests precede float parameter output. Parallel directions
+     * select the segment origin; a zero line direction retains the original
+     * NaN projection. Nonparallel lines are resolved without the original
+     * absolute determinant threshold.
      */
     VX_EXPORT static float LineSegmentSquareDistance(const VxRay &line, const VxRay &segment, float *t0 = NULL, float *t1 = NULL);
 

@@ -158,6 +158,75 @@ static float LineRaySquareDistanceSIMDImpl(const VxRay &line, const VxRay &ray, 
     return result;
 }
 
+static float LineSegmentSquareDistanceSIMDImpl(const VxRay &line, const VxRay &segment, float *t0, float *t1) {
+    const __m128d wXY = _mm_sub_pd(_mm_setr_pd(line.m_Origin.x, line.m_Origin.y),
+                                  _mm_setr_pd(segment.m_Origin.x, segment.m_Origin.y));
+    const double wx = _mm_cvtsd_f64(wXY);
+    const double wy = _mm_cvtsd_f64(_mm_unpackhi_pd(wXY, wXY));
+    const double wz = double(line.m_Origin.z) - segment.m_Origin.z;
+    const double ux = line.m_Direction.x, uy = line.m_Direction.y, uz = line.m_Direction.z;
+    const double vx = segment.m_Direction.x, vy = segment.m_Direction.y, vz = segment.m_Direction.z;
+    const __m128d nXY = _mm_sub_pd(_mm_mul_pd(_mm_setr_pd(uy, uz), _mm_setr_pd(vz, vx)),
+                                  _mm_mul_pd(_mm_setr_pd(uz, ux), _mm_setr_pd(vy, vz)));
+    const double nz = ux * vy - uy * vx;
+    const __m128d nSquareXY = _mm_mul_pd(nXY, nXY);
+    const double denominator = _mm_cvtsd_f64(_mm_add_sd(nSquareXY, _mm_unpackhi_pd(nSquareXY, nSquareXY))) + nz * nz;
+    const __m128d uCrossWXY = _mm_sub_pd(_mm_mul_pd(_mm_setr_pd(uy, uz), _mm_setr_pd(wz, wx)),
+                                       _mm_mul_pd(_mm_setr_pd(uz, ux), _mm_setr_pd(wy, wz)));
+    const __m128d tXY = _mm_mul_pd(uCrossWXY, nXY);
+    const double segmentNumerator = _mm_cvtsd_f64(_mm_add_sd(tXY, _mm_unpackhi_pd(tXY, tXY))) + (ux * wy - uy * wx) * nz;
+    // Error-free endpoint addition retains a small component beside a
+    // much larger origin; use it before comparing against the end plane.
+    const __m128d originXY = _mm_setr_pd(segment.m_Origin.x, segment.m_Origin.y);
+    const __m128d vXY = _mm_setr_pd(vx, vy);
+    const __m128d endXY = _mm_add_pd(originXY, vXY);
+    const __m128d virtualXY = _mm_sub_pd(endXY, originXY);
+    const __m128d errorXY = _mm_add_pd(_mm_sub_pd(originXY, _mm_sub_pd(endXY, virtualXY)),
+                                      _mm_sub_pd(vXY, virtualXY));
+    const __m128d endWXY = _mm_sub_pd(_mm_sub_pd(_mm_setr_pd(line.m_Origin.x, line.m_Origin.y), endXY), errorXY);
+    const double ewx = _mm_cvtsd_f64(endWXY);
+    const double ewy = _mm_cvtsd_f64(_mm_unpackhi_pd(endWXY, endWXY));
+    const double endZ = double(segment.m_Origin.z) + vz;
+    const double virtualZ = endZ - segment.m_Origin.z;
+    const double errorZ = (double(segment.m_Origin.z) - (endZ - virtualZ)) + (vz - virtualZ);
+    const double ewz = (double(line.m_Origin.z) - endZ) - errorZ;
+    const __m128d endCrossXY = _mm_sub_pd(_mm_mul_pd(_mm_setr_pd(uy, uz), _mm_setr_pd(ewz, ewx)),
+                                        _mm_mul_pd(_mm_setr_pd(uz, ux), _mm_setr_pd(ewy, ewz)));
+    const __m128d endDotXY = _mm_mul_pd(endCrossXY, nXY);
+    const double endNumerator = _mm_cvtsd_f64(_mm_add_sd(endDotXY, _mm_unpackhi_pd(endDotXY, endDotXY))) + (ux * ewy - uy * ewx) * nz;
+    double s, t, square;
+    if (denominator == 0.0 || segmentNumerator < 0.0 || endNumerator > 0.0) {
+        t = denominator == 0.0 || segmentNumerator < 0.0 ? 0.0 : 1.0;
+        const __m128d diffXY = t == 0.0 ? wXY : endWXY;
+        const double dx = t == 0.0 ? wx : ewx;
+        const double dy = t == 0.0 ? wy : ewy;
+        const double dz = t == 0.0 ? wz : ewz;
+        const __m128d uXY = _mm_setr_pd(ux, uy);
+        const __m128d lengthXY = _mm_mul_pd(uXY, uXY);
+        const __m128d dotXY = _mm_mul_pd(diffXY, uXY);
+        const double length = _mm_cvtsd_f64(_mm_add_sd(lengthXY, _mm_unpackhi_pd(lengthXY, lengthXY))) + uz * uz;
+        s = -(_mm_cvtsd_f64(_mm_add_sd(dotXY, _mm_unpackhi_pd(dotXY, dotXY))) + dz * uz) / length;
+        const __m128d cXY = _mm_sub_pd(_mm_mul_pd(_mm_setr_pd(dy, dz), _mm_setr_pd(uz, ux)),
+                                      _mm_mul_pd(_mm_setr_pd(dz, dx), _mm_setr_pd(uy, uz)));
+        const double cz = dx * uy - dy * ux;
+        const __m128d cSquareXY = _mm_mul_pd(cXY, cXY);
+        square = (_mm_cvtsd_f64(_mm_add_sd(cSquareXY, _mm_unpackhi_pd(cSquareXY, cSquareXY))) + cz * cz) / length;
+    } else {
+        const __m128d vCrossWXY = _mm_sub_pd(_mm_mul_pd(_mm_setr_pd(vy, vz), _mm_setr_pd(wz, wx)),
+                                           _mm_mul_pd(_mm_setr_pd(vz, vx), _mm_setr_pd(wy, wz)));
+        const __m128d sXY = _mm_mul_pd(vCrossWXY, nXY);
+        s = (_mm_cvtsd_f64(_mm_add_sd(sXY, _mm_unpackhi_pd(sXY, sXY))) + (vx * wy - vy * wx) * nz) / denominator;
+        t = segmentNumerator / denominator;
+        const __m128d heightXY = _mm_mul_pd(wXY, nXY);
+        const double height = _mm_cvtsd_f64(_mm_add_sd(heightXY, _mm_unpackhi_pd(heightXY, heightXY))) + wz * nz;
+        square = height * height / denominator;
+    }
+    const float result = float(square);
+    if (t0) *t0 = float(s);
+    if (t1) *t1 = float(t);
+    return result;
+}
+
 static float PointLineSquareDistanceSIMDImpl(const VxVector &point, const VxRay &line, float *t0) {
     const __m128d diffXY = _mm_sub_pd(_mm_setr_pd(point.x, point.y),
                                      _mm_setr_pd(line.m_Origin.x, line.m_Origin.y));
@@ -323,6 +392,59 @@ static float LineRaySquareDistanceScalarImpl(const VxRay &line, const VxRay &ray
     return result;
 }
 
+static float LineSegmentSquareDistanceScalarImpl(const VxRay &line, const VxRay &segment, float *t0, float *t1) {
+    const double wx = double(line.m_Origin.x) - segment.m_Origin.x;
+    const double wy = double(line.m_Origin.y) - segment.m_Origin.y;
+    const double wz = double(line.m_Origin.z) - segment.m_Origin.z;
+    const double ux = line.m_Direction.x, uy = line.m_Direction.y, uz = line.m_Direction.z;
+    const double vx = segment.m_Direction.x, vy = segment.m_Direction.y, vz = segment.m_Direction.z;
+    const double nx = uy * vz - uz * vy;
+    const double ny = uz * vx - ux * vz;
+    const double nz = ux * vy - uy * vx;
+    const double denominator = nx * nx + ny * ny + nz * nz;
+    const double segmentNumerator = (uy * wz - uz * wy) * nx + (uz * wx - ux * wz) * ny + (ux * wy - uy * wx) * nz;
+    // Keep the low part of the endpoint sum when large coordinates cancel.
+    const double endX = double(segment.m_Origin.x) + vx;
+    const double virtualX = endX - segment.m_Origin.x;
+    const double errorX = (double(segment.m_Origin.x) - (endX - virtualX)) + (vx - virtualX);
+    const double ewx = (double(line.m_Origin.x) - endX) - errorX;
+    const double endY = double(segment.m_Origin.y) + vy;
+    const double virtualY = endY - segment.m_Origin.y;
+    const double errorY = (double(segment.m_Origin.y) - (endY - virtualY)) + (vy - virtualY);
+    const double ewy = (double(line.m_Origin.y) - endY) - errorY;
+    const double endZ = double(segment.m_Origin.z) + vz;
+    const double virtualZ = endZ - segment.m_Origin.z;
+    const double errorZ = (double(segment.m_Origin.z) - (endZ - virtualZ)) + (vz - virtualZ);
+    const double ewz = (double(line.m_Origin.z) - endZ) - errorZ;
+    const double endNumerator = (uy * ewz - uz * ewy) * nx + (uz * ewx - ux * ewz) * ny + (ux * ewy - uy * ewx) * nz;
+    double s, t, square;
+    if (denominator == 0.0 || segmentNumerator < 0.0 || endNumerator > 0.0) {
+        // Test the end relative to its own position instead of subtracting
+        // two large, nearly equal parameter numerators.
+        t = denominator == 0.0 || segmentNumerator < 0.0 ? 0.0 : 1.0;
+        const double dx = t == 0.0 ? wx : ewx;
+        const double dy = t == 0.0 ? wy : ewy;
+        const double dz = t == 0.0 ? wz : ewz;
+        const double length = ux * ux + uy * uy + uz * uz;
+        s = -(dx * ux + dy * uy + dz * uz) / length;
+        const double cx = dy * uz - dz * uy;
+        const double cy = dz * ux - dx * uz;
+        const double cz = dx * uy - dy * ux;
+        square = (cx * cx + cy * cy + cz * cz) / length;
+    } else {
+        // Cross products avoid the cancellation in |u|^2|v|^2-(u.v)^2
+        // and in the expanded squared distance. No absolute scale threshold.
+        s = ((vy * wz - vz * wy) * nx + (vz * wx - vx * wz) * ny + (vx * wy - vy * wx) * nz) / denominator;
+        t = segmentNumerator / denominator;
+        const double height = wx * nx + wy * ny + wz * nz;
+        square = height * height / denominator;
+    }
+    const float result = float(square);
+    if (t0) *t0 = float(s);
+    if (t1) *t1 = float(t);
+    return result;
+}
+
 static float PointLineSquareDistanceScalarImpl(const VxVector &point, const VxRay &line, float *t0) {
     const double dx = double(point.x) - line.m_Origin.x;
     const double dy = double(point.y) - line.m_Origin.y;
@@ -396,6 +518,7 @@ struct VxDistanceDispatchTable {
     MakeRayPairTermsDispatchFn makeRayPairTerms;
     LineDistanceDispatchFn lineLineSquareDistance;
     LineDistanceDispatchFn lineRaySquareDistance;
+    LineDistanceDispatchFn lineSegmentSquareDistance;
     PointDistanceDispatchFn pointLineSquareDistance;
     PointDistanceDispatchFn pointRaySquareDistance;
     PointDistanceDispatchFn pointSegmentSquareDistance;
@@ -405,6 +528,7 @@ const VxDistanceDispatchTable kVxDistanceDispatchScalar = {
     MakeRayPairTermsScalar,
     LineLineSquareDistanceScalarImpl,
     LineRaySquareDistanceScalarImpl,
+    LineSegmentSquareDistanceScalarImpl,
     PointLineSquareDistanceScalarImpl,
     PointRaySquareDistanceScalarImpl,
     PointSegmentSquareDistanceScalarImpl
@@ -415,6 +539,7 @@ const VxDistanceDispatchTable kVxDistanceDispatchSIMD = {
     MakeRayPairTermsSIMD,
     LineLineSquareDistanceSIMDImpl,
     LineRaySquareDistanceSIMDImpl,
+    LineSegmentSquareDistanceSIMDImpl,
     PointLineSquareDistanceSIMDImpl,
     PointRaySquareDistanceSIMDImpl,
     PointSegmentSquareDistanceSIMDImpl
@@ -460,36 +585,7 @@ float VxDistance::LineRaySquareDistance(const VxRay &line, const VxRay &ray, flo
 }
 
 float VxDistance::LineSegmentSquareDistance(const VxRay &line, const VxRay &segment, float *t0, float *t1) {
-    const RayPairTerms t = MakeRayPairTerms(line, segment);
-
-    float s0;
-    float s1;
-    float quad;
-
-    const float segParam = t.d * t.b - t.e * t.a;
-    if (t.det < EPSILON || segParam < 0.0f) {
-        // Parallel case or segment parameter negative - clamp to 0
-        s1 = 0.0f;
-        s0 = -(t.d / t.a);
-        quad = t.d * s0;
-        quad = quad + t.f;
-    } else if (segParam > t.det) {
-        // Segment parameter > 1 - clamp to 1
-        const float dPlusB = t.d + t.b;
-        s1 = 1.0f;
-        s0 = -(dPlusB / t.a);
-        quad = dPlusB * s0 + t.e + t.e + t.f + t.c;
-    } else {
-        const float invDet = 1.0f / t.det;
-        s0 = (t.e * t.b - t.d * t.c) * invDet;
-        s1 = invDet * segParam;
-        quad = DistanceQuadraticPart(t, s0, s1) + t.f;
-    }
-
-    if (t0) *t0 = s0;
-    if (t1) *t1 = s1;
-
-    return XAbs(quad);
+    return GetVxDistanceDispatchTable()->lineSegmentSquareDistance(line, segment, t0, t1);
 }
 
 float VxDistance::RayRaySquareDistance(const VxRay &ray0, const VxRay &ray1, float *t0, float *t1) {
