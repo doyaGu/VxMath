@@ -180,6 +180,7 @@ set(VXMATH_TEST_SOURCES
         PointRayDistanceReferenceTest.cpp
         PointSegmentDistanceReferenceTest.cpp
         LineLineDistanceReferenceTest.cpp
+        LineRayDistanceReferenceTest.cpp
         # SIMD Tests
         SIMDFeatureTest.cpp
         SIMDUtilityTest.cpp
@@ -422,3 +423,7 @@ endforeach ()
 vx_add_test(LineLineDistanceScalarReferenceTest SOURCES LineLineDistanceReferenceTest.cpp)
 target_compile_definitions(LineLineDistanceScalarReferenceTest PRIVATE VX_SIMD_NONE=1)
 vx_copy_runtime_dependencies(LineLineDistanceScalarReferenceTest)
+
+vx_add_test(LineRayDistanceScalarReferenceTest SOURCES LineRayDistanceReferenceTest.cpp)
+target_compile_definitions(LineRayDistanceScalarReferenceTest PRIVATE VX_SIMD_NONE=1)
+vx_copy_runtime_dependencies(LineRayDistanceScalarReferenceTest)

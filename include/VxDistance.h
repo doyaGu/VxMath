@@ -45,6 +45,11 @@ public:
      * @param t0 Pointer to a float to store the parameter of the closest point on the line. Can be NULL.
      * @param t1 Pointer to a float to store the parameter of the closest point on the ray. Can be NULL.
      * @return The squared distance between the line and the ray.
+     * @remarks The line parameter is unbounded; the ray parameter has only a
+     * zero lower bound. Parallel directions choose the ray origin (t1=0).
+     * Negative unconstrained ray parameters also select that origin. A zero
+     * line direction retains the original NaN projection. Nonparallel lines
+     * are resolved without the original absolute determinant threshold.
      */
     VX_EXPORT static float LineRaySquareDistance(const VxRay &line, const VxRay &ray, float *t0 = NULL, float *t1 = NULL);
 
