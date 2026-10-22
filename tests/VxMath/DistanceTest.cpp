@@ -40,20 +40,17 @@ float PointLineSquareDistanceScalarRef(const VxVector& point, const VxRay& line,
 }
 
 float PointRaySquareDistanceScalarRef(const VxVector& point, const VxRay& ray, float* t0) {
-    VxVector diff = SubtractScalar(point, ray.m_Origin);
-    const float dotDiffDir = Dot3Scalar(diff, ray.m_Direction);
-
-    float t;
-    if (dotDiffDir > 0.0f) {
-        t = dotDiffDir / SquareMagnitudeScalar(ray.m_Direction);
-        diff = SubtractScaled(diff, ray.m_Direction, t);
-    } else {
-        t = 0.0f;
+    // Independent constrained Gram determinant, rather than a rounded residual.
+    double magnitude = 0, length = 0, dot = 0;
+    for (int i = 0; i < 3; ++i) {
+        const double diff = double(point[i]) - ray.m_Origin[i];
+        const double direction = ray.m_Direction[i];
+        magnitude += diff * diff;
+        length += direction * direction;
+        dot += diff * direction;
     }
-
-    if (t0) *t0 = t;
-
-    return SquareMagnitudeScalar(diff);
+    if (t0) *t0 = dot > 0 ? float(dot / length) : 0;
+    return float(dot > 0 ? (magnitude * length - dot * dot) / length : magnitude);
 }
 
 float PointSegmentSquareDistanceScalarRef(const VxVector& point, const VxRay& segment, float* t0) {

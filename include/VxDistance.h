@@ -154,6 +154,10 @@ public:
      * @param t0 Pointer to a float to store the parameter of the closest point on the ray. Can be NULL.
      * @return The squared distance between the point and the ray.
      */
+    // Projects only when dot(point-origin, direction) is strictly positive,
+    // with no epsilon or upper parameter limit. Otherwise returns the squared
+    // distance to the origin with parameter zero, including a zero direction.
+    // The optional parameter is written after reading all input components.
     VX_EXPORT static float PointRaySquareDistance(const VxVector &point, const VxRay &ray, float *t0 = NULL);
 
     /**
