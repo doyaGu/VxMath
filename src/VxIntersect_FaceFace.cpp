@@ -1,6 +1,7 @@
 #include "VxIntersect.h"
 
 #include <atomic>
+#include <cmath>
 
 #include "VxVector.h"
 #include "VxRay.h"
@@ -239,8 +240,8 @@ static XBOOL PointInFaceSIMDCore(const VxVector &point, const VxVector &pt0, con
 // The face already supplies a point on its plane. Keep that anchor instead of
 // rounding n.dot(pt0) into the float D of a temporary VxPlane. This also avoids
 // overflowing D when the ray parameter and intersection are representable.
-static XBOOL FacePlaneIntersection(const VxRay &ray, const VxVector &pt0, const VxVector &norm,
-                                  VxVector &res, float &dist, bool culled, bool segment) {
+static XBOOL FacePlaneIntersectionCore(const VxRay &ray, const VxVector &pt0, const VxVector &norm,
+                                      VxVector &res, float &dist, bool culled, double minimumT, double maximumT) {
 #if defined(VX_SIMD_SSE)
     if (GetVxIntersectFaceDispatchTable()->pointInFace == PointInFaceSIMDCore) {
         const __m128 normal = VxSIMDLoadFloat3(&norm.x), direction = VxSIMDLoadFloat3(&ray.m_Direction.x);
@@ -257,7 +258,7 @@ static XBOOL FacePlaneIntersection(const VxRay &ray, const VxVector &pt0, const 
         const double numerator = _mm_cvtsd_f64(_mm_add_sd(_mm_add_sd(numeratorXY, _mm_unpackhi_pd(numeratorXY, numeratorXY)), _mm_mul_sd(nZ, offsetZ)));
         const double t = numerator / denominator;
         dist = float(t);
-        if (t < -EPSILON || (segment && t > 1.0f + EPSILON)) return FALSE;
+        if (t < minimumT || t > maximumT) return FALSE;
         const __m128d parameter = _mm_set1_pd(t);
         const __m128d pXY = _mm_add_pd(oXY, _mm_mul_pd(dXY, parameter));
         const __m128d pZ = _mm_add_sd(oZ, _mm_mul_sd(dZ, parameter));
@@ -271,11 +272,16 @@ static XBOOL FacePlaneIntersection(const VxRay &ray, const VxVector &pt0, const 
         double(norm.y) * (double(pt0.y) - ray.m_Origin.y) + double(norm.z) * (double(pt0.z) - ray.m_Origin.z);
     const double t = numerator / denominator;
     dist = float(t);
-    if (t < -EPSILON || (segment && t > 1.0f + EPSILON)) return FALSE;
+    if (t < minimumT || t > maximumT) return FALSE;
     res.Set(float(double(ray.m_Origin.x) + double(ray.m_Direction.x) * t),
             float(double(ray.m_Origin.y) + double(ray.m_Direction.y) * t),
             float(double(ray.m_Origin.z) + double(ray.m_Direction.z) * t));
     return TRUE;
+}
+
+static XBOOL FacePlaneIntersection(const VxRay &ray, const VxVector &pt0, const VxVector &norm,
+                                  VxVector &res, float &dist, bool culled, bool segment) {
+    return FacePlaneIntersectionCore(ray, pt0, norm, res, dist, culled, -EPSILON, segment ? 1.0f + EPSILON : HUGE_VAL);
 }
 
 static XBOOL RayFacePlaneIntersection(const VxRay &ray, const VxVector &pt0, const VxVector &norm,
@@ -360,12 +366,7 @@ XBOOL VxIntersect::SegmentFaceCulled(const VxRay &ray, const VxVector &pt0, cons
 // Intersection Line - Face
 XBOOL VxIntersect::LineFace(const VxRay &ray, const VxVector &pt0, const VxVector &pt1, const VxVector &pt2,
                             const VxVector &norm, VxVector &res, float &dist) {
-    // Create plane from normal and point
-    VxPlane plane;
-    plane.Create(norm, pt0);
-
-    // Test line-plane intersection
-    if (!LinePlane(ray, plane, res, dist)) {
+    if (!FacePlaneIntersectionCore(ray, pt0, norm, res, dist, false, -HUGE_VAL, HUGE_VAL)) {
         return FALSE;
     }
 
@@ -377,12 +378,7 @@ XBOOL VxIntersect::LineFace(const VxRay &ray, const VxVector &pt0, const VxVecto
 // Overloaded LineFace with dominant axes
 XBOOL VxIntersect::LineFace(const VxRay &ray, const VxVector &pt0, const VxVector &pt1, const VxVector &pt2,
                             const VxVector &norm, VxVector &res, float &dist, int &i1, int &i2) {
-    // Create plane from normal and point
-    VxPlane plane;
-    plane.Create(norm, pt0);
-
-    // Test line-plane intersection
-    if (!LinePlane(ray, plane, res, dist)) {
+    if (!FacePlaneIntersectionCore(ray, pt0, norm, res, dist, false, -HUGE_VAL, HUGE_VAL)) {
         return FALSE;
     }
 

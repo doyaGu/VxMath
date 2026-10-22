@@ -126,8 +126,12 @@ public:
     /// Culling follows RayFaceCulled, with the same SegmentFace parameter range.
     VX_EXPORT static XBOOL SegmentFaceCulled(const VxRay &ray, const VxVector &pt0, const VxVector &pt1, const VxVector &pt2, const VxVector &norm, VxVector &res, float &dist, int &i1, int &i2);
     /// @brief Intersects an infinite line with a triangle face.
+    /// Uses the plane through pt0 with the supplied normal. Only the parallel
+    /// threshold |n.dot(direction)| < 2^-23 rejects before writing outputs.
+    /// Negative t and t > 1 are accepted; dist is the direction parameter.
+    /// Writes res/dist before the face test and returns PointInFace's 0/1/2.
     VX_EXPORT static XBOOL LineFace(const VxRay &ray, const VxVector &pt0, const VxVector &pt1, const VxVector &pt2, const VxVector &norm, VxVector &res, float &dist);
-    /// @brief Intersects an infinite line with a triangle face, providing barycentric coordinate information.
+    /// @brief LineFace with projected coordinate axes written after a plane hit, even outside the face.
     VX_EXPORT static XBOOL LineFace(const VxRay &ray, const VxVector &pt0, const VxVector &pt1, const VxVector &pt2, const VxVector &norm, VxVector &res, float &dist, int &i1, int &i2);
 
     /// @brief Calculates barycentric coordinates for a point within a triangle face.
