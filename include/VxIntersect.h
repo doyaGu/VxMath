@@ -49,9 +49,14 @@ public:
      */
     VX_EXPORT static XBOOL SegmentBox(const VxRay &ray, const VxBbox &box, VxVector &inpoint, VxVector *outpoint = NULL, VxVector *innormal = NULL, VxVector *outnormal = NULL);
 
-    /// @brief Checks for intersection between an infinite line and an AABB.
+    /// @brief Tests a closed infinite line against an AABB; exactly zero direction tests its origin.
     VX_EXPORT static XBOOL LineBox(const VxRay &ray, const VxBbox &box);
-    /// @brief Finds the intersection points of an infinite line with an AABB.
+    /**
+     * @brief Finds both actual infinite-line crossings, nearest to origin first.
+     * Uses the original absolute 2^-23 parallel threshold and opposite-direction normals.
+     * Equal-distance crossings on opposite sides prefer X/Y/Z, then Min. A contained all-parallel line writes
+     * origin to both points and zero normals. Returns 1 on success, 0 without output writes on failure.
+     */
     VX_EXPORT static XBOOL LineBox(const VxRay &ray, const VxBbox &box, VxVector &inpoint, VxVector *outpoint = NULL, VxVector *innormal = NULL, VxVector *outnormal = NULL);
 
     /// @brief Tests closed AABBs; face/edge/corner contact and zero extents count as intersection.

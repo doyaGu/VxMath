@@ -803,7 +803,32 @@ namespace {
 
 template <bool kUseSIMD>
 static XBOOL LineBoxCore(const VxRay &line, const VxBbox &box) {
-#if defined(VX_SIMD_SSE)
+#if defined(VX_SIMD_SSE2)
+    if constexpr (kUseSIMD) {
+        const __m128 origin = VxSIMDLoadVector3(line.m_Origin), direction = VxSIMDLoadVector3(line.m_Direction);
+        const __m128 minimum = VxSIMDLoadVector3(box.Min), maximum = VxSIMDLoadVector3(box.Max);
+        const int parallel = _mm_movemask_ps(_mm_cmpeq_ps(direction, _mm_setzero_ps())) & 7;
+        const __m128 outside = _mm_or_ps(_mm_cmplt_ps(origin, minimum), _mm_cmpgt_ps(origin, maximum));
+        if (_mm_movemask_ps(outside) & parallel) return FALSE;
+        const __m128d originXY = _mm_cvtps_pd(origin), originZ = _mm_cvtps_pd(_mm_movehl_ps(origin, origin));
+        // Parallel lanes are ignored below; a unit denominator avoids 0/0.
+        const __m128d directionXY = _mm_set_pd(parallel & 2 ? 1.0 : line.m_Direction.y, parallel & 1 ? 1.0 : line.m_Direction.x);
+        const __m128d directionZ = _mm_set_sd(parallel & 4 ? 1.0 : line.m_Direction.z);
+        const __m128d firstXY = _mm_div_pd(_mm_sub_pd(_mm_cvtps_pd(minimum), originXY), directionXY);
+        const __m128d lastXY = _mm_div_pd(_mm_sub_pd(_mm_cvtps_pd(maximum), originXY), directionXY);
+        const __m128d firstZ = _mm_div_sd(_mm_sub_sd(_mm_cvtps_pd(_mm_movehl_ps(minimum, minimum)), originZ), directionZ);
+        const __m128d lastZ = _mm_div_sd(_mm_sub_sd(_mm_cvtps_pd(_mm_movehl_ps(maximum, maximum)), originZ), directionZ);
+        double low[3], high[3];
+        _mm_storeu_pd(low, _mm_min_pd(firstXY, lastXY)); _mm_storeu_pd(high, _mm_max_pd(firstXY, lastXY));
+        low[2] = _mm_cvtsd_f64(_mm_min_sd(firstZ, lastZ)); high[2] = _mm_cvtsd_f64(_mm_max_sd(firstZ, lastZ));
+        double nearT = -DBL_MAX, farT = DBL_MAX;
+        for (int i = 0; i < 3; ++i) if (!(parallel & (1 << i))) {
+            if (low[i] > nearT) nearT = low[i];
+            if (high[i] < farT) farT = high[i];
+        }
+        return nearT <= farT;
+    }
+#elif defined(VX_SIMD_SSE)
     if constexpr (kUseSIMD) {
         const __m128 boxMin = VxSIMDLoadVector3(box.Min);
         const __m128 boxMax = VxSIMDLoadVector3(box.Max);
@@ -827,37 +852,23 @@ static XBOOL LineBoxCore(const VxRay &line, const VxBbox &box) {
         return TRUE;
     }
 #endif
-    // Get box center and half-extents
-    float boxHalfX = (box.Max.x - box.Min.x) * 0.5f;
-    float boxHalfY = (box.Max.y - box.Min.y) * 0.5f;
-    float boxHalfZ = (box.Max.z - box.Min.z) * 0.5f;
-    
-    VxVector boxCenter = (box.Max + box.Min) * 0.5f;
-
-    // Vector from box center to line origin
-    float dx = line.m_Origin.x - boxCenter.x;
-    float dy = line.m_Origin.y - boxCenter.y;
-    float dz = line.m_Origin.z - boxCenter.z;
-
-    // Test separating axes from cross products (d x Direction)
-    float crossX = dz * line.m_Direction.y - dy * line.m_Direction.z;
-    float crossY = dx * line.m_Direction.z - dz * line.m_Direction.x;
-    float crossZ = dy * line.m_Direction.x - dx * line.m_Direction.y;
-
-    float absDirY = XAbs(line.m_Direction.y);
-    float absDirZ = XAbs(line.m_Direction.z);
-    
-    if (XAbs(crossX) > absDirZ * boxHalfY + absDirY * boxHalfZ)
-        return FALSE;
-    
-    float absDirX = XAbs(line.m_Direction.x);
-    
-    if (XAbs(crossY) > absDirX * boxHalfZ + absDirZ * boxHalfX)
-        return FALSE;
-    if (XAbs(crossZ) > absDirX * boxHalfY + absDirY * boxHalfX)
-        return FALSE;
-
-    return TRUE;
+    // A closed infinite line has no forward or endpoint restriction. Only
+    // an exactly zero direction is parallel; a zero line is point membership.
+    // Widen before subtracting/dividing to avoid float SAT scale failures.
+    double nearT = -DBL_MAX, farT = DBL_MAX;
+    for (int i = 0; i < 3; ++i) {
+        const double origin = line.m_Origin[i], direction = line.m_Direction[i];
+        if (direction == 0.0) {
+            if (origin < box.Min[i] || origin > box.Max[i]) return FALSE;
+            continue;
+        }
+        const double first = (double(box.Min[i]) - origin) / direction;
+        const double last = (double(box.Max[i]) - origin) / direction;
+        const double low = direction > 0.0 ? first : last, high = direction > 0.0 ? last : first;
+        if (low > nearT) nearT = low;
+        if (high < farT) farT = high;
+    }
+    return nearT <= farT;
 }
 
 } // namespace
@@ -871,7 +882,63 @@ namespace {
 
 template <bool kUseSIMD>
 static int LineBoxDetailedCore(const VxRay &line, const VxBbox &box, VxVector &inpoint, VxVector *outpoint, VxVector *innormal, VxVector *outnormal) {
-#if defined(VX_SIMD_SSE)
+#if defined(VX_SIMD_SSE2)
+    if constexpr (kUseSIMD) {
+        const __m128 origin = VxSIMDLoadVector3(line.m_Origin), direction = VxSIMDLoadVector3(line.m_Direction);
+        const __m128 minimum = VxSIMDLoadVector3(box.Min), maximum = VxSIMDLoadVector3(box.Max);
+        const int parallel = _mm_movemask_ps(_mm_cmplt_ps(VxSIMDAbs3(direction), _mm_set1_ps(EPSILON))) & 7;
+        const __m128 outside = _mm_or_ps(_mm_cmplt_ps(origin, minimum), _mm_cmpgt_ps(origin, maximum));
+        if (_mm_movemask_ps(outside) & parallel) return 0;
+        if (parallel == 7) {
+            inpoint = line.m_Origin;
+            if (outpoint) *outpoint = line.m_Origin;
+            if (innormal) *innormal = VxVector::axis0();
+            if (outnormal) *outnormal = VxVector::axis0();
+            return 1;
+        }
+        const __m128d originXY = _mm_cvtps_pd(origin), originZ = _mm_cvtps_pd(_mm_movehl_ps(origin, origin));
+        const __m128d directionXY = _mm_set_pd(parallel & 2 ? 1.0 : line.m_Direction.y, parallel & 1 ? 1.0 : line.m_Direction.x);
+        const __m128d directionZ = _mm_set_sd(parallel & 4 ? 1.0 : line.m_Direction.z);
+        const __m128d firstXY = _mm_div_pd(_mm_sub_pd(_mm_cvtps_pd(minimum), originXY), directionXY);
+        const __m128d lastXY = _mm_div_pd(_mm_sub_pd(_mm_cvtps_pd(maximum), originXY), directionXY);
+        const __m128d firstZ = _mm_div_sd(_mm_sub_sd(_mm_cvtps_pd(_mm_movehl_ps(minimum, minimum)), originZ), directionZ);
+        const __m128d lastZ = _mm_div_sd(_mm_sub_sd(_mm_cvtps_pd(_mm_movehl_ps(maximum, maximum)), originZ), directionZ);
+        double low[3], high[3];
+        _mm_storeu_pd(low, _mm_min_pd(firstXY, lastXY)); _mm_storeu_pd(high, _mm_max_pd(firstXY, lastXY));
+        low[2] = _mm_cvtsd_f64(_mm_min_sd(firstZ, lastZ)); high[2] = _mm_cvtsd_f64(_mm_max_sd(firstZ, lastZ));
+        double nearT = -DBL_MAX, farT = DBL_MAX;
+        int nearAxis = 0, farAxis = 0;
+        for (int i = 0; i < 3; ++i) if (!(parallel & (1 << i))) {
+            if (low[i] > nearT) { nearT = low[i]; nearAxis = i; }
+            if (high[i] < farT) { farT = high[i]; farAxis = i; }
+        }
+        if (nearT > farT) return 0;
+        // Signed slabs establish membership before nearest-first ordering.
+        bool nearMax = line.m_Direction[nearAxis] < 0.0f;
+        bool farMax = line.m_Direction[farAxis] > 0.0f;
+        const int nearRank = 2 * nearAxis + nearMax, farRank = 2 * farAxis + farMax;
+        if (nearT < 0.0 && (farT <= 0.0 || fabs(farT) < fabs(nearT) ||
+            (fabs(farT) == fabs(nearT) && farRank < nearRank))) {
+            const double parameter = nearT; nearT = farT; farT = parameter;
+            const int axis = nearAxis; nearAxis = farAxis; farAxis = axis;
+            const bool maximum = nearMax; nearMax = farMax; farMax = maximum;
+        }
+        const __m128d actualXY = _mm_cvtps_pd(direction), actualZ = _mm_cvtps_pd(_mm_movehl_ps(direction, direction));
+        const __m128 entryXY = _mm_cvtpd_ps(_mm_add_pd(originXY, _mm_mul_pd(actualXY, _mm_set1_pd(nearT))));
+        const __m128 entryZ = _mm_cvtsd_ss(_mm_setzero_ps(), _mm_add_sd(originZ, _mm_mul_sd(actualZ, _mm_set_sd(nearT))));
+        VxSIMDStoreFloat3(&inpoint.x, _mm_movelh_ps(entryXY, entryZ));
+        inpoint[nearAxis] = nearMax ? box.Max[nearAxis] : box.Min[nearAxis];
+        if (outpoint) {
+            const __m128 exitXY = _mm_cvtpd_ps(_mm_add_pd(originXY, _mm_mul_pd(actualXY, _mm_set1_pd(farT))));
+            const __m128 exitZ = _mm_cvtsd_ss(_mm_setzero_ps(), _mm_add_sd(originZ, _mm_mul_sd(actualZ, _mm_set_sd(farT))));
+            VxSIMDStoreFloat3(&outpoint->x, _mm_movelh_ps(exitXY, exitZ));
+            (*outpoint)[farAxis] = farMax ? box.Max[farAxis] : box.Min[farAxis];
+        }
+        if (innormal) { *innormal = VxVector::axis0(); (*innormal)[nearAxis] = line.m_Direction[nearAxis] > 0.0f ? -1.0f : 1.0f; }
+        if (outnormal) { *outnormal = VxVector::axis0(); (*outnormal)[farAxis] = line.m_Direction[farAxis] > 0.0f ? -1.0f : 1.0f; }
+        return 1;
+    }
+#elif defined(VX_SIMD_SSE)
     if constexpr (kUseSIMD) {
         float tNear = -kHugeT;
         float tFar = kHugeT;
@@ -935,64 +1002,85 @@ static int LineBoxDetailedCore(const VxRay &line, const VxBbox &box, VxVector &i
         return 1;
     }
 #endif
-    float tNear = -kHugeT;
-    float tFar = kHugeT;
+    // Retain the original parallel threshold and normal signs.
+    // Finite float coordinates and active directions fit in double parameter
+    // range; the old +/-1e30 sentinels could truncate or reject real hits.
+    double tNear = -DBL_MAX;
+    double tFar = DBL_MAX;
     int nearAxis = 0;
-    float nearSign = -1.0f;
     int farAxis = 0;
-    float farSign = 1.0f;
+    bool active = false;
 
     for (int i = 0; i < 3; ++i) {
-        const float dir = line.m_Direction[i];
-        const float origin = line.m_Origin[i];
+        const float rayDir = line.m_Direction[i];
+        const float rayOrigin = line.m_Origin[i];
         const float boxMin = box.Min[i];
         const float boxMax = box.Max[i];
 
-        if (fabsf(dir) < EPSILON) {
-            if (!SlabContainsParallel(origin, boxMin, boxMax))
+        if (fabsf(rayDir) < EPSILON) {
+            if (!SlabContainsParallel(rayOrigin, boxMin, boxMax))
                 return 0;
             continue;
         }
 
-        const float invDir = 1.0f / dir;
-        float t1 = (boxMin - origin) * invDir;
-        float t2 = (boxMax - origin) * invDir;
+        active = true;
+        double t1 = (double(boxMin) - rayOrigin) / double(rayDir);
+        double t2 = (double(boxMax) - rayOrigin) / double(rayDir);
 
-        // Orders the slab parameters by absolute value for lines.
-        if (fabsf(t2) < fabsf(t1)) {
-            const float tmp = t1;
+        if (t1 > t2) {
+            const double tmp = t1;
             t1 = t2;
             t2 = tmp;
         }
 
-        if (fabsf(t1) < fabsf(tNear)) {
+        if (t1 > tNear) {
             tNear = t1;
             nearAxis = i;
-            nearSign = OppositeDirSign(dir);
         }
 
-        if (fabsf(t2) < fabsf(tFar)) {
+        if (t2 < tFar) {
             tFar = t2;
             farAxis = i;
-            farSign = OppositeDirSign(dir);
         }
 
-        if (fabsf(tFar) < fabsf(tNear))
+        if (tNear > tFar)
             return 0;
     }
 
-    inpoint = line.m_Origin + line.m_Direction * tNear;
-    if (outpoint)
-        *outpoint = line.m_Origin + line.m_Direction * tFar;
+    if (!active) {
+        inpoint = line.m_Origin;
+        if (outpoint) *outpoint = line.m_Origin;
+        if (innormal) *innormal = VxVector::axis0();
+        if (outnormal) *outnormal = VxVector::axis0();
+        return 1;
+    }
+    // Signed slabs establish membership before nearest-first ordering.
+    bool nearMax = line.m_Direction[nearAxis] < 0.0f;
+    bool farMax = line.m_Direction[farAxis] > 0.0f;
+    const int nearRank = 2 * nearAxis + nearMax, farRank = 2 * farAxis + farMax;
+    if (tNear < 0.0 && (tFar <= 0.0 || fabs(tFar) < fabs(tNear) ||
+        (fabs(tFar) == fabs(tNear) && farRank < nearRank))) {
+        const double parameter = tNear; tNear = tFar; tFar = parameter;
+        const int axis = nearAxis; nearAxis = farAxis; farAxis = axis;
+        const bool maximum = nearMax; nearMax = farMax; farMax = maximum;
+    }
+    for (int i = 0; i < 3; ++i) inpoint[i] = float(double(line.m_Origin[i]) + double(line.m_Direction[i]) * tNear);
+    // The selected face coordinate is known exactly, even when origin+t*d
+    // loses that small boundary in cancellation against a very large origin.
+    inpoint[nearAxis] = nearMax ? box.Max[nearAxis] : box.Min[nearAxis];
+    if (outpoint) {
+        for (int i = 0; i < 3; ++i) (*outpoint)[i] = float(double(line.m_Origin[i]) + double(line.m_Direction[i]) * tFar);
+        (*outpoint)[farAxis] = farMax ? box.Max[farAxis] : box.Min[farAxis];
+    }
 
     if (innormal) {
         *innormal = VxVector::axis0();
-        (*innormal)[nearAxis] = nearSign;
+        (*innormal)[nearAxis] = line.m_Direction[nearAxis] > 0.0f ? -1.0f : 1.0f;
     }
 
     if (outnormal) {
         *outnormal = VxVector::axis0();
-        (*outnormal)[farAxis] = farSign;
+        (*outnormal)[farAxis] = line.m_Direction[farAxis] > 0.0f ? -1.0f : 1.0f;
     }
 
     return 1;

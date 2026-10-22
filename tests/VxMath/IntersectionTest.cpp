@@ -17,6 +17,7 @@
 #include "AabbFaceClippingOracle.h"
 #include "RayBoxFaceOracle.h"
 #include "SegmentBoxFaceOracle.h"
+#include "LineBoxFaceOracle.h"
 
 using namespace VxMathTest;
 
@@ -533,26 +534,7 @@ bool SegmentBoxBoolRef(const VxRay& segment, const VxBbox& box) {
 }
 
 bool LineBoxBoolRef(const VxRay& line, const VxBbox& box) {
-    const float boxHalfX = (box.Max.x - box.Min.x) * 0.5f;
-    const float boxHalfY = (box.Max.y - box.Min.y) * 0.5f;
-    const float boxHalfZ = (box.Max.z - box.Min.z) * 0.5f;
-    const VxVector boxCenter = (box.Max + box.Min) * 0.5f;
-
-    const float dx = line.m_Origin.x - boxCenter.x;
-    const float dy = line.m_Origin.y - boxCenter.y;
-    const float dz = line.m_Origin.z - boxCenter.z;
-
-    const float crossX = dz * line.m_Direction.y - dy * line.m_Direction.z;
-    const float crossY = dx * line.m_Direction.z - dz * line.m_Direction.x;
-    const float crossZ = dy * line.m_Direction.x - dx * line.m_Direction.y;
-    const float absDirX = std::fabs(line.m_Direction.x);
-    const float absDirY = std::fabs(line.m_Direction.y);
-    const float absDirZ = std::fabs(line.m_Direction.z);
-
-    if (std::fabs(crossX) > absDirZ * boxHalfY + absDirY * boxHalfZ) return false;
-    if (std::fabs(crossY) > absDirX * boxHalfZ + absDirZ * boxHalfX) return false;
-    if (std::fabs(crossZ) > absDirX * boxHalfY + absDirY * boxHalfX) return false;
-    return true;
+    return LineBoxFaceOracle(line,box,false).code!=0;
 }
 
 float OppositeDirSignRef(float dir) {
@@ -586,65 +568,14 @@ int SegmentBoxDetailedRef(const VxRay& segment, const VxBbox& box, VxVector& inp
 }
 
 int LineBoxDetailedRef(const VxRay& line, const VxBbox& box, VxVector& inpoint, VxVector* outpoint, VxVector* innormal, VxVector* outnormal) {
-    constexpr float kHugeTRef = 1.0e30f;
-    float tNear = -kHugeTRef;
-    float tFar = kHugeTRef;
-    int nearAxis = 0;
-    float nearSign = -1.0f;
-    int farAxis = 0;
-    float farSign = 1.0f;
-
-    for (int i = 0; i < 3; ++i) {
-        const float dir = line.m_Direction[i];
-        const float origin = line.m_Origin[i];
-        const float boxMin = box.Min[i];
-        const float boxMax = box.Max[i];
-
-        if (std::fabs(dir) < EPSILON) {
-            if (!SlabContainsParallelRef(origin, boxMin, boxMax)) {
-                return 0;
-            }
-            continue;
-        }
-
-        const float invDir = 1.0f / dir;
-        float t1 = (boxMin - origin) * invDir;
-        float t2 = (boxMax - origin) * invDir;
-
-        if (std::fabs(t2) < std::fabs(t1)) {
-            const float tmp = t1;
-            t1 = t2;
-            t2 = tmp;
-        }
-
-        if (std::fabs(t1) < std::fabs(tNear)) {
-            tNear = t1;
-            nearAxis = i;
-            nearSign = OppositeDirSignRef(dir);
-        }
-        if (std::fabs(t2) < std::fabs(tFar)) {
-            tFar = t2;
-            farAxis = i;
-            farSign = OppositeDirSignRef(dir);
-        }
-        if (std::fabs(tFar) < std::fabs(tNear)) {
-            return 0;
-        }
+    const LineBoxFaceResult result=LineBoxFaceOracle(line,box,true);
+    if(result.code) {
+        inpoint=result.entry;
+        if(outpoint) *outpoint=result.exit;
+        if(innormal) *innormal=result.entryNormal;
+        if(outnormal) *outnormal=result.exitNormal;
     }
-
-    inpoint = line.m_Origin + line.m_Direction * tNear;
-    if (outpoint) {
-        *outpoint = line.m_Origin + line.m_Direction * tFar;
-    }
-    if (innormal) {
-        *innormal = VxVector::axis0();
-        (*innormal)[nearAxis] = nearSign;
-    }
-    if (outnormal) {
-        *outnormal = VxVector::axis0();
-        (*outnormal)[farAxis] = farSign;
-    }
-    return 1;
+    return result.code;
 }
 
 VxBbox MakeAABBFromCenterExtents(const VxVector& center, const VxVector& extents) {
