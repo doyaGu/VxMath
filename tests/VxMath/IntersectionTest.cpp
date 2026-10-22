@@ -322,32 +322,22 @@ void GetPointCoefficientsRef(
     float& v1Coef,
     float& v2Coef
 ) {
-    const float p0_i1 = pt0[i1];
-    const float p0_i2 = pt0[i2];
-    const float p1_i1 = pt1[i1];
-    const float p1_i2 = pt1[i2];
-    const float p2_i1 = pt2[i1];
-    const float p2_i2 = pt2[i2];
-    const float pt_i1 = pt[i1];
-    const float pt_i2 = pt[i2];
-
-    const float v1_i1 = pt_i1 - p0_i1;
-    const float v1_i2 = pt_i2 - p0_i2;
-    const float v2_i1 = p1_i1 - p0_i1;
-    const float v2_i2 = p1_i2 - p0_i2;
-    const float v3_i1 = p2_i1 - p0_i1;
-    const float v3_i2 = p2_i2 - p0_i2;
-
-    if (v2_i1 == 0.0f) {
-        v2Coef = v1_i1 / v3_i1;
-        v1Coef = (v1_i2 - v2Coef * v3_i2) / v2_i2;
-    } else {
-        const float denom = v3_i2 * v2_i1 - v3_i1 * v2_i2;
-        v2Coef = (v2_i1 * v1_i2 - v2_i2 * v1_i1) / denom;
-        v1Coef = (v1_i1 - v2Coef * v3_i1) / v2_i1;
+    // Independent affine-system solve, rather than the production area ratios.
+    double rows[3][4] = {{pt0[i1],pt1[i1],pt2[i1],pt[i1]},
+                         {pt0[i2],pt1[i2],pt2[i2],pt[i2]}, {1,1,1,1}};
+    for (int column = 0; column < 3; ++column) {
+        int pivot = column;
+        for (int row = column + 1; row < 3; ++row)
+            if (std::fabs(rows[row][column]) > std::fabs(rows[pivot][column])) pivot = row;
+        for (int j = 0; j < 4; ++j) { const double swap = rows[column][j]; rows[column][j] = rows[pivot][j]; rows[pivot][j] = swap; }
+        const double divisor = rows[column][column];
+        for (int j = column; j < 4; ++j) rows[column][j] /= divisor;
+        for (int row = 0; row < 3; ++row) if (row != column) {
+            const double factor = rows[row][column];
+            for (int j = column; j < 4; ++j) rows[row][j] -= factor * rows[column][j];
+        }
     }
-
-    v0Coef = 1.0f - (v1Coef + v2Coef);
+    v0Coef = float(rows[0][3]); v1Coef = float(rows[1][3]); v2Coef = float(rows[2][3]);
 }
 
 bool AABBAABBRef(const VxBbox& box1, const VxBbox& box2) {

@@ -135,6 +135,12 @@ public:
     VX_EXPORT static XBOOL LineFace(const VxRay &ray, const VxVector &pt0, const VxVector &pt1, const VxVector &pt2, const VxVector &norm, VxVector &res, float &dist, int &i1, int &i2);
 
     /// @brief Calculates barycentric coordinates for a point within a triangle face.
+    /// Uses the supplied two coordinate axes; ignores the remaining coordinate.
+    /// Weights may extrapolate outside [0,1]. Distinct axes in [0,2] and a
+    /// nonzero projected area are required for unique finite coefficients.
+    /// Singular projections retain IEEE non-finite arithmetic, without fallback.
+    /// Computes weights independently, then writes V2,V1,V0; aliased outputs
+    /// retain the last coefficient assigned to their shared slot.
     VX_EXPORT static void GetPointCoefficients(const VxVector &pt, const VxVector &pt0, const VxVector &pt1, const VxVector &pt2, const int &i1, const int &i2, float &V0Coef, float &V1Coef, float &V2Coef);
 
     /// @brief Checks for intersection between two triangle faces.

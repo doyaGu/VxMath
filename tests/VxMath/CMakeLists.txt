@@ -175,6 +175,7 @@ set(VXMATH_TEST_SOURCES
         RayFaceReferenceTest.cpp
         SegmentFaceReferenceTest.cpp
         LineFaceReferenceTest.cpp
+        GetPointCoefficientsReferenceTest.cpp
         # SIMD Tests
         SIMDFeatureTest.cpp
         SIMDUtilityTest.cpp
@@ -343,6 +344,9 @@ vx_copy_runtime_dependencies(SegmentFaceScalarReferenceTest)
 vx_add_test(LineFaceScalarReferenceTest SOURCES LineFaceReferenceTest.cpp)
 target_compile_definitions(LineFaceScalarReferenceTest PRIVATE VX_SIMD_NONE=1)
 vx_copy_runtime_dependencies(LineFaceScalarReferenceTest)
+vx_add_test(GetPointCoefficientsScalarReferenceTest SOURCES GetPointCoefficientsReferenceTest.cpp)
+target_compile_definitions(GetPointCoefficientsScalarReferenceTest PRIVATE VX_SIMD_NONE=1)
+vx_copy_runtime_dependencies(GetPointCoefficientsScalarReferenceTest)
 
 # Exercise the same original-DLL samples with header SIMD paths disabled.
 vx_add_test(QuaternionReferenceScalarTest SOURCES QuaternionReferenceTest.cpp)

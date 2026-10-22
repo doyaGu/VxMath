@@ -396,59 +396,44 @@ namespace {
 
 static void GetPointCoefficientsScalarCore(const VxVector &pt, const VxVector &pt0, const VxVector &pt1, const VxVector &pt2,
                                            const int &i1, const int &i2, float &V0Coef, float &V1Coef, float &V2Coef) {
-    float p0_i1 = pt0[i1], p0_i2 = pt0[i2];
-    float p1_i1 = pt1[i1], p1_i2 = pt1[i2];
-    float p2_i1 = pt2[i1], p2_i2 = pt2[i2];
-    float pt_i1 = pt[i1], pt_i2 = pt[i2];
-
-    float v1_i1 = pt_i1 - p0_i1;
-    float v1_i2 = pt_i2 - p0_i2;
-    float v2_i1 = p1_i1 - p0_i1;
-    float v2_i2 = p1_i2 - p0_i2;
-    float v3_i1 = p2_i1 - p0_i1;
-    float v3_i2 = p2_i2 - p0_i2;
-
-    if (v2_i1 == 0.0f) {
-        V2Coef = v1_i1 / v3_i1;
-        V1Coef = (v1_i2 - V2Coef * v3_i2) / v2_i2;
-    } else {
-        float denom = v3_i2 * v2_i1 - v3_i1 * v2_i2;
-        V2Coef = (v2_i1 * v1_i2 - v2_i2 * v1_i1) / denom;
-        V1Coef = (v1_i1 - V2Coef * v3_i1) / v2_i1;
-    }
-
-    V0Coef = 1.0f - (V1Coef + V2Coef);
+    const double ax = pt0[i1], ay = pt0[i2], bx = pt1[i1], by = pt1[i2];
+    const double cx = pt2[i1], cy = pt2[i2], px = pt[i1], py = pt[i2];
+    const double abx = bx - ax, aby = by - ay, acx = cx - ax, acy = cy - ay;
+    const double apx = px - ax, apy = py - ay;
+    const double determinant = abx * acy - aby * acx;
+    // Each weight is its opposite signed area. Avoid division by a particular
+    // edge component, and do not recover a small w0 from rounded w1+w2.
+    const double w0 = ((bx - px) * (cy - py) - (by - py) * (cx - px)) / determinant;
+    const double w1 = (apx * acy - apy * acx) / determinant;
+    const double w2 = (abx * apy - aby * apx) / determinant;
+    V2Coef = float(w2);
+    V1Coef = float(w1);
+    V0Coef = float(w0);
 }
 
 #if defined(VX_SIMD_SSE)
 static void GetPointCoefficientsSIMDCore(const VxVector &pt, const VxVector &pt0, const VxVector &pt1, const VxVector &pt2,
                                          const int &i1, const int &i2, float &V0Coef, float &V1Coef, float &V2Coef) {
-    const __m128 p0 = VxSIMDLoadProjected2(pt0, i1, i2);
-    const __m128 p1 = VxSIMDLoadProjected2(pt1, i1, i2);
-    const __m128 p2 = VxSIMDLoadProjected2(pt2, i1, i2);
-    const __m128 p = VxSIMDLoadProjected2(pt, i1, i2);
-
-    const __m128 v1 = _mm_sub_ps(p, p0);
-    const __m128 v2 = _mm_sub_ps(p1, p0);
-    const __m128 v3 = _mm_sub_ps(p2, p0);
-
-    const float v1_i1 = _mm_cvtss_f32(v1);
-    const float v1_i2 = _mm_cvtss_f32(_mm_shuffle_ps(v1, v1, _MM_SHUFFLE(1, 1, 1, 1)));
-    const float v2_i1 = _mm_cvtss_f32(v2);
-    const float v2_i2 = _mm_cvtss_f32(_mm_shuffle_ps(v2, v2, _MM_SHUFFLE(1, 1, 1, 1)));
-    const float v3_i1 = _mm_cvtss_f32(v3);
-    const float v3_i2 = _mm_cvtss_f32(_mm_shuffle_ps(v3, v3, _MM_SHUFFLE(1, 1, 1, 1)));
-
-    if (v2_i1 == 0.0f) {
-        V2Coef = v1_i1 / v3_i1;
-        V1Coef = (v1_i2 - V2Coef * v3_i2) / v2_i2;
-    } else {
-        const float denom = VxSIMDCross2Scalar(v2, v3);
-        V2Coef = VxSIMDCross2Scalar(v2, v1) / denom;
-        V1Coef = (v1_i1 - V2Coef * v3_i1) / v2_i1;
-    }
-
-    V0Coef = 1.0f - (V1Coef + V2Coef);
+    const __m128d a = _mm_set_pd(pt0[i2], pt0[i1]), b = _mm_set_pd(pt1[i2], pt1[i1]);
+    const __m128d c = _mm_set_pd(pt2[i2], pt2[i1]), p = _mm_set_pd(pt[i2], pt[i1]);
+    const __m128d ab = _mm_sub_pd(b, a), ac = _mm_sub_pd(c, a), ap = _mm_sub_pd(p, a);
+    const __m128d products = _mm_mul_pd(ab, _mm_shuffle_pd(ac, ac, 1));
+    const __m128d determinant = _mm_sub_sd(products, _mm_unpackhi_pd(products, products));
+    // Numerators for w1 and w2 occupy separate packed double lanes.
+    const __m128d left = _mm_mul_pd(_mm_unpacklo_pd(ap, ab), _mm_unpackhi_pd(ac, ap));
+    const __m128d right = _mm_mul_pd(_mm_unpackhi_pd(ap, ab), _mm_unpacklo_pd(ac, ap));
+    const __m128d weights12 = _mm_div_pd(_mm_sub_pd(left, right), _mm_unpacklo_pd(determinant, determinant));
+    const __m128d bp = _mm_sub_pd(b, p), cp = _mm_sub_pd(c, p);
+    const __m128d products0 = _mm_mul_pd(bp, _mm_shuffle_pd(cp, cp, 1));
+    const __m128d weight0 = _mm_div_sd(_mm_sub_sd(products0, _mm_unpackhi_pd(products0, products0)), determinant);
+    // Finish every calculation before the original V2,V1,V0 write order,
+    // keeping output aliases from becoming inputs to another coefficient.
+    const float w0 = float(_mm_cvtsd_f64(weight0));
+    const float w1 = float(_mm_cvtsd_f64(weights12));
+    const float w2 = float(_mm_cvtsd_f64(_mm_unpackhi_pd(weights12, weights12)));
+    V2Coef = w2;
+    V1Coef = w1;
+    V0Coef = w0;
 }
 #endif
 
