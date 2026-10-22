@@ -828,29 +828,6 @@ static XBOOL LineBoxCore(const VxRay &line, const VxBbox &box) {
         }
         return nearT <= farT;
     }
-#elif defined(VX_SIMD_SSE)
-    if constexpr (kUseSIMD) {
-        const __m128 boxMin = VxSIMDLoadVector3(box.Min);
-        const __m128 boxMax = VxSIMDLoadVector3(box.Max);
-        const __m128 half = _mm_mul_ps(_mm_sub_ps(boxMax, boxMin), _mm_set1_ps(0.5f));
-        const __m128 center = _mm_mul_ps(_mm_add_ps(boxMax, boxMin), _mm_set1_ps(0.5f));
-        const __m128 origin = VxSIMDLoadVector3(line.m_Origin);
-        const __m128 direction = VxSIMDLoadVector3(line.m_Direction);
-        const __m128 d = _mm_sub_ps(origin, center);
-
-        alignas(16) float crossVals[4];
-        alignas(16) float absDirVals[4];
-        alignas(16) float halfVals[4];
-        _mm_store_ps(crossVals, VxSIMDAbs3(VxSIMDCrossProduct3(d, direction)));
-        _mm_store_ps(absDirVals, VxSIMDAbs3(direction));
-        _mm_store_ps(halfVals, half);
-
-        if (crossVals[0] > absDirVals[2] * halfVals[1] + absDirVals[1] * halfVals[2]) return FALSE;
-        if (crossVals[1] > absDirVals[0] * halfVals[2] + absDirVals[2] * halfVals[0]) return FALSE;
-        if (crossVals[2] > absDirVals[0] * halfVals[1] + absDirVals[1] * halfVals[0]) return FALSE;
-
-        return TRUE;
-    }
 #endif
     // A closed infinite line has no forward or endpoint restriction. Only
     // an exactly zero direction is parallel; a zero line is point membership.
@@ -936,69 +913,6 @@ static int LineBoxDetailedCore(const VxRay &line, const VxBbox &box, VxVector &i
         }
         if (innormal) { *innormal = VxVector::axis0(); (*innormal)[nearAxis] = line.m_Direction[nearAxis] > 0.0f ? -1.0f : 1.0f; }
         if (outnormal) { *outnormal = VxVector::axis0(); (*outnormal)[farAxis] = line.m_Direction[farAxis] > 0.0f ? -1.0f : 1.0f; }
-        return 1;
-    }
-#elif defined(VX_SIMD_SSE)
-    if constexpr (kUseSIMD) {
-        float tNear = -kHugeT;
-        float tFar = kHugeT;
-        int nearAxis = 0;
-        float nearSign = -1.0f;
-        int farAxis = 0;
-        float farSign = 1.0f;
-
-        const VxSlabSIMDPrecompute pre = VxSIMDPrecomputeSlabs(line.m_Origin, line.m_Direction, box);
-        if (pre.outsideParallelMask != 0) {
-            return 0;
-        }
-
-        for (int i = 0; i < 3; ++i) {
-            if ((pre.parallelMask & (1 << i)) != 0) {
-                continue;
-            }
-
-            float t1 = pre.tMin[i];
-            float t2 = pre.tMax[i];
-
-            // Orders the slab parameters by absolute value for lines.
-            if (fabsf(t2) < fabsf(t1)) {
-                const float tmp = t1;
-                t1 = t2;
-                t2 = tmp;
-            }
-
-            if (fabsf(t1) < fabsf(tNear)) {
-                tNear = t1;
-                nearAxis = i;
-                nearSign = OppositeDirSign(line.m_Direction[i]);
-            }
-
-            if (fabsf(t2) < fabsf(tFar)) {
-                tFar = t2;
-                farAxis = i;
-                farSign = OppositeDirSign(line.m_Direction[i]);
-            }
-
-            if (fabsf(tFar) < fabsf(tNear)) {
-                return 0;
-            }
-        }
-
-        inpoint = line.m_Origin + line.m_Direction * tNear;
-        if (outpoint) {
-            *outpoint = line.m_Origin + line.m_Direction * tFar;
-        }
-
-        if (innormal) {
-            *innormal = VxVector::axis0();
-            (*innormal)[nearAxis] = nearSign;
-        }
-
-        if (outnormal) {
-            *outnormal = VxVector::axis0();
-            (*outnormal)[farAxis] = farSign;
-        }
-
         return 1;
     }
 #endif
