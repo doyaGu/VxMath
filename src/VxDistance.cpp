@@ -1,7 +1,6 @@
 #include "VxDistance.h"
 
 #include <atomic>
-#include <float.h>
 
 #include "VxRay.h"
 #include "VxAtomic.h"
@@ -11,62 +10,7 @@
 
 namespace {
 
-struct RayPairTerms {
-    VxVector diff;
-    float a;   // |dir0|^2
-    float b;   // -dot(dir0, dir1)
-    float c;   // |dir1|^2
-    float d;   // dot(diff, dir0)
-    float e;   // -dot(diff, dir1)
-    float f;   // |diff|^2
-    float det; // |a*c - b*b|
-};
-
-static inline RayPairTerms MakeRayPairTermsScalar(const VxRay& r0, const VxRay& r1) {
-    RayPairTerms t;
-    t.diff = r0.m_Origin - r1.m_Origin;
-    t.a = SquareMagnitude(r0.m_Direction);
-    t.b = -DotProduct(r0.m_Direction, r1.m_Direction);
-    t.c = SquareMagnitude(r1.m_Direction);
-    t.d = DotProduct(t.diff, r0.m_Direction);
-    t.e = -DotProduct(t.diff, r1.m_Direction);
-    t.f = SquareMagnitude(t.diff);
-    t.det = XAbs(t.c * t.a - t.b * t.b);
-    return t;
-}
-
 #if defined(VX_SIMD_SSE)
-static inline float VxSIMDExtractX(__m128 v) {
-    return _mm_cvtss_f32(v);
-}
-
-static inline RayPairTerms MakeRayPairTermsSIMD(const VxRay& r0, const VxRay& r1) {
-    RayPairTerms t{};
-
-    const __m128 origin0 = VxSIMDLoadFloat3(&r0.m_Origin.x);
-    const __m128 origin1 = VxSIMDLoadFloat3(&r1.m_Origin.x);
-    const __m128 dir0 = VxSIMDLoadFloat3(&r0.m_Direction.x);
-    const __m128 dir1 = VxSIMDLoadFloat3(&r1.m_Direction.x);
-    const __m128 diff = VxSIMDSubtract3(origin0, origin1);
-
-    const __m128 a = VxSIMDDotProduct3(dir0, dir0);
-    const __m128 b = VxSIMDDotProduct3(dir0, dir1);
-    const __m128 c = VxSIMDDotProduct3(dir1, dir1);
-    const __m128 d = VxSIMDDotProduct3(diff, dir0);
-    const __m128 e = VxSIMDDotProduct3(diff, dir1);
-    const __m128 f = VxSIMDDotProduct3(diff, diff);
-
-    VxSIMDStoreFloat3(&t.diff.x, diff);
-    t.a = VxSIMDExtractX(a);
-    t.b = -VxSIMDExtractX(b);
-    t.c = VxSIMDExtractX(c);
-    t.d = VxSIMDExtractX(d);
-    t.e = -VxSIMDExtractX(e);
-    t.f = VxSIMDExtractX(f);
-    t.det = XAbs(t.c * t.a - t.b * t.b);
-    return t;
-}
-
 static float LineLineSquareDistanceSIMDImpl(const VxRay &line0, const VxRay &line1, float *t0, float *t1) {
     const __m128d wXY = _mm_sub_pd(_mm_setr_pd(line0.m_Origin.x, line0.m_Origin.y),
                                   _mm_setr_pd(line1.m_Origin.x, line1.m_Origin.y));
@@ -1019,12 +963,10 @@ static float SegmentSegmentSquareDistanceSIMDImpl(const VxRay &segment0, const V
 }
 #endif
 
-typedef RayPairTerms (*MakeRayPairTermsDispatchFn)(const VxRay &, const VxRay &);
 typedef float (*LineDistanceDispatchFn)(const VxRay &, const VxRay &, float *, float *);
 typedef float (*PointDistanceDispatchFn)(const VxVector &, const VxRay &, float *);
 
 struct VxDistanceDispatchTable {
-    MakeRayPairTermsDispatchFn makeRayPairTerms;
     LineDistanceDispatchFn lineLineSquareDistance;
     LineDistanceDispatchFn lineRaySquareDistance;
     LineDistanceDispatchFn lineSegmentSquareDistance;
@@ -1037,7 +979,6 @@ struct VxDistanceDispatchTable {
 };
 
 const VxDistanceDispatchTable kVxDistanceDispatchScalar = {
-    MakeRayPairTermsScalar,
     LineLineSquareDistanceScalarImpl,
     LineRaySquareDistanceScalarImpl,
     LineSegmentSquareDistanceScalarImpl,
@@ -1051,7 +992,6 @@ const VxDistanceDispatchTable kVxDistanceDispatchScalar = {
 
 #if defined(VX_SIMD_SSE)
 const VxDistanceDispatchTable kVxDistanceDispatchSIMD = {
-    MakeRayPairTermsSIMD,
     LineLineSquareDistanceSIMDImpl,
     LineRaySquareDistanceSIMDImpl,
     LineSegmentSquareDistanceSIMDImpl,
@@ -1070,9 +1010,7 @@ static inline const VxDistanceDispatchTable *GetVxDistanceDispatchTable() {
     return g_VxDistanceDispatch.load(std::memory_order_acquire);
 }
 
-static inline RayPairTerms MakeRayPairTerms(const VxRay& r0, const VxRay& r1) {
-    return GetVxDistanceDispatchTable()->makeRayPairTerms(r0, r1);
-}
+
 
 }
 
@@ -1085,11 +1023,6 @@ void VxDistanceDispatchRebuild(int effectiveMode) {
     const VxDistanceDispatchTable *next = &kVxDistanceDispatchScalar;
 #endif
     g_VxDistanceDispatch.store(next, std::memory_order_release);
-}
-
-// Matches the exact quadratic expansion used in the original implementation.
-static inline float DistanceQuadraticPart(const RayPairTerms& t, float s0, float s1) {
-    return (s1 * t.c + s0 * t.b + t.e + t.e) * s1 + (s1 * t.b + s0 * t.a + t.d + t.d) * s0;
 }
 
 // Line-Line distance calculations
