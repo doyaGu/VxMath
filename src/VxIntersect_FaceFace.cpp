@@ -3,6 +3,7 @@
 #include <atomic>
 
 #include "VxVector.h"
+#include "VxRay.h"
 #include "VxMatrix.h"
 #include "VxPlane.h"
 #include "VxAtomic.h"
@@ -235,6 +236,48 @@ static XBOOL PointInFaceSIMDCore(const VxVector &point, const VxVector &pt0, con
 
 //---------- Faces
 
+// The face already supplies a point on its plane. Keep that anchor instead of
+// rounding n.dot(pt0) into the float D of a temporary VxPlane. This also avoids
+// overflowing D when the ray parameter and intersection are representable.
+static XBOOL RayFacePlaneIntersection(const VxRay &ray, const VxVector &pt0, const VxVector &norm,
+                                     VxVector &res, float &dist, bool culled) {
+#if defined(VX_SIMD_SSE)
+    if (GetVxIntersectFaceDispatchTable()->pointInFace == PointInFaceSIMDCore) {
+        const __m128 normal = VxSIMDLoadFloat3(&norm.x), direction = VxSIMDLoadFloat3(&ray.m_Direction.x);
+        const __m128 origin = VxSIMDLoadFloat3(&ray.m_Origin.x), anchor = VxSIMDLoadFloat3(&pt0.x);
+        const __m128d nXY = _mm_cvtps_pd(normal), nZ = _mm_cvtps_pd(_mm_movehl_ps(normal, normal));
+        const __m128d dXY = _mm_cvtps_pd(direction), dZ = _mm_cvtps_pd(_mm_movehl_ps(direction, direction));
+        const __m128d oXY = _mm_cvtps_pd(origin), oZ = _mm_cvtps_pd(_mm_movehl_ps(origin, origin));
+        const __m128d denominatorXY = _mm_mul_pd(nXY, dXY);
+        const double denominator = _mm_cvtsd_f64(_mm_add_sd(_mm_add_sd(denominatorXY, _mm_unpackhi_pd(denominatorXY, denominatorXY)), _mm_mul_sd(nZ, dZ)));
+        if (culled ? denominator > -EPSILON : fabs(denominator) < EPSILON) return FALSE;
+        const __m128d offsetXY = _mm_sub_pd(_mm_cvtps_pd(anchor), oXY);
+        const __m128d offsetZ = _mm_sub_sd(_mm_cvtps_pd(_mm_movehl_ps(anchor, anchor)), oZ);
+        const __m128d numeratorXY = _mm_mul_pd(nXY, offsetXY);
+        const double numerator = _mm_cvtsd_f64(_mm_add_sd(_mm_add_sd(numeratorXY, _mm_unpackhi_pd(numeratorXY, numeratorXY)), _mm_mul_sd(nZ, offsetZ)));
+        const double t = numerator / denominator;
+        dist = float(t);
+        if (t < -EPSILON) return FALSE;
+        const __m128d parameter = _mm_set1_pd(t);
+        const __m128d pXY = _mm_add_pd(oXY, _mm_mul_pd(dXY, parameter));
+        const __m128d pZ = _mm_add_sd(oZ, _mm_mul_sd(dZ, parameter));
+        VxSIMDStoreFloat3(&res.x, _mm_movelh_ps(_mm_cvtpd_ps(pXY), _mm_cvtsd_ss(_mm_setzero_ps(), pZ)));
+        return TRUE;
+    }
+#endif
+    const double denominator = double(norm.x) * ray.m_Direction.x + double(norm.y) * ray.m_Direction.y + double(norm.z) * ray.m_Direction.z;
+    if (culled ? denominator > -EPSILON : fabs(denominator) < EPSILON) return FALSE;
+    const double numerator = double(norm.x) * (double(pt0.x) - ray.m_Origin.x) +
+        double(norm.y) * (double(pt0.y) - ray.m_Origin.y) + double(norm.z) * (double(pt0.z) - ray.m_Origin.z);
+    const double t = numerator / denominator;
+    dist = float(t);
+    if (t < -EPSILON) return FALSE;
+    res.Set(float(double(ray.m_Origin.x) + double(ray.m_Direction.x) * t),
+            float(double(ray.m_Origin.y) + double(ray.m_Direction.y) * t),
+            float(double(ray.m_Origin.z) + double(ray.m_Direction.z) * t));
+    return TRUE;
+}
+
 // Is a point inside the boundary of a face
 XBOOL VxIntersect::PointInFace(const VxVector &point, const VxVector &pt0, const VxVector &pt1, const VxVector &pt2,
                                const VxVector &norm, int &i1, int &i2) {
@@ -244,12 +287,7 @@ XBOOL VxIntersect::PointInFace(const VxVector &point, const VxVector &pt0, const
 // Intersection Ray - Face
 XBOOL VxIntersect::RayFace(const VxRay &ray, const VxVector &pt0, const VxVector &pt1, const VxVector &pt2,
                            const VxVector &norm, VxVector &res, float &dist) {
-    // Create plane from normal and point
-    VxPlane plane;
-    plane.Create(norm, pt0);
-
-    // Test ray-plane intersection
-    if (!RayPlane(ray, plane, res, dist)) {
+    if (!RayFacePlaneIntersection(ray, pt0, norm, res, dist, false)) {
         return FALSE;
     }
 
@@ -261,12 +299,7 @@ XBOOL VxIntersect::RayFace(const VxRay &ray, const VxVector &pt0, const VxVector
 // Overloaded RayFace with dominant axes
 XBOOL VxIntersect::RayFace(const VxRay &ray, const VxVector &pt0, const VxVector &pt1, const VxVector &pt2,
                            const VxVector &norm, VxVector &res, float &dist, int &i1, int &i2) {
-    // Create plane from normal and point
-    VxPlane plane;
-    plane.Create(norm, pt0);
-
-    // Test ray-plane intersection
-    if (!RayPlane(ray, plane, res, dist)) {
+    if (!RayFacePlaneIntersection(ray, pt0, norm, res, dist, false)) {
         return FALSE;
     }
 
@@ -277,12 +310,7 @@ XBOOL VxIntersect::RayFace(const VxRay &ray, const VxVector &pt0, const VxVector
 // Intersection Ray - Face with culling (only from front)
 XBOOL VxIntersect::RayFaceCulled(const VxRay &ray, const VxVector &pt0, const VxVector &pt1, const VxVector &pt2,
                                  const VxVector &norm, VxVector &res, float &dist, int &i1, int &i2) {
-    // Create plane from normal and point
-    VxPlane plane;
-    plane.Create(norm, pt0);
-
-    // Test ray-plane intersection with culling
-    if (!RayPlaneCulled(ray, plane, res, dist)) {
+    if (!RayFacePlaneIntersection(ray, pt0, norm, res, dist, true)) {
         return FALSE;
     }
 

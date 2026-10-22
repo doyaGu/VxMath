@@ -104,10 +104,16 @@ public:
      */
     VX_EXPORT static XBOOL PointInFace(const VxVector &point, const VxVector &pt0, const VxVector &pt1, const VxVector &pt2, const VxVector &norm, int &i1, int &i2);
     /// @brief Intersects a ray with a triangle face.
+    /// Uses the plane through pt0 with the supplied normal, without normalizing it.
+    /// Parallel (|n.dot(direction)| < 2^-23) leaves all outputs unchanged. Behind
+    /// t < -2^-23 writes dist only; otherwise writes res before the face test.
+    /// Returns PointInFace's 0/1/2 code; dist is the direction parameter, not distance.
     VX_EXPORT static XBOOL RayFace(const VxRay &ray, const VxVector &pt0, const VxVector &pt1, const VxVector &pt2, const VxVector &norm, VxVector &res, float &dist);
-    /// @brief Intersects a ray with a triangle face, providing barycentric coordinate information.
+    /// @brief RayFace with the projected coordinate axes written after a plane hit, even outside the face.
     VX_EXPORT static XBOOL RayFace(const VxRay &ray, const VxVector &pt0, const VxVector &pt1, const VxVector &pt2, const VxVector &norm, VxVector &res, float &dist, int &i1, int &i2);
     /// @brief Intersects a ray with a front-facing triangle face.
+    /// Rejects n.dot(direction) > -2^-23 before writing outputs; the remaining
+    /// parameter, output stages and return codes follow RayFace.
     VX_EXPORT static XBOOL RayFaceCulled(const VxRay &ray, const VxVector &pt0, const VxVector &pt1, const VxVector &pt2, const VxVector &norm, VxVector &res, float &dist, int &i1, int &i2);
     /// @brief Intersects a line segment with a triangle face.
     VX_EXPORT static XBOOL SegmentFace(const VxRay &ray, const VxVector &pt0, const VxVector &pt1, const VxVector &pt2, const VxVector &norm, VxVector &res, float &dist);
