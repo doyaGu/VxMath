@@ -116,10 +116,14 @@ public:
     /// parameter, output stages and return codes follow RayFace.
     VX_EXPORT static XBOOL RayFaceCulled(const VxRay &ray, const VxVector &pt0, const VxVector &pt1, const VxVector &pt2, const VxVector &norm, VxVector &res, float &dist, int &i1, int &i2);
     /// @brief Intersects a line segment with a triangle face.
+    /// Uses RayFace's plane and output rules with t in [-2^-23, 1+2^-23].
+    /// The range check precedes writing res or projected axes, and uses the
+    /// unrounded parameter rather than its float representation in dist.
     VX_EXPORT static XBOOL SegmentFace(const VxRay &ray, const VxVector &pt0, const VxVector &pt1, const VxVector &pt2, const VxVector &norm, VxVector &res, float &dist);
-    /// @brief Intersects a line segment with a triangle face, providing barycentric coordinate information.
+    /// @brief SegmentFace with projected coordinate axes written after an accepted plane hit.
     VX_EXPORT static XBOOL SegmentFace(const VxRay &ray, const VxVector &pt0, const VxVector &pt1, const VxVector &pt2, const VxVector &norm, VxVector &res, float &dist, int &i1, int &i2);
     /// @brief Intersects a line segment with a front-facing triangle face.
+    /// Culling follows RayFaceCulled, with the same SegmentFace parameter range.
     VX_EXPORT static XBOOL SegmentFaceCulled(const VxRay &ray, const VxVector &pt0, const VxVector &pt1, const VxVector &pt2, const VxVector &norm, VxVector &res, float &dist, int &i1, int &i2);
     /// @brief Intersects an infinite line with a triangle face.
     VX_EXPORT static XBOOL LineFace(const VxRay &ray, const VxVector &pt0, const VxVector &pt1, const VxVector &pt2, const VxVector &norm, VxVector &res, float &dist);

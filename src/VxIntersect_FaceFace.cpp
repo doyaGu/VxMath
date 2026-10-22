@@ -239,8 +239,8 @@ static XBOOL PointInFaceSIMDCore(const VxVector &point, const VxVector &pt0, con
 // The face already supplies a point on its plane. Keep that anchor instead of
 // rounding n.dot(pt0) into the float D of a temporary VxPlane. This also avoids
 // overflowing D when the ray parameter and intersection are representable.
-static XBOOL RayFacePlaneIntersection(const VxRay &ray, const VxVector &pt0, const VxVector &norm,
-                                     VxVector &res, float &dist, bool culled) {
+static XBOOL FacePlaneIntersection(const VxRay &ray, const VxVector &pt0, const VxVector &norm,
+                                  VxVector &res, float &dist, bool culled, bool segment) {
 #if defined(VX_SIMD_SSE)
     if (GetVxIntersectFaceDispatchTable()->pointInFace == PointInFaceSIMDCore) {
         const __m128 normal = VxSIMDLoadFloat3(&norm.x), direction = VxSIMDLoadFloat3(&ray.m_Direction.x);
@@ -257,7 +257,7 @@ static XBOOL RayFacePlaneIntersection(const VxRay &ray, const VxVector &pt0, con
         const double numerator = _mm_cvtsd_f64(_mm_add_sd(_mm_add_sd(numeratorXY, _mm_unpackhi_pd(numeratorXY, numeratorXY)), _mm_mul_sd(nZ, offsetZ)));
         const double t = numerator / denominator;
         dist = float(t);
-        if (t < -EPSILON) return FALSE;
+        if (t < -EPSILON || (segment && t > 1.0f + EPSILON)) return FALSE;
         const __m128d parameter = _mm_set1_pd(t);
         const __m128d pXY = _mm_add_pd(oXY, _mm_mul_pd(dXY, parameter));
         const __m128d pZ = _mm_add_sd(oZ, _mm_mul_sd(dZ, parameter));
@@ -271,11 +271,16 @@ static XBOOL RayFacePlaneIntersection(const VxRay &ray, const VxVector &pt0, con
         double(norm.y) * (double(pt0.y) - ray.m_Origin.y) + double(norm.z) * (double(pt0.z) - ray.m_Origin.z);
     const double t = numerator / denominator;
     dist = float(t);
-    if (t < -EPSILON) return FALSE;
+    if (t < -EPSILON || (segment && t > 1.0f + EPSILON)) return FALSE;
     res.Set(float(double(ray.m_Origin.x) + double(ray.m_Direction.x) * t),
             float(double(ray.m_Origin.y) + double(ray.m_Direction.y) * t),
             float(double(ray.m_Origin.z) + double(ray.m_Direction.z) * t));
     return TRUE;
+}
+
+static XBOOL RayFacePlaneIntersection(const VxRay &ray, const VxVector &pt0, const VxVector &norm,
+                                     VxVector &res, float &dist, bool culled) {
+    return FacePlaneIntersection(ray, pt0, norm, res, dist, culled, false);
 }
 
 // Is a point inside the boundary of a face
@@ -321,12 +326,7 @@ XBOOL VxIntersect::RayFaceCulled(const VxRay &ray, const VxVector &pt0, const Vx
 // Intersection Segment - Face
 XBOOL VxIntersect::SegmentFace(const VxRay &ray, const VxVector &pt0, const VxVector &pt1, const VxVector &pt2,
                                const VxVector &norm, VxVector &res, float &dist) {
-    // Create plane from normal and point
-    VxPlane plane;
-    plane.Create(norm, pt0);
-
-    // Test segment-plane intersection
-    if (!SegmentPlane(ray, plane, res, dist)) {
+    if (!FacePlaneIntersection(ray, pt0, norm, res, dist, false, true)) {
         return FALSE;
     }
 
@@ -338,12 +338,7 @@ XBOOL VxIntersect::SegmentFace(const VxRay &ray, const VxVector &pt0, const VxVe
 // Overloaded SegmentFace with dominant axes
 XBOOL VxIntersect::SegmentFace(const VxRay &ray, const VxVector &pt0, const VxVector &pt1, const VxVector &pt2,
                                const VxVector &norm, VxVector &res, float &dist, int &i1, int &i2) {
-    // Create plane from normal and point
-    VxPlane plane;
-    plane.Create(norm, pt0);
-
-    // Test segment-plane intersection
-    if (!SegmentPlane(ray, plane, res, dist)) {
+    if (!FacePlaneIntersection(ray, pt0, norm, res, dist, false, true)) {
         return FALSE;
     }
 
@@ -354,12 +349,7 @@ XBOOL VxIntersect::SegmentFace(const VxRay &ray, const VxVector &pt0, const VxVe
 // Intersection Segment - Face with culling
 XBOOL VxIntersect::SegmentFaceCulled(const VxRay &ray, const VxVector &pt0, const VxVector &pt1, const VxVector &pt2,
                                      const VxVector &norm, VxVector &res, float &dist, int &i1, int &i2) {
-    // Create plane from normal and point
-    VxPlane plane;
-    plane.Create(norm, pt0);
-
-    // Test segment-plane intersection with culling
-    if (!SegmentPlaneCulled(ray, plane, res, dist)) {
+    if (!FacePlaneIntersection(ray, pt0, norm, res, dist, true, true)) {
         return FALSE;
     }
 
