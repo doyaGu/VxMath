@@ -124,28 +124,43 @@ static float PointRaySquareDistanceSIMDImpl(const VxVector &point, const VxRay &
 }
 
 static float PointSegmentSquareDistanceSIMDImpl(const VxVector &point, const VxRay &segment, float *t0) {
-    __m128 diff = VxSIMDSubtract3(VxSIMDLoadFloat3(&point.x), VxSIMDLoadFloat3(&segment.m_Origin.x));
-    const __m128 directionV = VxSIMDLoadFloat3(&segment.m_Direction.x);
-    const float dotDiffDir = VxSIMDExtractX(VxSIMDDotProduct3(diff, directionV));
-
-    float t;
-    if (dotDiffDir > 0.0f) {
-        const float dotDirDir = VxSIMDExtractX(VxSIMDDotProduct3(directionV, directionV));
-        if (dotDiffDir < dotDirDir) {
-            t = dotDiffDir / dotDirDir;
-            diff = _mm_sub_ps(diff, _mm_mul_ps(directionV, _mm_set1_ps(t)));
+    const __m128d diffXY = _mm_sub_pd(_mm_setr_pd(point.x, point.y),
+                                     _mm_setr_pd(segment.m_Origin.x, segment.m_Origin.y));
+    const __m128d dirXY = _mm_setr_pd(segment.m_Direction.x, segment.m_Direction.y);
+    const double dx = _mm_cvtsd_f64(diffXY);
+    const double dy = _mm_cvtsd_f64(_mm_unpackhi_pd(diffXY, diffXY));
+    const double dz = double(point.z) - segment.m_Origin.z;
+    const double vx = segment.m_Direction.x, vy = segment.m_Direction.y, vz = segment.m_Direction.z;
+    const __m128d dotXY = _mm_mul_pd(diffXY, dirXY);
+    const double dot = _mm_cvtsd_f64(_mm_add_sd(dotXY, _mm_unpackhi_pd(dotXY, dotXY))) + dz * vz;
+    double t = 0.0, square;
+    if (dot > 0.0) {
+        const __m128d lengthXY = _mm_mul_pd(dirXY, dirXY);
+        const double length = _mm_cvtsd_f64(_mm_add_sd(lengthXY, _mm_unpackhi_pd(lengthXY, lengthXY))) + vz * vz;
+        if (dot < length) {
+            t = dot / length;
+            const __m128d crossXY = _mm_sub_pd(_mm_mul_pd(_mm_setr_pd(dy, dz), _mm_setr_pd(vz, vx)),
+                                              _mm_mul_pd(_mm_setr_pd(dz, dx), _mm_setr_pd(vy, vz)));
+            const double crossZ = dx * vy - dy * vx;
+            const __m128d squareXY = _mm_mul_pd(crossXY, crossXY);
+            square = (_mm_cvtsd_f64(_mm_add_sd(squareXY, _mm_unpackhi_pd(squareXY, squareXY))) + crossZ * crossZ) / length;
         } else {
-            t = 1.0f;
-            diff = _mm_sub_ps(diff, directionV);
+            t = 1.0;
+            const __m128d endXY = _mm_sub_pd(diffXY, dirXY);
+            const double endZ = dz - vz;
+            const __m128d squareXY = _mm_mul_pd(endXY, endXY);
+            square = _mm_cvtsd_f64(_mm_add_sd(squareXY, _mm_unpackhi_pd(squareXY, squareXY))) + endZ * endZ;
         }
     } else {
-        t = 0.0f;
+        // Zero direction also takes the original segment-origin branch.
+        const __m128d squareXY = _mm_mul_pd(diffXY, diffXY);
+        square = _mm_cvtsd_f64(_mm_add_sd(squareXY, _mm_unpackhi_pd(squareXY, squareXY))) + dz * dz;
     }
-
-    if (t0) *t0 = t;
-
-    return VxSIMDExtractX(VxSIMDDotProduct3(diff, diff));
+    const float result = float(square);
+    if (t0) *t0 = float(t);
+    return result;
 }
+
 #endif
 
 static float PointLineSquareDistanceScalarImpl(const VxVector &point, const VxRay &line, float *t0) {
@@ -186,27 +201,31 @@ static float PointRaySquareDistanceScalarImpl(const VxVector &point, const VxRay
 }
 
 static float PointSegmentSquareDistanceScalarImpl(const VxVector &point, const VxRay &segment, float *t0) {
-    VxVector diff = point - segment.m_Origin;
-    const float dotDiffDir = DotProduct(diff, segment.m_Direction);
-
-    float t;
-    if (dotDiffDir > 0.0f) {
-        const float dotDirDir = SquareMagnitude(segment.m_Direction);
-        if (dotDiffDir < dotDirDir) {
-            t = dotDiffDir / dotDirDir;
-            diff -= segment.m_Direction * t;
+    const double dx = double(point.x) - segment.m_Origin.x;
+    const double dy = double(point.y) - segment.m_Origin.y;
+    const double dz = double(point.z) - segment.m_Origin.z;
+    const double vx = segment.m_Direction.x, vy = segment.m_Direction.y, vz = segment.m_Direction.z;
+    const double dot = dx * vx + dy * vy + dz * vz;
+    double t = 0.0, square;
+    if (dot > 0.0) {
+        const double length = vx * vx + vy * vy + vz * vz;
+        if (dot < length) {
+            t = dot / length;
+            const double crossX = dy * vz - dz * vy;
+            const double crossY = dz * vx - dx * vz;
+            const double crossZ = dx * vy - dy * vx;
+            square = (crossX * crossX + crossY * crossY + crossZ * crossZ) / length;
         } else {
-            // clamp to segment end
-            t = 1.0f;
-            diff -= segment.m_Direction;
+            t = 1.0;
+            const double endX = dx - vx, endY = dy - vy, endZ = dz - vz;
+            square = endX * endX + endY * endY + endZ * endZ;
         }
     } else {
-        t = 0.0f;
+        square = dx * dx + dy * dy + dz * dz;
     }
-
-    if (t0) *t0 = t;
-
-    return SquareMagnitude(diff);
+    const float result = float(square);
+    if (t0) *t0 = float(t);
+    return result;
 }
 
 typedef RayPairTerms (*MakeRayPairTermsDispatchFn)(const VxRay &, const VxRay &);

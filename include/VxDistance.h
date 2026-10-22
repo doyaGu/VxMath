@@ -167,6 +167,10 @@ public:
      * @param t0 Pointer to a float to store the parameter of the closest point on the segment. Can be NULL.
      * @return The squared distance between the point and the segment.
      */
+    // Uses the supplied direction as the segment extent, with parameter in [0,1].
+    // Nonpositive projection selects the origin (also for zero direction);
+    // projection at or beyond the direction's squared length selects the end.
+    // No epsilon is applied; the optional parameter is written after evaluation.
     VX_EXPORT static float PointSegmentSquareDistance(const VxVector &point, const VxRay &segment, float *t0 = NULL);
 
     /**

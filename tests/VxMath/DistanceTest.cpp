@@ -54,26 +54,17 @@ float PointRaySquareDistanceScalarRef(const VxVector& point, const VxRay& ray, f
 }
 
 float PointSegmentSquareDistanceScalarRef(const VxVector& point, const VxRay& segment, float* t0) {
-    VxVector diff = SubtractScalar(point, segment.m_Origin);
-    const float dotDiffDir = Dot3Scalar(diff, segment.m_Direction);
-
-    float t;
-    if (dotDiffDir > 0.0f) {
-        const float dotDirDir = SquareMagnitudeScalar(segment.m_Direction);
-        if (dotDiffDir < dotDirDir) {
-            t = dotDiffDir / dotDirDir;
-            diff = SubtractScaled(diff, segment.m_Direction, t);
-        } else {
-            t = 1.0f;
-            diff = SubtractScalar(diff, segment.m_Direction);
-        }
-    } else {
-        t = 0.0f;
+    // Independent constrained Gram determinant and quadratic endpoint value.
+    double magnitude = 0, length = 0, dot = 0;
+    for (int i = 0; i < 3; ++i) {
+        const double diff = double(point[i]) - segment.m_Origin[i];
+        const double direction = segment.m_Direction[i];
+        magnitude += diff * diff;
+        length += direction * direction;
+        dot += diff * direction;
     }
-
-    if (t0) *t0 = t;
-
-    return SquareMagnitudeScalar(diff);
+    if (t0) *t0 = dot <= 0 ? 0 : dot >= length ? 1 : float(dot / length);
+    return float(dot <= 0 ? magnitude : dot >= length ? magnitude - 2 * dot + length : (magnitude * length - dot * dot) / length);
 }
 
 void ExpectDistanceOrClassifyEqual(float actual, float expected, float tol) {
@@ -244,7 +235,7 @@ TEST_F(VxDistanceTest, PointSegmentSquareDistance_PointOffSegment) {
     EXPECT_NEAR(t, 0.5f, BINARY_TOL);
 }
 
-TEST_F(VxDistanceTest, PointDistanceVariants_MatchScalarReferenceAcrossEdgeInputs) {
+TEST_F(VxDistanceTest, PointDistanceVariants_MatchGeometryReferenceAcrossEdgeInputs) {
     struct PointDistanceCase {
         VxVector point;
         VxVector origin;
