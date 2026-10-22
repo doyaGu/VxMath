@@ -13,7 +13,7 @@
 #include "VxIntersectDispatchStateInternal.h"
 
 constexpr float kHugeT = 1.0e30f;
-constexpr float kSegmentMaxT = 1.0f;
+constexpr float kSegmentMaxT = 1.0f + EPSILON;
 
 namespace {
 
@@ -518,7 +518,43 @@ namespace {
 
 template <bool kUseSIMD>
 static XBOOL SegmentBoxCore(const VxRay &segment, const VxBbox &box) {
-#if defined(VX_SIMD_SSE)
+#if defined(VX_SIMD_SSE2)
+    if constexpr (kUseSIMD) {
+        const __m128 origin = VxSIMDLoadVector3(segment.m_Origin), direction = VxSIMDLoadVector3(segment.m_Direction);
+        const __m128 minimum = VxSIMDLoadVector3(box.Min), maximum = VxSIMDLoadVector3(box.Max);
+        const int parallel = _mm_movemask_ps(_mm_cmpeq_ps(direction, _mm_setzero_ps())) & 7;
+        const __m128 outside = _mm_or_ps(_mm_cmplt_ps(origin, minimum), _mm_cmpgt_ps(origin, maximum));
+        if (_mm_movemask_ps(outside) & parallel) return FALSE;
+        const __m128d originXY = _mm_cvtps_pd(origin), originZ = _mm_cvtps_pd(_mm_movehl_ps(origin, origin));
+        const __m128d endXY = _mm_add_pd(originXY, _mm_cvtps_pd(direction));
+        const __m128d endZ = _mm_add_sd(originZ, _mm_cvtps_pd(_mm_movehl_ps(direction, direction)));
+        const __m128d minXY = _mm_cvtps_pd(minimum), maxXY = _mm_cvtps_pd(maximum);
+        const __m128d minZ = _mm_cvtps_pd(_mm_movehl_ps(minimum, minimum)), maxZ = _mm_cvtps_pd(_mm_movehl_ps(maximum, maximum));
+        // Preserve endpoint separation even when a quotient just past t=1
+        // rounds to one after cancellation against a very large origin.
+        const __m128d outsideXY = _mm_or_pd(_mm_and_pd(_mm_cmplt_pd(originXY, minXY), _mm_cmplt_pd(endXY, minXY)),
+            _mm_and_pd(_mm_cmpgt_pd(originXY, maxXY), _mm_cmpgt_pd(endXY, maxXY)));
+        const __m128d outsideZ = _mm_or_pd(_mm_and_pd(_mm_cmplt_sd(originZ, minZ), _mm_cmplt_sd(endZ, minZ)),
+            _mm_and_pd(_mm_cmpgt_sd(originZ, maxZ), _mm_cmpgt_sd(endZ, maxZ)));
+        if (_mm_movemask_pd(outsideXY) || (_mm_movemask_pd(outsideZ) & 1)) return FALSE;
+        // Parallel lanes are ignored below; a unit denominator avoids 0/0.
+        const __m128d directionXY = _mm_set_pd(parallel & 2 ? 1.0 : segment.m_Direction.y, parallel & 1 ? 1.0 : segment.m_Direction.x);
+        const __m128d directionZ = _mm_set_sd(parallel & 4 ? 1.0 : segment.m_Direction.z);
+        const __m128d firstXY = _mm_div_pd(_mm_sub_pd(_mm_cvtps_pd(minimum), originXY), directionXY);
+        const __m128d lastXY = _mm_div_pd(_mm_sub_pd(_mm_cvtps_pd(maximum), originXY), directionXY);
+        const __m128d firstZ = _mm_div_sd(_mm_sub_sd(_mm_cvtps_pd(_mm_movehl_ps(minimum, minimum)), originZ), directionZ);
+        const __m128d lastZ = _mm_div_sd(_mm_sub_sd(_mm_cvtps_pd(_mm_movehl_ps(maximum, maximum)), originZ), directionZ);
+        double low[3], high[3];
+        _mm_storeu_pd(low, _mm_min_pd(firstXY, lastXY)); _mm_storeu_pd(high, _mm_max_pd(firstXY, lastXY));
+        low[2] = _mm_cvtsd_f64(_mm_min_sd(firstZ, lastZ)); high[2] = _mm_cvtsd_f64(_mm_max_sd(firstZ, lastZ));
+        double nearT = 0.0, farT = 1.0;
+        for (int i = 0; i < 3; ++i) if (!(parallel & (1 << i))) {
+            if (low[i] > nearT) nearT = low[i];
+            if (high[i] < farT) farT = high[i];
+        }
+        return nearT <= farT;
+    }
+#elif defined(VX_SIMD_SSE)
     if constexpr (kUseSIMD) {
         const __m128 boxMin = VxSIMDLoadVector3(box.Min);
         const __m128 boxMax = VxSIMDLoadVector3(box.Max);
@@ -548,51 +584,25 @@ static XBOOL SegmentBoxCore(const VxRay &segment, const VxBbox &box) {
         return TRUE;
     }
 #endif
-    // Get box center and half-extents
-    float boxHalfX = (box.Max.x - box.Min.x) * 0.5f;
-    float boxHalfY = (box.Max.y - box.Min.y) * 0.5f;
-    float boxHalfZ = (box.Max.z - box.Min.z) * 0.5f;
-
-    // Segment half-vector
-    float segHalfX = segment.m_Direction.x * 0.5f;
-    float segHalfY = segment.m_Direction.y * 0.5f;
-    float segHalfZ = segment.m_Direction.z * 0.5f;
-    
-    // Segment center
-    float segCenterX = segHalfX + segment.m_Origin.x;
-    float segCenterY = segHalfY + segment.m_Origin.y;
-    float segCenterZ = segHalfZ + segment.m_Origin.z;
-    
-    VxVector boxCenter = (box.Max + box.Min) * 0.5f;
-
-    // Vector from box center to segment center
-    float dx = segCenterX - boxCenter.x;
-    float dy = segCenterY - boxCenter.y;
-    float dz = segCenterZ - boxCenter.z;
-
-    // Test separating axes
-    float absSegHalfX = XAbs(segHalfX);
-    if (XAbs(dx) > absSegHalfX + boxHalfX) return FALSE;
-    
-    float absSegHalfY = XAbs(segHalfY);
-    if (XAbs(dy) > absSegHalfY + boxHalfY) return FALSE;
-    
-    float absSegHalfZ = XAbs(segHalfZ);
-    if (XAbs(dz) > absSegHalfZ + boxHalfZ) return FALSE;
-
-    // Test cross product axes (d x Direction)
-    float crossY = segHalfZ * dx - dz * segHalfX;
-    float crossZ = dy * segHalfX - segHalfY * dx;
-    
-    // Cross X = dz * segHalfY - segHalfZ * dy
-    if (XAbs(dz * segHalfY - segHalfZ * dy) > absSegHalfZ * boxHalfY + absSegHalfY * boxHalfZ)
-        return FALSE;
-    if (XAbs(crossY) > absSegHalfZ * boxHalfX + absSegHalfX * boxHalfZ)
-        return FALSE;
-    if (XAbs(crossZ) > absSegHalfY * boxHalfX + absSegHalfX * boxHalfY)
-        return FALSE;
-
-    return TRUE;
+    // Closed segment membership is t in [0,1], without the detailed
+    // overload's absolute thresholds or its boundary-crossing requirement.
+    // Widen before interval arithmetic and preserve endpoint separation.
+    double nearT = 0.0, farT = 1.0;
+    for (int i = 0; i < 3; ++i) {
+        const double origin = segment.m_Origin[i], direction = segment.m_Direction[i];
+        const double endpoint = origin + direction;
+        if ((origin < box.Min[i] && endpoint < box.Min[i]) || (origin > box.Max[i] && endpoint > box.Max[i])) return FALSE;
+        if (direction == 0.0) {
+            if (origin < box.Min[i] || origin > box.Max[i]) return FALSE;
+            continue;
+        }
+        const double first = (double(box.Min[i]) - origin) / direction;
+        const double last = (double(box.Max[i]) - origin) / direction;
+        const double low = direction > 0.0 ? first : last, high = direction > 0.0 ? last : first;
+        if (low > nearT) nearT = low;
+        if (high < farT) farT = high;
+    }
+    return nearT <= farT;
 }
 
 } // namespace
@@ -606,7 +616,48 @@ namespace {
 
 template <bool kUseSIMD>
 static int SegmentBoxDetailedCore(const VxRay &segment, const VxBbox &box, VxVector &inpoint, VxVector *outpoint, VxVector *innormal, VxVector *outnormal) {
-#if defined(VX_SIMD_SSE)
+#if defined(VX_SIMD_SSE2)
+    if constexpr (kUseSIMD) {
+        const __m128 origin = VxSIMDLoadVector3(segment.m_Origin), direction = VxSIMDLoadVector3(segment.m_Direction);
+        const __m128 minimum = VxSIMDLoadVector3(box.Min), maximum = VxSIMDLoadVector3(box.Max);
+        const int parallel = _mm_movemask_ps(_mm_cmplt_ps(VxSIMDAbs3(direction), _mm_set1_ps(EPSILON))) & 7;
+        const __m128 outside = _mm_or_ps(_mm_cmplt_ps(origin, minimum), _mm_cmpgt_ps(origin, maximum));
+        if (_mm_movemask_ps(outside) & parallel) return 0;
+        if (parallel == 7) return 0;
+        const __m128d originXY = _mm_cvtps_pd(origin), originZ = _mm_cvtps_pd(_mm_movehl_ps(origin, origin));
+        const __m128d directionXY = _mm_set_pd(parallel & 2 ? 1.0 : segment.m_Direction.y, parallel & 1 ? 1.0 : segment.m_Direction.x);
+        const __m128d directionZ = _mm_set_sd(parallel & 4 ? 1.0 : segment.m_Direction.z);
+        const __m128d firstXY = _mm_div_pd(_mm_sub_pd(_mm_cvtps_pd(minimum), originXY), directionXY);
+        const __m128d lastXY = _mm_div_pd(_mm_sub_pd(_mm_cvtps_pd(maximum), originXY), directionXY);
+        const __m128d firstZ = _mm_div_sd(_mm_sub_sd(_mm_cvtps_pd(_mm_movehl_ps(minimum, minimum)), originZ), directionZ);
+        const __m128d lastZ = _mm_div_sd(_mm_sub_sd(_mm_cvtps_pd(_mm_movehl_ps(maximum, maximum)), originZ), directionZ);
+        double low[3], high[3];
+        _mm_storeu_pd(low, _mm_min_pd(firstXY, lastXY)); _mm_storeu_pd(high, _mm_max_pd(firstXY, lastXY));
+        low[2] = _mm_cvtsd_f64(_mm_min_sd(firstZ, lastZ)); high[2] = _mm_cvtsd_f64(_mm_max_sd(firstZ, lastZ));
+        double nearT = -DBL_MAX, farT = DBL_MAX;
+        int nearAxis = 0, farAxis = 0;
+        for (int i = 0; i < 3; ++i) if (!(parallel & (1 << i))) {
+            if (low[i] > nearT) { nearT = low[i]; nearAxis = i; }
+            if (high[i] < farT) { farT = high[i]; farAxis = i; }
+        }
+        if (nearT > farT || farT < EPSILON) return 0;
+        if (nearT > kSegmentMaxT || (nearT < EPSILON && farT > kSegmentMaxT)) return 0;
+        const __m128d actualXY = _mm_cvtps_pd(direction), actualZ = _mm_cvtps_pd(_mm_movehl_ps(direction, direction));
+        const __m128 entryXY = _mm_cvtpd_ps(_mm_add_pd(originXY, _mm_mul_pd(actualXY, _mm_set1_pd(nearT))));
+        const __m128 entryZ = _mm_cvtsd_ss(_mm_setzero_ps(), _mm_add_sd(originZ, _mm_mul_sd(actualZ, _mm_set_sd(nearT))));
+        VxSIMDStoreFloat3(&inpoint.x, _mm_movelh_ps(entryXY, entryZ));
+        inpoint[nearAxis] = segment.m_Direction[nearAxis] > 0.0f ? box.Min[nearAxis] : box.Max[nearAxis];
+        if (outpoint) {
+            const __m128 exitXY = _mm_cvtpd_ps(_mm_add_pd(originXY, _mm_mul_pd(actualXY, _mm_set1_pd(farT))));
+            const __m128 exitZ = _mm_cvtsd_ss(_mm_setzero_ps(), _mm_add_sd(originZ, _mm_mul_sd(actualZ, _mm_set_sd(farT))));
+            VxSIMDStoreFloat3(&outpoint->x, _mm_movelh_ps(exitXY, exitZ));
+            (*outpoint)[farAxis] = segment.m_Direction[farAxis] > 0.0f ? box.Max[farAxis] : box.Min[farAxis];
+        }
+        if (innormal) { *innormal = VxVector::axis0(); (*innormal)[nearAxis] = segment.m_Direction[nearAxis] > 0.0f ? -1.0f : 1.0f; }
+        if (outnormal) { *outnormal = VxVector::axis0(); (*outnormal)[farAxis] = segment.m_Direction[farAxis] > 0.0f ? -1.0f : 1.0f; }
+        return nearT <= EPSILON ? -1 : 1;
+    }
+#elif defined(VX_SIMD_SSE)
     if constexpr (kUseSIMD) {
         float tNear = -kHugeT;
         float tFar = kHugeT;
@@ -670,31 +721,33 @@ static int SegmentBoxDetailedCore(const VxRay &segment, const VxBbox &box, VxVec
         return (tNear <= EPSILON) ? -1 : 1;
     }
 #endif
-    float tNear = -kHugeT;
-    float tFar = kHugeT;
+    // Retain the original absolute thresholds, tie order and normal signs.
+    // Finite float coordinates and active directions fit in double parameter
+    // range; the old +/-1e30 sentinels could truncate or reject real hits.
+    double tNear = -DBL_MAX;
+    double tFar = DBL_MAX;
     int nearAxis = 0;
-    float nearSign = -1.0f;
     int farAxis = 0;
-    float farSign = 1.0f;
+    bool active = false;
 
     for (int i = 0; i < 3; ++i) {
-        const float segDir = segment.m_Direction[i];
-        const float segOrigin = segment.m_Origin[i];
+        const float rayDir = segment.m_Direction[i];
+        const float rayOrigin = segment.m_Origin[i];
         const float boxMin = box.Min[i];
         const float boxMax = box.Max[i];
 
-        if (fabsf(segDir) < EPSILON) {
-            if (!SlabContainsParallel(segOrigin, boxMin, boxMax))
+        if (fabsf(rayDir) < EPSILON) {
+            if (!SlabContainsParallel(rayOrigin, boxMin, boxMax))
                 return 0;
             continue;
         }
 
-        const float invDir = 1.0f / segDir;
-        float t1 = (boxMin - segOrigin) * invDir;
-        float t2 = (boxMax - segOrigin) * invDir;
+        active = true;
+        double t1 = (double(boxMin) - rayOrigin) / double(rayDir);
+        double t2 = (double(boxMax) - rayOrigin) / double(rayDir);
 
         if (t1 > t2) {
-            const float tmp = t1;
+            const double tmp = t1;
             t1 = t2;
             t2 = tmp;
         }
@@ -702,37 +755,38 @@ static int SegmentBoxDetailedCore(const VxRay &segment, const VxBbox &box, VxVec
         if (t1 > tNear) {
             tNear = t1;
             nearAxis = i;
-            nearSign = OppositeDirSign(segDir);
         }
 
         if (t2 < tFar) {
             tFar = t2;
             farAxis = i;
-            farSign = OppositeDirSign(segDir);
         }
 
         if (tNear > tFar || tFar < EPSILON)
             return 0;
     }
 
-    // Segment parameter range is [0, 1].
-    if (tNear > kSegmentMaxT)
-        return 0;
-    if (tNear < EPSILON && tFar > kSegmentMaxT)
-        return 0;
-
-    inpoint = segment.m_Origin + segment.m_Direction * tNear;
-    if (outpoint)
-        *outpoint = segment.m_Origin + segment.m_Direction * tFar;
+    // The detailed API reports surface crossings, not a clipped segment.
+    // A contained segment (including an all-parallel one) has no crossing.
+    if (!active) return 0;
+    if (tNear > kSegmentMaxT || (tNear < EPSILON && tFar > kSegmentMaxT)) return 0;
+    for (int i = 0; i < 3; ++i) inpoint[i] = float(double(segment.m_Origin[i]) + double(segment.m_Direction[i]) * tNear);
+    // The selected face coordinate is known exactly, even when origin+t*d
+    // loses that small boundary in cancellation against a very large origin.
+    inpoint[nearAxis] = segment.m_Direction[nearAxis] > 0.0f ? box.Min[nearAxis] : box.Max[nearAxis];
+    if (outpoint) {
+        for (int i = 0; i < 3; ++i) (*outpoint)[i] = float(double(segment.m_Origin[i]) + double(segment.m_Direction[i]) * tFar);
+        (*outpoint)[farAxis] = segment.m_Direction[farAxis] > 0.0f ? box.Max[farAxis] : box.Min[farAxis];
+    }
 
     if (innormal) {
         *innormal = VxVector::axis0();
-        (*innormal)[nearAxis] = nearSign;
+        (*innormal)[nearAxis] = segment.m_Direction[nearAxis] > 0.0f ? -1.0f : 1.0f;
     }
 
     if (outnormal) {
         *outnormal = VxVector::axis0();
-        (*outnormal)[farAxis] = farSign;
+        (*outnormal)[farAxis] = segment.m_Direction[farAxis] > 0.0f ? -1.0f : 1.0f;
     }
 
     return (tNear <= EPSILON) ? -1 : 1;

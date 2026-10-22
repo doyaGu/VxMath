@@ -38,11 +38,14 @@ public:
      */
     VX_EXPORT static XBOOL RayBox(const VxRay &ray, const VxBbox &box, VxVector &inpoint, VxVector *outpoint = NULL, VxVector *innormal = NULL, VxVector *outnormal = NULL);
 
-    /// @brief Checks for intersection between a line segment and an AABB.
+    /// @brief Tests closed segment overlap for origin+t*direction, 0 <= t <= 1.
     VX_EXPORT static XBOOL SegmentBox(const VxRay &ray, const VxBbox &box);
     /**
-     * @brief Finds the intersection points of a line segment with an AABB.
-     * @return Returns TRUE if they intersect. Returns -1 in inpoint.x if the segment's origin is inside the box.
+     * @brief Reports segment surface crossings using the original absolute 2^-23 thresholds.
+     * Rejects entry > 1+2^-23, and entry < 2^-23 with exit > 1+2^-23 (contained segment).
+     * @return 0 on failure, -1 when entry <= 2^-23, otherwise 1; failure preserves outputs.
+     * Writes full line entry/exit points without clipping to [0,1]. Both normals oppose
+     * their direction component; tied faces prefer X, then Y, then Z.
      */
     VX_EXPORT static XBOOL SegmentBox(const VxRay &ray, const VxBbox &box, VxVector &inpoint, VxVector *outpoint = NULL, VxVector *innormal = NULL, VxVector *outnormal = NULL);
 
