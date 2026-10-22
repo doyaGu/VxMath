@@ -67,6 +67,51 @@ static inline RayPairTerms MakeRayPairTermsSIMD(const VxRay& r0, const VxRay& r1
     return t;
 }
 
+static float LineLineSquareDistanceSIMDImpl(const VxRay &line0, const VxRay &line1, float *t0, float *t1) {
+    const __m128d wXY = _mm_sub_pd(_mm_setr_pd(line0.m_Origin.x, line0.m_Origin.y),
+                                  _mm_setr_pd(line1.m_Origin.x, line1.m_Origin.y));
+    const double wx = _mm_cvtsd_f64(wXY);
+    const double wy = _mm_cvtsd_f64(_mm_unpackhi_pd(wXY, wXY));
+    const double wz = double(line0.m_Origin.z) - line1.m_Origin.z;
+    const double ux = line0.m_Direction.x, uy = line0.m_Direction.y, uz = line0.m_Direction.z;
+    const double vx = line1.m_Direction.x, vy = line1.m_Direction.y, vz = line1.m_Direction.z;
+    const __m128d nXY = _mm_sub_pd(_mm_mul_pd(_mm_setr_pd(uy, uz), _mm_setr_pd(vz, vx)),
+                                  _mm_mul_pd(_mm_setr_pd(uz, ux), _mm_setr_pd(vy, vz)));
+    const double nz = ux * vy - uy * vx;
+    const __m128d nSquareXY = _mm_mul_pd(nXY, nXY);
+    const double denominator = _mm_cvtsd_f64(_mm_add_sd(nSquareXY, _mm_unpackhi_pd(nSquareXY, nSquareXY))) + nz * nz;
+    double s, t, square;
+    if (denominator == 0.0) {
+        const __m128d uXY = _mm_setr_pd(ux, uy);
+        const __m128d lengthXY = _mm_mul_pd(uXY, uXY);
+        const __m128d dotXY = _mm_mul_pd(wXY, uXY);
+        const double length = _mm_cvtsd_f64(_mm_add_sd(lengthXY, _mm_unpackhi_pd(lengthXY, lengthXY))) + uz * uz;
+        s = -(_mm_cvtsd_f64(_mm_add_sd(dotXY, _mm_unpackhi_pd(dotXY, dotXY))) + wz * uz) / length;
+        t = 0.0;
+        const __m128d cXY = _mm_sub_pd(_mm_mul_pd(_mm_setr_pd(wy, wz), _mm_setr_pd(uz, ux)),
+                                      _mm_mul_pd(_mm_setr_pd(wz, wx), _mm_setr_pd(uy, uz)));
+        const double cz = wx * uy - wy * ux;
+        const __m128d cSquareXY = _mm_mul_pd(cXY, cXY);
+        square = (_mm_cvtsd_f64(_mm_add_sd(cSquareXY, _mm_unpackhi_pd(cSquareXY, cSquareXY))) + cz * cz) / length;
+    } else {
+        const __m128d vCrossWXY = _mm_sub_pd(_mm_mul_pd(_mm_setr_pd(vy, vz), _mm_setr_pd(wz, wx)),
+                                           _mm_mul_pd(_mm_setr_pd(vz, vx), _mm_setr_pd(wy, wz)));
+        const __m128d uCrossWXY = _mm_sub_pd(_mm_mul_pd(_mm_setr_pd(uy, uz), _mm_setr_pd(wz, wx)),
+                                           _mm_mul_pd(_mm_setr_pd(uz, ux), _mm_setr_pd(wy, wz)));
+        const __m128d sXY = _mm_mul_pd(vCrossWXY, nXY);
+        const __m128d tXY = _mm_mul_pd(uCrossWXY, nXY);
+        s = (_mm_cvtsd_f64(_mm_add_sd(sXY, _mm_unpackhi_pd(sXY, sXY))) + (vx * wy - vy * wx) * nz) / denominator;
+        t = (_mm_cvtsd_f64(_mm_add_sd(tXY, _mm_unpackhi_pd(tXY, tXY))) + (ux * wy - uy * wx) * nz) / denominator;
+        const __m128d heightXY = _mm_mul_pd(wXY, nXY);
+        const double height = _mm_cvtsd_f64(_mm_add_sd(heightXY, _mm_unpackhi_pd(heightXY, heightXY))) + wz * nz;
+        square = height * height / denominator;
+    }
+    const float result = float(square);
+    if (t0) *t0 = float(s);
+    if (t1) *t1 = float(t);
+    return result;
+}
+
 static float PointLineSquareDistanceSIMDImpl(const VxVector &point, const VxRay &line, float *t0) {
     const __m128d diffXY = _mm_sub_pd(_mm_setr_pd(point.x, point.y),
                                      _mm_setr_pd(line.m_Origin.x, line.m_Origin.y));
@@ -163,6 +208,40 @@ static float PointSegmentSquareDistanceSIMDImpl(const VxVector &point, const VxR
 
 #endif
 
+static float LineLineSquareDistanceScalarImpl(const VxRay &line0, const VxRay &line1, float *t0, float *t1) {
+    const double wx = double(line0.m_Origin.x) - line1.m_Origin.x;
+    const double wy = double(line0.m_Origin.y) - line1.m_Origin.y;
+    const double wz = double(line0.m_Origin.z) - line1.m_Origin.z;
+    const double ux = line0.m_Direction.x, uy = line0.m_Direction.y, uz = line0.m_Direction.z;
+    const double vx = line1.m_Direction.x, vy = line1.m_Direction.y, vz = line1.m_Direction.z;
+    const double nx = uy * vz - uz * vy;
+    const double ny = uz * vx - ux * vz;
+    const double nz = ux * vy - uy * vx;
+    const double denominator = nx * nx + ny * ny + nz * nz;
+    double s, t, square;
+    if (denominator == 0.0) {
+        // Preserve the original parallel convention: choose the second origin.
+        const double length = ux * ux + uy * uy + uz * uz;
+        s = -(wx * ux + wy * uy + wz * uz) / length;
+        t = 0.0;
+        const double cx = wy * uz - wz * uy;
+        const double cy = wz * ux - wx * uz;
+        const double cz = wx * uy - wy * ux;
+        square = (cx * cx + cy * cy + cz * cz) / length;
+    } else {
+        // Cross products avoid the cancellation in |u|^2|v|^2-(u.v)^2
+        // and in the expanded squared distance. No absolute scale threshold.
+        s = ((vy * wz - vz * wy) * nx + (vz * wx - vx * wz) * ny + (vx * wy - vy * wx) * nz) / denominator;
+        t = ((uy * wz - uz * wy) * nx + (uz * wx - ux * wz) * ny + (ux * wy - uy * wx) * nz) / denominator;
+        const double height = wx * nx + wy * ny + wz * nz;
+        square = height * height / denominator;
+    }
+    const float result = float(square);
+    if (t0) *t0 = float(s);
+    if (t1) *t1 = float(t);
+    return result;
+}
+
 static float PointLineSquareDistanceScalarImpl(const VxVector &point, const VxRay &line, float *t0) {
     const double dx = double(point.x) - line.m_Origin.x;
     const double dy = double(point.y) - line.m_Origin.y;
@@ -229,10 +308,12 @@ static float PointSegmentSquareDistanceScalarImpl(const VxVector &point, const V
 }
 
 typedef RayPairTerms (*MakeRayPairTermsDispatchFn)(const VxRay &, const VxRay &);
+typedef float (*LineDistanceDispatchFn)(const VxRay &, const VxRay &, float *, float *);
 typedef float (*PointDistanceDispatchFn)(const VxVector &, const VxRay &, float *);
 
 struct VxDistanceDispatchTable {
     MakeRayPairTermsDispatchFn makeRayPairTerms;
+    LineDistanceDispatchFn lineLineSquareDistance;
     PointDistanceDispatchFn pointLineSquareDistance;
     PointDistanceDispatchFn pointRaySquareDistance;
     PointDistanceDispatchFn pointSegmentSquareDistance;
@@ -240,6 +321,7 @@ struct VxDistanceDispatchTable {
 
 const VxDistanceDispatchTable kVxDistanceDispatchScalar = {
     MakeRayPairTermsScalar,
+    LineLineSquareDistanceScalarImpl,
     PointLineSquareDistanceScalarImpl,
     PointRaySquareDistanceScalarImpl,
     PointSegmentSquareDistanceScalarImpl
@@ -248,6 +330,7 @@ const VxDistanceDispatchTable kVxDistanceDispatchScalar = {
 #if defined(VX_SIMD_SSE)
 const VxDistanceDispatchTable kVxDistanceDispatchSIMD = {
     MakeRayPairTermsSIMD,
+    LineLineSquareDistanceSIMDImpl,
     PointLineSquareDistanceSIMDImpl,
     PointRaySquareDistanceSIMDImpl,
     PointSegmentSquareDistanceSIMDImpl
@@ -285,28 +368,7 @@ static inline float DistanceQuadraticPart(const RayPairTerms& t, float s0, float
 // Line-Line distance calculations
 
 float VxDistance::LineLineSquareDistance(const VxRay &line0, const VxRay &line1, float *t0, float *t1) {
-    const RayPairTerms t = MakeRayPairTerms(line0, line1);
-
-    float s0;
-    float s1;
-    float quad;
-
-    if (t.det < EPSILON) {
-        // Parallel case
-        s1 = 0.0f;
-        s0 = -(t.d / t.a);
-        quad = t.d * s0;
-    } else {
-        const float invDet = 1.0f / t.det;
-        s0 = (t.e * t.b - t.d * t.c) * invDet;
-        s1 = (t.d * t.b - t.e * t.a) * invDet;
-        quad = DistanceQuadraticPart(t, s0, s1);
-    }
-
-    if (t0) *t0 = s0;
-    if (t1) *t1 = s1;
-
-    return XAbs(quad + t.f);
+    return GetVxDistanceDispatchTable()->lineLineSquareDistance(line0, line1, t0, t1);
 }
 
 float VxDistance::LineRaySquareDistance(const VxRay &line, const VxRay &ray, float *t0, float *t1) {

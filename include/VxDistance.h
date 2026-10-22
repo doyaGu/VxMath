@@ -30,7 +30,11 @@ public:
      * @param t0 Pointer to a float to store the parameter of the closest point on the first line. Can be NULL.
      * @param t1 Pointer to a float to store the parameter of the closest point on the second line. Can be NULL.
      * @return The squared distance between the two lines.
-     * @remarks Using squared distance is faster for comparisons as it avoids a square root operation.
+     * @remarks Parameters are unbounded. Exactly parallel directions select t1=0
+     * and project the second origin onto the first line. A zero first direction
+     * retains the original undefined projection (NaN); a zero second direction
+     * uses the same parallel convention. Nonparallel lines use their true
+     * closest points even below the original absolute determinant threshold.
      */
     VX_EXPORT static float LineLineSquareDistance(const VxRay &line0, const VxRay &line1, float *t0 = NULL, float *t1 = NULL);
 

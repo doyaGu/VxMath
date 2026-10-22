@@ -179,6 +179,7 @@ set(VXMATH_TEST_SOURCES
         PointLineDistanceReferenceTest.cpp
         PointRayDistanceReferenceTest.cpp
         PointSegmentDistanceReferenceTest.cpp
+        LineLineDistanceReferenceTest.cpp
         # SIMD Tests
         SIMDFeatureTest.cpp
         SIMDUtilityTest.cpp
@@ -417,3 +418,7 @@ foreach(_backend none sse2 ssse3 sse4_1 avx avx2 auto)
             COMMAND BlitEngineSIMDBackendDiffTest --simd-backend=${_backend}
     )
 endforeach ()
+
+vx_add_test(LineLineDistanceScalarReferenceTest SOURCES LineLineDistanceReferenceTest.cpp)
+target_compile_definitions(LineLineDistanceScalarReferenceTest PRIVATE VX_SIMD_NONE=1)
+vx_copy_runtime_dependencies(LineLineDistanceScalarReferenceTest)
