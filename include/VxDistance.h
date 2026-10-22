@@ -89,6 +89,10 @@ public:
      * @param t0 Pointer to a float to store the parameter of the closest point on the ray. Can be NULL.
      * @param t1 Pointer to a float to store the parameter of the closest point on the segment. Can be NULL.
      * @return The squared distance between the ray and the segment.
+     * @remarks For nonzero directions the ray parameter is nonnegative and
+     * the segment parameter is in [0,1]. Parallel directions retain the
+     * original endpoint representative: end when codirected, start otherwise.
+     * Zero directions retain the original parallel-branch endpoint arithmetic.
      */
     VX_EXPORT static float RaySegmentSquareDistance(const VxRay &ray, const VxRay &segment, float *t0 = NULL, float *t1 = NULL);
 
