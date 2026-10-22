@@ -75,6 +75,10 @@ public:
      * @param t0 Pointer to a float to store the parameter of the closest point on the first ray. Can be NULL.
      * @param t1 Pointer to a float to store the parameter of the closest point on the second ray. Can be NULL.
      * @return The squared distance between the two rays.
+     * @remarks For nonzero directions both parameters have a zero lower bound
+     * and no upper bound. Parallel overlap keeps the original representative;
+     * opposed rays pointing away use their origins. Zero directions retain
+     * legacy arithmetic, which may produce a negative parameter or NaN.
      */
     VX_EXPORT static float RayRaySquareDistance(const VxRay &ray0, const VxRay &ray1, float *t0 = NULL, float *t1 = NULL);
 

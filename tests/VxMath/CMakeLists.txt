@@ -182,6 +182,7 @@ set(VXMATH_TEST_SOURCES
         LineLineDistanceReferenceTest.cpp
         LineRayDistanceReferenceTest.cpp
         LineSegmentDistanceReferenceTest.cpp
+        RayRayDistanceReferenceTest.cpp
         # SIMD Tests
         SIMDFeatureTest.cpp
         SIMDUtilityTest.cpp
@@ -432,3 +433,7 @@ vx_copy_runtime_dependencies(LineRayDistanceScalarReferenceTest)
 vx_add_test(LineSegmentDistanceScalarReferenceTest SOURCES LineSegmentDistanceReferenceTest.cpp)
 target_compile_definitions(LineSegmentDistanceScalarReferenceTest PRIVATE VX_SIMD_NONE=1)
 vx_copy_runtime_dependencies(LineSegmentDistanceScalarReferenceTest)
+
+vx_add_test(RayRayDistanceScalarReferenceTest SOURCES RayRayDistanceReferenceTest.cpp)
+target_compile_definitions(RayRayDistanceScalarReferenceTest PRIVATE VX_SIMD_NONE=1)
+vx_copy_runtime_dependencies(RayRayDistanceScalarReferenceTest)
