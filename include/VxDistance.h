@@ -103,6 +103,10 @@ public:
      * @param t0 Pointer to a float to store the parameter of the closest point on the first segment. Can be NULL.
      * @param t1 Pointer to a float to store the parameter of the closest point on the second segment. Can be NULL.
      * @return The squared distance between the two segments.
+     * @remarks Both parameters are in [0,1]; directions are segment extents.
+     * Parallel overlap retains the original representative. Zero extents keep
+     * the original endpoint selection, not a general point-query convention.
+     * Scalar and SIMD resolve nonparallel segments without an absolute epsilon.
      */
     VX_EXPORT static float SegmentSegmentSquareDistance(const VxRay &segment0, const VxRay &segment1, float *t0 = NULL, float *t1 = NULL);
 

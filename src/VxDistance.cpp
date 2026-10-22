@@ -851,6 +851,174 @@ static float PointSegmentSquareDistanceScalarImpl(const VxVector &point, const V
     return result;
 }
 
+// Preserve endpoint low bits without changing the process floating-point mode.
+static inline double SegmentDistanceSum(double x, double y, double &error) {
+    const double sum = x + y;
+    const double tail = sum - x;
+    error += (x - (sum - tail)) + (y - tail);
+    return sum;
+}
+
+template<bool kUseSIMD>
+static double SegmentDistanceDot(const double *x, const double *y) {
+    double products[3];
+#if defined(VX_SIMD_SSE)
+    if constexpr (kUseSIMD) {
+        _mm_storeu_pd(products, _mm_mul_pd(_mm_loadu_pd(x), _mm_loadu_pd(y)));
+    } else
+#endif
+    {
+        products[0] = x[0] * y[0];
+        products[1] = x[1] * y[1];
+    }
+    products[2] = x[2] * y[2];
+    double error = 0.0;
+    const double sum = SegmentDistanceSum(products[0], products[1], error);
+    const double result = SegmentDistanceSum(sum, products[2], error);
+    return result + error;
+}
+
+template<bool kUseSIMD>
+static void SegmentDistanceCross(const double *x, const double *y, double *cross) {
+#if defined(VX_SIMD_SSE)
+    if constexpr (kUseSIMD) {
+        _mm_storeu_pd(cross, _mm_sub_pd(_mm_mul_pd(_mm_setr_pd(x[1], x[2]), _mm_setr_pd(y[2], y[0])),
+                                       _mm_mul_pd(_mm_setr_pd(x[2], x[0]), _mm_setr_pd(y[1], y[2]))));
+    } else
+#endif
+    {
+        cross[0] = x[1] * y[2] - x[2] * y[1];
+        cross[1] = x[2] * y[0] - x[0] * y[2];
+    }
+    cross[2] = x[0] * y[1] - x[1] * y[0];
+}
+
+template<bool kUseSIMD>
+static float SegmentSegmentSquareDistanceCore(const VxRay &segment0, const VxRay &segment1, float *t0, float *t1) {
+    const double u[] = {segment0.m_Direction.x, segment0.m_Direction.y, segment0.m_Direction.z};
+    const double v[] = {segment1.m_Direction.x, segment1.m_Direction.y, segment1.m_Direction.z};
+    double w[3], low[3], normal[3];
+    for (int j = 0; j < 3; ++j) {
+        low[j] = 0.0;
+        w[j] = SegmentDistanceSum(segment0.m_Origin[j], -double(segment1.m_Origin[j]), low[j]);
+    }
+    SegmentDistanceCross<kUseSIMD>(u, v, normal);
+    const double denominator = SegmentDistanceDot<kUseSIMD>(normal, normal);
+    const double a = SegmentDistanceDot<kUseSIMD>(u, u);
+    const double c = SegmentDistanceDot<kUseSIMD>(v, v);
+    const double d = SegmentDistanceDot<kUseSIMD>(w, u) + SegmentDistanceDot<kUseSIMD>(low, u);
+    double first = 0.0, second = 0.0, square = 0.0;
+    if (a == 0.0) {
+        // Original zero-first-extent representative, not a new point query.
+        first = 1.0;
+        square = SegmentDistanceDot<kUseSIMD>(w, w);
+    } else {
+        // Parallel overlap projects the second origin onto the first segment,
+        // or its nearest endpoint onto the second segment, as in the original.
+        int begin = 0, end = 4;
+        if (denominator == 0.0) {
+            begin = d > 0.0 ? 2 : -d >= a ? 3 : 0;
+            end = begin + 1;
+        }
+        square = HUGE_VAL;
+        for (int boundary = begin; boundary < end; ++boundary) {
+            const double fixedS = boundary == 3 ? 1.0 : 0.0;
+            const double fixedT = boundary == 1 ? 1.0 : 0.0;
+            const double *direction = boundary < 2 ? u : v;
+            const double *other = boundary < 2 ? v : u;
+            const double length = boundary < 2 ? a : c;
+            double relative[3], tail[3];
+            for (int j = 0; j < 3; ++j) {
+                tail[j] = low[j];
+                relative[j] = SegmentDistanceSum(w[j], fixedS * u[j], tail[j]);
+                relative[j] = SegmentDistanceSum(relative[j], -fixedT * v[j], tail[j]);
+            }
+            const double sign = boundary < 2 ? -1.0 : 1.0;
+            const double projection = sign * (SegmentDistanceDot<kUseSIMD>(relative, direction)
+                                             + SegmentDistanceDot<kUseSIMD>(tail, direction));
+            double parameter, candidate, gradient;
+            if (projection <= 0.0) {
+                parameter = 0.0;
+                gradient = SegmentDistanceDot<kUseSIMD>(relative, other) + SegmentDistanceDot<kUseSIMD>(tail, other);
+                for (int j = 0; j < 3; ++j) relative[j] += tail[j];
+                candidate = SegmentDistanceDot<kUseSIMD>(relative, relative);
+            } else if (projection >= length) {
+                parameter = 1.0;
+                for (int j = 0; j < 3; ++j) {
+                    const double endpoint = SegmentDistanceSum(relative[j], -sign * direction[j], tail[j]);
+                    relative[j] = endpoint;
+                }
+                gradient = SegmentDistanceDot<kUseSIMD>(relative, other) + SegmentDistanceDot<kUseSIMD>(tail, other);
+                for (int j = 0; j < 3; ++j) relative[j] += tail[j];
+                candidate = SegmentDistanceDot<kUseSIMD>(relative, relative);
+            } else {
+                parameter = projection / length;
+                double cross[3], correction[3], otherCross[3];
+                SegmentDistanceCross<kUseSIMD>(relative, direction, cross);
+                SegmentDistanceCross<kUseSIMD>(tail, direction, correction);
+                for (int j = 0; j < 3; ++j) cross[j] += correction[j];
+                candidate = SegmentDistanceDot<kUseSIMD>(cross, cross) / length;
+                SegmentDistanceCross<kUseSIMD>(other, direction, otherCross);
+                gradient = SegmentDistanceDot<kUseSIMD>(cross, otherCross) / length;
+            }
+            // Select by the remaining endpoint's derivative, not rounded
+            // squared distances: distinct minima may round to the same value.
+            const bool atMinimum = boundary == 0 || boundary == 3 ? gradient <= 0.0 : gradient >= 0.0;
+            if (denominator == 0.0 || atMinimum) {
+                square = candidate;
+                first = boundary < 2 ? parameter : fixedS;
+                second = boundary < 2 ? fixedT : parameter;
+                break;
+            }
+        }
+        if (c == 0.0 && d > 0.0) second = 1.0;
+        if (denominator != 0.0) {
+            double vw[3], uw[3], correction[3];
+            SegmentDistanceCross<kUseSIMD>(v, w, vw);
+            SegmentDistanceCross<kUseSIMD>(v, low, correction);
+            for (int j = 0; j < 3; ++j) vw[j] += correction[j];
+            SegmentDistanceCross<kUseSIMD>(u, w, uw);
+            SegmentDistanceCross<kUseSIMD>(u, low, correction);
+            for (int j = 0; j < 3; ++j) uw[j] += correction[j];
+            const double s = SegmentDistanceDot<kUseSIMD>(vw, normal) / denominator;
+            const double t = SegmentDistanceDot<kUseSIMD>(uw, normal) / denominator;
+            double endS[3], endT[3], tailS[3], tailT[3], crossS[3], crossT[3];
+            for (int j = 0; j < 3; ++j) {
+                tailS[j] = tailT[j] = low[j];
+                endS[j] = SegmentDistanceSum(w[j], u[j], tailS[j]);
+                endT[j] = SegmentDistanceSum(w[j], -v[j], tailT[j]);
+            }
+            SegmentDistanceCross<kUseSIMD>(v, endS, crossS);
+            SegmentDistanceCross<kUseSIMD>(v, tailS, correction);
+            for (int j = 0; j < 3; ++j) crossS[j] += correction[j];
+            SegmentDistanceCross<kUseSIMD>(u, endT, crossT);
+            SegmentDistanceCross<kUseSIMD>(u, tailT, correction);
+            for (int j = 0; j < 3; ++j) crossT[j] += correction[j];
+            // Test against each endpoint independently. Subtracting the
+            // denominator from a rounded numerator loses small endpoint gaps.
+            if (s >= 0.0 && t >= 0.0 && SegmentDistanceDot<kUseSIMD>(crossS, normal) <= 0.0
+                                           && SegmentDistanceDot<kUseSIMD>(crossT, normal) <= 0.0) {
+                const double height = SegmentDistanceDot<kUseSIMD>(w, normal) + SegmentDistanceDot<kUseSIMD>(low, normal);
+                const double candidate = height * height / denominator;
+                square = candidate; first = s; second = t;
+            }
+        }
+    }
+    const float result = float(square);
+    if (t0) *t0 = float(first);
+    if (t1) *t1 = float(second);
+    return result;
+}
+
+static float SegmentSegmentSquareDistanceScalarImpl(const VxRay &segment0, const VxRay &segment1, float *t0, float *t1) {
+    return SegmentSegmentSquareDistanceCore<false>(segment0, segment1, t0, t1);
+}
+#if defined(VX_SIMD_SSE)
+static float SegmentSegmentSquareDistanceSIMDImpl(const VxRay &segment0, const VxRay &segment1, float *t0, float *t1) {
+    return SegmentSegmentSquareDistanceCore<true>(segment0, segment1, t0, t1);
+}
+#endif
+
 typedef RayPairTerms (*MakeRayPairTermsDispatchFn)(const VxRay &, const VxRay &);
 typedef float (*LineDistanceDispatchFn)(const VxRay &, const VxRay &, float *, float *);
 typedef float (*PointDistanceDispatchFn)(const VxVector &, const VxRay &, float *);
@@ -862,6 +1030,7 @@ struct VxDistanceDispatchTable {
     LineDistanceDispatchFn lineSegmentSquareDistance;
     LineDistanceDispatchFn rayRaySquareDistance;
     LineDistanceDispatchFn raySegmentSquareDistance;
+    LineDistanceDispatchFn segmentSegmentSquareDistance;
     PointDistanceDispatchFn pointLineSquareDistance;
     PointDistanceDispatchFn pointRaySquareDistance;
     PointDistanceDispatchFn pointSegmentSquareDistance;
@@ -874,6 +1043,7 @@ const VxDistanceDispatchTable kVxDistanceDispatchScalar = {
     LineSegmentSquareDistanceScalarImpl,
     RayRaySquareDistanceScalarImpl,
     RaySegmentSquareDistanceScalarImpl,
+    SegmentSegmentSquareDistanceScalarImpl,
     PointLineSquareDistanceScalarImpl,
     PointRaySquareDistanceScalarImpl,
     PointSegmentSquareDistanceScalarImpl
@@ -887,6 +1057,7 @@ const VxDistanceDispatchTable kVxDistanceDispatchSIMD = {
     LineSegmentSquareDistanceSIMDImpl,
     RayRaySquareDistanceSIMDImpl,
     RaySegmentSquareDistanceSIMDImpl,
+    SegmentSegmentSquareDistanceSIMDImpl,
     PointLineSquareDistanceSIMDImpl,
     PointRaySquareDistanceSIMDImpl,
     PointSegmentSquareDistanceSIMDImpl
@@ -944,269 +1115,8 @@ float VxDistance::RaySegmentSquareDistance(const VxRay &ray, const VxRay &segmen
 }
 
 float VxDistance::SegmentSegmentSquareDistance(const VxRay &segment0, const VxRay &segment1, float *t0, float *t1) {
-    const RayPairTerms t = MakeRayPairTerms(segment0, segment1);
-    const float a = t.a;
-    const float b = t.b;
-    const float c = t.c;
-    const float d = t.d;
-    const float e = t.e;
-    float f = t.f;
-    const float det = t.det;
-
-    float s0, s1;
-
-    if (det < EPSILON) {
-        // Parallel case: choose the minimum endpoint-to-segment distance.
-        // This correctly handles collinear overlap (distance = 0) and disjoint parallel segments.
-
-        const VxVector p0 = segment0.m_Origin;
-        const VxVector q0 = segment0.m_Origin + segment0.m_Direction;
-        const VxVector p1 = segment1.m_Origin;
-        const VxVector q1 = segment1.m_Origin + segment1.m_Direction;
-
-        float bestDist = FLT_MAX;
-        float bestS0 = 0.0f;
-        float bestS1 = 0.0f;
-
-        // p0 -> segment1
-        {
-            float tParam = 0.0f;
-            float distVal = PointSegmentSquareDistance(p0, segment1, &tParam);
-            if (distVal < bestDist) {
-                bestDist = distVal;
-                bestS0 = 0.0f;
-                bestS1 = tParam;
-            }
-        }
-
-        // q0 -> segment1
-        {
-            float tParam = 0.0f;
-            float distVal = PointSegmentSquareDistance(q0, segment1, &tParam);
-            if (distVal < bestDist) {
-                bestDist = distVal;
-                bestS0 = 1.0f;
-                bestS1 = tParam;
-            }
-        }
-
-        // p1 -> segment0
-        {
-            float tParam = 0.0f;
-            float distVal = PointSegmentSquareDistance(p1, segment0, &tParam);
-            if (distVal < bestDist) {
-                bestDist = distVal;
-                bestS0 = tParam;
-                bestS1 = 0.0f;
-            }
-        }
-
-        // q1 -> segment0
-        {
-            float tParam = 0.0f;
-            float distVal = PointSegmentSquareDistance(q1, segment0, &tParam);
-            if (distVal < bestDist) {
-                bestDist = distVal;
-                bestS0 = tParam;
-                bestS1 = 1.0f;
-            }
-        }
-
-        s0 = bestS0;
-        s1 = bestS1;
-        f = bestDist;
-    } else {
-        // Non-parallel case
-        float seg0Param = e * b - d * c;
-        float seg1Param = d * b - e * a;
-
-        if (seg0Param < 0.0f) {
-            // seg0 parameter < 0
-            if (seg1Param < 0.0f) {
-                // Both < 0
-                if (d < 0.0f) {
-                    s1 = 0.0f;
-                    if (-d >= a) {
-                        s0 = 1.0f;
-                        f = f + d + d + a;
-                    } else {
-                        s0 = -(d / a);
-                        f = f + s0 * d;
-                    }
-                } else {
-                    s0 = 0.0f;
-                    if (e >= 0.0f) {
-                        s1 = 0.0f;
-                    } else if (-e >= c) {
-                        s1 = 1.0f;
-                        f = f + e + e + c;
-                    } else {
-                        s1 = -(e / c);
-                        f = f + s1 * e;
-                    }
-                }
-            } else if (seg1Param > det) {
-                // seg0 param < 0, seg1 param > 1
-                float dPlusB = d + b;
-                if (dPlusB < 0.0f) {
-                    s1 = 1.0f;
-                    if (-dPlusB >= a) {
-                        s0 = 1.0f;
-                        f = f + dPlusB + e + dPlusB + e + c + a;
-                    } else {
-                        s0 = -(dPlusB / a);
-                        f = f + dPlusB * s0 + e + e + c;
-                    }
-                } else {
-                    s0 = 0.0f;
-                    if (e >= 0.0f) {
-                        s1 = 0.0f;
-                    } else if (-e >= c) {
-                        s1 = 1.0f;
-                        f = f + e + e + c;
-                    } else {
-                        s1 = -(e / c);
-                        f = f + s1 * e;
-                    }
-                }
-            } else {
-                // seg0 param < 0, seg1 param in [0, 1]
-                if (d < 0.0f) {
-                    s1 = 0.0f;
-                    if (-d >= a) {
-                        s0 = 1.0f;
-                        f = f + d + d + a;
-                    } else {
-                        s0 = -(d / a);
-                        f = f + s0 * d;
-                    }
-                } else {
-                    s0 = 0.0f;
-                    if (e >= 0.0f) {
-                        s1 = 0.0f;
-                    } else if (-e >= c) {
-                        s1 = 1.0f;
-                        f = f + e + e + c;
-                    } else {
-                        s1 = -(e / c);
-                        f = f + s1 * e;
-                    }
-                }
-            }
-        } else if (seg0Param > det) {
-            // seg0 parameter > 1
-            if (seg1Param < 0.0f) {
-                // seg0 param > 1, seg1 param < 0
-                float dPlusB = d + b;
-                if (dPlusB < 0.0f) {
-                    s1 = 1.0f;
-                    if (-dPlusB >= a) {
-                        s0 = 1.0f;
-                        f = f + dPlusB + e + dPlusB + e + c + a;
-                    } else {
-                        s0 = -(dPlusB / a);
-                        f = f + dPlusB * s0 + e + e + c;
-                    }
-                } else {
-                    s0 = 0.0f;
-                    if (e >= 0.0f) {
-                        s1 = 0.0f;
-                    } else if (-e >= c) {
-                        s1 = 1.0f;
-                        f = f + e + e + c;
-                    } else {
-                        s1 = -(e / c);
-                        f = f + s1 * e;
-                    }
-                }
-            } else if (seg1Param > det) {
-                // Both > det (both segments at end)
-                float ePlusB = e + b;
-                s0 = 1.0f;
-                if (-ePlusB < c) {
-                    s1 = -(ePlusB / c);
-                    f = f + ePlusB * s1 + d + d + a;
-                } else {
-                    s1 = 1.0f;
-                    f = f + ePlusB + d + b + ePlusB + d + b + c + a;
-                }
-            } else {
-                // seg0 param > 1, seg1 param in [0, 1]
-                // FIX: Clamp s0 to 1, compute optimal s1 (was incorrectly clamping s1)
-                s0 = 1.0f;
-                float ePlusB = e + b;
-                if (ePlusB >= 0.0f) {
-                    // s1 would be negative, clamp to 0
-                    s1 = 0.0f;
-                    f = f + d + d + a;
-                } else if (-ePlusB >= c) {
-                    // s1 would be > 1, clamp to 1
-                    s1 = 1.0f;
-                    f = f + ePlusB + ePlusB + c + d + d + a;
-                } else {
-                    // s1 is in (0, 1)
-                    s1 = -(ePlusB / c);
-                    f = f + ePlusB * s1 + d + d + a;
-                }
-            }
-        } else {
-            // seg0 param in [0, det]
-            if (seg1Param < 0.0f) {
-                // seg0 param in range, seg1 param < 0
-                if (d < 0.0f) {
-                    s1 = 0.0f;
-                    if (-d >= a) {
-                        s0 = 1.0f;
-                        f = f + d + d + a;
-                    } else {
-                        s0 = -(d / a);
-                        f = f + s0 * d;
-                    }
-                } else {
-                    s0 = 0.0f;
-                    if (e >= 0.0f) {
-                        s1 = 0.0f;
-                    } else if (-e >= c) {
-                        s1 = 1.0f;
-                        f = f + e + e + c;
-                    } else {
-                        s1 = -(e / c);
-                        f = f + s1 * e;
-                    }
-                }
-            } else if (seg1Param > det) {
-                // seg0 param in range, seg1 param > 1
-                float dPlusB = d + b;
-                s1 = 1.0f;
-                if (dPlusB < 0.0f) {
-                    if (-dPlusB >= a) {
-                        s0 = 1.0f;
-                        f = f + dPlusB + e + dPlusB + e + c + a;
-                    } else {
-                        s0 = -(dPlusB / a);
-                        f = f + dPlusB * s0 + e + e + c;
-                    }
-                } else {
-                    s0 = 0.0f;
-                    f = f + e + e + c;
-                }
-            } else {
-                // Both in range
-                float invDet = 1.0f / det;
-                s0 = seg0Param * invDet;
-                s1 = invDet * seg1Param;
-                f = f + (s1 * c + s0 * b + e + e) * s1 + (s1 * b + s0 * a + d + d) * s0;
-            }
-        }
-    }
-
-    if (t0) *t0 = s0;
-    if (t1) *t1 = s1;
-
-    return XAbs(f);
+    return GetVxDistanceDispatchTable()->segmentSegmentSquareDistance(segment0, segment1, t0, t1);
 }
-
-// Point-Line distance calculations
 
 float VxDistance::PointLineSquareDistance(const VxVector &point, const VxRay &line, float *t0) {
     return GetVxDistanceDispatchTable()->pointLineSquareDistance(point, line, t0);
