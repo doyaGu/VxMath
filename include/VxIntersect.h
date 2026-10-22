@@ -96,7 +96,12 @@ public:
 
     //---------- Faces
 
-    /// @brief Checks if a point lies within the 2D boundaries of a triangle face.
+    /**
+     * @brief Tests the closed triangle in the projection selected by the largest absolute normal component.
+     * Ties drop X, then Y, then Z. Both axes are written even on failure; no coplanarity test is performed.
+     * Returns 0 outside, 1 for negative edge signs, 2 for positive/all-zero signs. Degenerate triangles
+     * use their finite projected point/segment hull. Aliased axis outputs retain the second axis.
+     */
     VX_EXPORT static XBOOL PointInFace(const VxVector &point, const VxVector &pt0, const VxVector &pt1, const VxVector &pt2, const VxVector &norm, int &i1, int &i2);
     /// @brief Intersects a ray with a triangle face.
     VX_EXPORT static XBOOL RayFace(const VxRay &ray, const VxVector &pt0, const VxVector &pt1, const VxVector &pt2, const VxVector &norm, VxVector &res, float &dist);

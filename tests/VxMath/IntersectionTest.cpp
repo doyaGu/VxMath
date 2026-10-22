@@ -18,6 +18,7 @@
 #include "RayBoxFaceOracle.h"
 #include "SegmentBoxFaceOracle.h"
 #include "LineBoxFaceOracle.h"
+#include "PointInFaceOracle.h"
 
 using namespace VxMathTest;
 
@@ -304,48 +305,10 @@ bool AABBFaceRef(const VxBbox& box, const VxVector& a0, const VxVector& a1, cons
     return AabbFaceClippingOracle(box,a0,a1,a2);
 }
 
-bool PointInFaceRef(
-    const VxVector& point,
-    const VxVector& pt0,
-    const VxVector& pt1,
-    const VxVector& pt2,
-    const VxVector& norm,
-    int& i1,
-    int& i2
-) {
-    float maxAbs = std::fabs(norm.x);
-    i1 = 1;
-    i2 = 2;
-    if (maxAbs < std::fabs(norm.y)) {
-        i1 = 0;
-        i2 = 2;
-        maxAbs = std::fabs(norm.y);
-    }
-    if (maxAbs < std::fabs(norm.z)) {
-        i1 = 0;
-        i2 = 1;
-    }
-
-    char flags = 1;
-    if ((point[i1] - pt1[i1]) * (pt2[i2] - pt1[i2]) - (pt2[i1] - pt1[i1]) * (point[i2] - pt1[i2]) >= 0.0f) {
-        flags = 2;
-    }
-
-    if ((point[i1] - pt2[i1]) * (pt0[i2] - pt2[i2]) - (point[i2] - pt2[i2]) * (pt0[i1] - pt2[i1]) >= 0.0f) {
-        flags &= 2;
-    } else {
-        flags &= 1;
-    }
-
-    if (!flags) {
-        return false;
-    }
-
-    if ((point[i1] - pt0[i1]) * (pt1[i2] - pt0[i2]) - (point[i2] - pt0[i2]) * (pt1[i1] - pt0[i1]) >= 0.0f) {
-        return (flags & 2) != 0;
-    }
-
-    return (flags & 1) != 0;
+bool PointInFaceRef(const VxVector& point, const VxVector& pt0, const VxVector& pt1,
+    const VxVector& pt2, const VxVector& norm, int& i1, int& i2) {
+    const PointInFaceResult expected=PointInFaceOracle(point,pt0,pt1,pt2,norm);
+    i1=expected.first;i2=expected.second;return expected.code!=0;
 }
 
 void GetPointCoefficientsRef(

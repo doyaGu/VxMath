@@ -137,33 +137,97 @@ static inline void SelectFaceProjectionAxes(const VxVector &norm, int &i1, int &
 
 static XBOOL PointInFaceScalarCore(const VxVector &point, const VxVector &pt0, const VxVector &pt1, const VxVector &pt2,
                                    const VxVector &norm, int &i1, int &i2) {
-    SelectFaceProjectionAxes(norm, i1, i2);
-
-    char flags = 1;
-    if ((point[i1] - pt1[i1]) * (pt2[i2] - pt1[i2]) - (pt2[i1] - pt1[i1]) * (point[i2] - pt1[i2]) >= 0.0f) {
-        flags = 2;
+    int first, second;
+    SelectFaceProjectionAxes(norm, first, second);
+    i1 = first;
+    i2 = second;
+    const VxVector *vertices[] = {&pt0, &pt1, &pt2};
+    bool positive = false, negative = false;
+    for (int edge = 0; edge < 3; ++edge) {
+        const VxVector &a = *vertices[edge], &b = *vertices[(edge + 1) % 3];
+        const double px = point[first], py = point[second], ax = a[first], ay = a[second], bx = b[first], by = b[second];
+        // A product of two finite binary32 coordinates is exact in binary64.
+        // Grow an error-free expansion of the six products, so an arbitrarily
+        // small edge offset is not lost by subtracting coordinates first.
+        const double terms[] = {px * by, -px * ay, -ax * by, -py * bx, py * ax, ay * bx};
+        double expansion[6];
+        for (int term = 0; term < 6; ++term) {
+            double q = terms[term];
+            for (int j = 0; j < term; ++j) {
+                const double sum = q + expansion[j];
+                const double virtualB = sum - q;
+                expansion[j] = (q - (sum - virtualB)) + (expansion[j] - virtualB);
+                q = sum;
+            }
+            expansion[term] = q;
+        }
+        for (int j = 5; j >= 0; --j) if (expansion[j] != 0.0) {
+            positive = positive || expansion[j] > 0.0;
+            negative = negative || expansion[j] < 0.0;
+            break;
+        }
+        if (positive && negative) return FALSE;
     }
-
-    if ((point[i1] - pt2[i1]) * (pt0[i2] - pt2[i2]) - (point[i2] - pt2[i2]) * (pt0[i1] - pt2[i1]) >= 0.0f) {
-        flags &= 2;
-    } else {
-        flags &= 1;
-    }
-
-    if (!flags) return FALSE;
-
-    if ((point[i1] - pt0[i1]) * (pt1[i2] - pt0[i2]) - (point[i2] - pt0[i2]) * (pt1[i1] - pt0[i1]) >= 0.0f) {
-        return (flags & 2) != 0;
-    }
-
-    return (flags & 1) != 0;
+    if (positive) return 2;
+    if (negative) return 1;
+    // All edges are collinear with the query: retain the finite projected
+    // segment/point hull instead of accepting its entire supporting line.
+    return point[first] >= XMin(pt0[first], XMin(pt1[first], pt2[first])) &&
+           point[first] <= XMax(pt0[first], XMax(pt1[first], pt2[first])) &&
+           point[second] >= XMin(pt0[second], XMin(pt1[second], pt2[second])) &&
+           point[second] <= XMax(pt0[second], XMax(pt1[second], pt2[second])) ? 2 : 0;
 }
 
 #if defined(VX_SIMD_SSE)
 static XBOOL PointInFaceSIMDCore(const VxVector &point, const VxVector &pt0, const VxVector &pt1, const VxVector &pt2,
                                  const VxVector &norm, int &i1, int &i2) {
-    SelectFaceProjectionAxes(norm, i1, i2);
-    return VxSIMDPointInFace3D(point, pt0, pt1, pt2, norm);
+    int first, second;
+    SelectFaceProjectionAxes(norm, first, second);
+    i1 = first;
+    i2 = second;
+    const VxVector *vertices[] = {&pt0, &pt1, &pt2, &pt0, &pt1};
+    const __m128d px = _mm_set1_pd(point[first]), py = _mm_set1_pd(point[second]), zero = _mm_setzero_pd();
+    int signs[4];
+    // Two projected edge predicates in parallel. All products and error-free
+    // expansion operations remain packed SSE2; no Scalar core is called.
+    for (int pair = 0; pair < 3; pair += 2) {
+        const __m128d ax = _mm_set_pd((*vertices[pair + 1])[first], (*vertices[pair])[first]);
+        const __m128d ay = _mm_set_pd((*vertices[pair + 1])[second], (*vertices[pair])[second]);
+        const __m128d bx = _mm_set_pd((*vertices[pair + 2])[first], (*vertices[pair + 1])[first]);
+        const __m128d by = _mm_set_pd((*vertices[pair + 2])[second], (*vertices[pair + 1])[second]);
+        const __m128d terms[] = {_mm_mul_pd(px, by), _mm_sub_pd(zero, _mm_mul_pd(px, ay)),
+            _mm_sub_pd(zero, _mm_mul_pd(ax, by)), _mm_sub_pd(zero, _mm_mul_pd(py, bx)),
+            _mm_mul_pd(py, ax), _mm_mul_pd(ay, bx)};
+        __m128d expansion[6];
+        for (int term = 0; term < 6; ++term) {
+            __m128d q = terms[term];
+            for (int j = 0; j < term; ++j) {
+                const __m128d sum = _mm_add_pd(q, expansion[j]);
+                const __m128d virtualB = _mm_sub_pd(sum, q);
+                expansion[j] = _mm_add_pd(_mm_sub_pd(q, _mm_sub_pd(sum, virtualB)), _mm_sub_pd(expansion[j], virtualB));
+                q = sum;
+            }
+            expansion[term] = q;
+        }
+        int classified = 0, negative = 0;
+        for (int j = 5; j >= 0; --j) {
+            const int n = _mm_movemask_pd(_mm_cmplt_pd(expansion[j], zero));
+            const int p = _mm_movemask_pd(_mm_cmpgt_pd(expansion[j], zero));
+            negative |= n & ~classified;
+            classified |= n | p;
+        }
+        signs[pair] = classified & 1 ? (negative & 1 ? -1 : 1) : 0;
+        signs[pair + 1] = classified & 2 ? (negative & 2 ? -1 : 1) : 0;
+    }
+    const bool positive = signs[0] > 0 || signs[1] > 0 || signs[2] > 0;
+    const bool negative = signs[0] < 0 || signs[1] < 0 || signs[2] < 0;
+    if (positive && negative) return FALSE;
+    if (positive) return 2;
+    if (negative) return 1;
+    const __m128d a = _mm_set_pd(pt0[second], pt0[first]), b = _mm_set_pd(pt1[second], pt1[first]), c = _mm_set_pd(pt2[second], pt2[first]);
+    const __m128d p = _mm_set_pd(point[second], point[first]);
+    const __m128d outside = _mm_or_pd(_mm_cmplt_pd(p, _mm_min_pd(a, _mm_min_pd(b, c))), _mm_cmpgt_pd(p, _mm_max_pd(a, _mm_max_pd(b, c))));
+    return _mm_movemask_pd(outside) ? 0 : 2;
 }
 #endif
 
