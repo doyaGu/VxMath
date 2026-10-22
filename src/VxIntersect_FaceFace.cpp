@@ -449,31 +449,48 @@ namespace {
 
 static XBOOL FaceFaceFromDistances(const VxVector &A0, const VxVector &A1, const VxVector &A2, const VxVector &N0,
                                    const VxVector &B0, const VxVector &B1, const VxVector &B2,
-                                   const float distA[3], const float distB[3], const VxVector &D) {
-    const float distA01 = distA[0] * distA[1];
-    const float distA02 = distA[0] * distA[2];
+                                   const double inputDistA[3], const double inputDistB[3], const double D[3]) {
+    // Binary rescaling preserves the plane cut while keeping the original
+    // no-division interval products within double's range for finite floats.
+    double distA[3], distB[3];
+    double scaleA = 0.0, scaleB = 0.0;
+    for (int i = 0; i < 3; ++i) {
+        if (fabs(inputDistA[i]) > scaleA) scaleA = fabs(inputDistA[i]);
+        if (fabs(inputDistB[i]) > scaleB) scaleB = fabs(inputDistB[i]);
+    }
+    if (scaleA == 0.0 || scaleB == 0.0)
+        return coplanar_tri_tri(N0, A0, A1, A2, B0, B1, B2);
+    int exponentA, exponentB;
+    frexp(scaleA, &exponentA);
+    frexp(scaleB, &exponentB);
+    for (int i = 0; i < 3; ++i) {
+        distA[i] = ldexp(inputDistA[i], -exponentA);
+        distB[i] = ldexp(inputDistB[i], -exponentB);
+    }
+    const double distA01 = distA[0] * distA[1];
+    const double distA02 = distA[0] * distA[2];
     if (distA01 > 0.0f && distA02 > 0.0f) return FALSE;
 
-    const VxVector absD = Absolute(D);
+    const double absD[3] = {fabs(D[0]), fabs(D[1]), fabs(D[2])};
 
     int maxc = 0;
-    float maxAbs = absD[0];
-    if (absD[1] >= maxAbs) {
+    double maxAbs = absD[0];
+    if (absD[1] > maxAbs) {
         maxc = 1;
         maxAbs = absD[1];
     }
-    if (absD[2] >= maxAbs) {
+    if (absD[2] > maxAbs) {
         maxc = 2;
     }
 
-    const float vA[3] = {A0[maxc], A1[maxc], A2[maxc]};
-    const float vB[3] = {B0[maxc], B1[maxc], B2[maxc]};
+    const double vA[3] = {0.0, double(A1[maxc]) - A0[maxc], double(A2[maxc]) - A0[maxc]};
+    const double vB[3] = {double(B0[maxc]) - A0[maxc], double(B1[maxc]) - A0[maxc], double(B2[maxc]) - A0[maxc]};
 
-    float aBase;
-    float aNum0;
-    float aNum1;
-    float aDen0;
-    float aDen1;
+    double aBase;
+    double aNum0;
+    double aNum1;
+    double aDen0;
+    double aDen1;
     if (distA01 > 0.0f) {
         aBase = vA[2];
         aNum0 = (vA[0] - vA[2]) * distA[2];
@@ -508,13 +525,13 @@ static XBOOL FaceFaceFromDistances(const VxVector &A0, const VxVector &A1, const
         aDen1 = distA[2] - distA[1];
     }
 
-    const float distB01 = distB[0] * distB[1];
-    const float distB02 = distB[0] * distB[2];
-    float bBase;
-    float bNum0;
-    float bNum1;
-    float bDen0;
-    float bDen1;
+    const double distB01 = distB[0] * distB[1];
+    const double distB02 = distB[0] * distB[2];
+    double bBase;
+    double bNum0;
+    double bNum1;
+    double bDen0;
+    double bDen1;
     if (distB01 > 0.0f) {
         bBase = vB[2];
         bNum0 = (vB[0] - vB[2]) * distB[2];
@@ -549,22 +566,22 @@ static XBOOL FaceFaceFromDistances(const VxVector &A0, const VxVector &A1, const
         return coplanar_tri_tri(N0, A0, A1, A2, B0, B1, B2);
     }
 
-    const float aDenProd = aDen0 * aDen1;
-    const float bDenProd = bDen0 * bDen1;
-    const float denProd = aDenProd * bDenProd;
+    const double aDenProd = aDen0 * aDen1;
+    const double bDenProd = bDen0 * bDen1;
+    const double denProd = aDenProd * bDenProd;
 
-    float isectA0 = bDenProd * (aDen1 * aNum0) + aBase * denProd;
-    float isectA1 = bDenProd * (aDen0 * aNum1) + aBase * denProd;
-    float isectB0 = aDenProd * (bDen1 * bNum0) + bBase * denProd;
-    float isectB1 = aDenProd * (bDen0 * bNum1) + bBase * denProd;
+    double isectA0 = bDenProd * (aDen1 * aNum0) + aBase * denProd;
+    double isectA1 = bDenProd * (aDen0 * aNum1) + aBase * denProd;
+    double isectB0 = aDenProd * (bDen1 * bNum0) + bBase * denProd;
+    double isectB1 = aDenProd * (bDen0 * bNum1) + bBase * denProd;
 
     if (isectA0 > isectA1) {
-        const float tmp = isectA0;
+        const double tmp = isectA0;
         isectA0 = isectA1;
         isectA1 = tmp;
     }
     if (isectB0 > isectB1) {
-        const float tmp = isectB0;
+        const double tmp = isectB0;
         isectB0 = isectB1;
         isectB1 = tmp;
     }
@@ -574,55 +591,54 @@ static XBOOL FaceFaceFromDistances(const VxVector &A0, const VxVector &A1, const
 
 static XBOOL FaceFaceScalarCore(const VxVector &A0, const VxVector &A1, const VxVector &A2, const VxVector &N0,
                                 const VxVector &B0, const VxVector &B1, const VxVector &B2, const VxVector &N1) {
-    const float planeA_d = -DotProduct(N0, A0);
-    float distB[3] = {
-        DotProduct(N0, B0) + planeA_d,
-        DotProduct(N0, B1) + planeA_d,
-        DotProduct(N0, B2) + planeA_d,
-    };
-    if (XAbs(distB[0]) < EPSILON) distB[0] = 0.0f;
-    if (XAbs(distB[1]) < EPSILON) distB[1] = 0.0f;
-    if (XAbs(distB[2]) < EPSILON) distB[2] = 0.0f;
-    if (distB[0] * distB[1] > 0.0f && distB[0] * distB[2] > 0.0f) return FALSE;
-
-    const float planeB_d = -DotProduct(N1, B0);
-    float distA[3] = {
-        DotProduct(N1, A0) + planeB_d,
-        DotProduct(N1, A1) + planeB_d,
-        DotProduct(N1, A2) + planeB_d,
-    };
-    if (XAbs(distA[0]) < EPSILON) distA[0] = 0.0f;
-    if (XAbs(distA[1]) < EPSILON) distA[1] = 0.0f;
-    if (XAbs(distA[2]) < EPSILON) distA[2] = 0.0f;
-
-    const VxVector D = CrossProduct(N0, N1);
-    return FaceFaceFromDistances(A0, A1, A2, N0, B0, B1, B2, distA, distB, D);
+    const VxVector *a[3] = {&A0, &A1, &A2};
+    const VxVector *b[3] = {&B0, &B1, &B2};
+    double distA[3], distB[3];
+    for (int i = 0; i < 3; ++i) {
+        distB[i] = (double(b[i]->x) - A0.x) * N0.x +
+                   (double(b[i]->y) - A0.y) * N0.y +
+                   (double(b[i]->z) - A0.z) * N0.z;
+        distA[i] = (double(a[i]->x) - B0.x) * N1.x +
+                   (double(a[i]->y) - B0.y) * N1.y +
+                   (double(a[i]->z) - B0.z) * N1.z;
+        if (fabs(distB[i]) < EPSILON) distB[i] = 0.0;
+        if (fabs(distA[i]) < EPSILON) distA[i] = 0.0;
+    }
+    if (distB[0] * distB[1] > 0.0 && distB[0] * distB[2] > 0.0) return FALSE;
+    if (distA[0] * distA[1] > 0.0 && distA[0] * distA[2] > 0.0) return FALSE;
+    const double d[3] = {double(N0.y) * N1.z - double(N0.z) * N1.y,
+                         double(N0.z) * N1.x - double(N0.x) * N1.z,
+                         double(N0.x) * N1.y - double(N0.y) * N1.x};
+    return FaceFaceFromDistances(A0, A1, A2, N0, B0, B1, B2, distA, distB, d);
 }
 
 #if defined(VX_SIMD_SSE)
 static XBOOL FaceFaceSIMDCore(const VxVector &A0, const VxVector &A1, const VxVector &A2, const VxVector &N0,
                               const VxVector &B0, const VxVector &B1, const VxVector &B2, const VxVector &N1) {
-    const __m128 n0V = VxSIMDLoadVector3(N0);
-    const __m128 n1V = VxSIMDLoadVector3(N1);
-
-    float distB[3];
-    const float planeA_d = -VxSIMDDot3Scalar(n0V, VxSIMDLoadVector3(A0));
-    VxSIMDComputePlaneDistances(N0, planeA_d, B0, B1, B2, distB);
-    if (XAbs(distB[0]) < EPSILON) distB[0] = 0.0f;
-    if (XAbs(distB[1]) < EPSILON) distB[1] = 0.0f;
-    if (XAbs(distB[2]) < EPSILON) distB[2] = 0.0f;
-    if (distB[0] * distB[1] > 0.0f && distB[0] * distB[2] > 0.0f) return FALSE;
-
-    float distA[3];
-    const float planeB_d = -VxSIMDDot3Scalar(n1V, VxSIMDLoadVector3(B0));
-    VxSIMDComputePlaneDistances(N1, planeB_d, A0, A1, A2, distA);
-    if (XAbs(distA[0]) < EPSILON) distA[0] = 0.0f;
-    if (XAbs(distA[1]) < EPSILON) distA[1] = 0.0f;
-    if (XAbs(distA[2]) < EPSILON) distA[2] = 0.0f;
-
-    VxVector D = VxVector::axis0();
-    VxSIMDStoreFloat3(&D.x, VxSIMDCrossProduct3(n0V, n1V));
-    return FaceFaceFromDistances(A0, A1, A2, N0, B0, B1, B2, distA, distB, D);
+    const VxVector *a[3] = {&A0, &A1, &A2};
+    const VxVector *b[3] = {&B0, &B1, &B2};
+    const __m128d nx = _mm_setr_pd(N0.x, N1.x), ny = _mm_setr_pd(N0.y, N1.y), nz = _mm_setr_pd(N0.z, N1.z);
+    const __m128d ox = _mm_setr_pd(A0.x, B0.x), oy = _mm_setr_pd(A0.y, B0.y), oz = _mm_setr_pd(A0.z, B0.z);
+    double distA[3], distB[3];
+    for (int i = 0; i < 3; ++i) {
+        // Each lane evaluates a different triangle against the other plane.
+        const __m128d dx = _mm_sub_pd(_mm_setr_pd(b[i]->x, a[i]->x), ox);
+        const __m128d dy = _mm_sub_pd(_mm_setr_pd(b[i]->y, a[i]->y), oy);
+        const __m128d dz = _mm_sub_pd(_mm_setr_pd(b[i]->z, a[i]->z), oz);
+        const __m128d distances = _mm_add_pd(_mm_add_pd(_mm_mul_pd(dx, nx), _mm_mul_pd(dy, ny)), _mm_mul_pd(dz, nz));
+        distB[i] = _mm_cvtsd_f64(distances);
+        distA[i] = _mm_cvtsd_f64(_mm_unpackhi_pd(distances, distances));
+        if (fabs(distB[i]) < EPSILON) distB[i] = 0.0;
+        if (fabs(distA[i]) < EPSILON) distA[i] = 0.0;
+    }
+    if (distB[0] * distB[1] > 0.0 && distB[0] * distB[2] > 0.0) return FALSE;
+    if (distA[0] * distA[1] > 0.0 && distA[0] * distA[2] > 0.0) return FALSE;
+    const __m128d xy = _mm_sub_pd(_mm_mul_pd(_mm_setr_pd(N0.y, N0.z), _mm_setr_pd(N1.z, N1.x)),
+                                  _mm_mul_pd(_mm_setr_pd(N0.z, N0.x), _mm_setr_pd(N1.y, N1.z)));
+    double d[3];
+    _mm_storeu_pd(d, xy);
+    d[2] = double(N0.x) * N1.y - double(N0.y) * N1.x;
+    return FaceFaceFromDistances(A0, A1, A2, N0, B0, B1, B2, distA, distB, d);
 }
 #endif
 
@@ -653,7 +669,7 @@ static XBOOL FaceFaceSIMDCore(const VxVector &A0, const VxVector &A1, const VxVe
 
 #define EDGE_AGAINST_TRI_EDGES(V0,V1,U0,U1,U2) \
 {                                              \
-  float Ax,Ay,Bx,By,Cx,Cy,e,d,f;               \
+  double Ax,Ay,Bx,By,Cx,Cy,e,d,f;               \
   Ax=V1[i0]-V0[i0];                            \
   Ay=V1[i1]-V0[i1];                            \
   /* test edge U0,U1 against V0,V1 */          \
@@ -666,7 +682,7 @@ static XBOOL FaceFaceSIMDCore(const VxVector &A0, const VxVector &A1, const VxVe
 
 #define POINT_IN_TRI(V0,U0,U1,U2)           \
 {                                           \
-  float a,b,c,d0,d1,d2;                     \
+  double a,b,c,d0,d1,d2;                     \
   /* is T1 completly inside T2? */          \
   /* check if V0 is inside tri(U0,U1,U2) */ \
   a=U1[i1]-U0[i1];                          \
@@ -717,14 +733,22 @@ int coplanar_tri_tri(const VxVector &N, const VxVector &V0, const VxVector &V1, 
         }
     }
 
-    /* test all edges of triangle 1 against the edges of triangle 2 */
-    EDGE_AGAINST_TRI_EDGES(V0, V1, U0, U1, U2);
-    EDGE_AGAINST_TRI_EDGES(V1, V2, U0, U1, U2);
-    EDGE_AGAINST_TRI_EDGES(V2, V0, U0, U1, U2);
-
-    /* finally, test if tri1 is totally contained in tri2 or vice versa */
-    POINT_IN_TRI(V0, U0, U1, U2);
-    POINT_IN_TRI(U0, V0, V1, V2);
+    const VxVector *vInput[3] = {&V0, &V1, &V2};
+    const VxVector *uInput[3] = {&U0, &U1, &U2};
+    double v[3][2], u[3][2];
+    for (int i = 0; i < 3; ++i) {
+        v[i][0] = double((*vInput[i])[i0]) - V0[i0];
+        v[i][1] = double((*vInput[i])[i1]) - V0[i1];
+        u[i][0] = double((*uInput[i])[i0]) - V0[i0];
+        u[i][1] = double((*uInput[i])[i1]) - V0[i1];
+    }
+    i0 = 0;
+    i1 = 1;
+    EDGE_AGAINST_TRI_EDGES(v[0], v[1], u[0], u[1], u[2]);
+    EDGE_AGAINST_TRI_EDGES(v[1], v[2], u[0], u[1], u[2]);
+    EDGE_AGAINST_TRI_EDGES(v[2], v[0], u[0], u[1], u[2]);
+    POINT_IN_TRI(v[0], u[0], u[1], u[2]);
+    POINT_IN_TRI(u[0], v[0], v[1], v[2]);
 
     return 0;
 }

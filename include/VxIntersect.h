@@ -143,7 +143,10 @@ public:
     /// retain the last coefficient assigned to their shared slot.
     VX_EXPORT static void GetPointCoefficients(const VxVector &pt, const VxVector &pt0, const VxVector &pt1, const VxVector &pt2, const int &i1, const int &i2, float &V0Coef, float &V1Coef, float &V2Coef);
 
-    /// @brief Checks for intersection between two triangle faces.
+    /// @brief Tests triangle intersection using the supplied plane normals.
+    /// Distances with absolute value below 2^-23 are treated as zero.
+    /// Closed plane-cut intervals and projected coplanar edge/containment
+    /// tests use relative double intermediates to avoid float range loss.
     VX_EXPORT static XBOOL FaceFace(const VxVector &A0, const VxVector &A1, const VxVector &A2, const VxVector &N0, const VxVector &B0, const VxVector &B1, const VxVector &B2, const VxVector &N1);
 
     //--------- Frustum
