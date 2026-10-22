@@ -1,6 +1,7 @@
 #include "VxIntersect.h"
 
 #include <atomic>
+#include <cfloat>
 
 #include "VxVector.h"
 #include "VxMatrix.h"
@@ -243,7 +244,32 @@ namespace {
 
 template <bool kUseSIMD>
 static XBOOL RayBoxCore(const VxRay &ray, const VxBbox &box) {
-#if defined(VX_SIMD_SSE)
+#if defined(VX_SIMD_SSE2)
+    if constexpr (kUseSIMD) {
+        const __m128 origin = VxSIMDLoadVector3(ray.m_Origin), direction = VxSIMDLoadVector3(ray.m_Direction);
+        const __m128 minimum = VxSIMDLoadVector3(box.Min), maximum = VxSIMDLoadVector3(box.Max);
+        const int parallel = _mm_movemask_ps(_mm_cmpeq_ps(direction, _mm_setzero_ps())) & 7;
+        const __m128 outside = _mm_or_ps(_mm_cmplt_ps(origin, minimum), _mm_cmpgt_ps(origin, maximum));
+        if (_mm_movemask_ps(outside) & parallel) return FALSE;
+        const __m128d originXY = _mm_cvtps_pd(origin), originZ = _mm_cvtps_pd(_mm_movehl_ps(origin, origin));
+        // Parallel lanes are ignored below; a unit denominator avoids 0/0.
+        const __m128d directionXY = _mm_set_pd(parallel & 2 ? 1.0 : ray.m_Direction.y, parallel & 1 ? 1.0 : ray.m_Direction.x);
+        const __m128d directionZ = _mm_set_sd(parallel & 4 ? 1.0 : ray.m_Direction.z);
+        const __m128d firstXY = _mm_div_pd(_mm_sub_pd(_mm_cvtps_pd(minimum), originXY), directionXY);
+        const __m128d lastXY = _mm_div_pd(_mm_sub_pd(_mm_cvtps_pd(maximum), originXY), directionXY);
+        const __m128d firstZ = _mm_div_sd(_mm_sub_sd(_mm_cvtps_pd(_mm_movehl_ps(minimum, minimum)), originZ), directionZ);
+        const __m128d lastZ = _mm_div_sd(_mm_sub_sd(_mm_cvtps_pd(_mm_movehl_ps(maximum, maximum)), originZ), directionZ);
+        double low[3], high[3];
+        _mm_storeu_pd(low, _mm_min_pd(firstXY, lastXY)); _mm_storeu_pd(high, _mm_max_pd(firstXY, lastXY));
+        low[2] = _mm_cvtsd_f64(_mm_min_sd(firstZ, lastZ)); high[2] = _mm_cvtsd_f64(_mm_max_sd(firstZ, lastZ));
+        double nearT = 0.0, farT = DBL_MAX;
+        for (int i = 0; i < 3; ++i) if (!(parallel & (1 << i))) {
+            if (low[i] > nearT) nearT = low[i];
+            if (high[i] < farT) farT = high[i];
+        }
+        return nearT <= farT;
+    }
+#elif defined(VX_SIMD_SSE)
     if constexpr (kUseSIMD) {
         const __m128 boxMin = VxSIMDLoadVector3(box.Min);
         const __m128 boxMax = VxSIMDLoadVector3(box.Max);
@@ -274,45 +300,23 @@ static XBOOL RayBoxCore(const VxRay &ray, const VxBbox &box) {
         return TRUE;
     }
 #endif
-    // Get box center and half-extents
-    float boxHalfX = (box.Max.x - box.Min.x) * 0.5f;
-    float boxHalfY = (box.Max.y - box.Min.y) * 0.5f;
-    float boxHalfZ = (box.Max.z - box.Min.z) * 0.5f;
-    
-    VxVector boxCenter = (box.Max + box.Min) * 0.5f;
-
-    // Vector from box center to ray origin
-    float px = ray.m_Origin.x - boxCenter.x;
-    float py = ray.m_Origin.y - boxCenter.y;
-    float pz = ray.m_Origin.z - boxCenter.z;
-
-    // Test if ray origin is outside box on any axis and heading away
-    if (!(XAbs(px) <= boxHalfX)) {
-        if (px * ray.m_Direction.x >= 0.0f) return FALSE;
+    // The boolean query is a closed forward ray, without the detailed
+    // overload's absolute parallel/forward thresholds. Divide after widening
+    // to avoid float cross-product overflow, underflow, and center rounding.
+    double nearT = 0.0, farT = DBL_MAX;
+    for (int i = 0; i < 3; ++i) {
+        const double origin = ray.m_Origin[i], direction = ray.m_Direction[i];
+        if (direction == 0.0) {
+            if (origin < box.Min[i] || origin > box.Max[i]) return FALSE;
+            continue;
+        }
+        const double first = (double(box.Min[i]) - origin) / direction;
+        const double last = (double(box.Max[i]) - origin) / direction;
+        const double low = direction > 0.0 ? first : last, high = direction > 0.0 ? last : first;
+        if (low > nearT) nearT = low;
+        if (high < farT) farT = high;
     }
-    if (!(XAbs(py) <= boxHalfY)) {
-        if (py * ray.m_Direction.y >= 0.0f) return FALSE;
-    }
-    if (!(XAbs(pz) <= boxHalfZ)) {
-        if (pz * ray.m_Direction.z >= 0.0f) return FALSE;
-    }
-
-    // Test separating axes from cross products (p x Direction)
-    float crossX = pz * ray.m_Direction.y - py * ray.m_Direction.z;
-    float crossY = px * ray.m_Direction.z - pz * ray.m_Direction.x;
-    float crossZ = py * ray.m_Direction.x - px * ray.m_Direction.y;
-
-    float absDirY = XAbs(ray.m_Direction.y);
-    float absDirZ = XAbs(ray.m_Direction.z);
-    
-    if (XAbs(crossX) > absDirZ * boxHalfY + absDirY * boxHalfZ) return FALSE;
-    
-    float absDirX = XAbs(ray.m_Direction.x);
-    
-    if (XAbs(crossY) > absDirX * boxHalfZ + absDirZ * boxHalfX) return FALSE;
-    if (XAbs(crossZ) > absDirX * boxHalfY + absDirY * boxHalfX) return FALSE;
-
-    return TRUE;
+    return nearT <= farT;
 }
 
 } // namespace
@@ -326,7 +330,53 @@ namespace {
 
 template <bool kUseSIMD>
 static int RayBoxDetailedCore(const VxRay &ray, const VxBbox &box, VxVector &inpoint, VxVector *outpoint, VxVector *innormal, VxVector *outnormal) {
-#if defined(VX_SIMD_SSE)
+#if defined(VX_SIMD_SSE2)
+    if constexpr (kUseSIMD) {
+        const __m128 origin = VxSIMDLoadVector3(ray.m_Origin), direction = VxSIMDLoadVector3(ray.m_Direction);
+        const __m128 minimum = VxSIMDLoadVector3(box.Min), maximum = VxSIMDLoadVector3(box.Max);
+        const int parallel = _mm_movemask_ps(_mm_cmplt_ps(VxSIMDAbs3(direction), _mm_set1_ps(EPSILON))) & 7;
+        const __m128 outside = _mm_or_ps(_mm_cmplt_ps(origin, minimum), _mm_cmpgt_ps(origin, maximum));
+        if (_mm_movemask_ps(outside) & parallel) return 0;
+        if (parallel == 7) {
+            inpoint = ray.m_Origin;
+            if (outpoint) *outpoint = ray.m_Origin;
+            if (innormal) *innormal = VxVector::axis0();
+            if (outnormal) *outnormal = VxVector::axis0();
+            return -1;
+        }
+        const __m128d originXY = _mm_cvtps_pd(origin), originZ = _mm_cvtps_pd(_mm_movehl_ps(origin, origin));
+        const __m128d directionXY = _mm_set_pd(parallel & 2 ? 1.0 : ray.m_Direction.y, parallel & 1 ? 1.0 : ray.m_Direction.x);
+        const __m128d directionZ = _mm_set_sd(parallel & 4 ? 1.0 : ray.m_Direction.z);
+        const __m128d firstXY = _mm_div_pd(_mm_sub_pd(_mm_cvtps_pd(minimum), originXY), directionXY);
+        const __m128d lastXY = _mm_div_pd(_mm_sub_pd(_mm_cvtps_pd(maximum), originXY), directionXY);
+        const __m128d firstZ = _mm_div_sd(_mm_sub_sd(_mm_cvtps_pd(_mm_movehl_ps(minimum, minimum)), originZ), directionZ);
+        const __m128d lastZ = _mm_div_sd(_mm_sub_sd(_mm_cvtps_pd(_mm_movehl_ps(maximum, maximum)), originZ), directionZ);
+        double low[3], high[3];
+        _mm_storeu_pd(low, _mm_min_pd(firstXY, lastXY)); _mm_storeu_pd(high, _mm_max_pd(firstXY, lastXY));
+        low[2] = _mm_cvtsd_f64(_mm_min_sd(firstZ, lastZ)); high[2] = _mm_cvtsd_f64(_mm_max_sd(firstZ, lastZ));
+        double nearT = -DBL_MAX, farT = DBL_MAX;
+        int nearAxis = 0, farAxis = 0;
+        for (int i = 0; i < 3; ++i) if (!(parallel & (1 << i))) {
+            if (low[i] > nearT) { nearT = low[i]; nearAxis = i; }
+            if (high[i] < farT) { farT = high[i]; farAxis = i; }
+        }
+        if (nearT > farT || farT < EPSILON) return 0;
+        const __m128d actualXY = _mm_cvtps_pd(direction), actualZ = _mm_cvtps_pd(_mm_movehl_ps(direction, direction));
+        const __m128 entryXY = _mm_cvtpd_ps(_mm_add_pd(originXY, _mm_mul_pd(actualXY, _mm_set1_pd(nearT))));
+        const __m128 entryZ = _mm_cvtsd_ss(_mm_setzero_ps(), _mm_add_sd(originZ, _mm_mul_sd(actualZ, _mm_set_sd(nearT))));
+        VxSIMDStoreFloat3(&inpoint.x, _mm_movelh_ps(entryXY, entryZ));
+        inpoint[nearAxis] = ray.m_Direction[nearAxis] > 0.0f ? box.Min[nearAxis] : box.Max[nearAxis];
+        if (outpoint) {
+            const __m128 exitXY = _mm_cvtpd_ps(_mm_add_pd(originXY, _mm_mul_pd(actualXY, _mm_set1_pd(farT))));
+            const __m128 exitZ = _mm_cvtsd_ss(_mm_setzero_ps(), _mm_add_sd(originZ, _mm_mul_sd(actualZ, _mm_set_sd(farT))));
+            VxSIMDStoreFloat3(&outpoint->x, _mm_movelh_ps(exitXY, exitZ));
+            (*outpoint)[farAxis] = ray.m_Direction[farAxis] > 0.0f ? box.Max[farAxis] : box.Min[farAxis];
+        }
+        if (innormal) { *innormal = VxVector::axis0(); (*innormal)[nearAxis] = ray.m_Direction[nearAxis] > 0.0f ? -1.0f : 1.0f; }
+        if (outnormal) { *outnormal = VxVector::axis0(); (*outnormal)[farAxis] = ray.m_Direction[farAxis] > 0.0f ? -1.0f : 1.0f; }
+        return nearT <= EPSILON ? -1 : 1;
+    }
+#elif defined(VX_SIMD_SSE)
     if constexpr (kUseSIMD) {
         float tNear = -kHugeT;
         float tFar = kHugeT;
@@ -383,12 +433,14 @@ static int RayBoxDetailedCore(const VxRay &ray, const VxBbox &box, VxVector &inp
         return (tNear <= EPSILON) ? -1 : 1;
     }
 #endif
-    float tNear = -kHugeT;
-    float tFar = kHugeT;
+    // Retain the original absolute thresholds, tie order and normal signs.
+    // Finite float coordinates and active directions fit in double parameter
+    // range; the old +/-1e30 sentinels could truncate or reject real hits.
+    double tNear = -DBL_MAX;
+    double tFar = DBL_MAX;
     int nearAxis = 0;
-    float nearSign = -1.0f;
     int farAxis = 0;
-    float farSign = 1.0f;
+    bool active = false;
 
     for (int i = 0; i < 3; ++i) {
         const float rayDir = ray.m_Direction[i];
@@ -402,12 +454,12 @@ static int RayBoxDetailedCore(const VxRay &ray, const VxBbox &box, VxVector &inp
             continue;
         }
 
-        const float invDir = 1.0f / rayDir;
-        float t1 = (boxMin - rayOrigin) * invDir;
-        float t2 = (boxMax - rayOrigin) * invDir;
+        active = true;
+        double t1 = (double(boxMin) - rayOrigin) / double(rayDir);
+        double t2 = (double(boxMax) - rayOrigin) / double(rayDir);
 
         if (t1 > t2) {
-            const float tmp = t1;
+            const double tmp = t1;
             t1 = t2;
             t2 = tmp;
         }
@@ -415,31 +467,41 @@ static int RayBoxDetailedCore(const VxRay &ray, const VxBbox &box, VxVector &inp
         if (t1 > tNear) {
             tNear = t1;
             nearAxis = i;
-            nearSign = OppositeDirSign(rayDir);
         }
 
         if (t2 < tFar) {
             tFar = t2;
             farAxis = i;
-            farSign = OppositeDirSign(rayDir);
         }
 
         if (tNear > tFar || tFar < EPSILON)
             return 0;
     }
 
-    inpoint = ray.m_Origin + ray.m_Direction * tNear;
-    if (outpoint)
-        *outpoint = ray.m_Origin + ray.m_Direction * tFar;
+    if (!active) {
+        inpoint = ray.m_Origin;
+        if (outpoint) *outpoint = ray.m_Origin;
+        if (innormal) *innormal = VxVector::axis0();
+        if (outnormal) *outnormal = VxVector::axis0();
+        return -1;
+    }
+    for (int i = 0; i < 3; ++i) inpoint[i] = float(double(ray.m_Origin[i]) + double(ray.m_Direction[i]) * tNear);
+    // The selected face coordinate is known exactly, even when origin+t*d
+    // loses that small boundary in cancellation against a very large origin.
+    inpoint[nearAxis] = ray.m_Direction[nearAxis] > 0.0f ? box.Min[nearAxis] : box.Max[nearAxis];
+    if (outpoint) {
+        for (int i = 0; i < 3; ++i) (*outpoint)[i] = float(double(ray.m_Origin[i]) + double(ray.m_Direction[i]) * tFar);
+        (*outpoint)[farAxis] = ray.m_Direction[farAxis] > 0.0f ? box.Max[farAxis] : box.Min[farAxis];
+    }
 
     if (innormal) {
         *innormal = VxVector::axis0();
-        (*innormal)[nearAxis] = nearSign;
+        (*innormal)[nearAxis] = ray.m_Direction[nearAxis] > 0.0f ? -1.0f : 1.0f;
     }
 
     if (outnormal) {
         *outnormal = VxVector::axis0();
-        (*outnormal)[farAxis] = farSign;
+        (*outnormal)[farAxis] = ray.m_Direction[farAxis] > 0.0f ? -1.0f : 1.0f;
     }
 
     return (tNear <= EPSILON) ? -1 : 1;

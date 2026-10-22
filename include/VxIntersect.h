@@ -26,11 +26,15 @@ class VxIntersect {
 public:
     //----------- Boxes
 
-    /// @brief Checks for intersection between a ray and an axis-aligned bounding box (AABB).
+    /// @brief Tests a closed forward ray against an AABB; only exactly zero direction components are parallel.
     VX_EXPORT static XBOOL RayBox(const VxRay &ray, const VxBbox &box);
     /**
      * @brief Finds the intersection points of a ray with an AABB.
-     * @return Returns TRUE if they intersect. Returns -1 in inpoint.x if the ray's origin is inside the box.
+     * @return 0 on failure, -1 when the entry parameter is <= 2^-23, otherwise 1.
+     * Uses the original absolute 2^-23 parallel/forward thresholds; failure preserves outputs.
+     * Writes line entry/exit points, including an entry behind the origin. Both normals
+     * oppose their direction component; tied faces prefer X, then Y, then Z.
+     * If all components are parallel and the origin is inside, both points are the origin and normals are zero.
      */
     VX_EXPORT static XBOOL RayBox(const VxRay &ray, const VxBbox &box, VxVector &inpoint, VxVector *outpoint = NULL, VxVector *innormal = NULL, VxVector *outnormal = NULL);
 

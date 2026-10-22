@@ -15,6 +15,7 @@
 
 #include "VxMathTestHelpers.h"
 #include "AabbFaceClippingOracle.h"
+#include "RayBoxFaceOracle.h"
 
 using namespace VxMathTest;
 
@@ -523,30 +524,7 @@ bool OBBOBBRef(const VxOBB& box1, const VxOBB& box2) {
 }
 
 bool RayBoxBoolRef(const VxRay& ray, const VxBbox& box) {
-    const float boxHalfX = (box.Max.x - box.Min.x) * 0.5f;
-    const float boxHalfY = (box.Max.y - box.Min.y) * 0.5f;
-    const float boxHalfZ = (box.Max.z - box.Min.z) * 0.5f;
-    const VxVector boxCenter = (box.Max + box.Min) * 0.5f;
-
-    const float px = ray.m_Origin.x - boxCenter.x;
-    const float py = ray.m_Origin.y - boxCenter.y;
-    const float pz = ray.m_Origin.z - boxCenter.z;
-
-    if (!(std::fabs(px) <= boxHalfX) && px * ray.m_Direction.x >= 0.0f) return false;
-    if (!(std::fabs(py) <= boxHalfY) && py * ray.m_Direction.y >= 0.0f) return false;
-    if (!(std::fabs(pz) <= boxHalfZ) && pz * ray.m_Direction.z >= 0.0f) return false;
-
-    const float crossX = pz * ray.m_Direction.y - py * ray.m_Direction.z;
-    const float crossY = px * ray.m_Direction.z - pz * ray.m_Direction.x;
-    const float crossZ = py * ray.m_Direction.x - px * ray.m_Direction.y;
-    const float absDirX = std::fabs(ray.m_Direction.x);
-    const float absDirY = std::fabs(ray.m_Direction.y);
-    const float absDirZ = std::fabs(ray.m_Direction.z);
-
-    if (std::fabs(crossX) > absDirZ * boxHalfY + absDirY * boxHalfZ) return false;
-    if (std::fabs(crossY) > absDirX * boxHalfZ + absDirZ * boxHalfX) return false;
-    if (std::fabs(crossZ) > absDirX * boxHalfY + absDirY * boxHalfX) return false;
-    return true;
+    return RayBoxFaceOracle(ray, box, false).code != 0;
 }
 
 bool SegmentBoxBoolRef(const VxRay& segment, const VxBbox& box) {
@@ -616,64 +594,14 @@ bool SlabContainsParallelRef(float origin, float minV, float maxV) {
 }
 
 int RayBoxDetailedRef(const VxRay& ray, const VxBbox& box, VxVector& inpoint, VxVector* outpoint, VxVector* innormal, VxVector* outnormal) {
-    constexpr float kHugeTRef = 1.0e30f;
-    float tNear = -kHugeTRef;
-    float tFar = kHugeTRef;
-    int nearAxis = 0;
-    float nearSign = -1.0f;
-    int farAxis = 0;
-    float farSign = 1.0f;
-
-    for (int i = 0; i < 3; ++i) {
-        const float dir = ray.m_Direction[i];
-        const float origin = ray.m_Origin[i];
-        const float boxMin = box.Min[i];
-        const float boxMax = box.Max[i];
-
-        if (std::fabs(dir) < EPSILON) {
-            if (!SlabContainsParallelRef(origin, boxMin, boxMax)) {
-                return 0;
-            }
-            continue;
-        }
-
-        const float invDir = 1.0f / dir;
-        float t1 = (boxMin - origin) * invDir;
-        float t2 = (boxMax - origin) * invDir;
-        if (t1 > t2) {
-            const float tmp = t1;
-            t1 = t2;
-            t2 = tmp;
-        }
-
-        if (t1 > tNear) {
-            tNear = t1;
-            nearAxis = i;
-            nearSign = OppositeDirSignRef(dir);
-        }
-        if (t2 < tFar) {
-            tFar = t2;
-            farAxis = i;
-            farSign = OppositeDirSignRef(dir);
-        }
-        if (tNear > tFar || tFar < EPSILON) {
-            return 0;
-        }
+    const RayBoxFaceResult result = RayBoxFaceOracle(ray, box, true);
+    if (result.code) {
+        inpoint = result.entry;
+        if (outpoint) *outpoint = result.exit;
+        if (innormal) *innormal = result.entryNormal;
+        if (outnormal) *outnormal = result.exitNormal;
     }
-
-    inpoint = ray.m_Origin + ray.m_Direction * tNear;
-    if (outpoint) {
-        *outpoint = ray.m_Origin + ray.m_Direction * tFar;
-    }
-    if (innormal) {
-        *innormal = VxVector::axis0();
-        (*innormal)[nearAxis] = nearSign;
-    }
-    if (outnormal) {
-        *outnormal = VxVector::axis0();
-        (*outnormal)[farAxis] = farSign;
-    }
-    return (tNear <= EPSILON) ? -1 : 1;
+    return result.code;
 }
 
 int SegmentBoxDetailedRef(const VxRay& segment, const VxBbox& box, VxVector& inpoint, VxVector* outpoint, VxVector* innormal, VxVector* outnormal) {
