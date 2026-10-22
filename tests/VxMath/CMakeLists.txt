@@ -176,6 +176,7 @@ set(VXMATH_TEST_SOURCES
         SegmentFaceReferenceTest.cpp
         LineFaceReferenceTest.cpp
         GetPointCoefficientsReferenceTest.cpp
+        PointLineDistanceReferenceTest.cpp
         # SIMD Tests
         SIMDFeatureTest.cpp
         SIMDUtilityTest.cpp
@@ -344,6 +345,9 @@ vx_copy_runtime_dependencies(SegmentFaceScalarReferenceTest)
 vx_add_test(LineFaceScalarReferenceTest SOURCES LineFaceReferenceTest.cpp)
 target_compile_definitions(LineFaceScalarReferenceTest PRIVATE VX_SIMD_NONE=1)
 vx_copy_runtime_dependencies(LineFaceScalarReferenceTest)
+vx_add_test(PointLineDistanceScalarReferenceTest SOURCES PointLineDistanceReferenceTest.cpp)
+target_compile_definitions(PointLineDistanceScalarReferenceTest PRIVATE VX_SIMD_NONE=1)
+vx_copy_runtime_dependencies(PointLineDistanceScalarReferenceTest)
 vx_add_test(FaceFaceReferenceTest SOURCES FaceFaceReferenceTest.cpp)
 vx_copy_runtime_dependencies(FaceFaceReferenceTest)
 vx_add_test(FaceFaceScalarReferenceTest SOURCES FaceFaceReferenceTest.cpp)

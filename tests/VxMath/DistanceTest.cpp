@@ -26,13 +26,17 @@ inline VxVector SubtractScaled(const VxVector& a, const VxVector& b, float s) {
 }
 
 float PointLineSquareDistanceScalarRef(const VxVector& point, const VxRay& line, float* t0) {
-    const VxVector diff = SubtractScalar(point, line.m_Origin);
-    const float t = Dot3Scalar(diff, line.m_Direction) / SquareMagnitudeScalar(line.m_Direction);
-
-    if (t0) *t0 = t;
-
-    const VxVector d = SubtractScaled(diff, line.m_Direction, t);
-    return SquareMagnitudeScalar(d);
+    // Independent Gram determinant; do not mirror the production cross product.
+    double magnitude = 0, length = 0, dot = 0;
+    for (int i = 0; i < 3; ++i) {
+        const double diff = double(point[i]) - line.m_Origin[i];
+        const double direction = line.m_Direction[i];
+        magnitude += diff * diff;
+        length += direction * direction;
+        dot += diff * direction;
+    }
+    if (t0) *t0 = float(dot / length);
+    return float((magnitude * length - dot * dot) / length);
 }
 
 float PointRaySquareDistanceScalarRef(const VxVector& point, const VxRay& ray, float* t0) {

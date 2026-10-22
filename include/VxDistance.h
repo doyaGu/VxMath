@@ -141,6 +141,10 @@ public:
      * @param t0 Pointer to a float to store the parameter of the closest point on the line. Can be NULL.
      * @return The squared distance between the point and the line.
      */
+    // Uses the supplied, nonzero direction without normalization or parameter
+    // clamping. Relative double intermediates preserve finite-scale distances;
+    // t0 may be null or alias an input component, and is written after evaluation.
+    // A zero direction retains non-finite arithmetic without a fallback.
     VX_EXPORT static float PointLineSquareDistance(const VxVector &point, const VxRay &line1, float *t0 = NULL);
 
     /**

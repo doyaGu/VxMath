@@ -68,20 +68,29 @@ static inline RayPairTerms MakeRayPairTermsSIMD(const VxRay& r0, const VxRay& r1
 }
 
 static float PointLineSquareDistanceSIMDImpl(const VxVector &point, const VxRay &line, float *t0) {
-    const __m128 pointV = VxSIMDLoadFloat3(&point.x);
-    const __m128 originV = VxSIMDLoadFloat3(&line.m_Origin.x);
-    const __m128 directionV = VxSIMDLoadFloat3(&line.m_Direction.x);
-    const __m128 diff = VxSIMDSubtract3(pointV, originV);
-    const __m128 dotDiffDir = VxSIMDDotProduct3(diff, directionV);
-    const __m128 dotDirDir = VxSIMDDotProduct3(directionV, directionV);
-    const __m128 tVec = _mm_div_ss(dotDiffDir, dotDirDir);
-    const float t = VxSIMDExtractX(tVec);
+    const __m128d diffXY = _mm_sub_pd(_mm_setr_pd(point.x, point.y),
+                                     _mm_setr_pd(line.m_Origin.x, line.m_Origin.y));
+    const __m128d dirXY = _mm_setr_pd(line.m_Direction.x, line.m_Direction.y);
+    const double dx = _mm_cvtsd_f64(diffXY);
+    const double dy = _mm_cvtsd_f64(_mm_unpackhi_pd(diffXY, diffXY));
+    const double dz = double(point.z) - line.m_Origin.z;
+    const double vx = line.m_Direction.x, vy = line.m_Direction.y, vz = line.m_Direction.z;
+    const __m128d dotXY = _mm_mul_pd(diffXY, dirXY);
+    const __m128d lengthXY = _mm_mul_pd(dirXY, dirXY);
+    const double dot = _mm_cvtsd_f64(_mm_add_sd(dotXY, _mm_unpackhi_pd(dotXY, dotXY))) + dz * vz;
+    const double length = _mm_cvtsd_f64(_mm_add_sd(lengthXY, _mm_unpackhi_pd(lengthXY, lengthXY))) + vz * vz;
+    const double t = dot / length;
 
-    if (t0) *t0 = t;
-
-    const __m128 tSplat = _mm_shuffle_ps(tVec, tVec, _MM_SHUFFLE(0, 0, 0, 0));
-    const __m128 residual = _mm_sub_ps(diff, _mm_mul_ps(directionV, tSplat));
-    return VxSIMDExtractX(VxSIMDDotProduct3(residual, residual));
+    // The cross-product form avoids subtracting a rounded closest point,
+    // which can lose the entire perpendicular distance on a long line.
+    const __m128d crossXY = _mm_sub_pd(_mm_mul_pd(_mm_setr_pd(dy, dz), _mm_setr_pd(vz, vx)),
+                                      _mm_mul_pd(_mm_setr_pd(dz, dx), _mm_setr_pd(vy, vz)));
+    const double crossZ = dx * vy - dy * vx;
+    const __m128d squareXY = _mm_mul_pd(crossXY, crossXY);
+    const double square = _mm_cvtsd_f64(_mm_add_sd(squareXY, _mm_unpackhi_pd(squareXY, squareXY))) + crossZ * crossZ;
+    const float result = float(square / length);
+    if (t0) *t0 = float(t);
+    return result;
 }
 
 static float PointRaySquareDistanceSIMDImpl(const VxVector &point, const VxRay &ray, float *t0) {
@@ -130,13 +139,18 @@ static float PointSegmentSquareDistanceSIMDImpl(const VxVector &point, const VxR
 #endif
 
 static float PointLineSquareDistanceScalarImpl(const VxVector &point, const VxRay &line, float *t0) {
-    const VxVector diff = point - line.m_Origin;
-    const float t = DotProduct(diff, line.m_Direction) / SquareMagnitude(line.m_Direction);
-
-    if (t0) *t0 = t;
-
-    const VxVector d = diff - (line.m_Direction * t);
-    return SquareMagnitude(d);
+    const double dx = double(point.x) - line.m_Origin.x;
+    const double dy = double(point.y) - line.m_Origin.y;
+    const double dz = double(point.z) - line.m_Origin.z;
+    const double vx = line.m_Direction.x, vy = line.m_Direction.y, vz = line.m_Direction.z;
+    const double length = vx * vx + vy * vy + vz * vz;
+    const double t = (dx * vx + dy * vy + dz * vz) / length;
+    const double crossX = dy * vz - dz * vy;
+    const double crossY = dz * vx - dx * vz;
+    const double crossZ = dx * vy - dy * vx;
+    const float result = float((crossX * crossX + crossY * crossY + crossZ * crossZ) / length);
+    if (t0) *t0 = float(t);
+    return result;
 }
 
 static float PointRaySquareDistanceScalarImpl(const VxVector &point, const VxRay &ray, float *t0) {
