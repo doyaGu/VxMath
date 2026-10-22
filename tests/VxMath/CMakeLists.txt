@@ -185,6 +185,7 @@ set(VXMATH_TEST_SOURCES
         RayRayDistanceReferenceTest.cpp
         RaySegmentDistanceReferenceTest.cpp
         SegmentSegmentDistanceReferenceTest.cpp
+        DistanceAbiReferenceTest.cpp
         # SIMD Tests
         SIMDFeatureTest.cpp
         SIMDUtilityTest.cpp
