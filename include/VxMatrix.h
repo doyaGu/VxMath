@@ -19,10 +19,11 @@ struct VxStridedData;
 inline void Vx3DMatrixIdentity(VxMatrix &Mat);
 
 /**
- * @brief Transforms a 3D vector by a matrix (assumes w=1 for input, performs perspective divide).
+ * @brief Transforms a 3D point with implicit w=1, without perspective division.
  * @param ResultVector Pointer to store the resulting transformed vector.
  * @param Mat The transformation matrix.
  * @param Vector Pointer to the input vector to transform.
+ * @remarks Ignores the matrix's fourth column, writes only XYZ, and supports ResultVector == Vector.
  */
 inline void Vx3DMultiplyMatrixVector(VxVector *ResultVector, const VxMatrix &Mat, const VxVector *Vector);
 
