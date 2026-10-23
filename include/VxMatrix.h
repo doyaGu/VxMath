@@ -42,6 +42,8 @@ inline void Vx3DMultiplyMatrixVectorMany(VxVector *ResultVectors, const VxMatrix
  * @param ResultVector Pointer to store the resulting transformed 4D vector.
  * @param Mat The transformation matrix.
  * @param Vector Pointer to the input 4D vector.
+ * @remarks Reads all XYZW and writes all four components without perspective division.
+ *          Supports identical input/output and matrix row aliases.
  */
 inline void Vx3DMultiplyMatrixVector4(VxVector4 *ResultVector, const VxMatrix &Mat, const VxVector4 *Vector);
 
@@ -50,6 +52,8 @@ inline void Vx3DMultiplyMatrixVector4(VxVector4 *ResultVector, const VxMatrix &M
  * @param ResultVector Pointer to store the resulting transformed 4D vector.
  * @param Mat The transformation matrix.
  * @param Vector Pointer to the input 3D vector (w is assumed to be 1).
+ * @remarks Reads only 12 input bytes and writes 16 output bytes without perspective division.
+ *          The input may be the base view of the output VxVector4 or a matrix row.
  */
 inline void Vx3DMultiplyMatrixVector4(VxVector4 *ResultVector, const VxMatrix &Mat, const VxVector *Vector);
 
