@@ -77,6 +77,11 @@ inline void Vx3DRotateVector(VxVector *ResultVector, const VxMatrix &Mat, const 
  * @param Vector Pointer to the input array of vectors.
  * @param count The number of vectors to rotate.
  * @param stride The byte offset between consecutive vectors.
+ * @remarks Applies only the linear 3x3 transform, without translation, normalization or perspective division.
+ *          Reads and writes XYZ (12 bytes); does not read the matrix's translation row.
+ *          Source and destination share a signed byte stride, including negative or zero stride.
+ *          Each element is read and written before advancing; writes are visible to later reads.
+ *          The matrix must remain separate from output records. Nonpositive count performs no access.
  */
 inline void Vx3DRotateVectorMany(VxVector *ResultVector, const VxMatrix &Mat, const VxVector *Vector, int count, int stride);
 
