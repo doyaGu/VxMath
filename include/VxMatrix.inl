@@ -147,47 +147,52 @@ inline VxVector4 operator*(const VxVector4 &v, const VxMatrix &m) {
 
 inline void VxMatrix::Perspective(float Fov, float Aspect, float Near_plane, float Far_plane) {
     Clear();
-    m_Data[0][0] = cosf(Fov * 0.5f) / sinf(Fov * 0.5f);
-    m_Data[1][1] = m_Data[0][0] * Aspect;
-    m_Data[2][2] = Far_plane / (Far_plane - Near_plane);
-    m_Data[3][2] = -m_Data[2][2] * Near_plane;
+    const double halfFov = double(Fov) * 0.5;
+    const double horizontalScale = cos(halfFov) / sin(halfFov);
+    const double depth = double(Far_plane) - Near_plane;
+    // Each coefficient is rounded independently; an overflowing scale need not overflow its products.
+    m_Data[0][0] = float(horizontalScale);
+    m_Data[1][1] = float(horizontalScale * Aspect);
+    m_Data[2][2] = float(double(Far_plane) / depth);
+    m_Data[3][2] = float(-double(Near_plane) * Far_plane / depth);
     m_Data[2][3] = 1;
 }
 
 inline void VxMatrix::PerspectiveRect(float Left, float Right, float Top, float Bottom, float Near_plane, float Far_plane) {
     Clear();
-    float RL = 1.0f / (Right - Left);
-    float TB = 1.0f / (Top - Bottom);
-    m_Data[0][0] = 2.0f * Near_plane * RL;
-    m_Data[1][1] = 2.0f * Near_plane * TB;
-    m_Data[2][0] = -(Right + Left) * RL;
-    m_Data[2][1] = -(Top + Bottom) * TB;
-    m_Data[2][2] = Far_plane / (Far_plane - Near_plane);
-    m_Data[3][2] = -m_Data[2][2] * Near_plane;
+    const double width = double(Right) - Left;
+    const double height = double(Top) - Bottom;
+    const double depth = double(Far_plane) - Near_plane;
+    m_Data[0][0] = float(2.0 * Near_plane / width);
+    m_Data[1][1] = float(2.0 * Near_plane / height);
+    m_Data[2][0] = float(-(double(Right) + Left) / width);
+    m_Data[2][1] = float(-(double(Top) + Bottom) / height);
+    m_Data[2][2] = float(double(Far_plane) / depth);
+    m_Data[3][2] = float(-double(Near_plane) * Far_plane / depth);
     m_Data[2][3] = 1;
 }
 
 inline void VxMatrix::Orthographic(float Zoom, float Aspect, float Near_plane, float Far_plane) {
     Clear();
-    float iz = 1.0f / (Far_plane - Near_plane);
+    const double depth = double(Far_plane) - Near_plane;
     m_Data[0][0] = Zoom;
     m_Data[1][1] = Zoom * Aspect;
-    m_Data[2][2] = iz;
-    m_Data[3][2] = -Near_plane * iz;
+    m_Data[2][2] = float(1.0 / depth);
+    m_Data[3][2] = float(-double(Near_plane) / depth);
     m_Data[3][3] = 1.0f;
 }
 
 inline void VxMatrix::OrthographicRect(float Left, float Right, float Top, float Bottom, float Near_plane, float Far_plane) {
     Clear();
-    float ix = 1.0f / (Right - Left);
-    float iy = 1.0f / (Top - Bottom);
-    float iz = 1.0f / (Far_plane - Near_plane);
-    m_Data[0][0] = 2.0f * ix;
-    m_Data[1][1] = -2.0f * iy;
-    m_Data[2][2] = iz;
-    m_Data[3][0] = -(Left + Right) * ix;
-    m_Data[3][1] = (Top + Bottom) * iy;
-    m_Data[3][2] = -Near_plane * iz;
+    const double width = double(Right) - Left;
+    const double height = double(Top) - Bottom;
+    const double depth = double(Far_plane) - Near_plane;
+    m_Data[0][0] = float(2.0 / width);
+    m_Data[1][1] = float(-2.0 / height);
+    m_Data[2][2] = float(1.0 / depth);
+    m_Data[3][0] = float(-(double(Left) + Right) / width);
+    m_Data[3][1] = float((double(Top) + Bottom) / height);
+    m_Data[3][2] = float(-double(Near_plane) / depth);
     m_Data[3][3] = 1.0f;
 }
 

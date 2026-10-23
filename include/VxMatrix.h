@@ -271,7 +271,7 @@ public:
 
     /**
      * @brief Constructs a perspective projection matrix.
-     * @param Fov The vertical field of view, in radians.
+     * @param Fov The horizontal field of view, in radians.
      * @param Aspect The aspect ratio (width / height).
      * @param Near_plane The distance to the near clipping plane.
      * @param Far_plane The distance to the far clipping plane.
