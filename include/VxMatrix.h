@@ -190,11 +190,15 @@ inline void Vx3DInterpolateMatrixNoScale(float step, VxMatrix &Res, const VxMatr
 inline void Vx3DMultiplyMatrixVectorStrided(VxStridedData *Dest, VxStridedData *Src, const VxMatrix &Mat, int count);
 
 /**
- * @brief Transforms an array of 4D vectors with a specific stride by a matrix.
+ * @brief Transforms strided 3D points to complete 4D results, using implicit w=1.
  * @param Dest Pointer to the destination strided data structure.
  * @param Src Pointer to the source strided data structure.
  * @param Mat The transformation matrix.
  * @param count The number of vectors to transform.
+ * @remarks Reads only XYZ (12 bytes) per input and writes XYZW (16 bytes), without perspective division.
+ *          Source and destination have independent unsigned byte strides, including zero; descriptors remain unchanged.
+ *          Each point is read and written before advancing. In-place use requires VxVector4 record storage.
+ *          The matrix and descriptors must remain separate from output records. Nonpositive count performs no access.
  */
 inline void Vx3DMultiplyMatrixVector4Strided(VxStridedData *Dest, VxStridedData *Src, const VxMatrix &Mat, int count);
 

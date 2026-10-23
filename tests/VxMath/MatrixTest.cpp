@@ -1113,18 +1113,21 @@ TEST_F(VxMatrixStridedTest, Vx3DMultiplyMatrixVectorStrided_InPlace) {
 }
 
 TEST_F(VxMatrixStridedTest, Vx3DMultiplyMatrixVector4Strided) {
+    const float ignoredW[test_count] = {0.0f, -2.0f, 0.5f, 2.0f, -1.0f};
+    for (int i = 0; i < test_count; ++i) test_vectors4[i].w = ignoredW[i];
     VxStridedData src(test_vectors4, sizeof(VxVector4));
     VxStridedData dest(result_vectors4, sizeof(VxVector4));
 
     Vx3DMultiplyMatrixVector4Strided(&dest, &src, transform, test_count);
 
-    // Check that transformations were applied correctly
+    // This entry reads XYZ with implicit w=1, even when the record has another w.
     for (int i = 0; i < test_count; ++i) {
-        VxVector4 expected = transform * test_vectors4[i];
+        const VxVector4 expected(2.0f*test_vectors4[i].x+5.0f, test_vectors4[i].y+10.0f, test_vectors4[i].z, 1.0f);
         EXPECT_NEAR(result_vectors4[i].x, expected.x, STANDARD_TOL);
         EXPECT_NEAR(result_vectors4[i].y, expected.y, STANDARD_TOL);
         EXPECT_NEAR(result_vectors4[i].z, expected.z, STANDARD_TOL);
         EXPECT_NEAR(result_vectors4[i].w, expected.w, STANDARD_TOL);
+        EXPECT_EQ(test_vectors4[i].w, ignoredW[i]);
     }
 }
 
@@ -1453,17 +1456,18 @@ TEST_F(VxMatrixPerformanceTest, LargeVectorArrayTransformationStrided) {
 }
 
 TEST_F(VxMatrixPerformanceTest, LargeVector4ArrayTransformationStrided) {
+    for (int i = 0; i < large_count; ++i) large_vector4_array[i].w = float(i%5)-2.0f;
     VxStridedData src(large_vector4_array, sizeof(VxVector4));
     VxStridedData dst(result4_array, sizeof(VxVector4));
     Vx3DMultiplyMatrixVector4Strided(&dst, &src, transform, large_count);
 
-    VxVector4 expected_0 = transform * large_vector4_array[0];
-    VxVector4 expected_mid = transform * large_vector4_array[large_count / 2];
-    VxVector4 expected_last = transform * large_vector4_array[large_count - 1];
-
-    EXPECT_NEAR(result4_array[0].x, expected_0.x, EPSILON);
-    EXPECT_NEAR(result4_array[large_count / 2].x, expected_mid.x, EPSILON);
-    EXPECT_NEAR(result4_array[large_count - 1].x, expected_last.x, EPSILON);
+    for (int i = 0; i < large_count; ++i) {
+        EXPECT_FLOAT_EQ(result4_array[i].x, 2.0f*large_vector4_array[i].x+5.0f);
+        EXPECT_FLOAT_EQ(result4_array[i].y, large_vector4_array[i].y+10.0f);
+        EXPECT_FLOAT_EQ(result4_array[i].z, large_vector4_array[i].z);
+        EXPECT_FLOAT_EQ(result4_array[i].w, 1.0f);
+        EXPECT_FLOAT_EQ(large_vector4_array[i].w, float(i%5)-2.0f);
+    }
 }
 
 // Integration Tests

@@ -646,20 +646,16 @@ inline void Vx3DMultiplyMatrixVector4Strided(VxStridedData *Dest, VxStridedData 
 #if defined(VX_SIMD_SSE)
     VxSIMDMultiplyMatrixVector4Strided(Dest, Src, &Mat, count);
 #else
-    if (!Dest || !Src || !Dest->Ptr || !Src->Ptr || count <= 0) return;
-    const float *m0=Mat[0], *m1=Mat[1], *m2=Mat[2], *m3=Mat[3];
+    if (count <= 0 || !Dest || !Src || !Dest->Ptr || !Src->Ptr) return;
+    const unsigned int srcStride = Src->Stride, destStride = Dest->Stride;
     const char *srcPtr = static_cast<const char *>(Src->Ptr);
     char *destPtr = static_cast<char *>(Dest->Ptr);
-    for (int i = 0; i < count; ++i) {
-        const VxVector4 *srcVec = reinterpret_cast<const VxVector4 *>(srcPtr);
-        VxVector4 *destVec = reinterpret_cast<VxVector4 *>(destPtr);
-        const float vx=srcVec->x, vy=srcVec->y, vz=srcVec->z, vw=srcVec->w;
-        destVec->x = vx*m0[0] + vy*m1[0] + vz*m2[0] + vw*m3[0];
-        destVec->y = vx*m0[1] + vy*m1[1] + vz*m2[1] + vw*m3[1];
-        destVec->z = vx*m0[2] + vy*m1[2] + vz*m2[2] + vw*m3[2];
-        destVec->w = vx*m0[3] + vy*m1[3] + vz*m2[3] + vw*m3[3];
-        srcPtr += Src->Stride;
-        destPtr += Dest->Stride;
+    const VxMatrix matrix = Mat;
+    for (;;) {
+        Vx3DMultiplyMatrixVector4(reinterpret_cast<VxVector4 *>(destPtr), matrix, reinterpret_cast<const VxVector *>(srcPtr));
+        if (--count == 0) break;
+        srcPtr += srcStride;
+        destPtr += destStride;
     }
 #endif
 }
@@ -1466,31 +1462,32 @@ VX_SIMD_INLINE void VxSIMDMultiplyMatrixVectorStrided(VxStridedData *dest, const
 }
 
 VX_SIMD_INLINE void VxSIMDMultiplyMatrixVector4Strided(VxStridedData *dest, const VxStridedData *src, const VxMatrix *mat, int count) noexcept {
-    if (!dest || !src || !dest->Ptr || !src->Ptr || count <= 0) return;
-    const __m128 m0 = _mm_loadu_ps(&(*mat)[0][0]);
-    const __m128 m1 = _mm_loadu_ps(&(*mat)[1][0]);
-    const __m128 m2 = _mm_loadu_ps(&(*mat)[2][0]);
-    const __m128 m3 = _mm_loadu_ps(&(*mat)[3][0]);
-
+    if (count <= 0 || !dest || !src || !dest->Ptr || !src->Ptr) return;
+    const unsigned int srcStride = src->Stride, destStride = dest->Stride;
     const char *srcPtr = static_cast<const char *>(src->Ptr);
     char *destPtr = static_cast<char *>(dest->Ptr);
-    for (int i = 0; i < count; ++i) {
-        const VxVector4 *srcVec = reinterpret_cast<const VxVector4 *>(srcPtr);
+    __m128d rows[4][2];
+    for (int r = 0; r < 4; ++r) {
+        const __m128 row = _mm_loadu_ps(&(*mat)[r][0]);
+        rows[r][0] = _mm_cvtps_pd(row);
+        rows[r][1] = _mm_cvtps_pd(_mm_movehl_ps(row, row));
+    }
+    for (;;) {
+        const VxVector *srcVec = reinterpret_cast<const VxVector *>(srcPtr);
         VxVector4 *dstVec = reinterpret_cast<VxVector4 *>(destPtr);
-
-        const __m128 v = VxSIMDLoadFloat4(reinterpret_cast<const float *>(srcVec));
-        const __m128 v_x = _mm_shuffle_ps(v, v, _MM_SHUFFLE(0, 0, 0, 0));
-        const __m128 v_y = _mm_shuffle_ps(v, v, _MM_SHUFFLE(1, 1, 1, 1));
-        const __m128 v_z = _mm_shuffle_ps(v, v, _MM_SHUFFLE(2, 2, 2, 2));
-        const __m128 v_w = _mm_shuffle_ps(v, v, _MM_SHUFFLE(3, 3, 3, 3));
-
-        __m128 res = VX_FMADD_PS(m2, v_z, _mm_mul_ps(m3, v_w));
-        res = VX_FMADD_PS(m1, v_y, res);
-        res = VX_FMADD_PS(m0, v_x, res);
-        VxSIMDStoreFloat4(reinterpret_cast<float *>(dstVec), res);
-
-        srcPtr += src->Stride;
-        destPtr += dest->Stride;
+        const __m128d vx = _mm_set1_pd(double(srcVec->x)), vy = _mm_set1_pd(double(srcVec->y)), vz = _mm_set1_pd(double(srcVec->z));
+        __m128 parts[2];
+        for (int half = 0; half < 2; ++half) {
+            const __m128d x = _mm_mul_pd(rows[0][half], vx), y = _mm_mul_pd(rows[1][half], vy), z = _mm_mul_pd(rows[2][half], vz);
+            const __m128d sum = _mm_add_pd(_mm_add_pd(_mm_add_pd(x, y), z), rows[3][half]);
+            const __m128d finite = _mm_cmple_pd(_mm_andnot_pd(_mm_set1_pd(-0.0), sum), _mm_set1_pd(DBL_MAX));
+            const __m128d compensated = VxSIMDMatrixAffineSum(x, y, z, rows[3][half]);
+            parts[half] = _mm_cvtpd_ps(_mm_or_pd(_mm_and_pd(finite, compensated), _mm_andnot_pd(finite, sum)));
+        }
+        VxSIMDStoreFloat4(&dstVec->x, _mm_movelh_ps(parts[0], parts[1]));
+        if (--count == 0) break;
+        srcPtr += srcStride;
+        destPtr += destStride;
     }
 }
 
