@@ -336,9 +336,14 @@ inline void Vx3DMultiplyMatrix4(VxMatrix &ResultMat, const VxMatrix &MatA, const
 #else
     VxMatrix temp;
     for (int i = 0; i < 4; i++) {
-        const float bi0=MatB[i][0], bi1=MatB[i][1], bi2=MatB[i][2], bi3=MatB[i][3];
-        for (int j = 0; j < 4; j++)
-            temp[i][j] = MatA[0][j]*bi0 + MatA[1][j]*bi1 + MatA[2][j]*bi2 + MatA[3][j]*bi3;
+        const double bi0 = MatB[i][0], bi1 = MatB[i][1], bi2 = MatB[i][2], bi3 = MatB[i][3];
+        for (int j = 0; j < 4; j++) {
+            const double x = double(MatA[0][j]) * bi0, y = double(MatA[1][j]) * bi1;
+            const double z = double(MatA[2][j]) * bi2, w = double(MatA[3][j]) * bi3;
+            const double sum = x + y + z + w;
+            // Compensate finite products without changing infinity/NaN propagation.
+            temp[i][j] = fabs(sum) <= DBL_MAX ? VxMatrixAffineSum(x, y, z, w) : float(sum);
+        }
     }
     ResultMat = temp;
 #endif
@@ -1270,20 +1275,28 @@ VX_SIMD_INLINE void VxSIMDMultiplyMatrixM4(VxMatrix *result, const VxMatrix *a, 
     const __m128 a1 = _mm_loadu_ps(ap + 4);
     const __m128 a2 = _mm_loadu_ps(ap + 8);
     const __m128 a3 = _mm_loadu_ps(ap + 12);
+    const __m128d rows[4][2] = {
+        {_mm_cvtps_pd(a0), _mm_cvtps_pd(_mm_movehl_ps(a0, a0))},
+        {_mm_cvtps_pd(a1), _mm_cvtps_pd(_mm_movehl_ps(a1, a1))},
+        {_mm_cvtps_pd(a2), _mm_cvtps_pd(_mm_movehl_ps(a2, a2))},
+        {_mm_cvtps_pd(a3), _mm_cvtps_pd(_mm_movehl_ps(a3, a3))}
+    };
 
     VxMatrix temp;
     VxMatrix *out = ((result == a) || (result == b)) ? &temp : result;
     for (int i = 0; i < 4; ++i) {
-        const __m128 bRow = _mm_loadu_ps(bp + i * 4);
-        const __m128 b_x = _mm_shuffle_ps(bRow, bRow, _MM_SHUFFLE(0, 0, 0, 0));
-        const __m128 b_y = _mm_shuffle_ps(bRow, bRow, _MM_SHUFFLE(1, 1, 1, 1));
-        const __m128 b_z = _mm_shuffle_ps(bRow, bRow, _MM_SHUFFLE(2, 2, 2, 2));
-        const __m128 b_w = _mm_shuffle_ps(bRow, bRow, _MM_SHUFFLE(3, 3, 3, 3));
-
-        __m128 res = VX_FMADD_PS(a2, b_z, _mm_mul_ps(a3, b_w));
-        res = VX_FMADD_PS(a1, b_y, res);
-        res = VX_FMADD_PS(a0, b_x, res);
-        _mm_storeu_ps(&(*out)[i][0], res);
+        const __m128d bx = _mm_set1_pd(double(bp[i * 4])), by = _mm_set1_pd(double(bp[i * 4 + 1]));
+        const __m128d bz = _mm_set1_pd(double(bp[i * 4 + 2])), bw = _mm_set1_pd(double(bp[i * 4 + 3]));
+        __m128 parts[2];
+        for (int half = 0; half < 2; ++half) {
+            const __m128d x = _mm_mul_pd(rows[0][half], bx), y = _mm_mul_pd(rows[1][half], by);
+            const __m128d z = _mm_mul_pd(rows[2][half], bz), w = _mm_mul_pd(rows[3][half], bw);
+            const __m128d sum = _mm_add_pd(_mm_add_pd(_mm_add_pd(x, y), z), w);
+            const __m128d finite = _mm_cmple_pd(_mm_andnot_pd(_mm_set1_pd(-0.0), sum), _mm_set1_pd(DBL_MAX));
+            const __m128d compensated = VxSIMDMatrixAffineSum(x, y, z, w);
+            parts[half] = _mm_cvtpd_ps(_mm_or_pd(_mm_and_pd(finite, compensated), _mm_andnot_pd(finite, sum)));
+        }
+        _mm_storeu_ps(&(*out)[i][0], _mm_movelh_ps(parts[0], parts[1]));
     }
 
     if (out != result) {

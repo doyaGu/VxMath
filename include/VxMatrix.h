@@ -82,9 +82,10 @@ inline void Vx3DMultiplyMatrix(VxMatrix &ResultMat, const VxMatrix &MatA, const 
 
 /**
  * @brief Multiplies two full 4x4 matrices.
- * @param ResultMat The resulting matrix (MatA * MatB).
+ * @param ResultMat The resulting matrix (MatB * MatA in row-vector notation).
  * @param MatA The first matrix operand.
  * @param MatB The second matrix operand.
+ * @remarks Applies MatB then MatA, retaining all homogeneous terms. ResultMat may alias either operand.
  */
 inline void Vx3DMultiplyMatrix4(VxMatrix &ResultMat, const VxMatrix &MatA, const VxMatrix &MatB);
 

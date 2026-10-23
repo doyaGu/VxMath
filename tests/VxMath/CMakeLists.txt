@@ -190,6 +190,7 @@ set(VXMATH_TEST_SOURCES
         MatrixValueReferenceTest.cpp
         MatrixProjectionReferenceTest.cpp
         MatrixAffineMultiplyReferenceTest.cpp
+        MatrixFullMultiplyReferenceTest.cpp
         # SIMD Tests
         SIMDFeatureTest.cpp
         SIMDUtilityTest.cpp
@@ -468,3 +469,7 @@ vx_copy_runtime_dependencies(MatrixProjectionScalarReferenceTest)
 vx_add_test(MatrixAffineMultiplyScalarReferenceTest SOURCES MatrixAffineMultiplyReferenceTest.cpp)
 target_compile_definitions(MatrixAffineMultiplyScalarReferenceTest PRIVATE VX_SIMD_NONE=1)
 vx_copy_runtime_dependencies(MatrixAffineMultiplyScalarReferenceTest)
+
+vx_add_test(MatrixFullMultiplyScalarReferenceTest SOURCES MatrixFullMultiplyReferenceTest.cpp)
+target_compile_definitions(MatrixFullMultiplyScalarReferenceTest PRIVATE VX_SIMD_NONE=1)
+vx_copy_runtime_dependencies(MatrixFullMultiplyScalarReferenceTest)
