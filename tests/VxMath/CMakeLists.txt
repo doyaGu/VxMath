@@ -186,6 +186,7 @@ set(VXMATH_TEST_SOURCES
         RaySegmentDistanceReferenceTest.cpp
         SegmentSegmentDistanceReferenceTest.cpp
         DistanceAbiReferenceTest.cpp
+        MatrixDeterminantReferenceTest.cpp
         # SIMD Tests
         SIMDFeatureTest.cpp
         SIMDUtilityTest.cpp
@@ -448,3 +449,7 @@ vx_copy_runtime_dependencies(RaySegmentDistanceScalarReferenceTest)
 vx_add_test(SegmentSegmentDistanceScalarReferenceTest SOURCES SegmentSegmentDistanceReferenceTest.cpp)
 target_compile_definitions(SegmentSegmentDistanceScalarReferenceTest PRIVATE VX_SIMD_NONE=1)
 vx_copy_runtime_dependencies(SegmentSegmentDistanceScalarReferenceTest)
+
+vx_add_test(MatrixDeterminantScalarReferenceTest SOURCES MatrixDeterminantReferenceTest.cpp)
+target_compile_definitions(MatrixDeterminantScalarReferenceTest PRIVATE VX_SIMD_NONE=1)
+vx_copy_runtime_dependencies(MatrixDeterminantScalarReferenceTest)

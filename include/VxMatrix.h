@@ -96,7 +96,7 @@ inline void Vx3DMultiplyMatrix4(VxMatrix &ResultMat, const VxMatrix &MatA, const
 inline void Vx3DInverseMatrix(VxMatrix &InverseMat, const VxMatrix &Mat);
 
 /**
- * @brief Computes the determinant of a 4x4 matrix.
+ * @brief Computes the determinant of the upper-left 3x3 linear transform.
  * @param Mat The input matrix.
  * @return The determinant of the matrix.
  */

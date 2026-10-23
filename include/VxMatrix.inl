@@ -358,14 +358,79 @@ inline void Vx3DInverseMatrix(VxMatrix &InverseMat, const VxMatrix &Mat) {
 #endif
 }
 
+// Add one component to a nonoverlapping expansion. Twelve components cover
+// six exact float triple products; comparison with a rounding boundary adds one.
+inline int VxMatrixDeterminantAccumulate(double value, double *expansion, int length) {
+    double next[13];
+    int count = 0;
+    for (int i = 0; i < length; ++i) {
+        const double sum = value + expansion[i];
+        const double tail = sum - value;
+        const double error = (value - (sum - tail)) + (expansion[i] - tail);
+        if (error != 0.0) next[count++] = error;
+        value = sum;
+    }
+    if (value != 0.0 || count == 0) next[count++] = value;
+    for (int i = 0; i < count; ++i) expansion[i] = next[i];
+    return count;
+}
+
+inline int VxMatrixDeterminantCompare(const double *expansion, int length, double boundary) {
+    double difference[13];
+    for (int i = 0; i < length; ++i) difference[i] = expansion[i];
+    length = VxMatrixDeterminantAccumulate(-boundary, difference, length);
+    return difference[length - 1] > 0.0 ? 1 : difference[length - 1] < 0.0 ? -1 : 0;
+}
+
+inline float VxMatrixDeterminantRounded(const double *high, const double *low) {
+    double expansion[13];
+    int length = 0;
+    for (int i = 0; i < 6; ++i) {
+        length = VxMatrixDeterminantAccumulate(low[i], expansion, length);
+        length = VxMatrixDeterminantAccumulate(high[i], expansion, length);
+    }
+    const float candidate = float(expansion[length - 1]);
+    const double overflow = double(FLT_MAX) + 0x1p103;
+    if (candidate > FLT_MAX) return VxMatrixDeterminantCompare(expansion, length, overflow) < 0 ? FLT_MAX : candidate;
+    if (candidate < -FLT_MAX) return VxMatrixDeterminantCompare(expansion, length, -overflow) > 0 ? -FLT_MAX : candidate;
+
+    // Compare the exact expansion with adjacent binary32 midpoints. This also
+    // avoids double rounding when a tiny term lies just beyond a float tie.
+    unsigned bits, upperBits, lowerBits;
+    memcpy(&bits, &candidate, sizeof(bits));
+    if (candidate == 0.0f) { upperBits = 1; lowerBits = 0x80000001u; }
+    else if (candidate > 0.0f) { upperBits = bits + 1; lowerBits = bits - 1; }
+    else { upperBits = bits - 1; lowerBits = bits + 1; }
+    float upper, lower;
+    memcpy(&upper, &upperBits, sizeof(upper));
+    memcpy(&lower, &lowerBits, sizeof(lower));
+    const double upperMidpoint = upper > FLT_MAX ? overflow : (double(candidate) + upper) * 0.5;
+    const double lowerMidpoint = lower < -FLT_MAX ? -overflow : (double(candidate) + lower) * 0.5;
+    const int above = VxMatrixDeterminantCompare(expansion, length, upperMidpoint);
+    const int below = VxMatrixDeterminantCompare(expansion, length, lowerMidpoint);
+    if (above > 0 || (above == 0 && (bits & 1))) return upper;
+    if (below < 0 || (below == 0 && (bits & 1))) return lower;
+    return candidate;
+}
+
 inline float Vx3DMatrixDeterminant(const VxMatrix &Mat) {
 #if defined(VX_SIMD_SSE)
     return VxSIMDDeterminant3x3(&Mat);
 #else
-    const float a00=Mat[0][0], a01=Mat[0][1], a02=Mat[0][2];
-    const float a10=Mat[1][0], a11=Mat[1][1], a12=Mat[1][2];
-    const float a20=Mat[2][0], a21=Mat[2][1], a22=Mat[2][2];
-    return a00*(a11*a22-a12*a21) + a01*(a12*a20-a10*a22) + a02*(a10*a21-a11*a20);
+    const double x[] = {Mat[0][0], Mat[0][1], Mat[0][2], Mat[0][2], Mat[0][1], Mat[0][0]};
+    const double y[] = {Mat[1][1], Mat[1][2], Mat[1][0], Mat[1][1], Mat[1][0], Mat[1][2]};
+    const double z[] = {Mat[2][2], Mat[2][0], Mat[2][1], -double(Mat[2][0]), -double(Mat[2][2]), -double(Mat[2][1])};
+    double high[6], low[6];
+    for (int i = 0; i < 6; ++i) {
+        // A product of two binary32 values is exact in binary64. Split that
+        // product before the third multiplication to retain its rounding tail.
+        const double product = x[i] * y[i];
+        high[i] = product * z[i];
+        const double split = product * 134217729.0;
+        const double upper = split - (split - product), lower = product - upper;
+        low[i] = (upper * z[i] - high[i]) + lower * z[i];
+    }
+    return VxMatrixDeterminantRounded(high, low);
 #endif
 }
 
@@ -1109,10 +1174,22 @@ VX_SIMD_INLINE void VxSIMDMultiplyMatrixM(VxMatrix *result, const VxMatrix *a, c
 }
 
 VX_SIMD_INLINE float VxSIMDDeterminant3x3(const VxMatrix *mat) noexcept {
-    const __m128 row0 = VxSIMDLoadFloat3(&(*mat)[0][0]);
-    const __m128 row1 = VxSIMDLoadFloat3(&(*mat)[1][0]);
-    const __m128 row2 = VxSIMDLoadFloat3(&(*mat)[2][0]);
-    return _mm_cvtss_f32(VxSIMDDotProduct3(row0, VxSIMDCrossProduct3(row1, row2)));
+    const double x[] = {(*mat)[0][0], (*mat)[0][1], (*mat)[0][2], (*mat)[0][2], (*mat)[0][1], (*mat)[0][0]};
+    const double y[] = {(*mat)[1][1], (*mat)[1][2], (*mat)[1][0], (*mat)[1][1], (*mat)[1][0], (*mat)[1][2]};
+    const double z[] = {(*mat)[2][2], (*mat)[2][0], (*mat)[2][1], -double((*mat)[2][0]), -double((*mat)[2][2]), -double((*mat)[2][1])};
+    double high[6], low[6];
+    for (int i = 0; i < 6; i += 2) {
+        const __m128d factor = _mm_loadu_pd(z + i);
+        const __m128d product = _mm_mul_pd(_mm_loadu_pd(x + i), _mm_loadu_pd(y + i));
+        const __m128d result = _mm_mul_pd(product, factor);
+        const __m128d split = _mm_mul_pd(product, _mm_set1_pd(134217729.0));
+        const __m128d upper = _mm_sub_pd(split, _mm_sub_pd(split, product));
+        const __m128d lower = _mm_sub_pd(product, upper);
+        const __m128d error = _mm_add_pd(_mm_sub_pd(_mm_mul_pd(upper, factor), result), _mm_mul_pd(lower, factor));
+        _mm_storeu_pd(high + i, result);
+        _mm_storeu_pd(low + i, error);
+    }
+    return VxMatrixDeterminantRounded(high, low);
 }
 
 VX_SIMD_INLINE void VxSIMDInverseAffineMatrix(VxMatrix *result, const VxMatrix *mat) noexcept {
