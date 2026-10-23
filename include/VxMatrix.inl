@@ -664,21 +664,28 @@ inline void Vx3DRotateVectorStrided(VxStridedData *Dest, VxStridedData *Src, con
 #if defined(VX_SIMD_SSE)
     VxSIMDRotateVectorStrided(Dest, Src, &Mat, count);
 #else
-    if (!Dest || !Src || !Dest->Ptr || !Src->Ptr || count <= 0) return;
-    const float m00=Mat[0][0], m01=Mat[0][1], m02=Mat[0][2];
-    const float m10=Mat[1][0], m11=Mat[1][1], m12=Mat[1][2];
-    const float m20=Mat[2][0], m21=Mat[2][1], m22=Mat[2][2];
+    if (count <= 0 || !Dest || !Src || !Dest->Ptr || !Src->Ptr) return;
+    const unsigned int srcStride = Src->Stride, destStride = Dest->Stride;
+    const double rows[3][3] = {
+        {Mat[0][0], Mat[0][1], Mat[0][2]},
+        {Mat[1][0], Mat[1][1], Mat[1][2]},
+        {Mat[2][0], Mat[2][1], Mat[2][2]}
+    };
     const char *srcPtr = static_cast<const char *>(Src->Ptr);
-    char *destPtr = static_cast<char *>(Dest->Ptr);
-    for (int i = 0; i < count; ++i) {
-        const VxVector *srcVec = reinterpret_cast<const VxVector *>(srcPtr);
-        VxVector *destVec = reinterpret_cast<VxVector *>(destPtr);
-        const float vx=srcVec->x, vy=srcVec->y, vz=srcVec->z;
-        destVec->x = vx*m00 + vy*m10 + vz*m20;
-        destVec->y = vx*m01 + vy*m11 + vz*m21;
-        destVec->z = vx*m02 + vy*m12 + vz*m22;
-        srcPtr += Src->Stride;
-        destPtr += Dest->Stride;
+    char *dstPtr = static_cast<char *>(Dest->Ptr);
+    for (;;) {
+        const VxVector *vec = reinterpret_cast<const VxVector *>(srcPtr);
+        const double vx = vec->x, vy = vec->y, vz = vec->z;
+        VxVector temp;
+        for (int c = 0; c < 3; ++c) {
+            const double x = vx * rows[0][c], y = vy * rows[1][c], z = vz * rows[2][c];
+            const double sum = x + y + z;
+            temp[c] = fabs(sum) <= DBL_MAX ? VxMatrixAffineSum(x, y, z, 0.0) : float(sum);
+        }
+        *reinterpret_cast<VxVector *>(dstPtr) = temp;
+        if (--count == 0) break;
+        srcPtr += srcStride;
+        dstPtr += destStride;
     }
 #endif
 }
@@ -1492,31 +1499,38 @@ VX_SIMD_INLINE void VxSIMDMultiplyMatrixVector4Strided(VxStridedData *dest, cons
 }
 
 VX_SIMD_INLINE void VxSIMDRotateVectorStrided(VxStridedData *dest, const VxStridedData *src, const VxMatrix *mat, int count) noexcept {
-    if (!dest || !src || !dest->Ptr || !src->Ptr || count <= 0) return;
-    if (src->Stride == sizeof(VxVector) && dest->Stride == sizeof(VxVector)) {
-        VxSIMDRotateVectorMany(
-            reinterpret_cast<VxVector *>(dest->Ptr),
-            mat,
-            reinterpret_cast<const VxVector *>(src->Ptr),
-            count,
-            static_cast<int>(sizeof(VxVector)));
+    if (count <= 0 || !dest || !src || !dest->Ptr || !src->Ptr) return;
+    const unsigned int srcStride = src->Stride, destStride = dest->Stride;
+    const char *source = static_cast<const char *>(src->Ptr);
+    char *destination = static_cast<char *>(dest->Ptr);
+    if (srcStride == sizeof(VxVector) && destStride == sizeof(VxVector)) {
+        VxSIMDRotateVectorMany(reinterpret_cast<VxVector *>(destination), mat,
+                              reinterpret_cast<const VxVector *>(source), count, sizeof(VxVector));
         return;
     }
-
-    const __m128 m0 = _mm_loadu_ps(&(*mat)[0][0]);
-    const __m128 m1 = _mm_loadu_ps(&(*mat)[1][0]);
-    const __m128 m2 = _mm_loadu_ps(&(*mat)[2][0]);
-
-    const char *srcPtr = static_cast<const char *>(src->Ptr);
-    char *destPtr = static_cast<char *>(dest->Ptr);
-    for (int i = 0; i < count; ++i) {
+    const __m128d rows[3][2] = {
+        {_mm_cvtps_pd(_mm_loadu_ps(&(*mat)[0][0])), _mm_set_pd(0.0, double((*mat)[0][2]))},
+        {_mm_cvtps_pd(_mm_loadu_ps(&(*mat)[1][0])), _mm_set_pd(0.0, double((*mat)[1][2]))},
+        {_mm_cvtps_pd(_mm_loadu_ps(&(*mat)[2][0])), _mm_set_pd(0.0, double((*mat)[2][2]))}
+    };
+    const char *srcPtr = source;
+    char *dstPtr = destination;
+    for (;;) {
         const VxVector *srcVec = reinterpret_cast<const VxVector *>(srcPtr);
-        VxVector *dstVec = reinterpret_cast<VxVector *>(destPtr);
-        const __m128 r = VxSIMDRotateVec3Rows(m0, m1, m2, srcVec);
-        VxSIMDStoreFloat3(&dstVec->x, r);
-
-        srcPtr += src->Stride;
-        destPtr += dest->Stride;
+        VxVector *dstVec = reinterpret_cast<VxVector *>(dstPtr);
+        const __m128d vx = _mm_set1_pd(double(srcVec->x)), vy = _mm_set1_pd(double(srcVec->y)), vz = _mm_set1_pd(double(srcVec->z));
+        __m128 parts[2];
+        for (int half = 0; half < 2; ++half) {
+            const __m128d x = _mm_mul_pd(rows[0][half], vx), y = _mm_mul_pd(rows[1][half], vy), z = _mm_mul_pd(rows[2][half], vz);
+            const __m128d sum = _mm_add_pd(_mm_add_pd(x, y), z);
+            const __m128d finite = _mm_cmple_pd(_mm_andnot_pd(_mm_set1_pd(-0.0), sum), _mm_set1_pd(DBL_MAX));
+            const __m128d compensated = VxSIMDMatrixAffineSum(x, y, z, _mm_setzero_pd());
+            parts[half] = _mm_cvtpd_ps(_mm_or_pd(_mm_and_pd(finite, compensated), _mm_andnot_pd(finite, sum)));
+        }
+        VxSIMDStoreFloat3(&dstVec->x, _mm_movelh_ps(parts[0], parts[1]));
+        if (--count == 0) break;
+        srcPtr += srcStride;
+        dstPtr += destStride;
     }
 }
 

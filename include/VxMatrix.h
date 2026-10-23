@@ -208,6 +208,10 @@ inline void Vx3DMultiplyMatrixVector4Strided(VxStridedData *Dest, VxStridedData 
  * @param Src Pointer to the source strided data structure.
  * @param Mat The rotation matrix.
  * @param count The number of vectors to rotate.
+ * @remarks Reads and writes only XYZ (12 bytes); uses the upper 3x3, without translation or division.
+ *          Source and destination have independent unsigned byte strides, including zero; descriptors remain unchanged.
+ *          Each vector is read and written before advancing. Matrix and descriptors must remain separate from output.
+ *          Nonpositive count performs no access.
  */
 inline void Vx3DRotateVectorStrided(VxStridedData *Dest, VxStridedData *Src, const VxMatrix &Mat, int count);
 
