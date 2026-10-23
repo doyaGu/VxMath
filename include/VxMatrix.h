@@ -34,6 +34,10 @@ inline void Vx3DMultiplyMatrixVector(VxVector *ResultVector, const VxMatrix &Mat
  * @param Vectors Pointer to the input array of vectors.
  * @param count The number of vectors to transform.
  * @param stride The byte offset between consecutive vectors in the input and output arrays.
+ * @remarks Transforms XYZ with implicit w=1, without perspective division; writes only 12 bytes per record.
+ *          Both arrays advance by the same signed stride, including negative or zero stride.
+ *          Each element is read and written before advancing, including exact in-place or overlapping records.
+ *          The matrix must remain separate from the output records. Nonpositive count performs no access.
  */
 inline void Vx3DMultiplyMatrixVectorMany(VxVector *ResultVectors, const VxMatrix &Mat, const VxVector *Vectors, int count, int stride);
 

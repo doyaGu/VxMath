@@ -195,6 +195,7 @@ set(VXMATH_TEST_SOURCES
         MatrixPointTransformReferenceTest.cpp
         MatrixRotateReferenceTest.cpp
         MatrixVector4ReferenceTest.cpp
+        MatrixManyReferenceTest.cpp
         # SIMD Tests
         SIMDFeatureTest.cpp
         SIMDUtilityTest.cpp
@@ -489,6 +490,10 @@ vx_copy_runtime_dependencies(MatrixPointTransformScalarReferenceTest)
 vx_add_test(MatrixRotateScalarReferenceTest SOURCES MatrixRotateReferenceTest.cpp)
 target_compile_definitions(MatrixRotateScalarReferenceTest PRIVATE VX_SIMD_NONE=1)
 vx_copy_runtime_dependencies(MatrixRotateScalarReferenceTest)
+
+vx_add_test(MatrixManyScalarReferenceTest SOURCES MatrixManyReferenceTest.cpp)
+target_compile_definitions(MatrixManyScalarReferenceTest PRIVATE VX_SIMD_NONE=1)
+vx_copy_runtime_dependencies(MatrixManyScalarReferenceTest)
 
 vx_add_test(MatrixVector4ScalarReferenceTest SOURCES MatrixVector4ReferenceTest.cpp)
 target_compile_definitions(MatrixVector4ScalarReferenceTest PRIVATE VX_SIMD_NONE=1)
