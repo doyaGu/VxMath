@@ -301,15 +301,29 @@ inline void Vx3DMultiplyMatrixVector4(VxVector4 *ResultVector, const VxMatrix &M
 #endif
 }
 
+inline float VxMatrixAffineSum(double x, double y, double z, double translation) {
+    // Float products are exact in double. Keep the addition tails when large terms cancel.
+    const double terms[] = {y, z, translation};
+    double sum = x, error = 0.0;
+    for (int i = 0; i < 3; ++i) {
+        const double next = sum + terms[i];
+        const double delta = next - sum;
+        error += (sum - (next - delta)) + (terms[i] - delta);
+        sum = next;
+    }
+    return float(sum + error);
+}
+
 inline void Vx3DMultiplyMatrix(VxMatrix &ResultMat, const VxMatrix &MatA, const VxMatrix &MatB) {
 #if defined(VX_SIMD_SSE)
     VxSIMDMultiplyMatrixM(&ResultMat, &MatA, &MatB);
 #else
     VxMatrix temp;
     for (int i = 0; i < 4; i++) {
-        const float bi0=MatB[i][0], bi1=MatB[i][1], bi2=MatB[i][2], bi3=MatB[i][3];
-        for (int j = 0; j < 4; j++)
-            temp[i][j] = MatA[0][j]*bi0 + MatA[1][j]*bi1 + MatA[2][j]*bi2 + MatA[3][j]*bi3;
+        const double bi0 = MatB[i][0], bi1 = MatB[i][1], bi2 = MatB[i][2];
+        for (int j = 0; j < 3; j++)
+            temp[i][j] = VxMatrixAffineSum(double(MatA[0][j]) * bi0,
+                double(MatA[1][j]) * bi1, double(MatA[2][j]) * bi2, i == 3 ? MatA[3][j] : 0.0);
     }
     temp[0][3] = 0.0f; temp[1][3] = 0.0f; temp[2][3] = 0.0f; temp[3][3] = 1.0f;
     ResultMat = temp;
@@ -1131,6 +1145,20 @@ VX_SIMD_INLINE XBOOL VxSIMDIsPureTranslationMatrix(const VxMatrix *mat) noexcept
            ((_mm_movemask_ps(wEq) & 0x1) != 0);
 }
 
+VX_SIMD_INLINE __m128d VxSIMDMatrixAffineSum(__m128d x, __m128d y, __m128d z, __m128d translation) noexcept {
+    __m128d sum = _mm_add_pd(x, y);
+    __m128d delta = _mm_sub_pd(sum, x);
+    __m128d error = _mm_add_pd(_mm_sub_pd(x, _mm_sub_pd(sum, delta)), _mm_sub_pd(y, delta));
+    __m128d next = _mm_add_pd(sum, z);
+    delta = _mm_sub_pd(next, sum);
+    error = _mm_add_pd(error, _mm_add_pd(_mm_sub_pd(sum, _mm_sub_pd(next, delta)), _mm_sub_pd(z, delta)));
+    sum = next;
+    next = _mm_add_pd(sum, translation);
+    delta = _mm_sub_pd(next, sum);
+    error = _mm_add_pd(error, _mm_add_pd(_mm_sub_pd(sum, _mm_sub_pd(next, delta)), _mm_sub_pd(translation, delta)));
+    return _mm_add_pd(next, error);
+}
+
 VX_SIMD_INLINE void VxSIMDMultiplyMatrixM(VxMatrix *result, const VxMatrix *a, const VxMatrix *b) noexcept {
     if (VxSIMDIsPureTranslationMatrix(a) && VxSIMDIsPureTranslationMatrix(b)) {
         const float tx = (*a)[3][0] + (*b)[3][0];
@@ -1144,27 +1172,26 @@ VX_SIMD_INLINE void VxSIMDMultiplyMatrixM(VxMatrix *result, const VxMatrix *a, c
         return;
     }
 
-    const float *ap = static_cast<const float *>(static_cast<const void *>(*a));
-    const float *bp = static_cast<const float *>(static_cast<const void *>(*b));
-
-    const __m128 a0 = _mm_loadu_ps(ap + 0);
-    const __m128 a1 = _mm_loadu_ps(ap + 4);
-    const __m128 a2 = _mm_loadu_ps(ap + 8);
-    const __m128 a3 = _mm_loadu_ps(ap + 12);
+    const __m128d a0xy = _mm_cvtps_pd(_mm_loadu_ps(&(*a)[0][0]));
+    const __m128d a1xy = _mm_cvtps_pd(_mm_loadu_ps(&(*a)[1][0]));
+    const __m128d a2xy = _mm_cvtps_pd(_mm_loadu_ps(&(*a)[2][0]));
+    const __m128d a3xy = _mm_cvtps_pd(_mm_loadu_ps(&(*a)[3][0]));
+    const __m128d a0z = _mm_set_pd(0.0, double((*a)[0][2]));
+    const __m128d a1z = _mm_set_pd(0.0, double((*a)[1][2]));
+    const __m128d a2z = _mm_set_pd(0.0, double((*a)[2][2]));
+    const __m128d a3z = _mm_set_pd(0.0, double((*a)[3][2]));
     VxMatrix temp;
     VxMatrix *out = ((result == a) || (result == b)) ? &temp : result;
 
     for (int i = 0; i < 4; ++i) {
-        const __m128 bRow = _mm_loadu_ps(bp + i * 4);
-        const __m128 b_x = _mm_shuffle_ps(bRow, bRow, _MM_SHUFFLE(0, 0, 0, 0));
-        const __m128 b_y = _mm_shuffle_ps(bRow, bRow, _MM_SHUFFLE(1, 1, 1, 1));
-        const __m128 b_z = _mm_shuffle_ps(bRow, bRow, _MM_SHUFFLE(2, 2, 2, 2));
-        const __m128 b_w = _mm_shuffle_ps(bRow, bRow, _MM_SHUFFLE(3, 3, 3, 3));
-
-        __m128 res = VX_FMADD_PS(a2, b_z, _mm_mul_ps(a3, b_w));
-        res = VX_FMADD_PS(a1, b_y, res);
-        res = VX_FMADD_PS(a0, b_x, res);
-        _mm_storeu_ps(&(*out)[i][0], res);
+        const __m128d bx = _mm_set1_pd(double((*b)[i][0]));
+        const __m128d by = _mm_set1_pd(double((*b)[i][1]));
+        const __m128d bz = _mm_set1_pd(double((*b)[i][2]));
+        const __m128d xy = VxSIMDMatrixAffineSum(_mm_mul_pd(a0xy, bx), _mm_mul_pd(a1xy, by),
+            _mm_mul_pd(a2xy, bz), i == 3 ? a3xy : _mm_setzero_pd());
+        const __m128d z = VxSIMDMatrixAffineSum(_mm_mul_pd(a0z, bx), _mm_mul_pd(a1z, by),
+            _mm_mul_pd(a2z, bz), i == 3 ? a3z : _mm_setzero_pd());
+        _mm_storeu_ps(&(*out)[i][0], _mm_movelh_ps(_mm_cvtpd_ps(xy), _mm_cvtpd_ps(z)));
     }
 
     // Enforce 3D transformation constraints

@@ -72,10 +72,10 @@ inline void Vx3DRotateVectorMany(VxVector *ResultVector, const VxMatrix &Mat, co
 
 /**
  * @brief Multiplies two affine 3D transformation matrices.
- * @param ResultMat The resulting matrix (MatA * MatB).
+ * @param ResultMat The resulting matrix (MatB * MatA in row-vector notation).
  * @param MatA The first matrix operand.
  * @param MatB The second matrix operand.
- * @remarks This function enforces an affine output matrix by forcing the last column to [0,0,0,1].
+ * @remarks Applies MatB then MatA using their 3x3 blocks and translations; the last column is [0,0,0,1].
  * Use `Vx3DMultiplyMatrix4()` when projective terms must be preserved.
  */
 inline void Vx3DMultiplyMatrix(VxMatrix &ResultMat, const VxMatrix &MatA, const VxMatrix &MatB);
