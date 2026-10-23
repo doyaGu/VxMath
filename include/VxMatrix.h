@@ -229,7 +229,7 @@ inline float Vx3DDecomposeMatrixTotalPtr(const VxMatrix &A, VxQuaternion *Quat, 
  */
 class VxMatrix {
 public:
-    /// @brief Default constructor. Does not initialize the matrix.
+    /// @brief Default constructor. Initializes all elements to zero.
     VxMatrix();
 
     /**
@@ -239,8 +239,8 @@ public:
     VxMatrix(float m[4][4]);
 
     /**
-     * @brief Returns a reference to a static identity matrix.
-     * @return A const reference to the identity matrix.
+     * @brief Constructs an identity matrix.
+     * @return An independent identity matrix by value.
      */
     static VxMatrix Identity();
 

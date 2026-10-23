@@ -85,9 +85,12 @@ protected:
 // Basic Constructor and Setup Tests
 TEST_F(VxMatrixTest, DefaultConstructor) {
     VxMatrix mat;
-    // Constructor doesn't initialize, so we won't test specific values
-    // Just ensure it can be created without crashing
-    EXPECT_TRUE(true);
+    for (int row = 0; row < 4; ++row) {
+        for (int column = 0; column < 4; ++column) {
+            EXPECT_EQ(mat[row][column], 0.0f);
+            EXPECT_FALSE(std::signbit(mat[row][column]));
+        }
+    }
 }
 
 TEST_F(VxMatrixTest, ArrayConstructor) {
