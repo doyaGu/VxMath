@@ -198,58 +198,14 @@ inline void VxMatrix::OrthographicRect(float Left, float Right, float Top, float
 
 // ---------- Basic matrix-vector transforms ----------
 
-inline void Vx3DRotateVector(VxVector *ResultVector, const VxMatrix &Mat, const VxVector *Vector) {
-#if defined(VX_SIMD_SSE)
-    VxSIMDRotateVectorM(ResultVector, &Mat, Vector);
-#else
-    const float vx = Vector->x;
-    const float vy = Vector->y;
-    const float vz = Vector->z;
-
-    const float *m0 = Mat[0];
-    const float *m1 = Mat[1];
-    const float *m2 = Mat[2];
-
-    ResultVector->x = vx * m0[0] + vy * m1[0] + vz * m2[0];
-    ResultVector->y = vx * m0[1] + vy * m1[1] + vz * m2[1];
-    ResultVector->z = vx * m0[2] + vy * m1[2] + vz * m2[2];
-#endif
-}
-
 inline void VxVector::Rotate(const VxMatrix &M) {
-#if defined(VX_SIMD_SSE)
-    VxVector result;
-    VxSIMDRotateVectorM(&result, &M, this);
-    *this = result;
-#else
-    const float ox = x, oy = y, oz = z;
-
-    const float m00 = M[0][0], m10 = M[1][0], m20 = M[2][0];
-    const float m01 = M[0][1], m11 = M[1][1], m21 = M[2][1];
-    const float m02 = M[0][2], m12 = M[1][2], m22 = M[2][2];
-
-    x = m00 * ox + m10 * oy + m20 * oz;
-    y = m01 * ox + m11 * oy + m21 * oz;
-    z = m02 * ox + m12 * oy + m22 * oz;
-#endif
+    Vx3DRotateVector(this, M, this);
 }
 
 inline const VxVector Rotate(const VxMatrix &mat, const VxVector &pt) {
-#if defined(VX_SIMD_SSE)
     VxVector result;
-    VxSIMDRotateVectorM(&result, &mat, &pt);
+    Vx3DRotateVector(&result, mat, &pt);
     return result;
-#else
-    const float m00 = mat[0][0], m10 = mat[1][0], m20 = mat[2][0];
-    const float m01 = mat[0][1], m11 = mat[1][1], m21 = mat[2][1];
-    const float m02 = mat[0][2], m12 = mat[1][2], m22 = mat[2][2];
-
-    return VxVector(
-        m00 * pt.x + m10 * pt.y + m20 * pt.z,
-        m01 * pt.x + m11 * pt.y + m21 * pt.z,
-        m02 * pt.x + m12 * pt.y + m22 * pt.z
-    );
-#endif
 }
 
 // ---------- Core matrix operations ----------
@@ -293,6 +249,21 @@ inline float VxMatrixAffineSum(double x, double y, double z, double translation)
         sum = next;
     }
     return float(sum + error);
+}
+
+inline void Vx3DRotateVector(VxVector *ResultVector, const VxMatrix &Mat, const VxVector *Vector) {
+#if defined(VX_SIMD_SSE)
+    VxSIMDRotateVectorM(ResultVector, &Mat, Vector);
+#else
+    const double vx = Vector->x, vy = Vector->y, vz = Vector->z;
+    VxVector temp;
+    for (int c = 0; c < 3; ++c) {
+        const double x = vx * Mat[0][c], y = vy * Mat[1][c], z = vz * Mat[2][c];
+        const double sum = x + y + z;
+        temp[c] = fabs(sum) <= DBL_MAX ? VxMatrixAffineSum(x, y, z, 0.0) : float(sum);
+    }
+    *ResultVector = temp;
+#endif
 }
 
 inline void Vx3DMultiplyMatrixVector(VxVector *ResultVector, const VxMatrix &Mat, const VxVector *Vector) {
@@ -1385,9 +1356,21 @@ VX_SIMD_INLINE void VxSIMDMatrixIdentity(VxMatrix *mat) noexcept {
 }
 
 VX_SIMD_INLINE void VxSIMDRotateVectorM(VxVector *result, const VxMatrix *mat, const VxVector *v) noexcept {
-    __m128 vec = VxSIMDLoadFloat3(&v->x);
-    __m128 res = VxSIMDMatrixRotateVector3((const float *) &(*mat)[0][0], vec);
-    VxSIMDStoreFloat3(&result->x, res);
+    const __m128d vx = _mm_set1_pd(double(v->x)), vy = _mm_set1_pd(double(v->y)), vz = _mm_set1_pd(double(v->z));
+    const __m128d rows[3][2] = {
+        {_mm_cvtps_pd(_mm_loadu_ps(&(*mat)[0][0])), _mm_set_pd(0.0, double((*mat)[0][2]))},
+        {_mm_cvtps_pd(_mm_loadu_ps(&(*mat)[1][0])), _mm_set_pd(0.0, double((*mat)[1][2]))},
+        {_mm_cvtps_pd(_mm_loadu_ps(&(*mat)[2][0])), _mm_set_pd(0.0, double((*mat)[2][2]))}
+    };
+    __m128 parts[2];
+    for (int half = 0; half < 2; ++half) {
+        const __m128d x = _mm_mul_pd(rows[0][half], vx), y = _mm_mul_pd(rows[1][half], vy), z = _mm_mul_pd(rows[2][half], vz);
+        const __m128d sum = _mm_add_pd(_mm_add_pd(x, y), z);
+        const __m128d finite = _mm_cmple_pd(_mm_andnot_pd(_mm_set1_pd(-0.0), sum), _mm_set1_pd(DBL_MAX));
+        const __m128d compensated = VxSIMDMatrixAffineSum(x, y, z, _mm_setzero_pd());
+        parts[half] = _mm_cvtpd_ps(_mm_or_pd(_mm_and_pd(finite, compensated), _mm_andnot_pd(finite, sum)));
+    }
+    VxSIMDStoreFloat3(&result->x, _mm_movelh_ps(parts[0], parts[1]));
 }
 
 VX_SIMD_INLINE void VxSIMDMultiplyMatrixVectorMany(VxVector *resultVectors, const VxMatrix *mat, const VxVector *vectors, int count, int stride) noexcept {

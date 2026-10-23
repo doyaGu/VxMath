@@ -54,10 +54,11 @@ inline void Vx3DMultiplyMatrixVector4(VxVector4 *ResultVector, const VxMatrix &M
 inline void Vx3DMultiplyMatrixVector4(VxVector4 *ResultVector, const VxMatrix &Mat, const VxVector *Vector);
 
 /**
- * @brief Rotates a 3D vector by a matrix, ignoring the translation part of the matrix.
+ * @brief Applies the matrix's linear 3x3 transform to a 3D vector.
  * @param ResultVector Pointer to store the resulting rotated vector.
  * @param Mat The rotation matrix.
  * @param Vector Pointer to the input vector to rotate.
+ * @remarks Ignores translation and the fourth column, without normalizing. Writes only XYZ and supports in-place use.
  */
 inline void Vx3DRotateVector(VxVector *ResultVector, const VxMatrix &Mat, const VxVector *Vector);
 
