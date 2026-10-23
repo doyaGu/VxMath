@@ -90,9 +90,10 @@ inline void Vx3DMultiplyMatrix(VxMatrix &ResultMat, const VxMatrix &MatA, const 
 inline void Vx3DMultiplyMatrix4(VxMatrix &ResultMat, const VxMatrix &MatA, const VxMatrix &MatB);
 
 /**
- * @brief Computes the inverse of a given 4x4 matrix.
+ * @brief Computes the inverse of the affine 3x3 transform and translation.
  * @param InverseMat The resulting inverse matrix.
- * @param Mat The matrix to invert.
+ * @param Mat The matrix to invert; its fourth column is ignored.
+ * @remarks An exactly singular linear transform leaves InverseMat unchanged. InverseMat may alias Mat.
  */
 inline void Vx3DInverseMatrix(VxMatrix &InverseMat, const VxMatrix &Mat);
 
