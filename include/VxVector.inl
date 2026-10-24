@@ -11,6 +11,7 @@
 #pragma once
 
 #include "VxSIMD.h"
+#include <string.h>
 
 #if defined(VX_SIMD_SSE)
 VX_SIMD_INLINE void VxSIMDNormalizeVector(VxVector *v) noexcept;
@@ -703,19 +704,76 @@ VX_SIMD_INLINE void VxSIMDLerpVector4(VxVector4 *result, const VxVector4 *a, con
 // --- Array operations --------------------------------------------------------
 
 VX_SIMD_INLINE void VxSIMDInterpolateFloatArray(float *result, const float *a, const float *b, float factor, int count) noexcept {
-    const __m128 factorVec = _mm_set1_ps(factor);
-
-    const int simdCount = count & ~3;
-    for (int i = 0; i < simdCount; i += 4) {
-        const __m128 aVec = _mm_loadu_ps(a + i);
-        const __m128 bVec = _mm_loadu_ps(b + i);
-        const __m128 diff = _mm_sub_ps(bVec, aVec);
-        const __m128 resultVec = VX_FMADD_PS(diff, factorVec, aVec);
-        _mm_storeu_ps(result + i, resultVec);
+    if (count <= 0) return;
+    const uintptr_t dst = reinterpret_cast<uintptr_t>(result);
+    if (factor == 0.0f || factor == 1.0f) {
+        const float *source = factor == 0.0f ? a : b;
+        const uintptr_t src = reinterpret_cast<uintptr_t>(source);
+        const uintptr_t gap = dst > src ? dst - src : src - dst;
+        if (count >= 64 && gap / sizeof(float) >= static_cast<unsigned>(count)) {
+            memcpy(result, source, static_cast<size_t>(count)*sizeof(float));
+            return;
+        }
+        const uintptr_t distance = dst > src ? dst - src : 16;
+        int i = 0;
+        if (distance >= 16) {
+            const int end = count & ~3;
+            for (; i < end; i += 4) _mm_storeu_ps(result + i, _mm_loadu_ps(source + i));
+        }
+        if (distance >= 8) {
+            const int end = count & ~1;
+            for (; i < end; i += 2) {
+                const __m128i value = _mm_loadl_epi64(reinterpret_cast<const __m128i *>(source + i));
+                _mm_storel_epi64(reinterpret_cast<__m128i *>(result + i), value);
+            }
+        }
+        for (; i < count; ++i) _mm_store_ss(result + i, _mm_load_ss(source + i));
+        return;
     }
-
-    for (int i = simdCount; i < count; ++i) {
-        result[i] = a[i] + (b[i] - a[i]) * factor;
+    const uintptr_t srcA = reinterpret_cast<uintptr_t>(a), srcB = reinterpret_cast<uintptr_t>(b);
+    const uintptr_t distanceA = dst > srcA ? dst - srcA : 16;
+    const uintptr_t distanceB = dst > srcB ? dst - srcB : 16;
+    const uintptr_t distance = distanceA < distanceB ? distanceA : distanceB;
+    const __m128d t = _mm_set1_pd(factor);
+    int i = 0;
+    // A write less than four floats ahead can feed a later source read.
+    // Reduce the batch width to that dependency distance, preserving the
+    // original per-element forward writes without giving up independent SIMD.
+    if (distance >= 16) {
+        const int end = (count - 2) & ~3;
+        for (; i < end; i += 4) {
+            // All four loaded floats are within count; only each low pair
+            // participates, allowing the compiler to fold the conversion load.
+            const __m128 av = _mm_loadu_ps(a + i), bv = _mm_loadu_ps(b + i);
+            const __m128d al = _mm_cvtps_pd(av), bl = _mm_cvtps_pd(bv);
+            const __m128 ahv = _mm_loadu_ps(a + i + 2), bhv = _mm_loadu_ps(b + i + 2);
+            const __m128d ah = _mm_cvtps_pd(ahv), bh = _mm_cvtps_pd(bhv);
+            const __m128d lo = _mm_add_pd(al, _mm_mul_pd(_mm_sub_pd(bl, al), t));
+            const __m128d hi = _mm_add_pd(ah, _mm_mul_pd(_mm_sub_pd(bh, ah), t));
+            _mm_storel_epi64(reinterpret_cast<__m128i *>(result + i), _mm_castps_si128(_mm_cvtpd_ps(lo)));
+            _mm_storel_epi64(reinterpret_cast<__m128i *>(result + i + 2), _mm_castps_si128(_mm_cvtpd_ps(hi)));
+        }
+    }
+    if (distance >= 8) {
+        const int end = (count - 2) & ~1;
+        for (; i < end; i += 2) {
+            const __m128 av = _mm_loadu_ps(a + i), bv = _mm_loadu_ps(b + i);
+            const __m128d x = _mm_cvtps_pd(av), y = _mm_cvtps_pd(bv);
+            const __m128 value = _mm_cvtpd_ps(_mm_add_pd(x, _mm_mul_pd(_mm_sub_pd(y, x), t)));
+            _mm_storel_epi64(reinterpret_cast<__m128i *>(result + i), _mm_castps_si128(value));
+        }
+        if (i < count - 1) {
+            const __m128 av = _mm_castsi128_ps(_mm_loadl_epi64(reinterpret_cast<const __m128i *>(a + i)));
+            const __m128 bv = _mm_castsi128_ps(_mm_loadl_epi64(reinterpret_cast<const __m128i *>(b + i)));
+            const __m128d x = _mm_cvtps_pd(av), y = _mm_cvtps_pd(bv);
+            const __m128 value = _mm_cvtpd_ps(_mm_add_pd(x, _mm_mul_pd(_mm_sub_pd(y, x), t)));
+            _mm_storel_epi64(reinterpret_cast<__m128i *>(result + i), _mm_castps_si128(value));
+            i += 2;
+        }
+    }
+    for (; i < count; ++i) {
+        const double x = a[i], y = b[i];
+        result[i] = static_cast<float>(x + (y - x)*static_cast<double>(factor));
     }
 }
 

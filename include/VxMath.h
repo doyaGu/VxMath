@@ -61,8 +61,10 @@ void VxDetectProcessor();
  * @param Res Pointer to the resulting array.
  * @param array1 Pointer to the first source array.
  * @param array2 Pointer to the second source array.
- * @param factor Interpolation factor, from 0.0 (array1) to 1.0 (array2).
+ * @param factor Interpolation factor; 0 and 1 copy the corresponding endpoint exactly. Values outside this interval extrapolate.
  * @param count The number of floats in the arrays.
+ * @remarks Writes proceed forwards; overlapping source reads observe earlier
+ * result writes. Nonpositive counts access no elements.
  */
 VX_EXPORT void InterpolateFloatArray(void *Res, void *array1, void *array2, float factor, int count);
 

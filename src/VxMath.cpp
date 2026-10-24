@@ -129,6 +129,22 @@ static void ProjectPointsToAxesExtentsSIMD(const XBYTE *Points, XDWORD Stride, i
 }
 #endif
 
+static void InterpolateFloatArray_ScalarImpl(void *Res, void *array1, void *array2, float factor, int count) {
+    float *r = static_cast<float *>(Res);
+    const float *a = static_cast<const float *>(array1);
+    const float *b = static_cast<const float *>(array2);
+    if (factor == 0.0f || factor == 1.0f) {
+        const float *source = factor == 0.0f ? a : b;
+        for (int i = 0; i < count; ++i) r[i] = source[i];
+        return;
+    }
+    const double t = factor;
+    for (int i = 0; i < count; ++i) {
+        const double x = a[i], y = b[i];
+        r[i] = static_cast<float>(x + (y - x)*t);
+    }
+}
+
 namespace {
 
 typedef void (*VxInterpolateFloatArrayDispatchFn)(void *, void *, void *, float, int);
@@ -140,15 +156,6 @@ typedef XBOOL (*VxPtInRectDispatchFn)(CKRECT *, CKPOINT *);
 typedef XBOOL (*VxTransformBox2DCoreDispatchFn)(const VxMatrix &, const VxBbox &, VxRect *, VxRect *, VXCLIP_FLAGS &, VXCLIP_FLAGS &);
 typedef void (*VxProjectBoxZExtentsCoreDispatchFn)(const VxMatrix &, const VxBbox &, float &, float &);
 typedef void (*VxProjectPointsToAxesExtentsDispatchFn)(const XBYTE *, XDWORD, int, const VxMatrix &, float &, float &, float &, float &, float &, float &);
-
-void InterpolateFloatArray_ScalarImpl(void *Res, void *array1, void *array2, float factor, int count) {
-    float *r = static_cast<float *>(Res);
-    const float *a = static_cast<const float *>(array1);
-    const float *b = static_cast<const float *>(array2);
-    for (int i = 0; i < count; ++i) {
-        r[i] = a[i] + (b[i] - a[i]) * factor;
-    }
-}
 
 void InterpolateVectorArray_ScalarImpl(void *Res, void *Inarray1, void *Inarray2, float factor, int count, XDWORD StrideRes, XDWORD StrideIn) {
     const char *srcA = static_cast<const char *>(Inarray1);
@@ -251,7 +258,7 @@ void InitVxMath() {
 }
 
 void InterpolateFloatArray(void *Res, void *array1, void *array2, float factor, int count) {
-    if (!Res || !array1 || !array2 || count == 0)
+    if (!Res || !array1 || !array2 || count <= 0)
         return;
 
     GetVxMathDispatchTable()->interpolateFloatArray(Res, array1, array2, factor, count);
