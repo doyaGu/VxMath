@@ -175,6 +175,12 @@ function(vx_configure_target TARGET_NAME)
     endif ()
     target_compile_features(${TARGET_NAME} PRIVATE cxx_std_17)
 
+    # Public math headers expose overlapping vector/rectangle/matrix views.
+    # Their inline operations require the same aliasing rules in consumers.
+    if (NOT MSVC AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+        target_compile_options(${TARGET_NAME} PUBLIC -fno-strict-aliasing)
+    endif ()
+
     target_sources(${TARGET_NAME} PRIVATE
             ${VXMATH_SOURCES}
             ${VXMATH_PUBLIC_HEADERS}

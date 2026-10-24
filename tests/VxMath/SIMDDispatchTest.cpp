@@ -23,9 +23,9 @@ static constexpr float kDispatchPlaneNearestTolerance = 2.0e-5f;
 
 static VxVector MultiplyVec3Scalar(const VxMatrix &m, const VxVector &v) {
     return VxVector(
-        v.x * m[0][0] + v.y * m[1][0] + v.z * m[2][0] + m[3][0],
-        v.x * m[0][1] + v.y * m[1][1] + v.z * m[2][1] + m[3][1],
-        v.x * m[0][2] + v.y * m[1][2] + v.z * m[2][2] + m[3][2]
+        float(double(v.x) * m[0][0] + double(v.y) * m[1][0] + double(v.z) * m[2][0] + m[3][0]),
+        float(double(v.x) * m[0][1] + double(v.y) * m[1][1] + double(v.z) * m[2][1] + m[3][1]),
+        float(double(v.x) * m[0][2] + double(v.y) * m[1][2] + double(v.z) * m[2][2] + m[3][2])
     );
 }
 
@@ -116,15 +116,14 @@ static VxMatrix MakeAffineMatrix(float tx, float ty, float tz, float rx, float r
 }
 
 static float ScalarRaySquareDistance(const VxRay &ray, const VxVector &point) {
-    const VxVector v = point - ray.GetOrigin();
-    const float aa = v.SquareMagnitude();
-    const float dd = ray.GetDirection().SquareMagnitude();
-    if (dd <= EPSILON) {
-        return aa;
-    }
-    const float ps = DotProduct(v, ray.GetDirection());
-    const float sq = aa - (ps * ps) / dd;
-    return (sq > 0.0f) ? sq : 0.0f;
+    const double delta[] = {double(point.x) - ray.GetOrigin().x,
+                            double(point.y) - ray.GetOrigin().y,
+                            double(point.z) - ray.GetOrigin().z};
+    const VxVector &direction = ray.GetDirection();
+    const double dd = double(direction.x) * direction.x + double(direction.y) * direction.y + double(direction.z) * direction.z;
+    const double t = dd == 0 ? 0 : (delta[0] * direction.x + delta[1] * direction.y + delta[2] * direction.z) / dd;
+    const double x = delta[0] - t * direction.x, y = delta[1] - t * direction.y, z = delta[2] - t * direction.z;
+    return float(x * x + y * y + z * z);
 }
 
 static float ScalarRayDistance(const VxRay &ray, const VxVector &point) {
@@ -141,13 +140,9 @@ static void ScalarRayTransform(VxRay &dest, const VxRay &ray, const VxMatrix &ma
 }
 
 static void ScalarPlaneCreateFromPoint(VxPlane &plane, const VxVector &normal, const VxVector &point) {
-    VxVector n = normal;
-    const float magSq = n.SquareMagnitude();
-    if (magSq > EPSILON) {
-        n *= (1.0f / std::sqrt(magSq));
-    }
-    plane.m_Normal = n;
-    plane.m_D = -DotProduct(n, point);
+    // The point/normal overload preserves the caller's normal magnitude.
+    plane.m_Normal = normal;
+    plane.m_D = float(-(double(normal.x) * point.x + double(normal.y) * point.y + double(normal.z) * point.z));
 }
 
 static void ScalarPlaneCreateFromTriangle(VxPlane &plane, const VxVector &a, const VxVector &b, const VxVector &c) {
@@ -1233,9 +1228,10 @@ TEST(SIMDDispatchTest, ConvertToBumpMap24AutoMatchesScalar) {
 
     constexpr int kWidth = 18;
     constexpr int kHeight = 12;
-    constexpr int kPitch = kWidth * 3;
+    constexpr int kPitch = kWidth * 3 + 5;
     XArray<XBYTE> source;
     source.Resize(kPitch * kHeight);
+    memset(source.Begin(), 0xa5, kPitch * kHeight);
     for (int y = 0; y < kHeight; ++y) {
         for (int x = 0; x < kWidth; ++x) {
             XBYTE *pixel = source.Begin() + y * kPitch + x * 3;
@@ -1247,15 +1243,10 @@ TEST(SIMDDispatchTest, ConvertToBumpMap24AutoMatchesScalar) {
 
     XArray<XBYTE> scalar;
     XArray<XBYTE> automatic;
-    XArray<XBYTE> reference;
-    XArray<XBYTE> reference32;
     scalar.Resize(kPitch * kHeight);
     automatic.Resize(kPitch * kHeight);
-    reference.Resize(kPitch * kHeight);
-    reference32.Resize(kWidth * kHeight * 4);
     memcpy(scalar.Begin(), source.Begin(), kPitch * kHeight);
     memcpy(automatic.Begin(), source.Begin(), kPitch * kHeight);
-    memcpy(reference.Begin(), source.Begin(), kPitch * kHeight);
 
     ASSERT_TRUE(VxSetSIMDOverride(VX_SIMD_MODE_NONE));
     VxImageDescEx scalarDesc;
@@ -1277,24 +1268,11 @@ TEST(SIMDDispatchTest, ConvertToBumpMap24AutoMatchesScalar) {
 
     EXPECT_EQ(0, memcmp(scalar.Begin(), automatic.Begin(), kPitch * kHeight));
 
-    VxImageDescEx referenceDesc;
-    VxPixelFormat2ImageDesc(_24_RGB888, referenceDesc);
-    referenceDesc.Width = kWidth;
-    referenceDesc.Height = kHeight;
-    referenceDesc.BytesPerLine = kPitch;
-    referenceDesc.Image = reference.Begin();
-
-    VxImageDescEx reference32Desc;
-    VxPixelFormat2ImageDesc(_32_ARGB8888, reference32Desc);
-    reference32Desc.Width = kWidth;
-    reference32Desc.Height = kHeight;
-    reference32Desc.BytesPerLine = kWidth * 4;
-    reference32Desc.Image = reference32.Begin();
-
-    VxDoBlit(referenceDesc, reference32Desc);
-    ASSERT_TRUE(VxConvertToBumpMap(reference32Desc));
-    VxDoBlit(reference32Desc, referenceDesc);
-    EXPECT_EQ(0, memcmp(reference.Begin(), automatic.Begin(), kPitch * kHeight));
+    // The 24-bit extension and native 32-bit bump formats have different
+    // encodings; dispatch must preserve the 24-bit result and row padding.
+    for (int y = 0; y < kHeight; ++y)
+        for (int x = kWidth * 3; x < kPitch; ++x)
+            EXPECT_EQ(0xa5, automatic[y * kPitch + x]);
 }
 
 TEST(SIMDDispatchTest, ConvertToBumpMap32BackendsMatchScalar) {
@@ -1514,13 +1492,13 @@ TEST(SIMDDispatchTest, RaySquareDistanceSIMDMatchesScalarReference) {
 
         const float scalar = ScalarRaySquareDistance(ray, point);
         const float simd = VxSIMDRaySquareDistance(&ray, &point);
-        EXPECT_NEAR(simd, scalar, 1.0e-5f);
+        EXPECT_FLOAT_EQ(simd, scalar);
     }
 
     int dummy = 0;
     const VxRay zeroDirRay(VxVector(1.0f, 2.0f, 3.0f), VxVector(0.0f, 0.0f, 0.0f), &dummy);
     const VxVector p(6.0f, -1.0f, 8.0f);
-    EXPECT_NEAR(VxSIMDRaySquareDistance(&zeroDirRay, &p), ScalarRaySquareDistance(zeroDirRay, p), 1.0e-6f);
+    EXPECT_FLOAT_EQ(VxSIMDRaySquareDistance(&zeroDirRay, &p), ScalarRaySquareDistance(zeroDirRay, p));
 }
 
 TEST(SIMDDispatchTest, RaySIMDTransformInterpolateDistanceMatchScalarReference) {
@@ -1565,7 +1543,7 @@ TEST(SIMDDispatchTest, RaySIMDTransformInterpolateDistanceMatchScalarReference) 
         const VxVector testPoint = RandomVector3(rng, -30.0f, 30.0f);
         const float scalarDist = ScalarRayDistance(ray, testPoint);
         const float simdDist = std::sqrt(VxSIMDRaySquareDistance(&ray, &testPoint));
-        EXPECT_NEAR(simdDist, scalarDist, 1.0e-5f);
+        EXPECT_FLOAT_EQ(simdDist, scalarDist);
     }
 }
 

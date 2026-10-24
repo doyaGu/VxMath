@@ -212,8 +212,10 @@ TEST_F(SystemInfoTest, PixelFormat_ConversionCycle) {
         // Step 2: Convert the description back to a format
         VX_PIXELFORMAT pf_converted = VxImageDesc2PixelFormat(desc);
 
-        // Step 3: Verify they match
-        EXPECT_EQ(pf_original, pf_converted) << "Mismatch for format " << VxPixelFormat2String(pf_original);
+        // The native descriptor lookup gives the shared BGR layout priority
+        // over the X8L8V8U8 bump format (also covered by the format oracle).
+        const VX_PIXELFORMAT expected = pf_original == _32_X8L8V8U8 ? _32_BGR888 : pf_original;
+        EXPECT_EQ(expected, pf_converted) << "Mismatch for format " << VxPixelFormat2String(pf_original);
 
         // Step 4: Verify string conversion
         const char *pf_string = VxPixelFormat2String(pf_original);
