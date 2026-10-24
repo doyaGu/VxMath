@@ -772,12 +772,13 @@ inline void Vx3DMatrixToEulerAngles(const VxMatrix &Mat, float *eax, float *eay,
 // ---------- Internal matrix decomposition helpers ----------
 
 inline void Vx3DMatrixAdjoint(const VxMatrix &in, VxMatrix &out) {
-    const float m00=in[0][0], m01=in[0][1], m02=in[0][2];
-    const float m10=in[1][0], m11=in[1][1], m12=in[1][2];
-    const float m20=in[2][0], m21=in[2][1], m22=in[2][2];
-    out[0][0] = m11*m22 - m12*m21; out[1][0] = m12*m20 - m10*m22; out[2][0] = m10*m21 - m11*m20;
-    out[0][1] = m02*m21 - m01*m22; out[1][1] = m00*m22 - m02*m20; out[2][1] = m01*m20 - m00*m21;
-    out[0][2] = m01*m12 - m02*m11; out[1][2] = m02*m10 - m00*m12; out[2][2] = m00*m11 - m01*m10;
+    // Original decomposition uses the cofactor matrix (adjugate transpose), only in the linear 3x3.
+    const double m00=in[0][0], m01=in[0][1], m02=in[0][2];
+    const double m10=in[1][0], m11=in[1][1], m12=in[1][2];
+    const double m20=in[2][0], m21=in[2][1], m22=in[2][2];
+    out[0][0] = float(m11*m22 - m12*m21); out[0][1] = float(m12*m20 - m10*m22); out[0][2] = float(m10*m21 - m11*m20);
+    out[1][0] = float(m02*m21 - m01*m22); out[1][1] = float(m00*m22 - m02*m20); out[1][2] = float(m01*m20 - m00*m21);
+    out[2][0] = float(m01*m12 - m02*m11); out[2][1] = float(m02*m10 - m00*m12); out[2][2] = float(m00*m11 - m01*m10);
 }
 
 inline float Vx3DMatrixNorm(const VxMatrix &M, bool isOneNorm) {
