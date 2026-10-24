@@ -994,9 +994,12 @@ inline void Vx3DDecomposeMatrix(const VxMatrix &A, VxQuaternion &Quat, VxVector 
     VxMatrix unitRows;
     Vx3DNormalizeRotationRows(A, unitRows);
     Quat.FromMatrix(unitRows, TRUE, TRUE);
-    Scale.x = unitRows[0][0]*A[0][0] + unitRows[0][1]*A[0][1] + unitRows[0][2]*A[0][2];
-    Scale.y = unitRows[1][0]*A[1][0] + unitRows[1][1]*A[1][1] + unitRows[1][2]*A[1][2];
-    Scale.z = unitRows[2][0]*A[2][0] + unitRows[2][1]*A[2][1] + unitRows[2][2]*A[2][2];
+    // Keep the products until the final row projection: a finite result can
+    // follow an overflowing partial sum or several subnormal products.
+    for (int row = 0; row < 3; ++row)
+        Scale[row] = VxMatrixAffineSum(double(unitRows[row][0])*A[row][0],
+                                      double(unitRows[row][1])*A[row][1],
+                                      double(unitRows[row][2])*A[row][2], 0.0);
 }
 
 inline float Vx3DDecomposeMatrixTotal(const VxMatrix &A, VxQuaternion &Quat, VxVector &Pos, VxVector &Scale, VxQuaternion &URot) {
@@ -1063,8 +1066,25 @@ inline void Vx3DInterpolateMatrixNoScale(float step, VxMatrix &Res, const VxMatr
     Vx3DDecomposeMatrix(A, quatA, posA, scaleA);
     Vx3DDecomposeMatrix(B, quatB, posB, scaleB);
     VxQuaternion rotation = Slerp(step, quatA, quatB);
-    const VxVector position = Interpolate(step, posA, posB);
-    const VxVector scale = Interpolate(step, scaleA, scaleB);
+    VxVector position, scale;
+    // Float differences can overflow even when the interpolated value fits.
+    // Retain packed SIMD arithmetic for all six interpolated components.
+#if defined(VX_SIMD_SSE2)
+    const __m128d t = _mm_set1_pd(step);
+    const __m128d pa = _mm_cvtps_pd(VxSIMDLoadFloat3(&posA.x)), pb = _mm_cvtps_pd(VxSIMDLoadFloat3(&posB.x));
+    const __m128d sa = _mm_cvtps_pd(VxSIMDLoadFloat3(&scaleA.x)), sb = _mm_cvtps_pd(VxSIMDLoadFloat3(&scaleB.x));
+    const __m128d za = _mm_set_pd(scaleA.z, posA.z), zb = _mm_set_pd(scaleB.z, posB.z);
+    const __m128 pxy = _mm_cvtpd_ps(_mm_add_pd(pa, _mm_mul_pd(_mm_sub_pd(pb, pa), t)));
+    const __m128 sxy = _mm_cvtpd_ps(_mm_add_pd(sa, _mm_mul_pd(_mm_sub_pd(sb, sa), t)));
+    const __m128 zPair = _mm_cvtpd_ps(_mm_add_pd(za, _mm_mul_pd(_mm_sub_pd(zb, za), t)));
+    VxSIMDStoreFloat3(&position.x, _mm_shuffle_ps(pxy, zPair, _MM_SHUFFLE(0,0,1,0)));
+    VxSIMDStoreFloat3(&scale.x, _mm_shuffle_ps(sxy, zPair, _MM_SHUFFLE(1,1,1,0)));
+#else
+    for (int i = 0; i < 3; ++i) {
+        position[i] = float(double(posA[i]) + (double(posB[i])-posA[i])*step);
+        scale[i] = float(double(scaleA[i]) + (double(scaleB[i])-scaleA[i])*step);
+    }
+#endif
     rotation.Normalize();
     const double x=rotation.x, y=rotation.y, z=rotation.z, w=rotation.w;
     const double xx=x*x, yy=y*y, zz=z*z, ww=w*w, xy=y*x, wz=w*z;

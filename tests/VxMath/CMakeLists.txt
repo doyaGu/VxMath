@@ -208,6 +208,7 @@ set(VXMATH_TEST_SOURCES
         MatrixPolarReferenceTest.cpp
         MatrixSpectralReferenceTest.cpp
         MatrixTotalReferenceTest.cpp
+        MatrixSimpleReferenceTest.cpp
         # SIMD Tests
         SIMDFeatureTest.cpp
         SIMDUtilityTest.cpp
@@ -550,3 +551,7 @@ vx_copy_runtime_dependencies(MatrixSpectralScalarReferenceTest)
 vx_add_test(MatrixTotalScalarReferenceTest SOURCES MatrixTotalReferenceTest.cpp)
 target_compile_definitions(MatrixTotalScalarReferenceTest PRIVATE VX_SIMD_NONE=1)
 vx_copy_runtime_dependencies(MatrixTotalScalarReferenceTest)
+
+vx_add_test(MatrixSimpleScalarReferenceTest SOURCES MatrixSimpleReferenceTest.cpp)
+target_compile_definitions(MatrixSimpleScalarReferenceTest PRIVATE VX_SIMD_NONE=1)
+vx_copy_runtime_dependencies(MatrixSimpleScalarReferenceTest)
