@@ -781,14 +781,15 @@ inline void Vx3DMatrixAdjoint(const VxMatrix &in, VxMatrix &out) {
 }
 
 inline float Vx3DMatrixNorm(const VxMatrix &M, bool isOneNorm) {
-    float maxNorm = 0.0f;
+    // Only the linear 3x3 participates: columns for one norm, rows for infinity norm.
+    double maxNorm = 0.0;
     for (int j = 0; j < 3; ++j) {
-        float sum = 0.0f;
+        double sum = 0.0;
         for (int i = 0; i < 3; ++i)
             sum += fabsf(isOneNorm ? M[i][j] : M[j][i]);
         if (sum > maxNorm) maxNorm = sum;
     }
-    return maxNorm;
+    return float(maxNorm);
 }
 
 namespace VxMatrixDecompositionDetail {
