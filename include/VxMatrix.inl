@@ -946,44 +946,45 @@ inline float Vx3DMatrixPolarDecomposition(const VxMatrix &M_in, VxMatrix &Q, VxM
 
 inline VxVector Vx3DMatrixSpectralDecomposition(const VxMatrix &S_in, VxMatrix &U_out) {
     // 0x2429BC30 uses cyclic off-diagonals [yz,zx,xy] and sweeps 2,1,0.
-    // The original DLL selects 24-bit x87 precision (control word 0x007f).
-    // Round each operation to float: extra precision changes the basis chosen
-    // for repeated eigenvalues, which is observable through Snuggle.
-    U_out.SetIdentity();
-    float diagonal[3] = {S_in[0][0], S_in[1][1], S_in[2][2]};
-    float off[3] = {S_in[1][2], S_in[2][0], S_in[0][1]};
+    // Snapshot before writing U, including when both matrices are the same.
+    // Columns of U are eigenvectors; a repeated eigenspace has no unique basis.
+    double diagonal[3] = {S_in[0][0], S_in[1][1], S_in[2][2]};
+    double off[3] = {S_in[1][2], S_in[2][0], S_in[0][1]};
+    double basis[3][3] = {{1,0,0},{0,1,0},{0,0,1}};
     for (int sweep = 0; sweep < 20; ++sweep) {
-        if (std::fabs(off[2]) + std::fabs(off[1]) + std::fabs(off[0]) == 0.0f) break;
+        if (std::fabs(off[2]) + std::fabs(off[1]) + std::fabs(off[0]) == 0.0) break;
         for (int k = 2; k >= 0; --k) {
             const int p = (k+1)%3, q = (p+1)%3;
-            const float magnitude = std::fabs(off[k]);
-            if (!(magnitude > 0.0f)) continue;
-            const float difference = diagonal[q] - diagonal[p];
-            float tangent;
-            if (magnitude*100.0f + std::fabs(difference) == std::fabs(difference)) tangent = off[k] / difference;
+            const double magnitude = std::fabs(off[k]);
+            if (!(magnitude > 0.0)) continue;
+            const double difference = diagonal[q] - diagonal[p];
+            double tangent;
+            if (magnitude*100.0 + std::fabs(difference) == std::fabs(difference)) tangent = off[k] / difference;
             else {
-                const float theta = 0.5f / off[k] * difference;
-                tangent = 1.0f / (std::sqrt(theta*theta + 1.0f) + std::fabs(theta));
-                if (theta < 0.0f) tangent = -tangent;
+                const double theta = 0.5*difference / off[k];
+                tangent = 1.0 / (std::hypot(theta, 1.0) + std::fabs(theta));
+                if (theta < 0.0) tangent = -tangent;
             }
-            const float cosine = 1.0f / std::sqrt(tangent*tangent + 1.0f);
-            const float sine = cosine*tangent;
-            const float tau = sine / (cosine+1.0f);
-            const float shift = tangent*off[k];
-            off[k] = 0.0f;
+            const double cosine = 1.0 / std::hypot(tangent, 1.0);
+            const double sine = cosine*tangent;
+            const double tau = sine / (cosine+1.0);
+            const double shift = tangent*off[k];
+            off[k] = 0.0;
             diagonal[p] -= shift;
             diagonal[q] += shift;
-            const float oldQ = off[q];
+            const double oldQ = off[q];
             off[q] = oldQ - (tau*oldQ + off[p])*sine;
             off[p] = (oldQ - tau*off[p])*sine + off[p];
             for (int row = 2; row >= 0; --row) {
-                const float a = U_out[row][p], b = U_out[row][q];
-                U_out[row][p] = a - (a*tau+b)*sine;
-                U_out[row][q] = (a-b*tau)*sine+b;
+                const double a = basis[row][p], b = basis[row][q];
+                basis[row][p] = a - (a*tau+b)*sine;
+                basis[row][q] = (a-b*tau)*sine+b;
             }
         }
     }
-    return VxVector(diagonal[0], diagonal[1], diagonal[2]);
+    U_out.SetIdentity();
+    for (int row = 0; row < 3; ++row) for (int col = 0; col < 3; ++col) U_out[row][col] = float(basis[row][col]);
+    return VxVector(float(diagonal[0]), float(diagonal[1]), float(diagonal[2]));
 }
 
 // ---------- Matrix decomposition functions ----------
