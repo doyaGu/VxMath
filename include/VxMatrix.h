@@ -219,6 +219,8 @@ inline void Vx3DRotateVectorStrided(VxStridedData *Dest, VxStridedData *Src, con
  * @brief Computes the transpose of a 4x4 matrix.
  * @param Result The resulting transposed matrix.
  * @param A The input matrix.
+ * @remarks Transposes all sixteen 32-bit fields, preserving their representations without arithmetic.
+ *          Result may be the same matrix as A; the input is captured before any output is written.
  */
 inline void Vx3DTransposeMatrix(VxMatrix &Result, const VxMatrix &A);
 
