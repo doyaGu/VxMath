@@ -25,6 +25,17 @@ target_link_libraries(VxMathPerf PRIVATE
         ${VXMATH_PERF_LINK_TARGET}
 )
 
+add_executable(MatrixInterpolationPerf MatrixInterpolationPerf.cpp)
+set_target_properties(MatrixInterpolationPerf PROPERTIES
+        FOLDER "Tools"
+        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
+)
+target_include_directories(MatrixInterpolationPerf PRIVATE
+        ${NEMO_INCLUDE_DIR}
+        ${PROJECT_SOURCE_DIR}/src
+)
+target_link_libraries(MatrixInterpolationPerf PRIVATE ${VXMATH_PERF_LINK_TARGET})
+
 if (VXMATH_ENABLE_PERF_GATES)
     add_test(NAME VxMathImagePerfGate
             COMMAND VxMathPerf --gate-image-auto --gate-runs=3

@@ -1071,9 +1071,12 @@ inline void Vx3DInterpolateMatrixNoScale(float step, VxMatrix &Res, const VxMatr
     // Retain packed SIMD arithmetic for all six interpolated components.
 #if defined(VX_SIMD_SSE2)
     const __m128d t = _mm_set1_pd(step);
-    const __m128d pa = _mm_cvtps_pd(VxSIMDLoadFloat3(&posA.x)), pb = _mm_cvtps_pd(VxSIMDLoadFloat3(&posB.x));
-    const __m128d sa = _mm_cvtps_pd(VxSIMDLoadFloat3(&scaleA.x)), sb = _mm_cvtps_pd(VxSIMDLoadFloat3(&scaleB.x));
-    const __m128d za = _mm_set_pd(scaleA.z, posA.z), zb = _mm_set_pd(scaleB.z, posB.z);
+    const __m128d pa = _mm_cvtps_pd(_mm_castsi128_ps(_mm_loadl_epi64(reinterpret_cast<const __m128i *>(&posA.x))));
+    const __m128d pb = _mm_cvtps_pd(_mm_castsi128_ps(_mm_loadl_epi64(reinterpret_cast<const __m128i *>(&posB.x))));
+    const __m128d sa = _mm_cvtps_pd(_mm_castsi128_ps(_mm_loadl_epi64(reinterpret_cast<const __m128i *>(&scaleA.x))));
+    const __m128d sb = _mm_cvtps_pd(_mm_castsi128_ps(_mm_loadl_epi64(reinterpret_cast<const __m128i *>(&scaleB.x))));
+    const __m128d za = _mm_cvtps_pd(_mm_unpacklo_ps(_mm_load_ss(&posA.z), _mm_load_ss(&scaleA.z)));
+    const __m128d zb = _mm_cvtps_pd(_mm_unpacklo_ps(_mm_load_ss(&posB.z), _mm_load_ss(&scaleB.z)));
     const __m128 pxy = _mm_cvtpd_ps(_mm_add_pd(pa, _mm_mul_pd(_mm_sub_pd(pb, pa), t)));
     const __m128 sxy = _mm_cvtpd_ps(_mm_add_pd(sa, _mm_mul_pd(_mm_sub_pd(sb, sa), t)));
     const __m128 zPair = _mm_cvtpd_ps(_mm_add_pd(za, _mm_mul_pd(_mm_sub_pd(zb, za), t)));
