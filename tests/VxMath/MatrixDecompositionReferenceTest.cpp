@@ -3,6 +3,8 @@
 #include <cstring>
 #include "VxMath.h"
 #include "MatrixDecompositionSamples.h"
+#define VX_POLAR_PROBE 1
+#include "MatrixPolarReferenceTest.cpp"
 
 class MatrixDecompositionTest : public testing::TestWithParam<int> {};
 
@@ -40,6 +42,36 @@ TEST_P(MatrixDecompositionTest, MatchesOriginalComponents) {
             std::memcpy(actual+8, &scale.x, 12); std::memcpy(actual+11, &u.x, 16);
         }
         if (sample.operation == 5 || sample.operation == 6) std::memcpy(actual, &a[0][0], 64);
+        const bool singular = VxMatrixInverseDeterminant(inputA) == 0.0;
+        if (sample.operation == 0 && singular) {
+            MPMatrix original, orthogonal, stretch;
+            MPFrom(inputA, original); MPFrom(a, orthogonal); MPFrom(b, stretch);
+            EXPECT_EQ(actual[0], 0);
+            EXPECT_TRUE(MPFactors(original, orthogonal, stretch));
+            EXPECT_TRUE(MPAffine(a)); EXPECT_TRUE(MPAffine(b));
+            continue;
+        }
+        const bool singularTotal = singular && (sample.operation == 3 || sample.operation == 4);
+        if (singularTotal) {
+            // A null-space basis is not unique. Check the actual returned factors
+            // geometrically, including optional outputs and their untouched sentinels.
+            VxQuaternion fullQ, fullU; VxVector fullPos, fullScale;
+            if (sample.operation == 4) Vx3DDecomposeMatrixTotal(inputA, fullQ, fullPos, fullScale, fullU);
+            if (sample.operation == 3 || (sample.mask & 1)) fullQ = q;
+            if (sample.operation == 3 || (sample.mask & 2)) fullPos = pos;
+            if (sample.operation == 3 || (sample.mask & 4)) fullScale = scale;
+            if (sample.operation == 3 || (sample.mask & 8)) fullU = u;
+            VxMatrix rotation, stretchRotation;
+            fullQ.ToMatrix(rotation); fullU.ToMatrix(stretchRotation);
+            MPMatrix original, orthogonal, stretch = {};
+            MPFrom(inputA, original); MPFrom(rotation, orthogonal);
+            for (int i = 0; i < 3; ++i) for (int j = 0; j < 3; ++j) {
+                orthogonal[i][j] *= actual[0];
+                for (int k = 0; k < 3; ++k) stretch[i][j] += double(stretchRotation[i][k])*fullScale[k]*stretchRotation[j][k];
+            }
+            EXPECT_TRUE(MPFactors(original, orthogonal, stretch));
+            EXPECT_FLOAT_EQ(fullPos.x, inputA[3][0]); EXPECT_FLOAT_EQ(fullPos.y, inputA[3][1]); EXPECT_FLOAT_EQ(fullPos.z, inputA[3][2]);
+        }
         // Intentional difference: with exactly two equal scales the original
         // composes the stretch rotation with Snuggle's rewritten input. Where
         // URot differs from the capture it must rebuild the polar stretch.
@@ -48,7 +80,7 @@ TEST_P(MatrixDecompositionTest, MatchesOriginalComponents) {
             for (int i = 11; i < 15; ++i)
                 correctedURot |= std::fabs(actual[i] - sample.scalar[i]) > 2e-5f*(1.0f+std::fabs(sample.scalar[i]));
         }
-        if (correctedURot) {
+        if (correctedURot && !singularTotal) {
             VxQuaternion fullQ, fullU; VxVector fullPos, k;
             Vx3DDecomposeMatrixTotal(inputA, fullQ, fullPos, k, fullU);
             EXPECT_TRUE(k.x == k.y || k.x == k.z || k.y == k.z) << "URot differs without two equal scales";
@@ -62,6 +94,9 @@ TEST_P(MatrixDecompositionTest, MatchesOriginalComponents) {
             }
         }
         for (int i = 0; i < 36; ++i) {
+            if (singularTotal && ((i >= 1 && i < 5 && (sample.operation == 3 || (sample.mask & 1))) ||
+                                 (i >= 8 && i < 11 && (sample.operation == 3 || (sample.mask & 4))) ||
+                                 (i >= 11 && i < 15 && (sample.operation == 3 || (sample.mask & 8))))) continue;
             if (correctedURot && i >= 11 && i < 15) continue;
             // Exact endpoints preserve the selected matrix, including shear;
             // do not reproduce NaNs from decomposing the unused endpoint.

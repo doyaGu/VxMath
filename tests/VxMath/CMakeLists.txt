@@ -205,6 +205,7 @@ set(VXMATH_TEST_SOURCES
         RawMatrixMultiplyReferenceTest.cpp
         MatrixNormReferenceTest.cpp
         MatrixAdjointReferenceTest.cpp
+        MatrixPolarReferenceTest.cpp
         # SIMD Tests
         SIMDFeatureTest.cpp
         SIMDUtilityTest.cpp
@@ -535,3 +536,7 @@ vx_copy_runtime_dependencies(MatrixNormScalarReferenceTest)
 vx_add_test(MatrixAdjointScalarReferenceTest SOURCES MatrixAdjointReferenceTest.cpp)
 target_compile_definitions(MatrixAdjointScalarReferenceTest PRIVATE VX_SIMD_NONE=1)
 vx_copy_runtime_dependencies(MatrixAdjointScalarReferenceTest)
+
+vx_add_test(MatrixPolarScalarReferenceTest SOURCES MatrixPolarReferenceTest.cpp)
+target_compile_definitions(MatrixPolarScalarReferenceTest PRIVATE VX_SIMD_NONE=1)
+vx_copy_runtime_dependencies(MatrixPolarScalarReferenceTest)

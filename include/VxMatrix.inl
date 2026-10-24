@@ -793,13 +793,21 @@ inline float Vx3DMatrixNorm(const VxMatrix &M, bool isOneNorm) {
     return float(maxNorm);
 }
 
-namespace VxMatrixDecompositionDetail {
-inline double Dot3(const float *a, const float *b) {
-    return static_cast<double>(a[2])*b[2] + static_cast<double>(a[1])*b[1] + static_cast<double>(a[0])*b[0];
+inline double VxMatrixPolarDot3(const double *a, const double *b) {
+    const double terms[3] = {a[2]*b[2], a[1]*b[1], a[0]*b[0]};
+    const double ordinary = terms[0] + terms[1] + terms[2];
+    if (!std::isfinite(ordinary)) return ordinary;
+    double sum = terms[0], error = 0.0;
+    for (int i = 1; i < 3; ++i) {
+        const double next = sum + terms[i], delta = next - sum;
+        error += (sum - (next - delta)) + (terms[i] - delta);
+        sum = next;
+    }
+    return sum + error;
 }
 
-inline int MaxColumn(const VxMatrix &m) {
-    float maximum = 0.0f;
+inline int VxMatrixPolarMaxColumn(const double (&m)[3][3]) {
+    double maximum = 0.0;
     int column = -1;
     for (int i = 0; i < 3; ++i)
         for (int j = 0; j < 3; ++j)
@@ -807,127 +815,132 @@ inline int MaxColumn(const VxMatrix &m) {
     return column;
 }
 
-inline void MakeReflector(float (&v)[3]) {
-    double length = std::sqrt(Dot3(v, v));
-    if (v[2] < 0.0f) length = -length;
-    v[2] = static_cast<float>(v[2] + length);
-    const double scale = std::sqrt(2.0 / Dot3(v, v));
-    for (int i = 0; i < 3; ++i) v[i] = static_cast<float>(v[i] * scale);
+inline void VxMatrixPolarMakeReflector(double (&v)[3]) {
+    const double length = std::hypot(v[0], v[1], v[2]);
+    if (length == 0.0) return; // The zero vector leaves the Householder map equal to identity.
+    const double x = v[0]/length, y = v[1]/length;
+    const double z = v[2]/length + (v[2] < 0.0 ? -1.0 : 1.0);
+    const double scale = std::sqrt(2.0/(x*x + y*y + z*z));
+    v[0] = x*scale; v[1] = y*scale; v[2] = z*scale;
 }
 
-inline void ReflectColumns(VxMatrix &m, const float (&u)[3]) {
+inline void VxMatrixPolarReflectColumns(double (&m)[3][3], const double (&u)[3]) {
+    const double vector[3] = {u[0], u[1], u[2]};
     for (int j = 0; j < 3; ++j) {
-        const double scale = static_cast<double>(m[2][j])*u[2] + static_cast<double>(m[1][j])*u[1] + static_cast<double>(m[0][j])*u[0];
-        for (int i = 0; i < 3; ++i) m[i][j] = static_cast<float>(m[i][j] - scale*u[i]);
+        const double column[3] = {m[0][j], m[1][j], m[2][j]};
+        const double scale = VxMatrixPolarDot3(column, vector);
+        for (int i = 0; i < 3; ++i) m[i][j] -= scale*vector[i];
     }
 }
 
-inline void ReflectRows(VxMatrix &m, const float (&u)[3]) {
+inline void VxMatrixPolarReflectRows(double (&m)[3][3], const double (&u)[3]) {
+    const double vector[3] = {u[0], u[1], u[2]};
     for (int i = 0; i < 3; ++i) {
-        const double scale = Dot3(u, m[i]);
-        for (int j = 0; j < 3; ++j) m[i][j] = static_cast<float>(m[i][j] - scale*u[j]);
+        const double scale = VxMatrixPolarDot3(m[i], vector);
+        for (int j = 0; j < 3; ++j) m[i][j] -= scale*vector[j];
     }
 }
 
-inline void OrthogonalRank1(VxMatrix &m, VxMatrix &q) {
-    // Preserve initialization order even when m and q alias, as they do in
-    // original polar decomposition's singular fallback (0x2429B730).
-    q.SetIdentity();
-    const int column = MaxColumn(m);
+inline void VxMatrixPolarOrthogonalRank1(double (&m)[3][3], double (&q)[3][3]) {
+    double work[3][3];
+    for (int i = 0; i < 3; ++i) for (int j = 0; j < 3; ++j) work[i][j] = m[i][j];
+    for (int i = 0; i < 3; ++i) for (int j = 0; j < 3; ++j) q[i][j] = i == j ? 1.0 : 0.0;
+    const int column = VxMatrixPolarMaxColumn(work);
     if (column < 0) return;
-    float u[3] = {m[0][column], m[1][column], m[2][column]};
-    MakeReflector(u);
-    ReflectColumns(m, u);
-    float v[3] = {m[2][0], m[2][1], m[2][2]};
-    MakeReflector(v);
-    ReflectRows(m, v);
-    if (m[2][2] < 0.0f) q[2][2] = -1.0f;
-    ReflectColumns(q, u);
-    ReflectRows(q, v);
+    double u[3] = {work[0][column], work[1][column], work[2][column]};
+    VxMatrixPolarMakeReflector(u);
+    VxMatrixPolarReflectColumns(work, u);
+    double v[3] = {work[2][0], work[2][1], work[2][2]};
+    VxMatrixPolarMakeReflector(v);
+    VxMatrixPolarReflectRows(work, v);
+    // Choose a proper completion on the unused axis so quaternion callers can represent Q.
+    if (work[2][2] < 0.0) q[0][0] = q[2][2] = -1.0;
+    VxMatrixPolarReflectColumns(q, u);
+    VxMatrixPolarReflectRows(q, v);
+    if (&m != &q) for (int i = 0; i < 3; ++i) for (int j = 0; j < 3; ++j) m[i][j] = work[i][j];
 }
 
-inline void OrthogonalRank2(VxMatrix &m, const VxMatrix &adjointTranspose, VxMatrix &q) {
-    const int column = MaxColumn(adjointTranspose);
-    if (column < 0) { OrthogonalRank1(m, q); return; }
-    float u[3] = {adjointTranspose[0][column], adjointTranspose[1][column], adjointTranspose[2][column]};
-    MakeReflector(u);
-    ReflectColumns(m, u);
-    float v[3] = {
-        static_cast<float>(static_cast<double>(m[0][1])*m[1][2] - static_cast<double>(m[0][2])*m[1][1]),
-        static_cast<float>(static_cast<double>(m[0][2])*m[1][0] - static_cast<double>(m[0][0])*m[1][2]),
-        static_cast<float>(static_cast<double>(m[0][0])*m[1][1] - static_cast<double>(m[0][1])*m[1][0])};
-    MakeReflector(v);
-    ReflectRows(m, v);
-    const double w = m[0][0], z = m[1][1];
-    const float x = m[1][0], y = m[0][1];
-    if (static_cast<double>(x)*y >= w*z) {
-        const double c = z - w;
-        const float s = x + y;
-        const float inverse = static_cast<float>(1.0 / std::sqrt(static_cast<double>(s)*s + c*c));
-        q[1][1] = static_cast<float>(c*inverse); q[0][0] = -q[1][1];
-        q[1][0] = q[0][1] = s*inverse;
+inline void VxMatrixPolarOrthogonalRank2(double (&m)[3][3], const double (&adjointTranspose)[3][3], double (&q)[3][3]) {
+    const int column = VxMatrixPolarMaxColumn(adjointTranspose);
+    if (column < 0) { VxMatrixPolarOrthogonalRank1(m, q); return; }
+    double work[3][3];
+    for (int i = 0; i < 3; ++i) for (int j = 0; j < 3; ++j) work[i][j] = m[i][j];
+    double u[3] = {adjointTranspose[0][column], adjointTranspose[1][column], adjointTranspose[2][column]};
+    VxMatrixPolarMakeReflector(u);
+    VxMatrixPolarReflectColumns(work, u);
+    double v[3] = {work[0][1]*work[1][2] - work[0][2]*work[1][1],
+                   work[0][2]*work[1][0] - work[0][0]*work[1][2],
+                   work[0][0]*work[1][1] - work[0][1]*work[1][0]};
+    VxMatrixPolarMakeReflector(v);
+    VxMatrixPolarReflectRows(work, v);
+    const double w = work[0][0], z = work[1][1], x = work[1][0], y = work[0][1];
+    if (x*y >= w*z) {
+        const double c = z - w, s = x + y, length = std::hypot(c, s);
+        q[1][1] = c/length; q[0][0] = -q[1][1]; q[1][0] = q[0][1] = s/length;
     } else {
-        const double c = w + z;
-        const float s = x - y;
-        const float inverse = static_cast<float>(1.0 / std::sqrt(static_cast<double>(s)*s + c*c));
-        q[0][0] = q[1][1] = static_cast<float>(c*inverse);
-        q[1][0] = s*inverse; q[0][1] = -q[1][0];
+        const double c = w + z, s = x - y, length = std::hypot(c, s);
+        q[0][0] = q[1][1] = c/length; q[1][0] = s/length; q[0][1] = -q[1][0];
     }
-    q[0][2] = q[1][2] = q[2][0] = q[2][1] = 0.0f; q[2][2] = 1.0f;
-    ReflectColumns(q, u);
-    ReflectRows(q, v);
+    q[0][2] = q[1][2] = q[2][0] = q[2][1] = 0.0;
+    q[2][2] = x*y >= w*z ? -1.0 : 1.0;
+    VxMatrixPolarReflectColumns(q, u);
+    VxMatrixPolarReflectRows(q, v);
+    if (&m != &q) for (int i = 0; i < 3; ++i) for (int j = 0; j < 3; ++j) m[i][j] = work[i][j];
 }
-} // namespace VxMatrixDecompositionDetail
 
 inline float Vx3DMatrixPolarDecomposition(const VxMatrix &M_in, VxMatrix &Q, VxMatrix &S) {
-    using namespace VxMatrixDecompositionDetail;
-    VxMatrix e;
-    Vx3DTransposeMatrix(e, M_in);
-    float oneNorm = Vx3DMatrixNorm(e, true), infNorm = Vx3DMatrixNorm(e, false);
+    // Preserve the linear input before either output can overwrite it. Only44 input bytes are needed.
+    double input[3][3], e[3][3];
+    VxMatrix determinantInput;
+    for (int i = 0; i < 3; ++i) for (int j = 0; j < 3; ++j) {
+        input[i][j] = M_in[i][j]; e[j][i] = input[i][j]; determinantInput[i][j] = float(input[i][j]);
+    }
+    const double initialDeterminant = VxMatrixInverseDeterminant(determinantInput);
     float determinant = 0.0f;
+    bool first = true;
     for (;;) {
-        VxMatrix adjointTranspose;
-        for (int i = 0; i < 3; ++i) {
-            const int j = (i+1)%3, k = (i+2)%3;
-            for (int c = 0; c < 3; ++c) {
-                const int a = (c+1)%3, b = (c+2)%3;
-                adjointTranspose[i][c] = static_cast<float>(static_cast<double>(e[j][a])*e[k][b] - static_cast<double>(e[j][b])*e[k][a]);
-            }
+        double maximum = 0.0;
+        for (int i = 0; i < 3; ++i) for (int j = 0; j < 3; ++j) if (std::fabs(e[i][j]) > maximum) maximum = std::fabs(e[i][j]);
+        if (!std::isfinite(initialDeterminant)) { determinant = float(initialDeterminant); break; }
+        int exponent = 0;
+        std::frexp(maximum, &exponent);
+        double n[3][3], cofactor[3][3];
+        for (int i = 0; i < 3; ++i) for (int j = 0; j < 3; ++j) n[i][j] = std::ldexp(e[i][j], -exponent);
+        for (int i = 0; i < 3; ++i) for (int j = 0; j < 3; ++j) {
+            const int r = (i+1)%3, s = (i+2)%3, c = (j+1)%3, d = (j+2)%3;
+            cofactor[i][j] = n[r][c]*n[s][d] - n[r][d]*n[s][c];
         }
-        const double det = Dot3(e[0], adjointTranspose[0]);
-        determinant = static_cast<float>(det);
-        if (det == 0.0) { OrthogonalRank2(e, adjointTranspose, e); break; }
-        const float adjOne = Vx3DMatrixNorm(adjointTranspose, true);
-        const double adjInf = Vx3DMatrixNorm(adjointTranspose, false);
-        const double gamma = std::sqrt(std::sqrt(adjInf*adjOne / (static_cast<double>(infNorm)*oneNorm)) / std::fabs(determinant));
-        const float c1 = static_cast<float>(0.5*gamma);
-        const double c2 = 0.5 / (gamma*determinant);
-        VxMatrix difference;
-        for (int i = 0; i < 3; ++i)
-            for (int j = 0; j < 3; ++j) {
-                const float previous = e[i][j];
-                e[i][j] = static_cast<float>(static_cast<double>(c1)*previous + c2*adjointTranspose[i][j]);
-                difference[i][j] = previous - e[i][j];
+        const double det = first ? std::ldexp(initialDeterminant, -3*exponent) : VxMatrixPolarDot3(n[0], cofactor[0]);
+        if (initialDeterminant == 0.0) { VxMatrixPolarOrthogonalRank2(n, cofactor, e); break; }
+        double one = 0.0, infinity = 0.0, adjOne = 0.0, adjInfinity = 0.0;
+        for (int i = 0; i < 3; ++i) {
+            double a = 0.0, b = 0.0, c = 0.0, d = 0.0;
+            for (int j = 0; j < 3; ++j) { a += std::fabs(n[j][i]); b += std::fabs(n[i][j]); c += std::fabs(cofactor[j][i]); d += std::fabs(cofactor[i][j]); }
+            if (a > one) one = a; if (b > infinity) infinity = b; if (c > adjOne) adjOne = c; if (d > adjInfinity) adjInfinity = d;
+        }
+        // Evaluate the scale-invariant Newton step from power-of-two-scaled data.
+        const double gamma = std::sqrt(std::sqrt(adjInfinity/infinity)*std::sqrt(adjOne/one)/std::fabs(det));
+        double difference = 0.0, norm = 0.0;
+        for (int j = 0; j < 3; ++j) {
+            double columnDifference = 0.0, columnNorm = 0.0;
+            for (int i = 0; i < 3; ++i) {
+                const double next = 0.5*(gamma*n[i][j] + cofactor[i][j]/(gamma*det));
+                columnDifference += std::fabs(e[i][j] - next); columnNorm += std::fabs(next); e[i][j] = next;
             }
-        oneNorm = Vx3DMatrixNorm(e, true);
-        infNorm = Vx3DMatrixNorm(e, false);
-        if (Vx3DMatrixNorm(difference, true) <= oneNorm*1e-6) break;
-        // No finite orthogonal factor exists for nonfinite intermediate state.
-        if (!std::isfinite(oneNorm) || !std::isfinite(infNorm)) break;
+            if (columnDifference > difference) difference = columnDifference; if (columnNorm > norm) norm = columnNorm;
+        }
+        determinant = float(std::ldexp(det, 3*exponent));
+        first = false;
+        if (difference <= norm*1e-6 || !std::isfinite(norm)) break;
+    }
+    double stretch[3][3];
+    for (int i = 0; i < 3; ++i) for (int j = 0; j < 3; ++j) {
+        const double column[3] = {input[0][j], input[1][j], input[2][j]};
+        stretch[i][j] = VxMatrixPolarDot3(e[i], column);
     }
     Q.SetIdentity(); S.SetIdentity();
-    for (int i = 0; i < 3; ++i)
-        for (int j = 0; j < 3; ++j) {
-            Q[i][j] = e[j][i];
-            // The internal original MatrixMultiply is A*B, unlike the public
-            // Vx3DMultiplyMatrix argument convention (B*A).
-            S[i][j] = static_cast<float>(static_cast<double>(e[i][2])*M_in[2][j] + static_cast<double>(e[i][0])*M_in[0][j] + static_cast<double>(e[i][1])*M_in[1][j]);
-        }
-    for (int i = 0; i < 3; ++i)
-        for (int j = i; j < 3; ++j) {
-            const float symmetric = static_cast<float>((static_cast<double>(S[i][j]) + S[j][i])*0.5);
-            S[i][j] = S[j][i] = symmetric;
-        }
+    for (int i = 0; i < 3; ++i) for (int j = 0; j < 3; ++j) Q[i][j] = float(e[j][i]);
+    for (int i = 0; i < 3; ++i) for (int j = i; j < 3; ++j) S[i][j] = S[j][i] = float(0.5*(stretch[i][j] + stretch[j][i]));
     return determinant;
 }
 
