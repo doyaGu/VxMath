@@ -73,10 +73,13 @@ VX_EXPORT void InterpolateFloatArray(void *Res, void *array1, void *array2, floa
  * @param Res Pointer to the resulting strided array.
  * @param Inarray1 Pointer to the first source strided array.
  * @param Inarray2 Pointer to the second source strided array.
- * @param factor Interpolation factor, from 0.0 (Inarray1) to 1.0 (Inarray2).
+ * @param factor Interpolation factor; 0 and 1 copy the selected endpoint exactly. Other values may extrapolate.
  * @param count The number of vectors to interpolate.
  * @param StrideRes The stride in bytes for the result array.
  * @param StrideIn The stride in bytes for the input arrays.
+ * @remarks Each XYZ is read before its result is written. Vectors proceed
+ * forwards with the supplied byte strides, including zero strides; padding
+ * remains untouched. Nonpositive counts access no elements.
  */
 VX_EXPORT void InterpolateVectorArray(void *Res, void *Inarray1, void *Inarray2, float factor, int count, XDWORD StrideRes, XDWORD StrideIn);
 

@@ -145,6 +145,43 @@ static void InterpolateFloatArray_ScalarImpl(void *Res, void *array1, void *arra
     }
 }
 
+static void InterpolateVectorArray_ScalarImpl(void *Res, void *Inarray1, void *Inarray2, float factor, int count, XDWORD StrideRes, XDWORD StrideIn) {
+    if (count <= 0) return;
+    const char *srcA = static_cast<const char *>(Inarray1);
+    const char *srcB = static_cast<const char *>(Inarray2);
+    char *dst = static_cast<char *>(Res);
+    if (factor == 0.0f || factor == 1.0f) {
+        const char *src = factor == 0.0f ? srcA : srcB;
+        for (;;) {
+            float value[3];
+            memcpy(value, src, 12);
+            memcpy(dst + 8, value + 2, 4);
+            memcpy(dst + 4, value + 1, 4);
+            memcpy(dst, value, 4);
+            if (--count == 0) return;
+            src += StrideIn;
+            dst += StrideRes;
+        }
+    }
+    const double t = factor;
+    for (;;) {
+        float a[3], b[3], value[3];
+        memcpy(a, srcA, 12);
+        memcpy(b, srcB, 12);
+        for (int k = 0; k < 3; ++k) {
+            const double x = a[k], y = b[k];
+            value[k] = static_cast<float>(x + (y - x)*t);
+        }
+        memcpy(dst + 8, value + 2, 4);
+        memcpy(dst + 4, value + 1, 4);
+        memcpy(dst, value, 4);
+        if (--count == 0) return;
+        srcA += StrideIn;
+        srcB += StrideIn;
+        dst += StrideRes;
+    }
+}
+
 namespace {
 
 typedef void (*VxInterpolateFloatArrayDispatchFn)(void *, void *, void *, float, int);
@@ -156,22 +193,6 @@ typedef XBOOL (*VxPtInRectDispatchFn)(CKRECT *, CKPOINT *);
 typedef XBOOL (*VxTransformBox2DCoreDispatchFn)(const VxMatrix &, const VxBbox &, VxRect *, VxRect *, VXCLIP_FLAGS &, VXCLIP_FLAGS &);
 typedef void (*VxProjectBoxZExtentsCoreDispatchFn)(const VxMatrix &, const VxBbox &, float &, float &);
 typedef void (*VxProjectPointsToAxesExtentsDispatchFn)(const XBYTE *, XDWORD, int, const VxMatrix &, float &, float &, float &, float &, float &, float &);
-
-void InterpolateVectorArray_ScalarImpl(void *Res, void *Inarray1, void *Inarray2, float factor, int count, XDWORD StrideRes, XDWORD StrideIn) {
-    const char *srcA = static_cast<const char *>(Inarray1);
-    const char *srcB = static_cast<const char *>(Inarray2);
-    char *dst = static_cast<char *>(Res);
-
-    for (int i = 0; i < count; ++i) {
-        const VxVector *vecA = reinterpret_cast<const VxVector *>(srcA + i * StrideIn);
-        const VxVector *vecB = reinterpret_cast<const VxVector *>(srcB + i * StrideIn);
-        VxVector *vecResult = reinterpret_cast<VxVector *>(dst + i * StrideRes);
-
-        vecResult->x = vecA->x + (vecB->x - vecA->x) * factor;
-        vecResult->y = vecA->y + (vecB->y - vecA->y) * factor;
-        vecResult->z = vecA->z + (vecB->z - vecA->z) * factor;
-    }
-}
 
 #if defined(VX_SIMD_SSE)
 void InterpolateFloatArray_SIMDImpl(void *Res, void *array1, void *array2, float factor, int count) {
@@ -265,7 +286,7 @@ void InterpolateFloatArray(void *Res, void *array1, void *array2, float factor, 
 }
 
 void InterpolateVectorArray(void *Res, void *Inarray1, void *Inarray2, float factor, int count, XDWORD StrideRes, XDWORD StrideIn) {
-    if (!Res || !Inarray1 || !Inarray2 || count == 0)
+    if (!Res || !Inarray1 || !Inarray2 || count <= 0)
         return;
 
     GetVxMathDispatchTable()->interpolateVectorArray(Res, Inarray1, Inarray2, factor, count, StrideRes, StrideIn);

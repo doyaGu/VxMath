@@ -778,54 +778,48 @@ VX_SIMD_INLINE void VxSIMDInterpolateFloatArray(float *result, const float *a, c
 }
 
 VX_SIMD_INLINE void VxSIMDInterpolateVectorArray(void *result, const void *a, const void *b, float factor, int count, XDWORD strideResult, XDWORD strideInput) noexcept {
-    const __m128 factorVec = _mm_set1_ps(factor);
-
-    if (strideResult == static_cast<XDWORD>(sizeof(VxVector)) &&
-        strideInput == static_cast<XDWORD>(sizeof(VxVector))) {
-        const VxVector *vecA = static_cast<const VxVector *>(a);
-        const VxVector *vecB = static_cast<const VxVector *>(b);
-        VxVector *vecResult = static_cast<VxVector *>(result);
-
-        int i = 0;
-        for (; i + 3 < count; i += 4) {
-            __m128 a0 = VxSIMDLoadFloat3(&vecA[i + 0].x);
-            __m128 b0 = VxSIMDLoadFloat3(&vecB[i + 0].x);
-            __m128 a1 = VxSIMDLoadFloat3(&vecA[i + 1].x);
-            __m128 b1 = VxSIMDLoadFloat3(&vecB[i + 1].x);
-            __m128 a2 = VxSIMDLoadFloat3(&vecA[i + 2].x);
-            __m128 b2 = VxSIMDLoadFloat3(&vecB[i + 2].x);
-            __m128 a3 = VxSIMDLoadFloat3(&vecA[i + 3].x);
-            __m128 b3 = VxSIMDLoadFloat3(&vecB[i + 3].x);
-
-            VxSIMDStoreFloat3(&vecResult[i + 0].x, VX_FMADD_PS(_mm_sub_ps(b0, a0), factorVec, a0));
-            VxSIMDStoreFloat3(&vecResult[i + 1].x, VX_FMADD_PS(_mm_sub_ps(b1, a1), factorVec, a1));
-            VxSIMDStoreFloat3(&vecResult[i + 2].x, VX_FMADD_PS(_mm_sub_ps(b2, a2), factorVec, a2));
-            VxSIMDStoreFloat3(&vecResult[i + 3].x, VX_FMADD_PS(_mm_sub_ps(b3, a3), factorVec, a3));
-        }
-
-        for (; i < count; ++i) {
-            __m128 va = VxSIMDLoadFloat3(&vecA[i].x);
-            __m128 vb = VxSIMDLoadFloat3(&vecB[i].x);
-            VxSIMDStoreFloat3(&vecResult[i].x, VX_FMADD_PS(_mm_sub_ps(vb, va), factorVec, va));
-        }
+    if (count <= 0) return;
+    const uintptr_t address = reinterpret_cast<uintptr_t>(result);
+    const uintptr_t addressA = reinterpret_cast<uintptr_t>(a), addressB = reinterpret_cast<uintptr_t>(b);
+    // Contiguous arrays without forward feedback can share the float kernel.
+    // Dependent vectors stay in the per-vector loop, preserving their snapshot
+    // without the narrower float batches and their extra scheduling overhead.
+    if (strideResult == 12 && strideInput == 12 && count <= 0x2aaaaaaa &&
+        ((address | addressA | addressB) & 3) == 0 &&
+        (address <= addressA || (address - addressA)/12 >= static_cast<unsigned>(count)) &&
+        (address <= addressB || (address - addressB)/12 >= static_cast<unsigned>(count))) {
+        VxSIMDInterpolateFloatArray(static_cast<float *>(result), static_cast<const float *>(a),
+                                   static_cast<const float *>(b), factor, count*3);
         return;
     }
-
     const char *srcA = static_cast<const char *>(a);
     const char *srcB = static_cast<const char *>(b);
     char *dst = static_cast<char *>(result);
-
-    for (int i = 0; i < count; ++i) {
-        const VxVector *vecA = reinterpret_cast<const VxVector *>(srcA);
-        const VxVector *vecB = reinterpret_cast<const VxVector *>(srcB);
-        VxVector *vecResult = reinterpret_cast<VxVector *>(dst);
-
-        __m128 aVec = VxSIMDLoadFloat3(&vecA->x);
-        __m128 bVec = VxSIMDLoadFloat3(&vecB->x);
-        __m128 diff = _mm_sub_ps(bVec, aVec);
-        __m128 resultVec = VX_FMADD_PS(diff, factorVec, aVec);
-        VxSIMDStoreFloat3(&vecResult->x, resultVec);
-
+    if (factor == 0.0f || factor == 1.0f) {
+        const char *src = factor == 0.0f ? srcA : srcB;
+        for (;;) {
+            const __m128i xy = _mm_loadl_epi64(reinterpret_cast<const __m128i *>(src));
+            const __m128 z = _mm_load_ss(reinterpret_cast<const float *>(src + 8));
+            _mm_store_ss(reinterpret_cast<float *>(dst + 8), z);
+            _mm_storel_epi64(reinterpret_cast<__m128i *>(dst), xy);
+            if (--count == 0) return;
+            src += strideInput;
+            dst += strideResult;
+        }
+    }
+    const __m128d t = _mm_set1_pd(factor);
+    for (;;) {
+        // Snapshot one complete XYZ from each input before any result write.
+        const __m128 af = _mm_castsi128_ps(_mm_loadl_epi64(reinterpret_cast<const __m128i *>(srcA)));
+        const __m128 bf = _mm_castsi128_ps(_mm_loadl_epi64(reinterpret_cast<const __m128i *>(srcB)));
+        const __m128d ax = _mm_cvtps_pd(af), bx = _mm_cvtps_pd(bf);
+        const __m128d az = _mm_cvtps_pd(_mm_load_ss(reinterpret_cast<const float *>(srcA + 8)));
+        const __m128d bz = _mm_cvtps_pd(_mm_load_ss(reinterpret_cast<const float *>(srcB + 8)));
+        const __m128 xy = _mm_cvtpd_ps(_mm_add_pd(ax, _mm_mul_pd(_mm_sub_pd(bx, ax), t)));
+        const __m128 z = _mm_cvtpd_ps(_mm_add_pd(az, _mm_mul_pd(_mm_sub_pd(bz, az), t)));
+        _mm_store_ss(reinterpret_cast<float *>(dst + 8), z);
+        _mm_storel_epi64(reinterpret_cast<__m128i *>(dst), _mm_castps_si128(xy));
+        if (--count == 0) return;
         srcA += strideInput;
         srcB += strideInput;
         dst += strideResult;

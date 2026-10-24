@@ -1451,7 +1451,7 @@ TEST(SIMDDispatchTest, ComputeBestFitBBoxSIMDMatchesScalarDispatch) {
     ASSERT_TRUE(VxSetSIMDOverride(previousMode));
 }
 
-TEST(SIMDDispatchTest, InterpolateVectorArrayContiguousMatchesScalarReference) {
+TEST(SIMDDispatchTest, InterpolateVectorArrayContiguousMatchesAffineReference) {
     constexpr int kCount = 97;
     VxVector a[kCount];
     VxVector b[kCount];
@@ -1466,16 +1466,18 @@ TEST(SIMDDispatchTest, InterpolateVectorArrayContiguousMatchesScalarReference) {
 
     const float t = 0.3125f;
     for (int i = 0; i < kCount; ++i) {
-        expected[i].x = a[i].x + (b[i].x - a[i].x) * t;
-        expected[i].y = a[i].y + (b[i].y - a[i].y) * t;
-        expected[i].z = a[i].z + (b[i].z - a[i].z) * t;
+        // These bounded binary32 samples and dyadic weights fit exactly in
+        // double; compare the final float to the independent affine equation.
+        expected[i].x = float(double(a[i].x)*(1.0-double(t)) + double(b[i].x)*double(t));
+        expected[i].y = float(double(a[i].y)*(1.0-double(t)) + double(b[i].y)*double(t));
+        expected[i].z = float(double(a[i].z)*(1.0-double(t)) + double(b[i].z)*double(t));
     }
 
     InterpolateVectorArray(out, a, b, t, kCount, sizeof(VxVector), sizeof(VxVector));
     for (int i = 0; i < kCount; ++i) {
-        EXPECT_NEAR(out[i].x, expected[i].x, kDispatchTightTolerance);
-        EXPECT_NEAR(out[i].y, expected[i].y, kDispatchTightTolerance);
-        EXPECT_NEAR(out[i].z, expected[i].z, kDispatchTightTolerance);
+        EXPECT_EQ(out[i].x, expected[i].x);
+        EXPECT_EQ(out[i].y, expected[i].y);
+        EXPECT_EQ(out[i].z, expected[i].z);
     }
 }
 
