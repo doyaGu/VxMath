@@ -1077,27 +1077,20 @@ inline void Vx3DInterpolateMatrix(float step, VxMatrix &Res, const VxMatrix &A, 
 #include "VxSIMD.h"
 
 VX_SIMD_INLINE __m128 VxSIMDTransformVec3Rows(__m128 m0, __m128 m1, __m128 m2, __m128 m3, const VxVector *src) noexcept {
-    const __m128 v = _mm_set_ps(0.0f, src->z, src->y, src->x);
-    const __m128 v_x = _mm_shuffle_ps(v, v, _MM_SHUFFLE(0, 0, 0, 0));
-    const __m128 v_y = _mm_shuffle_ps(v, v, _MM_SHUFFLE(1, 1, 1, 1));
-    const __m128 v_z = _mm_shuffle_ps(v, v, _MM_SHUFFLE(2, 2, 2, 2));
-
-    __m128 res = VX_FMADD_PS(m2, v_z, m3);
-    res = VX_FMADD_PS(m1, v_y, res);
-    res = VX_FMADD_PS(m0, v_x, res);
-    return res;
+    alignas(16) float rows[16];
+    _mm_storeu_ps(rows, m0);
+    _mm_storeu_ps(rows + 4, m1);
+    _mm_storeu_ps(rows + 8, m2);
+    _mm_storeu_ps(rows + 12, m3);
+    return VxSIMDMatrixMultiplyVector3(rows, VxSIMDLoadFloat3(&src->x));
 }
 
 VX_SIMD_INLINE __m128 VxSIMDRotateVec3Rows(__m128 m0, __m128 m1, __m128 m2, const VxVector *src) noexcept {
-    const __m128 v = _mm_set_ps(0.0f, src->z, src->y, src->x);
-    const __m128 v_x = _mm_shuffle_ps(v, v, _MM_SHUFFLE(0, 0, 0, 0));
-    const __m128 v_y = _mm_shuffle_ps(v, v, _MM_SHUFFLE(1, 1, 1, 1));
-    const __m128 v_z = _mm_shuffle_ps(v, v, _MM_SHUFFLE(2, 2, 2, 2));
-
-    __m128 res = _mm_mul_ps(m2, v_z);
-    res = VX_FMADD_PS(m1, v_y, res);
-    res = VX_FMADD_PS(m0, v_x, res);
-    return res;
+    alignas(16) float rows[12];
+    _mm_storeu_ps(rows, m0);
+    _mm_storeu_ps(rows + 4, m1);
+    _mm_storeu_ps(rows + 8, m2);
+    return VxSIMDMatrixRotateVector3(rows, VxSIMDLoadFloat3(&src->x));
 }
 
 VX_SIMD_INLINE XBOOL VxSIMDIsPureTranslationMatrix(const VxMatrix *mat) noexcept {

@@ -185,60 +185,99 @@ VX_SIMD_INLINE __m128 VxSIMDNormalize4(__m128 v) noexcept {
 // ============================================================================
 
 /**
- * @brief Matrix * vec3 with translation (affine transform).
+ * @brief Transforms XYZ with implicit w=1; returns all four homogeneous lanes without division.
  */
 VX_SIMD_INLINE __m128 VxSIMDMatrixMultiplyVector3(const float *mat, __m128 v) noexcept {
-    __m128 r0 = _mm_loadu_ps(&mat[0]);
-    __m128 r1 = _mm_loadu_ps(&mat[4]);
-    __m128 r2 = _mm_loadu_ps(&mat[8]);
-    __m128 r3 = _mm_loadu_ps(&mat[12]);
+    const __m128 row0 = _mm_loadu_ps(mat), row1 = _mm_loadu_ps(mat + 4), row2 = _mm_loadu_ps(mat + 8);
+    const __m128 row3 = _mm_loadu_ps(mat + 12);
+    const __m128d vx = _mm_set1_pd(double(_mm_cvtss_f32(v)));
+    const __m128d vy = _mm_set1_pd(double(_mm_cvtss_f32(_mm_shuffle_ps(v, v, _MM_SHUFFLE(1, 1, 1, 1)))));
+    const __m128d vz = _mm_set1_pd(double(_mm_cvtss_f32(_mm_shuffle_ps(v, v, _MM_SHUFFLE(2, 2, 2, 2)))));
 
-    __m128 v_x = _mm_shuffle_ps(v, v, _MM_SHUFFLE(0, 0, 0, 0));
-    __m128 v_y = _mm_shuffle_ps(v, v, _MM_SHUFFLE(1, 1, 1, 1));
-    __m128 v_z = _mm_shuffle_ps(v, v, _MM_SHUFFLE(2, 2, 2, 2));
-
-    __m128 result = VX_FMADD_PS(r2, v_z, r3);
-    result = VX_FMADD_PS(r1, v_y, result);
-    result = VX_FMADD_PS(r0, v_x, result);
-    return result;
+    __m128 parts[2];
+    for (int half = 0; half < 2; ++half) {
+        const __m128d x = _mm_mul_pd(_mm_cvtps_pd(half ? _mm_movehl_ps(row0, row0) : row0), vx);
+        const __m128d y = _mm_mul_pd(_mm_cvtps_pd(half ? _mm_movehl_ps(row1, row1) : row1), vy);
+        const __m128d z = _mm_mul_pd(_mm_cvtps_pd(half ? _mm_movehl_ps(row2, row2) : row2), vz);
+        const __m128d w = _mm_cvtps_pd(half ? _mm_movehl_ps(row3, row3) : row3);
+        const __m128d ordinary = _mm_add_pd(_mm_add_pd(_mm_add_pd(x, y), z), w);
+        const __m128d terms[] = {y, z, w};
+        __m128d sum = x, error = _mm_setzero_pd();
+        // Float products are exact in double; preserve addition tails until the final store.
+        for (int term = 0; term < 3; ++term) {
+            const __m128d next = _mm_add_pd(sum, terms[term]), delta = _mm_sub_pd(next, sum);
+            error = _mm_add_pd(error, _mm_add_pd(_mm_sub_pd(sum, _mm_sub_pd(next, delta)), _mm_sub_pd(terms[term], delta)));
+            sum = next;
+        }
+        const __m128d finite = _mm_cmple_pd(_mm_andnot_pd(_mm_set1_pd(-0.0), ordinary), _mm_set1_pd(DBL_MAX));
+        const __m128d compensated = _mm_add_pd(sum, error);
+        parts[half] = _mm_cvtpd_ps(_mm_or_pd(_mm_and_pd(finite, compensated), _mm_andnot_pd(finite, ordinary)));
+    }
+    return _mm_movelh_ps(parts[0], parts[1]);
 }
 
 /**
- * @brief Matrix rotation * vec3 (no translation).
+ * @brief Transforms XYZ by the first three matrix rows; returns four lanes without translation or division.
  */
 VX_SIMD_INLINE __m128 VxSIMDMatrixRotateVector3(const float *mat, __m128 v) noexcept {
-    __m128 r0 = _mm_loadu_ps(&mat[0]);
-    __m128 r1 = _mm_loadu_ps(&mat[4]);
-    __m128 r2 = _mm_loadu_ps(&mat[8]);
+    const __m128 row0 = _mm_loadu_ps(mat), row1 = _mm_loadu_ps(mat + 4), row2 = _mm_loadu_ps(mat + 8);
 
-    __m128 v_x = _mm_shuffle_ps(v, v, _MM_SHUFFLE(0, 0, 0, 0));
-    __m128 v_y = _mm_shuffle_ps(v, v, _MM_SHUFFLE(1, 1, 1, 1));
-    __m128 v_z = _mm_shuffle_ps(v, v, _MM_SHUFFLE(2, 2, 2, 2));
+    const __m128d vx = _mm_set1_pd(double(_mm_cvtss_f32(v)));
+    const __m128d vy = _mm_set1_pd(double(_mm_cvtss_f32(_mm_shuffle_ps(v, v, _MM_SHUFFLE(1, 1, 1, 1)))));
+    const __m128d vz = _mm_set1_pd(double(_mm_cvtss_f32(_mm_shuffle_ps(v, v, _MM_SHUFFLE(2, 2, 2, 2)))));
 
-    __m128 result = _mm_mul_ps(r2, v_z);
-    result = VX_FMADD_PS(r1, v_y, result);
-    result = VX_FMADD_PS(r0, v_x, result);
-    return result;
+    __m128 parts[2];
+    for (int half = 0; half < 2; ++half) {
+        const __m128d x = _mm_mul_pd(_mm_cvtps_pd(half ? _mm_movehl_ps(row0, row0) : row0), vx);
+        const __m128d y = _mm_mul_pd(_mm_cvtps_pd(half ? _mm_movehl_ps(row1, row1) : row1), vy);
+        const __m128d z = _mm_mul_pd(_mm_cvtps_pd(half ? _mm_movehl_ps(row2, row2) : row2), vz);
+        const __m128d w = _mm_setzero_pd();
+        const __m128d ordinary = _mm_add_pd(_mm_add_pd(_mm_add_pd(x, y), z), w);
+        const __m128d terms[] = {y, z, w};
+        __m128d sum = x, error = _mm_setzero_pd();
+        // Float products are exact in double; preserve addition tails until the final store.
+        for (int term = 0; term < 3; ++term) {
+            const __m128d next = _mm_add_pd(sum, terms[term]), delta = _mm_sub_pd(next, sum);
+            error = _mm_add_pd(error, _mm_add_pd(_mm_sub_pd(sum, _mm_sub_pd(next, delta)), _mm_sub_pd(terms[term], delta)));
+            sum = next;
+        }
+        const __m128d finite = _mm_cmple_pd(_mm_andnot_pd(_mm_set1_pd(-0.0), ordinary), _mm_set1_pd(DBL_MAX));
+        const __m128d compensated = _mm_add_pd(sum, error);
+        parts[half] = _mm_cvtpd_ps(_mm_or_pd(_mm_and_pd(finite, compensated), _mm_andnot_pd(finite, ordinary)));
+    }
+    return _mm_movelh_ps(parts[0], parts[1]);
 }
 
 /**
- * @brief Matrix * vec4.
+ * @brief Transforms all XYZW using the actual input w; returns four lanes without division.
  */
 VX_SIMD_INLINE __m128 VxSIMDMatrixMultiplyVector4(const float *mat, __m128 v) noexcept {
-    __m128 r0 = _mm_loadu_ps(&mat[0]);
-    __m128 r1 = _mm_loadu_ps(&mat[4]);
-    __m128 r2 = _mm_loadu_ps(&mat[8]);
-    __m128 r3 = _mm_loadu_ps(&mat[12]);
-
-    __m128 v_x = _mm_shuffle_ps(v, v, _MM_SHUFFLE(0, 0, 0, 0));
-    __m128 v_y = _mm_shuffle_ps(v, v, _MM_SHUFFLE(1, 1, 1, 1));
-    __m128 v_z = _mm_shuffle_ps(v, v, _MM_SHUFFLE(2, 2, 2, 2));
-    __m128 v_w = _mm_shuffle_ps(v, v, _MM_SHUFFLE(3, 3, 3, 3));
-
-    __m128 result = VX_FMADD_PS(r2, v_z, _mm_mul_ps(r3, v_w));
-    result = VX_FMADD_PS(r1, v_y, result);
-    result = VX_FMADD_PS(r0, v_x, result);
-    return result;
+    const __m128 row0 = _mm_loadu_ps(mat), row1 = _mm_loadu_ps(mat + 4), row2 = _mm_loadu_ps(mat + 8);
+    const __m128 row3 = _mm_loadu_ps(mat + 12);
+    const __m128d vx = _mm_set1_pd(double(_mm_cvtss_f32(v)));
+    const __m128d vy = _mm_set1_pd(double(_mm_cvtss_f32(_mm_shuffle_ps(v, v, _MM_SHUFFLE(1, 1, 1, 1)))));
+    const __m128d vz = _mm_set1_pd(double(_mm_cvtss_f32(_mm_shuffle_ps(v, v, _MM_SHUFFLE(2, 2, 2, 2)))));
+    const __m128d vw = _mm_set1_pd(double(_mm_cvtss_f32(_mm_shuffle_ps(v, v, _MM_SHUFFLE(3, 3, 3, 3)))));
+    __m128 parts[2];
+    for (int half = 0; half < 2; ++half) {
+        const __m128d x = _mm_mul_pd(_mm_cvtps_pd(half ? _mm_movehl_ps(row0, row0) : row0), vx);
+        const __m128d y = _mm_mul_pd(_mm_cvtps_pd(half ? _mm_movehl_ps(row1, row1) : row1), vy);
+        const __m128d z = _mm_mul_pd(_mm_cvtps_pd(half ? _mm_movehl_ps(row2, row2) : row2), vz);
+        const __m128d w = _mm_mul_pd(_mm_cvtps_pd(half ? _mm_movehl_ps(row3, row3) : row3), vw);
+        const __m128d ordinary = _mm_add_pd(_mm_add_pd(_mm_add_pd(x, y), z), w);
+        const __m128d terms[] = {y, z, w};
+        __m128d sum = x, error = _mm_setzero_pd();
+        // Float products are exact in double; preserve addition tails until the final store.
+        for (int term = 0; term < 3; ++term) {
+            const __m128d next = _mm_add_pd(sum, terms[term]), delta = _mm_sub_pd(next, sum);
+            error = _mm_add_pd(error, _mm_add_pd(_mm_sub_pd(sum, _mm_sub_pd(next, delta)), _mm_sub_pd(terms[term], delta)));
+            sum = next;
+        }
+        const __m128d finite = _mm_cmple_pd(_mm_andnot_pd(_mm_set1_pd(-0.0), ordinary), _mm_set1_pd(DBL_MAX));
+        const __m128d compensated = _mm_add_pd(sum, error);
+        parts[half] = _mm_cvtpd_ps(_mm_or_pd(_mm_and_pd(finite, compensated), _mm_andnot_pd(finite, ordinary)));
+    }
+    return _mm_movelh_ps(parts[0], parts[1]);
 }
 
 // ============================================================================
