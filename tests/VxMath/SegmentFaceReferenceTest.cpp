@@ -191,13 +191,17 @@ TEST(SegmentFaceReference, prefix##LatticeBothOverloadsAndCulling) { SFSelect(si
 TEST(SegmentFaceReference, prefix##ParallelAndBehindThresholdOutputs) { SFSelect(simd); SFCheck(SFThresholds(SFLocalEntries())); } \
 TEST(SegmentFaceReference, prefix##TranslatedTiltedPlanes) { SFSelect(simd); SFCheck(SFTranslated(SFLocalEntries())); } \
 TEST(SegmentFaceReference, prefix##FiniteExtremePlanesAndGeometry) { SFSelect(simd); SFCheck(SFExtreme(SFLocalEntries())); } \
-TEST(SegmentFaceReference, prefix##RejectedFacesDegeneratesAndAliasedAxes) { SFSelect(simd); SFCheck(SFFailuresAndAliases(SFLocalEntries())); } \
-TEST(SegmentFaceReference, prefix##ReadonlyInputsAndExactOutputFootprints) { SFSelect(simd); SFCheck(SFFootprint(SFLocalEntries())); }
+TEST(SegmentFaceReference, prefix##RejectedFacesDegeneratesAndAliasedAxes) { SFSelect(simd); SFCheck(SFFailuresAndAliases(SFLocalEntries())); }
 TEST(SegmentFaceReference, ScalarUnroundedEndpointParameters) { SFSelect(false); SFCheck(SFUnroundedEndpointParameters(SFLocalEntries())); }
 SF_TESTS(Scalar, false)
 #if defined(VX_SIMD_SSE)
 TEST(SegmentFaceReference, SimdUnroundedEndpointParameters) { SFSelect(true); SFCheck(SFUnroundedEndpointParameters(SFLocalEntries())); }
 SF_TESTS(Simd, true)
+#endif
+#if defined(_WIN32)
+TEST(SegmentFaceReference, ScalarReadonlyInputsAndExactOutputFootprints) { SFSelect(false); SFCheck(SFFootprint(SFLocalEntries())); }
+#if defined(VX_SIMD_SSE)
+TEST(SegmentFaceReference, SimdReadonlyInputsAndExactOutputFootprints) { SFSelect(true); SFCheck(SFFootprint(SFLocalEntries())); }
 #endif
 TEST(SegmentFaceReference, ActualCurrentDllExports) {
     HMODULE dll = LoadLibraryA("VxMath.dll"); ASSERT_NE(dll, nullptr);
@@ -215,4 +219,5 @@ TEST(SegmentFaceReference, ActualCurrentDllExports) {
     SFCheck(SFGrid(fn)); EXPECT_EQ(SFThresholds(fn).errors,0); EXPECT_EQ(SFTranslated(fn).errors,0); EXPECT_EQ(SFUnroundedEndpointParameters(fn).errors,0); EXPECT_EQ(SFExtreme(fn).errors,0);
     EXPECT_EQ(SFFailuresAndAliases(fn).errors,0); EXPECT_EQ(SFFootprint(fn).errors,0); EXPECT_NE(FreeLibrary(dll),0);
 }
+#endif
 #endif

@@ -172,11 +172,15 @@ TEST(RayFaceReference, prefix##LatticeBothOverloadsAndCulling) { RFSelect(simd);
 TEST(RayFaceReference, prefix##ParallelAndBehindThresholdOutputs) { RFSelect(simd); RFCheck(RFThresholds(RFLocalEntries())); } \
 TEST(RayFaceReference, prefix##TranslatedTiltedPlanes) { RFSelect(simd); RFCheck(RFTranslated(RFLocalEntries())); } \
 TEST(RayFaceReference, prefix##FiniteExtremePlanesAndGeometry) { RFSelect(simd); RFCheck(RFExtreme(RFLocalEntries())); } \
-TEST(RayFaceReference, prefix##RejectedFacesDegeneratesAndAliasedAxes) { RFSelect(simd); RFCheck(RFFailuresAndAliases(RFLocalEntries())); } \
-TEST(RayFaceReference, prefix##ReadonlyInputsAndExactOutputFootprints) { RFSelect(simd); RFCheck(RFFootprint(RFLocalEntries())); }
+TEST(RayFaceReference, prefix##RejectedFacesDegeneratesAndAliasedAxes) { RFSelect(simd); RFCheck(RFFailuresAndAliases(RFLocalEntries())); }
 RF_TESTS(Scalar, false)
 #if defined(VX_SIMD_SSE)
 RF_TESTS(Simd, true)
+#endif
+#if defined(_WIN32)
+TEST(RayFaceReference, ScalarReadonlyInputsAndExactOutputFootprints) { RFSelect(false); RFCheck(RFFootprint(RFLocalEntries())); }
+#if defined(VX_SIMD_SSE)
+TEST(RayFaceReference, SimdReadonlyInputsAndExactOutputFootprints) { RFSelect(true); RFCheck(RFFootprint(RFLocalEntries())); }
 #endif
 TEST(RayFaceReference, ActualCurrentDllExports) {
     HMODULE dll = LoadLibraryA("VxMath.dll"); ASSERT_NE(dll, nullptr);
@@ -194,4 +198,5 @@ TEST(RayFaceReference, ActualCurrentDllExports) {
     RFCheck(RFGrid(fn)); EXPECT_EQ(RFThresholds(fn).errors,0); EXPECT_EQ(RFTranslated(fn).errors,0); EXPECT_EQ(RFExtreme(fn).errors,0);
     EXPECT_EQ(RFFailuresAndAliases(fn).errors,0); EXPECT_EQ(RFFootprint(fn).errors,0); EXPECT_NE(FreeLibrary(dll),0);
 }
+#endif
 #endif

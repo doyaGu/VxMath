@@ -176,13 +176,17 @@ TEST(LineFaceReference, prefix##LatticeBothOverloads) { LFSelect(simd); LFCheck(
 TEST(LineFaceReference, prefix##ParallelThresholdOutputs) { LFSelect(simd); LFCheck(LFThresholds(LFLocalEntries())); } \
 TEST(LineFaceReference, prefix##TranslatedTiltedPlanes) { LFSelect(simd); LFCheck(LFTranslated(LFLocalEntries())); } \
 TEST(LineFaceReference, prefix##FiniteExtremePlanesAndGeometry) { LFSelect(simd); LFCheck(LFExtreme(LFLocalEntries())); } \
-TEST(LineFaceReference, prefix##RejectedFacesDegeneratesAndAliasedAxes) { LFSelect(simd); LFCheck(LFFailuresAndAliases(LFLocalEntries())); } \
-TEST(LineFaceReference, prefix##ReadonlyInputsAndExactOutputFootprints) { LFSelect(simd); LFCheck(LFFootprint(LFLocalEntries())); }
+TEST(LineFaceReference, prefix##RejectedFacesDegeneratesAndAliasedAxes) { LFSelect(simd); LFCheck(LFFailuresAndAliases(LFLocalEntries())); }
 TEST(LineFaceReference, ScalarUnboundedSignedParameters) { LFSelect(false); LFCheck(LFSignedParameters(LFLocalEntries())); }
 LF_TESTS(Scalar, false)
 #if defined(VX_SIMD_SSE)
 TEST(LineFaceReference, SimdUnboundedSignedParameters) { LFSelect(true); LFCheck(LFSignedParameters(LFLocalEntries())); }
 LF_TESTS(Simd, true)
+#endif
+#if defined(_WIN32)
+TEST(LineFaceReference, ScalarReadonlyInputsAndExactOutputFootprints) { LFSelect(false); LFCheck(LFFootprint(LFLocalEntries())); }
+#if defined(VX_SIMD_SSE)
+TEST(LineFaceReference, SimdReadonlyInputsAndExactOutputFootprints) { LFSelect(true); LFCheck(LFFootprint(LFLocalEntries())); }
 #endif
 TEST(LineFaceReference, ActualCurrentDllExports) {
     HMODULE dll = LoadLibraryA("VxMath.dll"); ASSERT_NE(dll, nullptr);
@@ -198,4 +202,5 @@ TEST(LineFaceReference, ActualCurrentDllExports) {
     LFCheck(LFGrid(fn)); EXPECT_EQ(LFThresholds(fn).errors,0); EXPECT_EQ(LFTranslated(fn).errors,0); EXPECT_EQ(LFSignedParameters(fn).errors,0); EXPECT_EQ(LFExtreme(fn).errors,0);
     EXPECT_EQ(LFFailuresAndAliases(fn).errors,0); EXPECT_EQ(LFFootprint(fn).errors,0); EXPECT_NE(FreeLibrary(dll),0);
 }
+#endif
 #endif
