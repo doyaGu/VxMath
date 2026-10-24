@@ -202,6 +202,7 @@ set(VXMATH_TEST_SOURCES
         MatrixRotateStridedReferenceTest.cpp
         RawMatrixVectorReferenceTest.cpp
         MatrixTransposeReferenceTest.cpp
+        RawMatrixMultiplyReferenceTest.cpp
         # SIMD Tests
         SIMDFeatureTest.cpp
         SIMDUtilityTest.cpp

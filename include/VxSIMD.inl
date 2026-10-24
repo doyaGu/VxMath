@@ -372,22 +372,15 @@ VX_SIMD_INLINE __m128 VxSIMDQuaternionConjugate(__m128 q) noexcept {
 // ============================================================================
 
 VX_SIMD_INLINE void VxSIMDMatrixMultiply(float *result, const float *a, const float *b) noexcept {
-    const __m128 a0 = _mm_loadu_ps(a + 0);
-    const __m128 a1 = _mm_loadu_ps(a + 4);
-    const __m128 a2 = _mm_loadu_ps(a + 8);
-    const __m128 a3 = _mm_loadu_ps(a + 12);
-
+    // Full B*A composition; preserve A before result can overwrite either operand.
+    alignas(16) float matrix[16];
+    _mm_storeu_ps(matrix, _mm_loadu_ps(a));
+    _mm_storeu_ps(matrix + 4, _mm_loadu_ps(a + 4));
+    _mm_storeu_ps(matrix + 8, _mm_loadu_ps(a + 8));
+    _mm_storeu_ps(matrix + 12, _mm_loadu_ps(a + 12));
     for (int i = 0; i < 4; ++i) {
         const __m128 bRow = _mm_loadu_ps(b + i * 4);
-        const __m128 b_x = _mm_shuffle_ps(bRow, bRow, _MM_SHUFFLE(0, 0, 0, 0));
-        const __m128 b_y = _mm_shuffle_ps(bRow, bRow, _MM_SHUFFLE(1, 1, 1, 1));
-        const __m128 b_z = _mm_shuffle_ps(bRow, bRow, _MM_SHUFFLE(2, 2, 2, 2));
-        const __m128 b_w = _mm_shuffle_ps(bRow, bRow, _MM_SHUFFLE(3, 3, 3, 3));
-
-        __m128 res = VX_FMADD_PS(a2, b_z, _mm_mul_ps(a3, b_w));
-        res = VX_FMADD_PS(a1, b_y, res);
-        res = VX_FMADD_PS(a0, b_x, res);
-        _mm_storeu_ps(result + i * 4, res);
+        _mm_storeu_ps(result + i * 4, VxSIMDMatrixMultiplyVector4(matrix, bRow));
     }
 }
 
