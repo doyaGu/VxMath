@@ -234,13 +234,13 @@ inline void Vx3DTransposeMatrix(VxMatrix &Result, const VxMatrix &A);
 inline void Vx3DDecomposeMatrix(const VxMatrix &A, VxQuaternion &Quat, VxVector &Pos, VxVector &Scale);
 
 /**
- * @brief Decomposes a transformation matrix, including an additional rotation for handling shear or complex transforms.
+ * @brief Decomposes the linear part as sign * R(Quat) * R(URot) * diag(Scale) * R(URot)^T.
  * @param A The input transformation matrix.
  * @param Quat The output primary rotation quaternion.
  * @param Pos The output translation vector.
- * @param Scale The output scaling vector.
- * @param URot The output secondary rotation quaternion.
- * @return A metric representing the overall scaling factor.
+ * @param Scale The stretch eigenvalues, reordered together with URot by Snuggle.
+ * @param URot The rotation of the stretch axes.
+ * @return The reflection sign (-1 or +1); a singular linear part returns +1.
  */
 inline float Vx3DDecomposeMatrixTotal(const VxMatrix &A, VxQuaternion &Quat, VxVector &Pos, VxVector &Scale, VxQuaternion &URot);
 
@@ -251,7 +251,9 @@ inline float Vx3DDecomposeMatrixTotal(const VxMatrix &A, VxQuaternion &Quat, VxV
  * @param Pos Pointer to store the output translation vector (can be NULL).
  * @param Scale Pointer to store the output scaling vector (can be NULL).
  * @param URot Pointer to store the output secondary rotation quaternion (can be NULL).
- * @return A metric representing the overall scaling factor.
+ * @return The same reflection sign as Vx3DDecomposeMatrixTotal. If Quat, Scale
+ * and URot are all NULL, returns +1 without reading the linear part; Pos is
+ * still copied when requested. Scale alone uses the same Snuggle ordering.
  */
 inline float Vx3DDecomposeMatrixTotalPtr(const VxMatrix &A, VxQuaternion *Quat, VxVector *Pos, VxVector *Scale, VxQuaternion *URot);
 /// @}
