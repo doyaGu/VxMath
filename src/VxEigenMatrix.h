@@ -81,52 +81,30 @@ public:
     }
 
     void Tridiagonal(float *const diagonal, float *const offDiagonal) {
-        const VxVector4 &r0 = (*this)[0];
-        const VxVector4 &r1 = (*this)[1];
-        const VxVector4 &r2 = (*this)[2];
-
-        const float a01 = r0[1];
-        const float a02 = r0[2];
-        const float a11 = r1[1];
-        const float a12 = r1[2];
-        const float a22 = r2[2];
-
+        // The symmetric input is defined by its upper triangle. A fixed
+        // epsilon must not discard a nonzero coupling in a small matrix.
+        const double a01 = m_Data[0][1], a02 = m_Data[0][2];
+        const double a11 = m_Data[1][1], a12 = m_Data[1][2], a22 = m_Data[2][2];
         diagonal[0] = m_Data[0][0];
-        offDiagonal[2] = 0.0f;
-
-        if (fabs(a02) < EPSILON) {
-            diagonal[1] = a11;
-            diagonal[2] = a22;
-            offDiagonal[0] = a01;
-            offDiagonal[1] = a12;
-
-            // Identity
+        offDiagonal[2] = 0;
+        if (a02 == 0) {
+            diagonal[1] = static_cast<float>(a11);
+            diagonal[2] = static_cast<float>(a22);
+            offDiagonal[0] = static_cast<float>(a01);
+            offDiagonal[1] = static_cast<float>(a12);
             SetIdentity();
             return;
         }
-
-        const float length = sqrtf(a02 * a02 + a01 * a01);
-        const float invLength = 1.0f / length;
-
-        const float u1 = a01 * invLength;
-        const float u2 = a02 * invLength;
-
-        // v14 in the binary
-        const float tmp = (a22 - a11) * u2 + 2.0f * a12 * u1;
-
-        diagonal[1] = a11 + tmp * u2;
-        diagonal[2] = a22 - tmp * u2;
-        offDiagonal[0] = length;
-        offDiagonal[1] = a12 - tmp * u1;
-
-        // Householder eigenvector matrix as built by the binary
-        VxVector4 &row0 = (*this)[0];
-        VxVector4 &row1 = (*this)[1];
-        VxVector4 &row2 = (*this)[2];
-
-        row0.Set(1.0f, 0.0f, 0.0f, 0.0f);
-        row1.Set(0.0f, u1, u2, 0.0f);
-        row2.Set(0.0f, u2, -u1, 0.0f);
+        const double length = sqrt(a01 * a01 + a02 * a02);
+        const double u = a01 / length, v = a02 / length;
+        const double shift = (a22 - a11) * v + 2 * a12 * u;
+        diagonal[1] = static_cast<float>(a11 + shift * v);
+        diagonal[2] = static_cast<float>(a22 - shift * v);
+        offDiagonal[0] = static_cast<float>(length);
+        offDiagonal[1] = static_cast<float>(a12 - shift * u);
+        m_Data[0][0] = 1; m_Data[0][1] = m_Data[0][2] = m_Data[0][3] = 0;
+        m_Data[1][0] = 0; m_Data[1][1] = static_cast<float>(u); m_Data[1][2] = static_cast<float>(v); m_Data[1][3] = 0;
+        m_Data[2][0] = 0; m_Data[2][1] = static_cast<float>(v); m_Data[2][2] = static_cast<float>(-u); m_Data[2][3] = 0;
     }
 
     XBOOL QLAlgorithm(float *const diagonal, float *const offDiagonal) {
