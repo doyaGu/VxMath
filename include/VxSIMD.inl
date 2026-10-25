@@ -15,6 +15,8 @@
 
 #pragma once
 
+#include <string.h>
+
 #if defined(VX_SIMD_SSE)
 
 // ============================================================================
@@ -418,25 +420,152 @@ VX_SIMD_INLINE void VxSIMDCopyDwordAlignedBlock(void *dst, const void *src, XDWO
 }
 
 VX_SIMD_INLINE XBOOL VxSIMDFillStructure(int count, void *dst, XDWORD stride, XDWORD sizeSrc, const void *src) noexcept {
-    if (!src || !dst || !count || !sizeSrc || !stride || (sizeSrc & 3) != 0) {
+    if (!src || !dst || count <= 0 || !sizeSrc || !stride || (sizeSrc & 3) != 0)
         return FALSE;
-    }
-
+    const XBYTE *srcBytes = static_cast<const XBYTE *>(src);
     XBYTE *dstBytes = static_cast<XBYTE *>(dst);
-    if (sizeSrc == 16) {
-        const __m128i pattern = _mm_loadu_si128(reinterpret_cast<const __m128i *>(src));
-        for (int i = 0; i < count; ++i) {
-            _mm_storeu_si128(reinterpret_cast<__m128i *>(dstBytes), pattern);
+    switch (sizeSrc) {
+    case 4: {
+        int value;
+        memcpy(&value, src, 4);
+        const __m128 pattern = _mm_castsi128_ps(_mm_set1_epi32(value));
+        if (stride == 4) {
+            while (count >= 4) {
+                _mm_storeu_si128(reinterpret_cast<__m128i *>(dstBytes), _mm_castps_si128(pattern));
+                dstBytes += 16;
+                count -= 4;
+            }
+            if (count == 0) return TRUE;
+        }
+        for (;;) {
+            _mm_store_ss(reinterpret_cast<float *>(dstBytes), pattern);
+            if (--count == 0) return TRUE;
             dstBytes += stride;
         }
-        return TRUE;
     }
-
-    for (int i = 0; i < count; ++i) {
-        VxSIMDCopyDwordAlignedBlock(dstBytes, src, sizeSrc);
-        dstBytes += stride;
+    case 8: {
+        const __m128i pattern = _mm_loadl_epi64(reinterpret_cast<const __m128i *>(src));
+        if (stride == 8) {
+            const __m128i pair = _mm_unpacklo_epi64(pattern, pattern);
+            while (count >= 2) {
+                _mm_storeu_si128(reinterpret_cast<__m128i *>(dstBytes), pair);
+                dstBytes += 16;
+                count -= 2;
+            }
+            if (count == 0) return TRUE;
+        }
+        for (;;) {
+            _mm_storel_epi64(reinterpret_cast<__m128i *>(dstBytes), pattern);
+            if (--count == 0) return TRUE;
+            dstBytes += stride;
+        }
     }
-    return TRUE;
+    case 12: {
+        const __m128i xy = _mm_loadl_epi64(reinterpret_cast<const __m128i *>(src));
+        const __m128 z = _mm_load_ss(reinterpret_cast<const float *>(srcBytes + 8));
+        if (stride == 12) {
+            const __m128 xyz = _mm_movelh_ps(_mm_castsi128_ps(xy), z);
+            const __m128 p0 = _mm_shuffle_ps(xyz, xyz, _MM_SHUFFLE(0, 2, 1, 0));
+            const __m128 p1 = _mm_shuffle_ps(xyz, xyz, _MM_SHUFFLE(1, 0, 2, 1));
+            const __m128 p2 = _mm_shuffle_ps(xyz, xyz, _MM_SHUFFLE(2, 1, 0, 2));
+            while (count >= 4) {
+                _mm_storeu_ps(reinterpret_cast<float *>(dstBytes), p0);
+                _mm_storeu_ps(reinterpret_cast<float *>(dstBytes + 16), p1);
+                _mm_storeu_ps(reinterpret_cast<float *>(dstBytes + 32), p2);
+                dstBytes += 48;
+                count -= 4;
+            }
+            if (count == 0) return TRUE;
+        }
+        for (;;) {
+            _mm_storel_epi64(reinterpret_cast<__m128i *>(dstBytes), xy);
+            _mm_store_ss(reinterpret_cast<float *>(dstBytes + 8), z);
+            if (--count == 0) return TRUE;
+            dstBytes += stride;
+        }
+    }
+    case 16: {
+        const __m128i pattern = _mm_loadu_si128(reinterpret_cast<const __m128i *>(src));
+        if (stride == 16) {
+            while (count >= 4) {
+                _mm_storeu_si128(reinterpret_cast<__m128i *>(dstBytes), pattern);
+                _mm_storeu_si128(reinterpret_cast<__m128i *>(dstBytes + 16), pattern);
+                _mm_storeu_si128(reinterpret_cast<__m128i *>(dstBytes + 32), pattern);
+                _mm_storeu_si128(reinterpret_cast<__m128i *>(dstBytes + 48), pattern);
+                dstBytes += 64;
+                count -= 4;
+            }
+            if (count == 0) return TRUE;
+        }
+        for (;;) {
+            _mm_storeu_si128(reinterpret_cast<__m128i *>(dstBytes), pattern);
+            if (--count == 0) return TRUE;
+            dstBytes += stride;
+        }
+    }
+    case 20:
+        for (;;) {
+            const uintptr_t address = reinterpret_cast<uintptr_t>(dstBytes);
+            const uintptr_t source = reinterpret_cast<uintptr_t>(srcBytes);
+            if (address > source && address - source < 16) {
+                for (XDWORD offset = 0; offset < 20; offset += 4) {
+                    XDWORD value;
+                    memcpy(&value, srcBytes + offset, 4);
+                    memcpy(dstBytes + offset, &value, 4);
+                }
+            } else {
+                const __m128i value = _mm_loadu_si128(reinterpret_cast<const __m128i *>(srcBytes));
+                _mm_storeu_si128(reinterpret_cast<__m128i *>(dstBytes), value);
+                // The preceding store can feed this last source word.
+                XDWORD tail;
+                memcpy(&tail, srcBytes + 16, 4);
+                memcpy(dstBytes + 16, &tail, 4);
+            }
+            if (--count == 0) return TRUE;
+            dstBytes += stride;
+        }
+    default: {
+        const XDWORD end64 = sizeSrc & ~XDWORD(63);
+        const XDWORD end16 = sizeSrc & ~XDWORD(15);
+        const XDWORD end8 = sizeSrc & ~XDWORD(7);
+        for (;;) {
+            const uintptr_t address = reinterpret_cast<uintptr_t>(dstBytes);
+            const uintptr_t source = reinterpret_cast<uintptr_t>(srcBytes);
+            const uintptr_t distance = address > source ? address - source : 16;
+            XDWORD offset = 0;
+            // Do not preload across a forward DWORD dependency.
+            if (distance >= 16) {
+                for (; offset < end64; offset += 64) {
+                    _mm_storeu_si128(reinterpret_cast<__m128i *>(dstBytes + offset),
+                                     _mm_loadu_si128(reinterpret_cast<const __m128i *>(srcBytes + offset)));
+                    _mm_storeu_si128(reinterpret_cast<__m128i *>(dstBytes + offset + 16),
+                                     _mm_loadu_si128(reinterpret_cast<const __m128i *>(srcBytes + offset + 16)));
+                    _mm_storeu_si128(reinterpret_cast<__m128i *>(dstBytes + offset + 32),
+                                     _mm_loadu_si128(reinterpret_cast<const __m128i *>(srcBytes + offset + 32)));
+                    _mm_storeu_si128(reinterpret_cast<__m128i *>(dstBytes + offset + 48),
+                                     _mm_loadu_si128(reinterpret_cast<const __m128i *>(srcBytes + offset + 48)));
+                }
+                for (; offset < end16; offset += 16) {
+                    const __m128i value = _mm_loadu_si128(reinterpret_cast<const __m128i *>(srcBytes + offset));
+                    _mm_storeu_si128(reinterpret_cast<__m128i *>(dstBytes + offset), value);
+                }
+            }
+            if (distance >= 8) {
+                for (; offset < end8; offset += 8) {
+                    const __m128i value = _mm_loadl_epi64(reinterpret_cast<const __m128i *>(srcBytes + offset));
+                    _mm_storel_epi64(reinterpret_cast<__m128i *>(dstBytes + offset), value);
+                }
+            }
+            for (; offset < sizeSrc; offset += 4) {
+                XDWORD value;
+                memcpy(&value, srcBytes + offset, 4);
+                memcpy(dstBytes + offset, &value, 4);
+            }
+            if (--count == 0) return TRUE;
+            dstBytes += stride;
+        }
+    }
+    }
 }
 
 VX_SIMD_INLINE XBOOL VxSIMDCopyStructure(int count, void *dst, XDWORD outStride, XDWORD sizeSrc, const void *src, XDWORD inStride) noexcept {

@@ -111,7 +111,11 @@ VX_EXPORT void VxProjectBoxZExtents(const VxMatrix &World_ProjectionMat, const V
  * @param Stride The stride in bytes of the destination array.
  * @param SizeSrc The size in bytes of the source data block.
  * @param Src Pointer to the source data block.
- * @return TRUE on success, FALSE otherwise.
+ * @remarks Sizes 4/8/12/16 snapshot the pattern once. Larger sizes reread
+ * the source in forward DWORD order for each destination; overlapping writes
+ * can affect subsequent reads. Only SizeSrc bytes are written per record.
+ * @return TRUE on success; FALSE for null pointers, a nonpositive Count,
+ * zero Stride, or a zero/non-DWORD SizeSrc, without accessing the buffers.
  */
 VX_EXPORT XBOOL VxFillStructure(int Count, void *Dst, XDWORD Stride, XDWORD SizeSrc, const void *Src);
 

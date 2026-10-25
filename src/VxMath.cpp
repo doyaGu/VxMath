@@ -531,82 +531,60 @@ void VxProjectBoxZExtents(const VxMatrix &World_ProjectionMat, const VxBbox &box
  * Fills an array with copies of a structure
  */
 static XBOOL FillStructureScalarImpl(int Count, void *Dst, XDWORD Stride, XDWORD SizeSrc, const void *Src) {
-    if (!Src || !Dst || !Count || !SizeSrc || !Stride || (SizeSrc & 3) != 0)
+    if (!Src || !Dst || Count <= 0 || !SizeSrc || !Stride || (SizeSrc & 3) != 0)
         return FALSE;
-
-    XDWORD *pDst = static_cast<XDWORD *>(Dst);
-    const XDWORD *pSrc = static_cast<const XDWORD *>(Src);
-
+    const XBYTE *src = static_cast<const XBYTE *>(Src);
+    XBYTE *dst = static_cast<XBYTE *>(Dst);
     switch (SizeSrc) {
     case 4: {
-        int cnt = Count;
-        XDWORD v = *pSrc;
-        do {
-            *pDst = v;
-            pDst = reinterpret_cast<XDWORD *>(reinterpret_cast<char *>(pDst) + Stride);
-            --cnt;
-        } while (cnt);
-        break;
+        XDWORD value;
+        memcpy(&value, src, 4);
+        for (;;) {
+            memcpy(dst, &value, 4);
+            if (--Count == 0) return TRUE;
+            dst += Stride;
+        }
     }
     case 8: {
-        int cnt = Count;
-        XDWORD v0 = pSrc[0];
-        XDWORD v1 = pSrc[1];
-        do {
-            pDst[0] = v0;
-            pDst[1] = v1;
-            pDst = reinterpret_cast<XDWORD *>(reinterpret_cast<char *>(pDst) + Stride);
-            --cnt;
-        } while (cnt);
-        break;
+        XDWORD value[2];
+        memcpy(value, src, 8);
+        for (;;) {
+            memcpy(dst, value, 8);
+            if (--Count == 0) return TRUE;
+            dst += Stride;
+        }
     }
     case 12: {
-        int cnt = Count;
-        XDWORD v0 = pSrc[0];
-        XDWORD v1 = pSrc[1];
-        XDWORD v2 = pSrc[2];
-        do {
-            pDst[0] = v0;
-            pDst[1] = v1;
-            pDst[2] = v2;
-            pDst = reinterpret_cast<XDWORD *>(reinterpret_cast<char *>(pDst) + Stride);
-            --cnt;
-        } while (cnt);
-        break;
+        XDWORD value[3];
+        memcpy(value, src, 12);
+        for (;;) {
+            memcpy(dst, value, 12);
+            if (--Count == 0) return TRUE;
+            dst += Stride;
+        }
     }
     case 16: {
-        int cnt = Count;
-        XDWORD v0 = pSrc[0];
-        XDWORD v1 = pSrc[1];
-        XDWORD v2 = pSrc[2];
-        XDWORD v3 = pSrc[3];
-        do {
-            pDst[0] = v0;
-            pDst[1] = v1;
-            pDst[2] = v2;
-            pDst[3] = v3;
-            pDst = reinterpret_cast<XDWORD *>(reinterpret_cast<char *>(pDst) + Stride);
-            --cnt;
-        } while (cnt);
-        break;
+        XDWORD value[4];
+        memcpy(value, src, 16);
+        for (;;) {
+            memcpy(dst, value, 16);
+            if (--Count == 0) return TRUE;
+            dst += Stride;
+        }
     }
-    default: {
-        int cnt = Count;
-        do {
-            XDWORD dwordCount = SizeSrc >> 2;
-            do {
-                *pDst++ = *pSrc++;
-                --dwordCount;
-            } while (dwordCount);
-            pDst = reinterpret_cast<XDWORD *>(reinterpret_cast<char *>(pDst) + Stride - SizeSrc);
-            pSrc = static_cast<const XDWORD *>(Src);
-            --cnt;
-        } while (cnt);
-        break;
+    default:
+        for (;;) {
+            // Generic sizes reread the current source one DWORD at a time.
+            // An overlapping write can change a later source word or record.
+            for (XDWORD offset = 0; offset < SizeSrc; offset += 4) {
+                XDWORD value;
+                memcpy(&value, src + offset, 4);
+                memcpy(dst + offset, &value, 4);
+            }
+            if (--Count == 0) return TRUE;
+            dst += Stride;
+        }
     }
-    }
-
-    return TRUE;
 }
 
 /**

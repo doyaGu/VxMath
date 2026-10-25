@@ -561,3 +561,6 @@ vx_copy_runtime_dependencies(FloatArrayInterpolationReferenceTest)
 
 vx_add_test(VectorArrayInterpolationReferenceTest SOURCES VectorArrayInterpolationReferenceTest.cpp)
 vx_copy_runtime_dependencies(VectorArrayInterpolationReferenceTest)
+
+vx_add_test(FillStructureReferenceTest SOURCES FillStructureReferenceTest.cpp)
+vx_copy_runtime_dependencies(FillStructureReferenceTest)
