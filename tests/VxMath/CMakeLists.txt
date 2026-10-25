@@ -576,3 +576,6 @@ vx_copy_runtime_dependencies(ProjectBoxZExtentsReferenceTest)
 
 vx_add_test(TransformBox2DReferenceTest SOURCES TransformBox2DReferenceTest.cpp)
 vx_copy_runtime_dependencies(TransformBox2DReferenceTest)
+
+vx_add_test(BestFitBBoxReferenceTest SOURCES BestFitBBoxReferenceTest.cpp)
+vx_copy_runtime_dependencies(BestFitBBoxReferenceTest)

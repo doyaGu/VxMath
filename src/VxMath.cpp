@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <float.h>
 #include <atomic>
 
 #if defined(_WIN32)
@@ -17,23 +18,6 @@ extern void InitializeTables();
 
 #if defined(_WIN32)
 HINSTANCE g_hinstDLL;
-#endif
-
-#if defined(VX_SIMD_SSE)
-static inline void VxSIMDProjectPointToAxes3(
-    const float *point,
-    __m128 axisX,
-    __m128 axisY,
-    __m128 axisZ,
-    float &outX,
-    float &outY,
-    float &outZ
-) {
-    const __m128 v = VxSIMDLoadFloat3(point);
-    outX = _mm_cvtss_f32(VxSIMDDotProduct3(v, axisX));
-    outY = _mm_cvtss_f32(VxSIMDDotProduct3(v, axisY));
-    outZ = _mm_cvtss_f32(VxSIMDDotProduct3(v, axisZ));
-}
 #endif
 
 static XBOOL FillStructureScalarImpl(int Count, void *Dst, XDWORD Stride, XDWORD SizeSrc, const void *Src);
@@ -91,40 +75,42 @@ static void ProjectBoxZExtentsSIMDCore(const VxMatrix &World_ProjectionMat, cons
 }
 
 static void ProjectPointsToAxesExtentsSIMD(const XBYTE *Points, XDWORD Stride, int Count, const VxMatrix &BBoxMatrix, float &minX, float &maxX, float &minY, float &maxY, float &minZ, float &maxZ) {
-    const __m128 axisX = VxSIMDLoadFloat3(&BBoxMatrix[0][0]);
-    const __m128 axisY = VxSIMDLoadFloat3(&BBoxMatrix[1][0]);
-    const __m128 axisZ = VxSIMDLoadFloat3(&BBoxMatrix[2][0]);
-
-    const float *firstPoint = reinterpret_cast<const float *>(Points);
-    float projX;
-    float projY;
-    float projZ;
-    VxSIMDProjectPointToAxes3(firstPoint, axisX, axisY, axisZ, projX, projY, projZ);
-
-    minX = maxX = projX;
-    minY = maxY = projY;
-    minZ = maxZ = projZ;
-
-    // Keep scalar-style comparisons so NaN handling and floating-point order stay consistent.
+    // Two axes per packed-double lane pair. Only the twelve XYZ bytes are read.
+    const __m128d ax = _mm_set_pd(BBoxMatrix[1][0], BBoxMatrix[0][0]);
+    const __m128d ay = _mm_set_pd(BBoxMatrix[1][1], BBoxMatrix[0][1]);
+    const __m128d az = _mm_set_pd(BBoxMatrix[1][2], BBoxMatrix[0][2]);
+    const __m128d zxy = _mm_set_pd(BBoxMatrix[2][1], BBoxMatrix[2][0]);
+    const __m128d zz = _mm_set_sd(BBoxMatrix[2][2]);
+    const __m128d originXY = _mm_set_pd(BBoxMatrix[3][1], BBoxMatrix[3][0]);
+    const __m128d originZ = _mm_set_sd(BBoxMatrix[3][2]);
+    __m128d lowXY = _mm_set1_pd(DBL_MAX), highXY = _mm_set1_pd(-DBL_MAX);
+    __m128d lowZ = lowXY, highZ = highXY;
+    const XBYTE *cursor = Points;
     for (int i = 0; i < Count; ++i) {
-        const float *p = reinterpret_cast<const float *>(Points + i * Stride);
-        float x, y, z;
-        VxSIMDProjectPointToAxes3(p, axisX, axisY, axisZ, x, y, z);
-
-        if (x >= maxX)
-            maxX = x;
-        else if (x < minX)
-            minX = x;
-
-        if (y >= maxY)
-            maxY = y;
-        else if (y < minY)
-            minY = y;
-
-        if (z >= maxZ)
-            maxZ = z;
-        else if (z < minZ)
-            minZ = z;
+        float point[3];
+        memcpy(point, cursor, sizeof(point));
+        const __m128d xy = _mm_sub_pd(_mm_cvtps_pd(_mm_loadl_pi(_mm_setzero_ps(), reinterpret_cast<const __m64 *>(point))), originXY);
+        const __m128d z = _mm_sub_sd(_mm_set_sd(point[2]), originZ);
+        const __m128d x = _mm_shuffle_pd(xy, xy, 0);
+        const __m128d y = _mm_shuffle_pd(xy, xy, 3);
+        const __m128d projection = _mm_add_pd(_mm_add_pd(_mm_mul_pd(x, ax), _mm_mul_pd(y, ay)), _mm_mul_pd(_mm_unpacklo_pd(z, z), az));
+        const __m128d zProducts = _mm_mul_pd(xy, zxy);
+        const __m128d projectionZ = _mm_add_sd(_mm_add_sd(zProducts, _mm_unpackhi_pd(zProducts, zProducts)), _mm_mul_sd(z, zz));
+        lowXY = _mm_min_pd(lowXY, projection);
+        highXY = _mm_max_pd(highXY, projection);
+        lowZ = _mm_min_sd(lowZ, projectionZ);
+        highZ = _mm_max_sd(highZ, projectionZ);
+        if (i + 1 < Count) cursor += Stride;
+    }
+    double low[3], high[3];
+    _mm_storeu_pd(low, lowXY); _mm_storeu_pd(high, highXY);
+    low[2] = _mm_cvtsd_f64(lowZ); high[2] = _mm_cvtsd_f64(highZ);
+    float *minimum[] = {&minX, &minY, &minZ}, *maximum[] = {&maxX, &maxY, &maxZ};
+    for (int k = 0; k < 3; ++k) {
+        *minimum[k] = static_cast<float>(low[k]);
+        *maximum[k] = static_cast<float>(high[k]);
+        if (*minimum[k] > low[k]) *minimum[k] = nextafterf(*minimum[k], -HUGE_VALF);
+        if (*maximum[k] < high[k]) *maximum[k] = nextafterf(*maximum[k], HUGE_VALF);
     }
 }
 #endif
@@ -751,40 +737,27 @@ static XBOOL PtInRectScalarImpl(CKRECT *rect, CKPOINT *pt) {
 }
 
 static void ProjectPointsToAxesExtentsScalar(const XBYTE *Points, XDWORD Stride, int Count, const VxMatrix &BBoxMatrix, float &minX, float &maxX, float &minY, float &maxY, float &minZ, float &maxZ) {
-    // Project all points onto the principal axes to find min/max extents
-    const float *pPoint = reinterpret_cast<const float *>(Points);
-
-    // Initialize min/max with the first point projection
-    float projX = pPoint[0] * BBoxMatrix[0][0] + pPoint[1] * BBoxMatrix[0][1] + pPoint[2] * BBoxMatrix[0][2];
-    minX = maxX = projX;
-
-    float projY = pPoint[0] * BBoxMatrix[1][0] + pPoint[1] * BBoxMatrix[1][1] + pPoint[2] * BBoxMatrix[1][2];
-    minY = maxY = projY;
-
-    float projZ = pPoint[0] * BBoxMatrix[2][0] + pPoint[1] * BBoxMatrix[2][1] + pPoint[2] * BBoxMatrix[2][2];
-    minZ = maxZ = projZ;
-
-    // Find min/max extents for all points
+    double low[3] = {DBL_MAX, DBL_MAX, DBL_MAX}, high[3] = {-DBL_MAX, -DBL_MAX, -DBL_MAX};
+    const XBYTE *cursor = Points;
     for (int i = 0; i < Count; ++i) {
-        const float *p = reinterpret_cast<const float *>(Points + i * Stride);
-
-        float x = p[0] * BBoxMatrix[0][0] + p[1] * BBoxMatrix[0][1] + p[2] * BBoxMatrix[0][2];
-        if (x >= maxX)
-            maxX = x;
-        else if (x < minX)
-            minX = x;
-
-        float y = p[0] * BBoxMatrix[1][0] + p[1] * BBoxMatrix[1][1] + p[2] * BBoxMatrix[1][2];
-        if (y >= maxY)
-            maxY = y;
-        else if (y < minY)
-            minY = y;
-
-        float z = p[0] * BBoxMatrix[2][0] + p[1] * BBoxMatrix[2][1] + p[2] * BBoxMatrix[2][2];
-        if (z >= maxZ)
-            maxZ = z;
-        else if (z < minZ)
-            minZ = z;
+        float point[3];
+        memcpy(point, cursor, sizeof(point));
+        const double x = double(point[0]) - BBoxMatrix[3][0];
+        const double y = double(point[1]) - BBoxMatrix[3][1];
+        const double z = double(point[2]) - BBoxMatrix[3][2];
+        for (int axis = 0; axis < 3; ++axis) {
+            const double projected = (x * BBoxMatrix[axis][0] + y * BBoxMatrix[axis][1]) + z * BBoxMatrix[axis][2];
+            if (projected < low[axis]) low[axis] = projected;
+            if (projected > high[axis]) high[axis] = projected;
+        }
+        if (i + 1 < Count) cursor += Stride;
+    }
+    float *minimum[] = {&minX, &minY, &minZ}, *maximum[] = {&maxX, &maxY, &maxZ};
+    for (int k = 0; k < 3; ++k) {
+        *minimum[k] = static_cast<float>(low[k]);
+        *maximum[k] = static_cast<float>(high[k]);
+        if (*minimum[k] > low[k]) *minimum[k] = nextafterf(*minimum[k], -HUGE_VALF);
+        if (*maximum[k] < high[k]) *maximum[k] = nextafterf(*maximum[k], HUGE_VALF);
     }
 }
 
@@ -805,99 +778,81 @@ XBOOL VxPtInRect(CKRECT *rect, CKPOINT *pt) {
 }
 
 XBOOL VxComputeBestFitBBox(const XBYTE *Points, XDWORD Stride, int Count, VxMatrix &BBoxMatrix, float AdditionalBorder) {
-    if (Count > 0 && Points) {
-        // Create and compute covariance matrix
-        VxEigenMatrix eigenMat;
-        eigenMat.Covariance((float *) Points, Stride, Count);
-        eigenMat.EigenStuff3();
+    if (Count <= 0 || !Points) return FALSE;
 
-        // Copy eigenvectors to the bounding box matrix (transposed)
-        // eigenMat[j][i] -> BBoxMatrix[i][j]
-        for (int i = 0; i < 3; ++i) {
-            for (int j = 0; j < 3; ++j) {
-                BBoxMatrix[i][j] = eigenMat[j][i];
-            }
-            BBoxMatrix[i][3] = 0.0f;
+    // Center before forming second moments. Raw E[p*p]-E[p]*E[p] loses the
+    // principal axes for small objects far from the world origin.
+    float origin[3];
+    memcpy(origin, Points, sizeof(origin));
+    double mean[3] = {};
+    const XBYTE *cursor = Points;
+    for (int i = 0; i < Count; ++i) {
+        float point[3];
+        memcpy(point, cursor, sizeof(point));
+        for (int k = 0; k < 3; ++k) {
+            if (!(fabs(point[k]) <= FLT_MAX)) return FALSE;
+            mean[k] += double(point[k]) - origin[k];
         }
-        BBoxMatrix[3][0] = 0.0f;
-        BBoxMatrix[3][1] = 0.0f;
-        BBoxMatrix[3][2] = 0.0f;
-        BBoxMatrix[3][3] = 1.0f;
-
-        // Normalize the first two axes
-        BBoxMatrix[0].Normalize();
-        BBoxMatrix[1].Normalize();
-
-        // Compute the third axis using cross product for orthogonality
-        // Cross = (A.y*B.z - A.z*B.y, A.z*B.x - A.x*B.z, A.x*B.y - A.y*B.x)
-        float mx = BBoxMatrix[0][1] * BBoxMatrix[1][2] - BBoxMatrix[0][2] * BBoxMatrix[1][1];
-        float my = BBoxMatrix[0][2] * BBoxMatrix[1][0] - BBoxMatrix[0][0] * BBoxMatrix[1][2];
-        float mz = BBoxMatrix[0][0] * BBoxMatrix[1][1] - BBoxMatrix[0][1] * BBoxMatrix[1][0];
-
-        BBoxMatrix[2][0] = mx;
-        BBoxMatrix[2][1] = my;
-        BBoxMatrix[2][2] = mz;
-        BBoxMatrix[2][3] = 0.0f;
-
-        float minX, maxX, minY, maxY, minZ, maxZ;
-        GetVxMathDispatchTable()->projectPointsToAxesExtents(
-            Points,
-            Stride,
-            Count,
-            BBoxMatrix,
-            minX,
-            maxX,
-            minY,
-            maxY,
-            minZ,
-            maxZ
-        );
-
-        // Calculate center point in principal axis space
-        float centerX = (minX + maxX) * 0.5f;
-        float centerY = (minY + maxY) * 0.5f;
-        float centerZ = (minZ + maxZ) * 0.5f;
-
-        // Calculate half-extents with additional border
-        float halfX = (maxX - minX) * 0.5f + AdditionalBorder;
-        float halfY = (maxY - minY) * 0.5f + AdditionalBorder;
-        float halfZ = (maxZ - minZ) * 0.5f + AdditionalBorder;
-
-        // Transform center from principal axis space to world space (using unscaled axes)
-        BBoxMatrix[3][0] = centerX * BBoxMatrix[0][0] + centerY * BBoxMatrix[1][0] + centerZ * BBoxMatrix[2][0];
-        BBoxMatrix[3][1] = centerX * BBoxMatrix[0][1] + centerY * BBoxMatrix[1][1] + centerZ * BBoxMatrix[2][1];
-        BBoxMatrix[3][2] = centerX * BBoxMatrix[0][2] + centerY * BBoxMatrix[1][2] + centerZ * BBoxMatrix[2][2];
-        BBoxMatrix[3][3] = 1.0f;
-
-        // Scale the axes by their respective half-extents
-        for (int j = 0; j < 3; ++j) {
-            BBoxMatrix[0][j] *= halfX;
-        }
-        BBoxMatrix[0][3] = 0.0f;
-
-        for (int j = 0; j < 3; ++j) {
-            BBoxMatrix[1][j] *= halfY;
-        }
-        BBoxMatrix[1][3] = 0.0f;
-
-        for (int j = 0; j < 3; ++j) {
-            BBoxMatrix[2][j] *= halfZ;
-        }
-        BBoxMatrix[2][3] = 0.0f;
-
-        // Validate matrix for reasonable values
-        for (int i = 0; i < 4; ++i) {
-            for (int j = 0; j < 3; ++j) {
-                if (fabs(BBoxMatrix[i][j]) >= 1.0e6f)
-                    return FALSE;
-            }
-        }
-
-        return TRUE;
-    } else {
-        BBoxMatrix.SetIdentity();
+        if (i + 1 < Count) cursor += Stride;
     }
-    return FALSE;
+    for (int k = 0; k < 3; ++k) mean[k] /= Count;
+    double scatter[3][3] = {};
+    cursor = Points;
+    for (int i = 0; i < Count; ++i) {
+        float point[3];
+        memcpy(point, cursor, sizeof(point));
+        double delta[3];
+        for (int k = 0; k < 3; ++k) delta[k] = (double(point[k]) - origin[k]) - mean[k];
+        for (int r = 0; r < 3; ++r)
+            for (int c = r; c < 3; ++c) scatter[r][c] += delta[r] * delta[c];
+        if (i + 1 < Count) cursor += Stride;
+    }
+    double scale = scatter[0][0];
+    for (int k = 1; k < 3; ++k) if (scatter[k][k] > scale) scale = scatter[k][k];
+    VxEigenMatrix eigenMat;
+    for (int r = 0; r < 3; ++r)
+        for (int c = r; c < 3; ++c)
+            eigenMat[r][c] = eigenMat[c][r] = scale > 0 ? static_cast<float>(scatter[r][c] / scale) : 0;
+    eigenMat.EigenStuff3();
+
+    // Keep every input read ahead of output writes, including points stored in
+    // the output matrix. The original axes and signed-border convention remain.
+    VxMatrix work;
+    for (int r = 0; r < 3; ++r) {
+        for (int c = 0; c < 3; ++c) work[r][c] = eigenMat[c][r];
+        work[r][3] = 0;
+        work[3][r] = origin[r];
+    }
+    work[3][3] = 1;
+    work[0].Normalize();
+    work[1].Normalize();
+    work[2][0] = work[0][1] * work[1][2] - work[0][2] * work[1][1];
+    work[2][1] = work[0][2] * work[1][0] - work[0][0] * work[1][2];
+    work[2][2] = work[0][0] * work[1][1] - work[0][1] * work[1][0];
+
+    float low[3], high[3];
+    const VxProjectPointsToAxesExtentsDispatchFn project = GetVxMathDispatchTable()->projectPointsToAxesExtents;
+    project(Points, Stride, Count, work, low[0], high[0], low[1], high[1], low[2], high[2]);
+    double midpoint[3];
+    for (int k = 0; k < 3; ++k) midpoint[k] = (double(low[k]) + high[k]) * 0.5;
+    for (int k = 0; k < 3; ++k)
+        work[3][k] = static_cast<float>(origin[k] + (midpoint[0] * work[0][k] + midpoint[1] * work[1][k]) + midpoint[2] * work[2][k]);
+
+    // Refit around the stored float center. Rounding a midpoint can otherwise
+    // leave an endpoint outside the returned box even for two adjacent floats.
+    project(Points, Stride, Count, work, low[0], high[0], low[1], high[1], low[2], high[2]);
+    for (int axis = 0; axis < 3; ++axis) {
+        double normSquared = 0;
+        for (int k = 0; k < 3; ++k) normSquared += double(work[axis][k]) * work[axis][k];
+        const double radius = fabs(low[axis]) > fabs(high[axis]) ? fabs(low[axis]) : fabs(high[axis]);
+        const double half = radius / normSquared + AdditionalBorder / sqrt(normSquared);
+        for (int k = 0; k < 3; ++k) work[axis][k] = static_cast<float>(work[axis][k] * half);
+    }
+    BBoxMatrix = work;
+    for (int r = 0; r < 4; ++r)
+        for (int c = 0; c < 3; ++c)
+            if (!(fabs(BBoxMatrix[r][c]) <= 1.0e6f)) return FALSE;
+    return TRUE;
 }
 
 #if defined(_WIN32) && !defined(VX_LIB)
