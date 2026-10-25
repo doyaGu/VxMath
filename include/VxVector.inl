@@ -58,12 +58,13 @@ inline void VxVector::Normalize() {
 #if defined(VX_SIMD_SSE)
     VxSIMDNormalizeVector(this);
 #else
-    const float magSq = SquareMagnitude();
-    if (magSq > EPSILON) {
-        const float invMag = 1.0f / sqrtf(magSq);
-        x *= invMag;
-        y *= invMag;
-        z *= invMag;
+    const double vx = x, vy = y, vz = z;
+    const double square = (vx * vx + vy * vy) + vz * vz;
+    if (square > 0) {
+        const double length = sqrt(square);
+        x = static_cast<float>(vx / length);
+        y = static_cast<float>(vy / length);
+        z = static_cast<float>(vz / length);
     }
 #endif
 }
@@ -557,16 +558,26 @@ inline VxCompressedVector &VxCompressedVector::operator=(const VxCompressedVecto
 #include "VxSIMD.h"
 
 VX_SIMD_INLINE void VxSIMDNormalizeVector(VxVector *v) noexcept {
-    __m128 vec = VxSIMDLoadFloat3(&v->x);
-    __m128 dot = VxSIMDDotProduct3(vec, vec);
-    __m128 mask = _mm_cmpgt_ps(dot, VX_SIMD_EPSILON);
-    __m128 safeDot = _mm_max_ps(dot, VX_SIMD_EPSILON);
-    __m128 invLen = VxSIMDReciprocalSqrtAccurate(safeDot);
-    __m128 normalized = _mm_mul_ps(vec, invLen);
-    __m128 keepOriginal = _mm_andnot_ps(mask, vec);
-    __m128 useNormalized = _mm_and_ps(mask, normalized);
-    vec = _mm_or_ps(keepOriginal, useNormalized);
-    VxSIMDStoreFloat3(&v->x, vec);
+    const __m128 value = VxSIMDLoadFloat3(&v->x);
+    // Use packed float sqrt/div where the squared length stays normal. The wide
+    // path below handles the full finite range without an epsilon cutoff.
+    const __m128 dot = VxSIMDDotProduct3(value, value);
+    const float squareFloat = _mm_cvtss_f32(dot);
+    if (squareFloat >= 0x1p-100f && squareFloat <= 0x1p100f) {
+        VxSIMDStoreFloat3(&v->x, _mm_div_ps(value, _mm_sqrt_ps(dot)));
+        return;
+    }
+    const __m128d xy = _mm_cvtps_pd(value);
+    const __m128d z = _mm_cvtss_sd(_mm_setzero_pd(), _mm_shuffle_ps(value, value, _MM_SHUFFLE(2, 2, 2, 2)));
+    const __m128d products = _mm_mul_pd(xy, xy);
+    const __m128d square = _mm_add_sd(_mm_add_sd(products, _mm_unpackhi_pd(products, products)), _mm_mul_sd(z, z));
+    if (_mm_cvtsd_f64(square) > 0) {
+        const __m128d length = _mm_sqrt_sd(square, square);
+        const __m128d inverse = _mm_div_sd(_mm_set_sd(1), length);
+        const __m128 resultXY = _mm_cvtpd_ps(_mm_mul_pd(xy, _mm_unpacklo_pd(inverse, inverse)));
+        const __m128 resultZ = _mm_cvtsd_ss(_mm_setzero_ps(), _mm_mul_sd(z, inverse));
+        VxSIMDStoreFloat3(&v->x, _mm_movelh_ps(resultXY, resultZ));
+    }
 }
 
 VX_SIMD_INLINE void VxSIMDAddVector(VxVector *result, const VxVector *a, const VxVector *b) noexcept {

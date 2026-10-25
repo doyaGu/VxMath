@@ -204,7 +204,8 @@ struct VxVector {
 
     /**
      * @brief Normalizes the vector, making its length equal to 1.
-     * @warning The result is undefined for a null vector (0,0,0).
+     * @remarks Normalizes every finite nonzero vector, including tiny values.
+     * Zero vectors are left unchanged. Only XYZ is read and written.
      */
     inline void Normalize();
 
