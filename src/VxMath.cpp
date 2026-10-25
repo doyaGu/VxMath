@@ -657,140 +657,155 @@ static XBOOL CopyStructureScalarImpl(int Count, void *Dst, XDWORD OutStride, XDW
  * Copies structures from an array to another using an index array
  */
 static XBOOL IndexedCopyScalarImpl(const VxStridedData &Dst, const VxStridedData &Src, XDWORD SizeSrc, const int *Indices, int IndexCount) {
-    // Validate parameters
-    if (IndexCount == 0)
-        return FALSE;
-    if (SizeSrc == 0 || (SizeSrc & 3) != 0)
+    if (IndexCount <= 0 || SizeSrc == 0 || (SizeSrc & 3) != 0)
         return FALSE;
     if (Dst.Ptr == nullptr || Src.Ptr == nullptr || Indices == nullptr)
         return FALSE;
 
-    XDWORD DstStride = Dst.Stride;
-    VxStridedData srcCopy = Src;
-
+    XBYTE *out = static_cast<XBYTE *>(Dst.Ptr);
+    const XDWORD outStride = Dst.Stride;
+    const uintptr_t source = reinterpret_cast<uintptr_t>(Src.Ptr);
+    const uintptr_t sourceStride = Src.Stride;
+    const XBYTE *indexBytes = reinterpret_cast<const XBYTE *>(Indices);
+    // Snapshot descriptors, but read each index only after earlier output writes.
+    // Sign extension preserves valid negative gathers on both pointer widths.
     switch (SizeSrc) {
     case 4: {
-        int cnt = IndexCount;
-        XDWORD *pDst = static_cast<XDWORD *>(Dst.Ptr);
-        const int *pIdx = Indices;
-        do {
-            *pDst = *reinterpret_cast<XDWORD *>(static_cast<char *>(srcCopy.Ptr) + *pIdx * srcCopy.Stride);
-            pDst = reinterpret_cast<XDWORD *>(reinterpret_cast<char *>(pDst) + DstStride);
-            ++pIdx;
-            --cnt;
-        } while (cnt);
-        break;
+        for (;;) {
+            int index;
+            memcpy(&index, indexBytes, sizeof(index));
+            const XBYTE *in = reinterpret_cast<const XBYTE *>(source + static_cast<uintptr_t>(static_cast<intptr_t>(index)) * sourceStride);
+            {
+                XDWORD value[1];
+                memcpy(value, in + 0, 4);
+                memcpy(out + 0, value, 4);
+            }
+            if (--IndexCount == 0) return TRUE;
+            out += outStride;
+            indexBytes += sizeof(int);
+        }
     }
     case 8: {
-        int cnt = IndexCount;
-        XDWORD *pDst = static_cast<XDWORD *>(Dst.Ptr);
-        const int *pIdx = Indices;
-        do {
-            XDWORD *pSrc = reinterpret_cast<XDWORD *>(static_cast<char *>(srcCopy.Ptr) + *pIdx * srcCopy.Stride);
-            XDWORD v1 = pSrc[1];
-            pDst[0] = pSrc[0];
-            pDst[1] = v1;
-            pDst = reinterpret_cast<XDWORD *>(reinterpret_cast<char *>(pDst) + DstStride);
-            ++pIdx;
-            --cnt;
-        } while (cnt);
-        break;
+        for (;;) {
+            int index;
+            memcpy(&index, indexBytes, sizeof(index));
+            const XBYTE *in = reinterpret_cast<const XBYTE *>(source + static_cast<uintptr_t>(static_cast<intptr_t>(index)) * sourceStride);
+            {
+                XDWORD value[2];
+                memcpy(value, in + 0, 8);
+                memcpy(out + 0, value, 8);
+            }
+            if (--IndexCount == 0) return TRUE;
+            out += outStride;
+            indexBytes += sizeof(int);
+        }
     }
     case 12: {
-        int cnt = IndexCount;
-        XDWORD *pDst = static_cast<XDWORD *>(Dst.Ptr);
-        const int *pIdx = Indices;
-        do {
-            XDWORD *pSrc = reinterpret_cast<XDWORD *>(static_cast<char *>(srcCopy.Ptr) + *pIdx * srcCopy.Stride);
-            XDWORD v1 = pSrc[1];
-            pDst[0] = pSrc[0];
-            pDst[1] = v1;
-            pDst[2] = pSrc[2];
-            pDst = reinterpret_cast<XDWORD *>(reinterpret_cast<char *>(pDst) + DstStride);
-            ++pIdx;
-            --cnt;
-        } while (cnt);
-        break;
+        for (;;) {
+            int index;
+            memcpy(&index, indexBytes, sizeof(index));
+            const XBYTE *in = reinterpret_cast<const XBYTE *>(source + static_cast<uintptr_t>(static_cast<intptr_t>(index)) * sourceStride);
+            {
+                XDWORD value[2];
+                memcpy(value, in + 0, 8);
+                memcpy(out + 0, value, 8);
+            }
+            {
+                XDWORD value[1];
+                memcpy(value, in + 8, 4);
+                memcpy(out + 8, value, 4);
+            }
+            if (--IndexCount == 0) return TRUE;
+            out += outStride;
+            indexBytes += sizeof(int);
+        }
     }
     case 16: {
-        int cnt = IndexCount;
-        XDWORD *pDst = static_cast<XDWORD *>(Dst.Ptr);
-        const int *pIdx = Indices;
-        do {
-            XDWORD *pSrc = reinterpret_cast<XDWORD *>(static_cast<char *>(srcCopy.Ptr) + *pIdx * srcCopy.Stride);
-            XDWORD v1 = pSrc[1];
-            pDst[0] = pSrc[0];
-            pDst[1] = v1;
-            XDWORD v3 = pSrc[3];
-            pDst[2] = pSrc[2];
-            pDst[3] = v3;
-            pDst = reinterpret_cast<XDWORD *>(reinterpret_cast<char *>(pDst) + DstStride);
-            ++pIdx;
-            --cnt;
-        } while (cnt);
-        break;
+        for (;;) {
+            int index;
+            memcpy(&index, indexBytes, sizeof(index));
+            const XBYTE *in = reinterpret_cast<const XBYTE *>(source + static_cast<uintptr_t>(static_cast<intptr_t>(index)) * sourceStride);
+            {
+                XDWORD value[2];
+                memcpy(value, in + 0, 8);
+                memcpy(out + 0, value, 8);
+            }
+            {
+                XDWORD value[2];
+                memcpy(value, in + 8, 8);
+                memcpy(out + 8, value, 8);
+            }
+            if (--IndexCount == 0) return TRUE;
+            out += outStride;
+            indexBytes += sizeof(int);
+        }
     }
     case 20: {
-        int cnt = IndexCount;
-        XDWORD *pDst = static_cast<XDWORD *>(Dst.Ptr);
-        const int *pIdx = Indices;
-        do {
-            XDWORD *pSrc = reinterpret_cast<XDWORD *>(static_cast<char *>(srcCopy.Ptr) + *pIdx * srcCopy.Stride);
-            XDWORD v1 = pSrc[1];
-            pDst[0] = pSrc[0];
-            pDst[1] = v1;
-            XDWORD v3 = pSrc[3];
-            pDst[2] = pSrc[2];
-            pDst[3] = v3;
-            pDst[4] = pSrc[4];
-            pDst = reinterpret_cast<XDWORD *>(reinterpret_cast<char *>(pDst) + DstStride);
-            ++pIdx;
-            --cnt;
-        } while (cnt);
-        break;
+        for (;;) {
+            int index;
+            memcpy(&index, indexBytes, sizeof(index));
+            const XBYTE *in = reinterpret_cast<const XBYTE *>(source + static_cast<uintptr_t>(static_cast<intptr_t>(index)) * sourceStride);
+            {
+                XDWORD value[2];
+                memcpy(value, in + 0, 8);
+                memcpy(out + 0, value, 8);
+            }
+            {
+                XDWORD value[2];
+                memcpy(value, in + 8, 8);
+                memcpy(out + 8, value, 8);
+            }
+            {
+                XDWORD value[1];
+                memcpy(value, in + 16, 4);
+                memcpy(out + 16, value, 4);
+            }
+            if (--IndexCount == 0) return TRUE;
+            out += outStride;
+            indexBytes += sizeof(int);
+        }
     }
     case 24: {
-        int cnt = IndexCount;
-        XDWORD *pDst = static_cast<XDWORD *>(Dst.Ptr);
-        const int *pIdx = Indices;
-        do {
-            XDWORD *pSrc = reinterpret_cast<XDWORD *>(static_cast<char *>(srcCopy.Ptr) + *pIdx * srcCopy.Stride);
-            XDWORD v1 = pSrc[1];
-            pDst[0] = pSrc[0];
-            pDst[1] = v1;
-            XDWORD v3 = pSrc[3];
-            pDst[2] = pSrc[2];
-            pDst[3] = v3;
-            XDWORD v5 = pSrc[5];
-            pDst[4] = pSrc[4];
-            pDst[5] = v5;
-            pDst = reinterpret_cast<XDWORD *>(reinterpret_cast<char *>(pDst) + DstStride);
-            ++pIdx;
-            --cnt;
-        } while (cnt);
-        break;
+        for (;;) {
+            int index;
+            memcpy(&index, indexBytes, sizeof(index));
+            const XBYTE *in = reinterpret_cast<const XBYTE *>(source + static_cast<uintptr_t>(static_cast<intptr_t>(index)) * sourceStride);
+            {
+                XDWORD value[2];
+                memcpy(value, in + 0, 8);
+                memcpy(out + 0, value, 8);
+            }
+            {
+                XDWORD value[2];
+                memcpy(value, in + 8, 8);
+                memcpy(out + 8, value, 8);
+            }
+            {
+                XDWORD value[2];
+                memcpy(value, in + 16, 8);
+                memcpy(out + 16, value, 8);
+            }
+            if (--IndexCount == 0) return TRUE;
+            out += outStride;
+            indexBytes += sizeof(int);
+        }
     }
     default: {
-        int cnt = IndexCount;
-        XDWORD *pDst = static_cast<XDWORD *>(Dst.Ptr);
-        const int *pIdx = Indices;
-        do {
-            XDWORD *pSrc = reinterpret_cast<XDWORD *>(static_cast<char *>(srcCopy.Ptr) + *pIdx * srcCopy.Stride);
-            XDWORD *pDstSave = pDst;
-            XDWORD dwordCount = SizeSrc >> 2;
-            do {
-                *pDst++ = *pSrc++;
-                --dwordCount;
-            } while (dwordCount);
-            pDst = reinterpret_cast<XDWORD *>(reinterpret_cast<char *>(pDstSave) + DstStride);
-            ++pIdx;
-            --cnt;
-        } while (cnt);
-        break;
+        for (;;) {
+            int index;
+            memcpy(&index, indexBytes, sizeof(index));
+            const XBYTE *in = reinterpret_cast<const XBYTE *>(source + static_cast<uintptr_t>(static_cast<intptr_t>(index)) * sourceStride);
+            for (XDWORD offset = 0; offset < SizeSrc; offset += 4) {
+                XDWORD value;
+                memcpy(&value, in + offset, 4);
+                memcpy(out + offset, &value, 4);
+            }
+            if (--IndexCount == 0) return TRUE;
+            out += outStride;
+            indexBytes += sizeof(int);
+        }
     }
     }
-
-    return TRUE;
 }
 
 static XBOOL PtInRectScalarImpl(CKRECT *rect, CKPOINT *pt) {

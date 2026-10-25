@@ -771,26 +771,239 @@ VX_SIMD_INLINE XBOOL VxSIMDCopyStructure(int count, void *dst, XDWORD outStride,
 }
 
 VX_SIMD_INLINE XBOOL VxSIMDIndexedCopy(const VxStridedData &dst, const VxStridedData &src, XDWORD sizeSrc, const int *indices, int indexCount) noexcept {
-    if (indexCount == 0) {
+    if (indexCount <= 0 || sizeSrc == 0 || (sizeSrc & 3) != 0)
         return FALSE;
-    }
-    if (sizeSrc == 0 || (sizeSrc & 3) != 0) {
+    if (dst.Ptr == nullptr || src.Ptr == nullptr || indices == nullptr)
         return FALSE;
-    }
-    if (dst.Ptr == nullptr || src.Ptr == nullptr || indices == nullptr) {
-        return FALSE;
-    }
 
-    XBYTE *dstBytes = static_cast<XBYTE *>(dst.Ptr);
-    const XBYTE *srcBase = static_cast<const XBYTE *>(src.Ptr);
-
-    for (int i = 0; i < indexCount; ++i) {
-        const XBYTE *srcBytes = srcBase + (indices[i] * src.Stride);
-        VxSIMDCopyDwordAlignedBlock(dstBytes, srcBytes, sizeSrc);
-        dstBytes += dst.Stride;
+    XBYTE *out = static_cast<XBYTE *>(dst.Ptr);
+    const XDWORD outStride = dst.Stride;
+    const uintptr_t source = reinterpret_cast<uintptr_t>(src.Ptr);
+    const uintptr_t sourceStride = src.Stride;
+    const XBYTE *indexBytes = reinterpret_cast<const XBYTE *>(indices);
+    // Descriptor snapshots and live indices also apply when output aliases them.
+    switch (sizeSrc) {
+    case 4: {
+        const XBYTE *endIndices = reinterpret_cast<const XBYTE *>(reinterpret_cast<uintptr_t>(indexBytes) + static_cast<uintptr_t>(indexCount) * sizeof(int));
+        for (;;) {
+            int index;
+            memcpy(&index, indexBytes, sizeof(index));
+            const XBYTE *in = reinterpret_cast<const XBYTE *>(source + static_cast<uintptr_t>(static_cast<intptr_t>(index)) * sourceStride);
+            {
+                XDWORD value;
+                memcpy(&value, in + 0, 4);
+                memcpy(out + 0, &value, 4);
+            }
+            indexBytes += sizeof(int);
+            if (indexBytes == endIndices) return TRUE;
+            out += outStride;
+        }
     }
-
-    return TRUE;
+    case 8: {
+        const XBYTE *endIndices = reinterpret_cast<const XBYTE *>(reinterpret_cast<uintptr_t>(indexBytes) + static_cast<uintptr_t>(indexCount) * sizeof(int));
+        for (;;) {
+            int index;
+            memcpy(&index, indexBytes, sizeof(index));
+            const XBYTE *in = reinterpret_cast<const XBYTE *>(source + static_cast<uintptr_t>(static_cast<intptr_t>(index)) * sourceStride);
+            {
+                const __m128i value = _mm_loadl_epi64(reinterpret_cast<const __m128i *>(in + 0));
+                _mm_storel_epi64(reinterpret_cast<__m128i *>(out + 0), value);
+            }
+            indexBytes += sizeof(int);
+            if (indexBytes == endIndices) return TRUE;
+            out += outStride;
+        }
+    }
+    case 12: {
+        while (indexCount >= 2) {
+            {
+                int index;
+                memcpy(&index, indexBytes, sizeof(index));
+                const XBYTE *in = reinterpret_cast<const XBYTE *>(source + static_cast<uintptr_t>(static_cast<intptr_t>(index)) * sourceStride);
+                {
+                    const __m128i value = _mm_loadl_epi64(reinterpret_cast<const __m128i *>(in + 0));
+                    _mm_storel_epi64(reinterpret_cast<__m128i *>(out + 0), value);
+                }
+                {
+                    XDWORD value;
+                    memcpy(&value, in + 8, 4);
+                    memcpy(out + 8, &value, 4);
+                }
+            }
+            out += outStride;
+            indexBytes += sizeof(int);
+            {
+                int index;
+                memcpy(&index, indexBytes, sizeof(index));
+                const XBYTE *in = reinterpret_cast<const XBYTE *>(source + static_cast<uintptr_t>(static_cast<intptr_t>(index)) * sourceStride);
+                {
+                    const __m128i value = _mm_loadl_epi64(reinterpret_cast<const __m128i *>(in + 0));
+                    _mm_storel_epi64(reinterpret_cast<__m128i *>(out + 0), value);
+                }
+                {
+                    XDWORD value;
+                    memcpy(&value, in + 8, 4);
+                    memcpy(out + 8, &value, 4);
+                }
+            }
+            indexCount -= 2;
+            if (indexCount == 0) return TRUE;
+            out += outStride;
+            indexBytes += sizeof(int);
+        }
+        {
+                int index;
+                memcpy(&index, indexBytes, sizeof(index));
+                const XBYTE *in = reinterpret_cast<const XBYTE *>(source + static_cast<uintptr_t>(static_cast<intptr_t>(index)) * sourceStride);
+                {
+                    const __m128i value = _mm_loadl_epi64(reinterpret_cast<const __m128i *>(in + 0));
+                    _mm_storel_epi64(reinterpret_cast<__m128i *>(out + 0), value);
+                }
+                {
+                    XDWORD value;
+                    memcpy(&value, in + 8, 4);
+                    memcpy(out + 8, &value, 4);
+                }
+        }
+        return TRUE;
+    }
+    case 16: {
+        for (;;) {
+            int index;
+            memcpy(&index, indexBytes, sizeof(index));
+            const XBYTE *in = reinterpret_cast<const XBYTE *>(source + static_cast<uintptr_t>(static_cast<intptr_t>(index)) * sourceStride);
+            const uintptr_t outAddress = reinterpret_cast<uintptr_t>(out);
+            const uintptr_t inAddress = reinterpret_cast<uintptr_t>(in);
+            if (outAddress <= inAddress || outAddress - inAddress >= 16) {
+                const __m128i value = _mm_loadu_si128(reinterpret_cast<const __m128i *>(in));
+                _mm_storeu_si128(reinterpret_cast<__m128i *>(out), value);
+            } else if (outAddress - inAddress == 4) {
+                // Ordered pairs at +4 produce X,Y,Y,W without partial-store forwarding.
+                const __m128i value = _mm_loadu_si128(reinterpret_cast<const __m128i *>(in));
+                const __m128i pairs = _mm_shuffle_epi32(value, _MM_SHUFFLE(3, 1, 1, 0));
+                _mm_storeu_si128(reinterpret_cast<__m128i *>(out), pairs);
+            } else {
+                const __m128i first = _mm_loadl_epi64(reinterpret_cast<const __m128i *>(in));
+                _mm_storel_epi64(reinterpret_cast<__m128i *>(out), first);
+                const __m128i second = _mm_loadl_epi64(reinterpret_cast<const __m128i *>(in + 8));
+                _mm_storel_epi64(reinterpret_cast<__m128i *>(out + 8), second);
+            }
+            if (--indexCount == 0) return TRUE;
+            out += outStride;
+            indexBytes += sizeof(int);
+        }
+    }
+    case 20: {
+        for (;;) {
+            int index;
+            memcpy(&index, indexBytes, sizeof(index));
+            const XBYTE *in = reinterpret_cast<const XBYTE *>(source + static_cast<uintptr_t>(static_cast<intptr_t>(index)) * sourceStride);
+            const uintptr_t outAddress = reinterpret_cast<uintptr_t>(out);
+            const uintptr_t inAddress = reinterpret_cast<uintptr_t>(in);
+            if (outAddress <= inAddress || outAddress - inAddress >= 16) {
+                const __m128i value = _mm_loadu_si128(reinterpret_cast<const __m128i *>(in));
+                _mm_storeu_si128(reinterpret_cast<__m128i *>(out), value);
+            } else if (outAddress - inAddress == 4) {
+                // Ordered pairs at +4 produce X,Y,Y,W without partial-store forwarding.
+                const __m128i value = _mm_loadu_si128(reinterpret_cast<const __m128i *>(in));
+                const __m128i pairs = _mm_shuffle_epi32(value, _MM_SHUFFLE(3, 1, 1, 0));
+                _mm_storeu_si128(reinterpret_cast<__m128i *>(out), pairs);
+            } else {
+                const __m128i first = _mm_loadl_epi64(reinterpret_cast<const __m128i *>(in));
+                _mm_storel_epi64(reinterpret_cast<__m128i *>(out), first);
+                const __m128i second = _mm_loadl_epi64(reinterpret_cast<const __m128i *>(in + 8));
+                _mm_storel_epi64(reinterpret_cast<__m128i *>(out + 8), second);
+            }
+            {
+                XDWORD value;
+                memcpy(&value, in + 16, 4);
+                memcpy(out + 16, &value, 4);
+            }
+            if (--indexCount == 0) return TRUE;
+            out += outStride;
+            indexBytes += sizeof(int);
+        }
+    }
+    case 24: {
+        for (;;) {
+            int index;
+            memcpy(&index, indexBytes, sizeof(index));
+            const XBYTE *in = reinterpret_cast<const XBYTE *>(source + static_cast<uintptr_t>(static_cast<intptr_t>(index)) * sourceStride);
+            const uintptr_t outAddress = reinterpret_cast<uintptr_t>(out);
+            const uintptr_t inAddress = reinterpret_cast<uintptr_t>(in);
+            if (outAddress <= inAddress || outAddress - inAddress >= 16) {
+                const __m128i value = _mm_loadu_si128(reinterpret_cast<const __m128i *>(in));
+                _mm_storeu_si128(reinterpret_cast<__m128i *>(out), value);
+            } else if (outAddress - inAddress == 4) {
+                // Ordered pairs at +4 produce X,Y,Y,W without partial-store forwarding.
+                const __m128i value = _mm_loadu_si128(reinterpret_cast<const __m128i *>(in));
+                const __m128i tail = _mm_loadl_epi64(reinterpret_cast<const __m128i *>(in + 16));
+                const __m128i pairs = _mm_shuffle_epi32(value, _MM_SHUFFLE(3, 1, 1, 0));
+                const __m128i last = _mm_unpacklo_epi32(_mm_shuffle_epi32(value, _MM_SHUFFLE(3, 3, 3, 3)), _mm_srli_si128(tail, 4));
+                _mm_storeu_si128(reinterpret_cast<__m128i *>(out), pairs);
+                _mm_storel_epi64(reinterpret_cast<__m128i *>(out + 16), last);
+                if (--indexCount == 0) return TRUE;
+                out += outStride;
+                indexBytes += sizeof(int);
+                continue;
+            } else {
+                const __m128i first = _mm_loadl_epi64(reinterpret_cast<const __m128i *>(in));
+                _mm_storel_epi64(reinterpret_cast<__m128i *>(out), first);
+                const __m128i second = _mm_loadl_epi64(reinterpret_cast<const __m128i *>(in + 8));
+                _mm_storel_epi64(reinterpret_cast<__m128i *>(out + 8), second);
+            }
+            {
+                const __m128i value = _mm_loadl_epi64(reinterpret_cast<const __m128i *>(in + 16));
+                _mm_storel_epi64(reinterpret_cast<__m128i *>(out + 16), value);
+            }
+            if (--indexCount == 0) return TRUE;
+            out += outStride;
+            indexBytes += sizeof(int);
+        }
+    }
+    default: {
+        for (;;) {
+            int index;
+            memcpy(&index, indexBytes, sizeof(index));
+            const XBYTE *in = reinterpret_cast<const XBYTE *>(source + static_cast<uintptr_t>(static_cast<intptr_t>(index)) * sourceStride);
+            const uintptr_t outAddress = reinterpret_cast<uintptr_t>(out);
+            const uintptr_t inAddress = reinterpret_cast<uintptr_t>(in);
+            const uintptr_t distance = outAddress > inAddress ? outAddress - inAddress : 16;
+            XDWORD offset = 0;
+            // Wider batches are safe only beyond the forward feedback distance.
+            if (distance >= 16) {
+                for (; sizeSrc - offset >= 64; offset += 64) {
+                    const __m128i a = _mm_loadu_si128(reinterpret_cast<const __m128i *>(in + offset));
+                    _mm_storeu_si128(reinterpret_cast<__m128i *>(out + offset), a);
+                    const __m128i b = _mm_loadu_si128(reinterpret_cast<const __m128i *>(in + offset + 16));
+                    _mm_storeu_si128(reinterpret_cast<__m128i *>(out + offset + 16), b);
+                    const __m128i c = _mm_loadu_si128(reinterpret_cast<const __m128i *>(in + offset + 32));
+                    _mm_storeu_si128(reinterpret_cast<__m128i *>(out + offset + 32), c);
+                    const __m128i d = _mm_loadu_si128(reinterpret_cast<const __m128i *>(in + offset + 48));
+                    _mm_storeu_si128(reinterpret_cast<__m128i *>(out + offset + 48), d);
+                }
+                for (; sizeSrc - offset >= 16; offset += 16) {
+                    const __m128i value = _mm_loadu_si128(reinterpret_cast<const __m128i *>(in + offset));
+                    _mm_storeu_si128(reinterpret_cast<__m128i *>(out + offset), value);
+                }
+            }
+            if (distance >= 8) {
+                for (; sizeSrc - offset >= 8; offset += 8) {
+                    const __m128i value = _mm_loadl_epi64(reinterpret_cast<const __m128i *>(in + offset));
+                    _mm_storel_epi64(reinterpret_cast<__m128i *>(out + offset), value);
+                }
+            }
+            for (; offset < sizeSrc; offset += 4) {
+                XDWORD value;
+                memcpy(&value, in + offset, 4);
+                memcpy(out + offset, &value, 4);
+            }
+            if (--indexCount == 0) return TRUE;
+            out += outStride;
+            indexBytes += sizeof(int);
+        }
+    }
+    }
 }
 
 VX_SIMD_INLINE XBOOL VxSIMDPtInRect(const CKRECT *rect, const CKPOINT *pt) noexcept {

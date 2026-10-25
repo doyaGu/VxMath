@@ -140,9 +140,11 @@ VX_EXPORT XBOOL VxCopyStructure(int Count, void *Dst, XDWORD OutStride, XDWORD S
  * @param Dst The destination strided data description.
  * @param Src The source strided data description.
  * @param SizeSrc The size in bytes of a single source element.
- * @param Indices An array specifying the indices to copy from the source.
- * @param IndexCount The number of indices in the `Indices` array.
- * @return TRUE on success, FALSE otherwise.
+ * @param Indices Signed indices relative to Src.Ptr, read one at a time after prior copies.
+ * @param IndexCount Positive number of indices in the `Indices` array.
+ * @return FALSE for a nonpositive count, null pointers, zero size or a size not divisible by four.
+ * @remarks Both byte strides may be zero or shorter than SizeSrc. Descriptors are snapshotted;
+ * overlapping records retain the original size-specific pair/DWORD read and write order.
  */
 VX_EXPORT XBOOL VxIndexedCopy(const VxStridedData &Dst, const VxStridedData &Src, XDWORD SizeSrc, const int *Indices, int IndexCount);
 

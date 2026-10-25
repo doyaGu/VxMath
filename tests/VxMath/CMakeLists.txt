@@ -567,3 +567,6 @@ vx_copy_runtime_dependencies(FillStructureReferenceTest)
 
 vx_add_test(CopyStructureReferenceTest SOURCES CopyStructureReferenceTest.cpp)
 vx_copy_runtime_dependencies(CopyStructureReferenceTest)
+
+vx_add_test(IndexedCopyReferenceTest SOURCES IndexedCopyReferenceTest.cpp)
+vx_copy_runtime_dependencies(IndexedCopyReferenceTest)
