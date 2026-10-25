@@ -122,7 +122,7 @@ inline float Vx3DMatrixDeterminant(const VxMatrix &Mat);
 /**
  * @brief Creates a rotation matrix from an axis and an angle.
  * @param ResultMat The resulting rotation matrix.
- * @param Vector The axis of rotation (should be normalized).
+ * @param Vector The finite nonzero axis, normalized internally.
  * @param Angle The angle of rotation in radians.
  */
 inline void Vx3DMatrixFromRotation(VxMatrix &ResultMat, const VxVector &Vector, float Angle);
@@ -130,7 +130,7 @@ inline void Vx3DMatrixFromRotation(VxMatrix &ResultMat, const VxVector &Vector, 
 /**
  * @brief Creates a transformation matrix that rotates around a specific origin point.
  * @param ResultMat The resulting transformation matrix.
- * @param Vector The axis of rotation (should be normalized).
+ * @param Vector The finite nonzero axis, normalized internally.
  * @param Origin The point to rotate around.
  * @param Angle The angle of rotation in radians.
  */

@@ -692,20 +692,10 @@ inline void Vx3DRotateVectorStrided(VxStridedData *Dest, VxStridedData *Src, con
 
 // ---------- Matrix rotation / Euler builders ----------
 
-namespace VxMatrixRotationDetail {
-inline float OriginCoordinate(float origin, float a, float x, float b, float y, float c, float z) {
-    const float result = origin - ((a*x + b*y) + c*z);
-    if (std::isfinite(result)) return result;
-    // 0x2429B0E0 retains x87's exponent range until each coordinate write.
-    // An aliased origin can grow enough for the next dot product to overflow
-    // float even when the original sum has a well-defined sign or cancels.
-    const double ax = static_cast<double>(a)*x;
-    const double by = static_cast<double>(b)*y;
-    const double cz = static_cast<double>(c)*z;
-    const double sum = (ax+by)+cz;
-    return static_cast<float>(origin-sum);
+inline float VxMatrixOriginCoordinate(float origin, float a, float x, float b, float y, float c, float z) {
+    const double offset = double(a) * x + double(b) * y + double(c) * z;
+    return static_cast<float>(origin - offset);
 }
-} // namespace VxMatrixRotationDetail
 
 inline void Vx3DMatrixFromRotation(VxMatrix &ResultMat, const VxVector &Vector, float Angle) {
     float c, s;
@@ -732,10 +722,9 @@ inline void Vx3DMatrixFromRotationAndOrigin(VxMatrix &ResultMat, const VxVector 
     for (int i = 0; i < 3; ++i)
         for (int j = 0; j < 3; ++j) ResultMat[i][j] = rotation[i][j];
     const float *r0=ResultMat[0], *r1=ResultMat[1], *r2=ResultMat[2];
-    using VxMatrixRotationDetail::OriginCoordinate;
-    ResultMat[3][0] = OriginCoordinate(Origin.x, r2[0], Origin.z, Origin.y, r1[0], r0[0], Origin.x);
-    ResultMat[3][1] = OriginCoordinate(Origin.y, r0[1], Origin.x, Origin.z, r2[1], r1[1], Origin.y);
-    ResultMat[3][2] = OriginCoordinate(Origin.z, Origin.y, r1[2], Origin.z, r2[2], r0[2], Origin.x);
+    ResultMat[3][0] = VxMatrixOriginCoordinate(Origin.x, r2[0], Origin.z, Origin.y, r1[0], r0[0], Origin.x);
+    ResultMat[3][1] = VxMatrixOriginCoordinate(Origin.y, r0[1], Origin.x, Origin.z, r2[1], r1[1], Origin.y);
+    ResultMat[3][2] = VxMatrixOriginCoordinate(Origin.z, Origin.y, r1[2], Origin.z, r2[2], r0[2], Origin.x);
     ResultMat[0][3] = ResultMat[1][3] = ResultMat[2][3] = 0.0f;
     ResultMat[3][3] = 1.0f;
 }
