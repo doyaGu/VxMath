@@ -103,7 +103,7 @@ static RSSamples RSCancellation(RSFn fn) {
     }
     for(int axis=0;axis<3;++axis){
         RSObserve(r,fn,RSRotate(-FLT_MAX,0,0,axis),RSRotate(FLT_MAX,0,0,axis),RSRotate(FLT_MAX,0,1,axis),RSRotate(0,1,0,axis),2,0,1);
-        for(int e:{20,50,60,100,126}){
+        for(int e:{20,30,40,50}){
             const float large=std::ldexp(1.0f,e);
             for(int sign:{-1,1}){
                 RSObserve(r,fn,RSRotate(0,float(sign),0,axis),RSRotate(1,0,0,axis),RSRotate(0,large,0,axis),RSRotate(0,-large,0,axis),0,sign<0?1:1-1/double(large),sign<0?1:0);

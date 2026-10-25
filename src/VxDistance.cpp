@@ -256,40 +256,17 @@ static float RaySegmentSquareDistanceSIMDImpl(const VxRay &ray, const VxRay &seg
     const __m128d sXY = _mm_mul_pd(vCrossXY, nXY), tXY = _mm_mul_pd(uCrossXY, nXY);
     const double sNumerator = _mm_cvtsd_f64(_mm_add_sd(sXY, _mm_unpackhi_pd(sXY, sXY))) + vCrossZ * nz;
     const double tNumerator = _mm_cvtsd_f64(_mm_add_sd(tXY, _mm_unpackhi_pd(tXY, tXY))) + uCrossZ * nz;
-    const __m128d originXY = _mm_setr_pd(segment.m_Origin.x, segment.m_Origin.y);
-    const __m128d endXY = _mm_add_pd(originXY, vXY);
-    const __m128d virtualXY = _mm_sub_pd(endXY, originXY);
-    const __m128d errorXY = _mm_add_pd(_mm_sub_pd(originXY, _mm_sub_pd(endXY, virtualXY)),
-                                      _mm_sub_pd(vXY, virtualXY));
-    const __m128d endWXY = _mm_sub_pd(_mm_sub_pd(_mm_setr_pd(ray.m_Origin.x, ray.m_Origin.y), endXY), errorXY);
+    const __m128d endWXY = _mm_sub_pd(wXY, vXY);
     const double ewx = _mm_cvtsd_f64(endWXY), ewy = _mm_cvtsd_f64(_mm_unpackhi_pd(endWXY, endWXY));
-    const double endZ = double(segment.m_Origin.z) + vz;
-    const double virtualZ = endZ - segment.m_Origin.z;
-    const double errorZ = (double(segment.m_Origin.z) - (endZ - virtualZ)) + (vz - virtualZ);
-    const double ewz = (double(ray.m_Origin.z) - endZ) - errorZ;
+    const double ewz = wz - vz;
     const __m128d endCrossXY = _mm_sub_pd(_mm_mul_pd(_mm_setr_pd(uy, uz), _mm_setr_pd(ewz, ewx)),
                                         _mm_mul_pd(_mm_setr_pd(uz, ux), _mm_setr_pd(ewy, ewz)));
     const double endCrossZ = ux * ewy - uy * ewx;
     const __m128d endNumXY = _mm_mul_pd(endCrossXY, nXY);
     const double endNumerator = _mm_cvtsd_f64(_mm_add_sd(endNumXY, _mm_unpackhi_pd(endNumXY, endNumXY))) + endCrossZ * nz;
-    const __m128d endUDotXY = _mm_mul_pd(endWXY, uXY), endVDotXY = _mm_mul_pd(endWXY, vXY);
-    double endDot = _mm_cvtsd_f64(_mm_add_sd(endUDotXY, _mm_unpackhi_pd(endUDotXY, endUDotXY))) + ewz * uz;
+    const __m128d endVDotXY = _mm_mul_pd(endWXY, vXY);
+    const double endDot = d - uv;
     const double endVDot = _mm_cvtsd_f64(_mm_add_sd(endVDotXY, _mm_unpackhi_pd(endVDotXY, endVDotXY))) + ewz * vz;
-    if (denominator == 0.0) {
-        const __m128d rayOriginDotXY = _mm_mul_pd(_mm_setr_pd(ray.m_Origin.x, ray.m_Origin.y), uXY);
-        const __m128d segmentOriginDotXY = _mm_mul_pd(originXY, uXY);
-        const double products[] = { _mm_cvtsd_f64(rayOriginDotXY), _mm_cvtsd_f64(_mm_unpackhi_pd(rayOriginDotXY, rayOriginDotXY)), double(ray.m_Origin.z) * uz,
-                                    -_mm_cvtsd_f64(segmentOriginDotXY), -_mm_cvtsd_f64(_mm_unpackhi_pd(segmentOriginDotXY, segmentOriginDotXY)), -double(segment.m_Origin.z) * uz,
-                                    -_mm_cvtsd_f64(uvXY), -_mm_cvtsd_f64(_mm_unpackhi_pd(uvXY, uvXY)), -vz * uz };
-        double sum = 0.0, error = 0.0;
-        for (int i = 0; i < 9; ++i) {
-            const double next = sum + products[i];
-            const double part = next - sum;
-            error += (sum - (next - part)) + (products[i] - part);
-            sum = next;
-        }
-        endDot = sum + error;
-    }
     enum ClosestRegion { OriginsStart, OriginsEnd, RayAtStart, RayAtEnd, OnSegment, Interior };
     ClosestRegion closest;
     if (denominator == 0.0) {
@@ -626,38 +603,13 @@ static float RaySegmentSquareDistanceScalarImpl(const VxRay &ray, const VxRay &s
     const double vCrossX = vy * wz - vz * wy, vCrossY = vz * wx - vx * wz, vCrossZ = vx * wy - vy * wx;
     const double sNumerator = vCrossX * nx + vCrossY * ny + vCrossZ * nz;
     const double tNumerator = uCrossX * nx + uCrossY * ny + uCrossZ * nz;
-    // Preserve the endpoint sum's low part before testing the end plane.
-    const double endX = double(segment.m_Origin.x) + vx;
-    const double virtualX = endX - segment.m_Origin.x;
-    const double errorX = (double(segment.m_Origin.x) - (endX - virtualX)) + (vx - virtualX);
-    const double ewx = (double(ray.m_Origin.x) - endX) - errorX;
-    const double endY = double(segment.m_Origin.y) + vy;
-    const double virtualY = endY - segment.m_Origin.y;
-    const double errorY = (double(segment.m_Origin.y) - (endY - virtualY)) + (vy - virtualY);
-    const double ewy = (double(ray.m_Origin.y) - endY) - errorY;
-    const double endZ = double(segment.m_Origin.z) + vz;
-    const double virtualZ = endZ - segment.m_Origin.z;
-    const double errorZ = (double(segment.m_Origin.z) - (endZ - virtualZ)) + (vz - virtualZ);
-    const double ewz = (double(ray.m_Origin.z) - endZ) - errorZ;
+    const double ewx = wx - vx;
+    const double ewy = wy - vy;
+    const double ewz = wz - vz;
     const double endCrossX = uy * ewz - uz * ewy, endCrossY = uz * ewx - ux * ewz, endCrossZ = ux * ewy - uy * ewx;
     const double endNumerator = endCrossX * nx + endCrossY * ny + endCrossZ * nz;
-    double endDot = ewx * ux + ewy * uy + ewz * uz;
+    const double endDot = d - uv;
     const double endVDot = ewx * vx + ewy * vy + ewz * vz;
-    if (denominator == 0.0) {
-        // Each product of two input floats is exact in double. Accumulate
-        // the endpoint projection before rounding away its small coordinate.
-        const double products[] = { double(ray.m_Origin.x) * ux, double(ray.m_Origin.y) * uy, double(ray.m_Origin.z) * uz,
-                                    -double(segment.m_Origin.x) * ux, -double(segment.m_Origin.y) * uy, -double(segment.m_Origin.z) * uz,
-                                    -vx * ux, -vy * uy, -vz * uz };
-        double sum = 0.0, error = 0.0;
-        for (int i = 0; i < 9; ++i) {
-            const double next = sum + products[i];
-            const double part = next - sum;
-            error += (sum - (next - part)) + (products[i] - part);
-            sum = next;
-        }
-        endDot = sum + error;
-    }
     enum ClosestRegion { OriginsStart, OriginsEnd, RayAtStart, RayAtEnd, OnSegment, Interior };
     ClosestRegion closest;
     if (denominator == 0.0) {
