@@ -172,7 +172,24 @@ inline float SquareMagnitude(const VxVector &v) { return v.SquareMagnitude(); }
 inline float Magnitude(const VxVector &v) { return v.Magnitude(); }
 inline float InvSquareMagnitude(const VxVector &v) { return 1.0f / SquareMagnitude(v); }
 inline float InvMagnitude(const VxVector &v) { return 1.0f / Magnitude(v); }
-inline const VxVector Normalize(const VxVector &v) { return v * InvMagnitude(v); }
+inline const VxVector Normalize(const VxVector &v) {
+#if defined(VX_SIMD_SSE)
+    const __m128 value = VxSIMDLoadFloat3(&v.x);
+    const int zero = _mm_movemask_ps(_mm_cmpeq_ps(value, _mm_setzero_ps()));
+    const int unordered = _mm_movemask_ps(_mm_cmpunord_ps(value, value));
+    VxVector result;
+    if ((zero & 7) == 7 || (unordered & 7) != 0) {
+        VxSIMDStoreFloat3(&result.x, _mm_div_ps(value, _mm_sqrt_ps(VxSIMDDotProduct3(value, value))));
+    } else {
+        VxSIMDStoreFloat3(&result.x, VxSIMDNormalize3(value));
+    }
+    return result;
+#else
+    const double x = v.x, y = v.y, z = v.z;
+    const double length = sqrt((x * x + y * y) + z * z);
+    return VxVector(static_cast<float>(x / length), static_cast<float>(y / length), static_cast<float>(z / length));
+#endif
+}
 inline const VxVector Normalize(const VxVector *vect) { return Normalize(*vect); }
 inline float DotProduct(const VxVector &v1, const VxVector &v2) {
 #if defined(VX_SIMD_SSE)

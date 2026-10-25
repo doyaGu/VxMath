@@ -279,7 +279,7 @@ inline float InvMagnitude(const VxVector &v);
  * @param v The vector to normalize.
  * @return A new unit vector pointing in the same direction as v.
  * @warning Returns a vector with NaN components for a null input vector (0,0,0).
- * @remarks This free function may be more precise than the member function `VxVector::Normalize()`.
+ * @remarks Normalizes finite nonzero XYZ across the float range without changing v.
  * @see VxVector::Normalize(), Magnitude()
  */
 inline const VxVector Normalize(const VxVector &v);

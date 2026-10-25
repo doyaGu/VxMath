@@ -169,10 +169,25 @@ VX_SIMD_INLINE __m128 VxSIMDNormalizeChecked(__m128 v, __m128 dot) noexcept {
 }
 
 /**
- * @brief Normalizes a 3D vector register.
+ * @brief Scales all lanes by the XYZ length, preserving zero or unordered XYZ.
  */
 VX_SIMD_INLINE __m128 VxSIMDNormalize3(__m128 v) noexcept {
-    return VxSIMDNormalizeChecked(v, VxSIMDDotProduct3(v, v));
+    const __m128 dot = VxSIMDDotProduct3(v, v);
+    const float squareFloat = _mm_cvtss_f32(dot);
+    if (squareFloat >= 0x1p-100f && squareFloat <= 0x1p100f) {
+        return _mm_div_ps(v, _mm_sqrt_ps(dot));
+    }
+    const __m128d xy = _mm_cvtps_pd(v);
+    const __m128d zw = _mm_cvtps_pd(_mm_movehl_ps(v, v));
+    const __m128d products = _mm_mul_pd(xy, xy);
+    const __m128d square = _mm_add_sd(_mm_add_sd(products, _mm_unpackhi_pd(products, products)), _mm_mul_sd(zw, zw));
+    if (_mm_cvtsd_f64(square) > 0) {
+        const __m128d length = _mm_sqrt_sd(square, square);
+        const __m128d inverse = _mm_div_sd(_mm_set_sd(1), length);
+        const __m128d scale = _mm_unpacklo_pd(inverse, inverse);
+        return _mm_movelh_ps(_mm_cvtpd_ps(_mm_mul_pd(xy, scale)), _mm_cvtpd_ps(_mm_mul_pd(zw, scale)));
+    }
+    return v;
 }
 
 /**
