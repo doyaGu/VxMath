@@ -579,3 +579,10 @@ vx_copy_runtime_dependencies(TransformBox2DReferenceTest)
 
 vx_add_test(BestFitBBoxReferenceTest SOURCES BestFitBBoxReferenceTest.cpp)
 vx_copy_runtime_dependencies(BestFitBBoxReferenceTest)
+
+vx_add_test(EigenMatrixReferenceTest SOURCES EigenMatrixReferenceTest.cpp)
+vx_copy_runtime_dependencies(EigenMatrixReferenceTest)
+
+vx_add_test(EigenMatrixScalarReferenceTest SOURCES EigenMatrixReferenceTest.cpp)
+target_compile_definitions(EigenMatrixScalarReferenceTest PRIVATE VX_SIMD_NONE=1)
+vx_copy_runtime_dependencies(EigenMatrixScalarReferenceTest)
