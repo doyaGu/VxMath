@@ -692,34 +692,36 @@ inline float Vx3DMatrixNorm(const VxMatrix &M, bool isOneNorm) {
 }
 
 inline double VxMatrixPolarDot3(const double *a, const double *b) {
-    const double terms[3] = {a[2]*b[2], a[1]*b[1], a[0]*b[0]};
-    const double ordinary = terms[0] + terms[1] + terms[2];
-    if (!std::isfinite(ordinary)) return ordinary;
-    double sum = terms[0], error = 0.0;
-    for (int i = 1; i < 3; ++i) {
-        const double next = sum + terms[i], delta = next - sum;
-        error += (sum - (next - delta)) + (terms[i] - delta);
-        sum = next;
-    }
-    return sum + error;
+    return a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
 }
 
 inline int VxMatrixPolarMaxColumn(const double (&m)[3][3]) {
     double maximum = 0.0;
     int column = -1;
-    for (int i = 0; i < 3; ++i)
-        for (int j = 0; j < 3; ++j)
-            if (std::fabs(m[i][j]) > maximum) { maximum = std::fabs(m[i][j]); column = j; }
+    for (int i = 0; i < 3; ++i) {
+        for (int j = 0; j < 3; ++j) {
+            const double magnitude = fabs(m[i][j]);
+            if (magnitude > maximum) {
+                maximum = magnitude;
+                column = j;
+            }
+        }
+    }
     return column;
 }
 
 inline void VxMatrixPolarMakeReflector(double (&v)[3]) {
-    const double length = std::hypot(v[0], v[1], v[2]);
-    if (length == 0.0) return; // The zero vector leaves the Householder map equal to identity.
-    const double x = v[0]/length, y = v[1]/length;
-    const double z = v[2]/length + (v[2] < 0.0 ? -1.0 : 1.0);
-    const double scale = std::sqrt(2.0/(x*x + y*y + z*z));
-    v[0] = x*scale; v[1] = y*scale; v[2] = z*scale;
+    const double length = hypot(hypot(v[0], v[1]), v[2]);
+    if (length == 0.0) {
+        return;
+    }
+    const double x = v[0] / length;
+    const double y = v[1] / length;
+    const double z = v[2] / length + (v[2] < 0.0 ? -1.0 : 1.0);
+    const double scale = sqrt(2.0 / (x * x + y * y + z * z));
+    v[0] = x * scale;
+    v[1] = y * scale;
+    v[2] = z * scale;
 }
 
 inline void VxMatrixPolarReflectColumns(double (&m)[3][3], const double (&u)[3]) {
@@ -727,7 +729,9 @@ inline void VxMatrixPolarReflectColumns(double (&m)[3][3], const double (&u)[3])
     for (int j = 0; j < 3; ++j) {
         const double column[3] = {m[0][j], m[1][j], m[2][j]};
         const double scale = VxMatrixPolarDot3(column, vector);
-        for (int i = 0; i < 3; ++i) m[i][j] -= scale*vector[i];
+        for (int i = 0; i < 3; ++i) {
+            m[i][j] -= scale * vector[i];
+        }
     }
 }
 
@@ -735,7 +739,9 @@ inline void VxMatrixPolarReflectRows(double (&m)[3][3], const double (&u)[3]) {
     const double vector[3] = {u[0], u[1], u[2]};
     for (int i = 0; i < 3; ++i) {
         const double scale = VxMatrixPolarDot3(m[i], vector);
-        for (int j = 0; j < 3; ++j) m[i][j] -= scale*vector[j];
+        for (int j = 0; j < 3; ++j) {
+            m[i][j] -= scale * vector[j];
+        }
     }
 }
 
@@ -773,10 +779,10 @@ inline void VxMatrixPolarOrthogonalRank2(double (&m)[3][3], const double (&adjoi
     VxMatrixPolarReflectRows(work, v);
     const double w = work[0][0], z = work[1][1], x = work[1][0], y = work[0][1];
     if (x*y >= w*z) {
-        const double c = z - w, s = x + y, length = std::hypot(c, s);
+        const double c = z - w, s = x + y, length = hypot(c, s);
         q[1][1] = c/length; q[0][0] = -q[1][1]; q[1][0] = q[0][1] = s/length;
     } else {
-        const double c = w + z, s = x - y, length = std::hypot(c, s);
+        const double c = w + z, s = x - y, length = hypot(c, s);
         q[0][0] = q[1][1] = c/length; q[1][0] = s/length; q[0][1] = -q[1][0];
     }
     q[0][2] = q[1][2] = q[2][0] = q[2][1] = 0.0;
@@ -787,58 +793,125 @@ inline void VxMatrixPolarOrthogonalRank2(double (&m)[3][3], const double (&adjoi
 }
 
 inline float Vx3DMatrixPolarDecomposition(const VxMatrix &M_in, VxMatrix &Q, VxMatrix &S) {
-    // Preserve the linear input before either output can overwrite it. Only44 input bytes are needed.
-    double input[3][3], e[3][3];
-    VxMatrix determinantInput;
-    for (int i = 0; i < 3; ++i) for (int j = 0; j < 3; ++j) {
-        input[i][j] = M_in[i][j]; e[j][i] = input[i][j]; determinantInput[i][j] = float(input[i][j]);
+    // Work on the transposed linear part; neither output may overwrite the input yet.
+    double input[3][3], iterate[3][3];
+    for (int row = 0; row < 3; ++row) {
+        for (int column = 0; column < 3; ++column) {
+            input[row][column] = M_in[row][column];
+            iterate[column][row] = input[row][column];
+        }
     }
-    const double initialDeterminant = VxMatrixInverseDeterminant(determinantInput);
+    const double originalDeterminant = VxMatrixInverseDeterminant(M_in);
     float determinant = 0.0f;
-    bool first = true;
+    bool firstIteration = true;
     for (;;) {
+        if (!isfinite(originalDeterminant)) {
+            determinant = static_cast<float>(originalDeterminant);
+            break;
+        }
+
         double maximum = 0.0;
-        for (int i = 0; i < 3; ++i) for (int j = 0; j < 3; ++j) if (std::fabs(e[i][j]) > maximum) maximum = std::fabs(e[i][j]);
-        if (!std::isfinite(initialDeterminant)) { determinant = float(initialDeterminant); break; }
-        int exponent = 0;
-        std::frexp(maximum, &exponent);
-        double n[3][3], cofactor[3][3];
-        for (int i = 0; i < 3; ++i) for (int j = 0; j < 3; ++j) n[i][j] = std::ldexp(e[i][j], -exponent);
-        for (int i = 0; i < 3; ++i) for (int j = 0; j < 3; ++j) {
-            const int r = (i+1)%3, s = (i+2)%3, c = (j+1)%3, d = (j+2)%3;
-            cofactor[i][j] = n[r][c]*n[s][d] - n[r][d]*n[s][c];
-        }
-        const double det = first ? std::ldexp(initialDeterminant, -3*exponent) : VxMatrixPolarDot3(n[0], cofactor[0]);
-        if (initialDeterminant == 0.0) { VxMatrixPolarOrthogonalRank2(n, cofactor, e); break; }
-        double one = 0.0, infinity = 0.0, adjOne = 0.0, adjInfinity = 0.0;
-        for (int i = 0; i < 3; ++i) {
-            double a = 0.0, b = 0.0, c = 0.0, d = 0.0;
-            for (int j = 0; j < 3; ++j) { a += std::fabs(n[j][i]); b += std::fabs(n[i][j]); c += std::fabs(cofactor[j][i]); d += std::fabs(cofactor[i][j]); }
-            if (a > one) one = a; if (b > infinity) infinity = b; if (c > adjOne) adjOne = c; if (d > adjInfinity) adjInfinity = d;
-        }
-        // Evaluate the scale-invariant Newton step from power-of-two-scaled data.
-        const double gamma = std::sqrt(std::sqrt(adjInfinity/infinity)*std::sqrt(adjOne/one)/std::fabs(det));
-        double difference = 0.0, norm = 0.0;
-        for (int j = 0; j < 3; ++j) {
-            double columnDifference = 0.0, columnNorm = 0.0;
-            for (int i = 0; i < 3; ++i) {
-                const double next = 0.5*(gamma*n[i][j] + cofactor[i][j]/(gamma*det));
-                columnDifference += std::fabs(e[i][j] - next); columnNorm += std::fabs(next); e[i][j] = next;
+        for (int row = 0; row < 3; ++row) {
+            for (int column = 0; column < 3; ++column) {
+                const double magnitude = fabs(iterate[row][column]);
+                if (magnitude > maximum) {
+                    maximum = magnitude;
+                }
             }
-            if (columnDifference > difference) difference = columnDifference; if (columnNorm > norm) norm = columnNorm;
         }
-        determinant = float(std::ldexp(det, 3*exponent));
-        first = false;
-        if (difference <= norm*1e-6 || !std::isfinite(norm)) break;
+        // Uniform binary scaling conditions the Newton step without rounding its inputs.
+        int exponent = 0;
+        frexp(maximum, &exponent);
+        double scaled[3][3], cofactors[3][3];
+        for (int row = 0; row < 3; ++row) {
+            for (int column = 0; column < 3; ++column) {
+                scaled[row][column] = ldexp(iterate[row][column], -exponent);
+            }
+        }
+        for (int row = 0; row < 3; ++row) {
+            for (int column = 0; column < 3; ++column) {
+                const int r0 = (row + 1) % 3, r1 = (row + 2) % 3;
+                const int c0 = (column + 1) % 3, c1 = (column + 2) % 3;
+                cofactors[row][column] = scaled[r0][c0] * scaled[r1][c1] - scaled[r0][c1] * scaled[r1][c0];
+            }
+        }
+        const double scaledDeterminant = firstIteration
+            ? ldexp(originalDeterminant, -3 * exponent)
+            : VxMatrixPolarDot3(scaled[0], cofactors[0]);
+        if (originalDeterminant == 0.0) {
+            VxMatrixPolarOrthogonalRank2(scaled, cofactors, iterate);
+            break;
+        }
+
+        double oneNorm = 0.0, infinityNorm = 0.0;
+        double cofactorOneNorm = 0.0, cofactorInfinityNorm = 0.0;
+        for (int i = 0; i < 3; ++i) {
+            double columnSum = 0.0, rowSum = 0.0;
+            double cofactorColumnSum = 0.0, cofactorRowSum = 0.0;
+            for (int j = 0; j < 3; ++j) {
+                columnSum += fabs(scaled[j][i]);
+                rowSum += fabs(scaled[i][j]);
+                cofactorColumnSum += fabs(cofactors[j][i]);
+                cofactorRowSum += fabs(cofactors[i][j]);
+            }
+            if (columnSum > oneNorm) {
+                oneNorm = columnSum;
+            }
+            if (rowSum > infinityNorm) {
+                infinityNorm = rowSum;
+            }
+            if (cofactorColumnSum > cofactorOneNorm) {
+                cofactorOneNorm = cofactorColumnSum;
+            }
+            if (cofactorRowSum > cofactorInfinityNorm) {
+                cofactorInfinityNorm = cofactorRowSum;
+            }
+        }
+        const double gamma = sqrt(sqrt(cofactorInfinityNorm / infinityNorm)
+                                * sqrt(cofactorOneNorm / oneNorm) / fabs(scaledDeterminant));
+        double difference = 0.0, norm = 0.0;
+        for (int column = 0; column < 3; ++column) {
+            double columnDifference = 0.0, columnNorm = 0.0;
+            for (int row = 0; row < 3; ++row) {
+                const double next = 0.5 * (gamma * scaled[row][column]
+                                         + cofactors[row][column] / (gamma * scaledDeterminant));
+                columnDifference += fabs(iterate[row][column] - next);
+                columnNorm += fabs(next);
+                iterate[row][column] = next;
+            }
+            if (columnDifference > difference) {
+                difference = columnDifference;
+            }
+            if (columnNorm > norm) {
+                norm = columnNorm;
+            }
+        }
+        determinant = static_cast<float>(ldexp(scaledDeterminant, 3 * exponent));
+        firstIteration = false;
+        if (difference <= norm * 1e-6 || !isfinite(norm)) {
+            break;
+        }
     }
+
     double stretch[3][3];
-    for (int i = 0; i < 3; ++i) for (int j = 0; j < 3; ++j) {
-        const double column[3] = {input[0][j], input[1][j], input[2][j]};
-        stretch[i][j] = VxMatrixPolarDot3(e[i], column);
+    for (int row = 0; row < 3; ++row) {
+        for (int column = 0; column < 3; ++column) {
+            const double inputColumn[3] = {input[0][column], input[1][column], input[2][column]};
+            stretch[row][column] = VxMatrixPolarDot3(iterate[row], inputColumn);
+        }
     }
-    Q.SetIdentity(); S.SetIdentity();
-    for (int i = 0; i < 3; ++i) for (int j = 0; j < 3; ++j) Q[i][j] = float(e[j][i]);
-    for (int i = 0; i < 3; ++i) for (int j = i; j < 3; ++j) S[i][j] = S[j][i] = float(0.5*(stretch[i][j] + stretch[j][i]));
+    Q.SetIdentity();
+    S.SetIdentity();
+    for (int row = 0; row < 3; ++row) {
+        for (int column = 0; column < 3; ++column) {
+            Q[row][column] = static_cast<float>(iterate[column][row]);
+        }
+    }
+    for (int row = 0; row < 3; ++row) {
+        for (int column = row; column < 3; ++column) {
+            S[row][column] = S[column][row] = static_cast<float>(0.5 * (stretch[row][column] + stretch[column][row]));
+        }
+    }
     return determinant;
 }
 
@@ -850,20 +923,20 @@ inline VxVector Vx3DMatrixSpectralDecomposition(const VxMatrix &S_in, VxMatrix &
     double off[3] = {S_in[1][2], S_in[2][0], S_in[0][1]};
     double basis[3][3] = {{1,0,0},{0,1,0},{0,0,1}};
     for (int sweep = 0; sweep < 20; ++sweep) {
-        if (std::fabs(off[2]) + std::fabs(off[1]) + std::fabs(off[0]) == 0.0) break;
+        if (fabs(off[2]) + fabs(off[1]) + fabs(off[0]) == 0.0) break;
         for (int k = 2; k >= 0; --k) {
             const int p = (k+1)%3, q = (p+1)%3;
-            const double magnitude = std::fabs(off[k]);
+            const double magnitude = fabs(off[k]);
             if (!(magnitude > 0.0)) continue;
             const double difference = diagonal[q] - diagonal[p];
             double tangent;
-            if (magnitude*100.0 + std::fabs(difference) == std::fabs(difference)) tangent = off[k] / difference;
+            if (magnitude*100.0 + fabs(difference) == fabs(difference)) tangent = off[k] / difference;
             else {
                 const double theta = 0.5*difference / off[k];
-                tangent = 1.0 / (std::hypot(theta, 1.0) + std::fabs(theta));
+                tangent = 1.0 / (hypot(theta, 1.0) + fabs(theta));
                 if (theta < 0.0) tangent = -tangent;
             }
-            const double cosine = 1.0 / std::hypot(tangent, 1.0);
+            const double cosine = 1.0 / hypot(tangent, 1.0);
             const double sine = cosine*tangent;
             const double tau = sine / (cosine+1.0);
             const double shift = tangent*off[k];
