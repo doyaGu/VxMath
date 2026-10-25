@@ -570,3 +570,6 @@ vx_copy_runtime_dependencies(CopyStructureReferenceTest)
 
 vx_add_test(IndexedCopyReferenceTest SOURCES IndexedCopyReferenceTest.cpp)
 vx_copy_runtime_dependencies(IndexedCopyReferenceTest)
+
+vx_add_test(ProjectBoxZExtentsReferenceTest SOURCES ProjectBoxZExtentsReferenceTest.cpp)
+vx_copy_runtime_dependencies(ProjectBoxZExtentsReferenceTest)

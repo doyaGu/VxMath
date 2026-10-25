@@ -101,6 +101,10 @@ VX_EXPORT XBOOL VxTransformBox2D(const VxMatrix &World_ProjectionMat, const VxBb
  * @param box The 3D bounding box to project.
  * @param ZhMin Output parameter for the minimum projected Z value.
  * @param ZhMax Output parameter for the maximum projected Z value.
+ * @remarks Negative-W corners contribute zero; zero/NaN W retains IEEE division.
+ * Thin axes use the original EPSILON threshold in Z/X/Y order. The initial
+ * extrema are +1e10/-1e10. Inputs are consumed before ordered output writes,
+ * including when output references alias input fields or each other.
  */
 VX_EXPORT void VxProjectBoxZExtents(const VxMatrix &World_ProjectionMat, const VxBbox &box, float &ZhMin, float &ZhMax);
 

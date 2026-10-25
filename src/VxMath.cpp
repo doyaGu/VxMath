@@ -438,88 +438,77 @@ XBOOL VxTransformBox2D(const VxMatrix &World_ProjectionMat, const VxBbox &box, V
 }
 
 static void ProjectBoxZExtentsScalarCore(const VxMatrix &World_ProjectionMat, const VxBbox &box, float &ZhMin, float &ZhMax) {
-    // Validate input before backend dispatch.
-    if (!box.IsValid()) {
+    if (!box.IsValid()) return;
+    const double low[3] = {box.Min.x, box.Min.y, box.Min.z};
+    const double high[3] = {box.Max.x, box.Max.y, box.Max.z};
+    int xMask = 4, yMask = 2, zMask = 1, count = 8;
+    // Preserve the original rounded-float threshold and Z/X/Y priority.
+    if (static_cast<float>(high[2] - low[2]) <= EPSILON) {
+        xMask = 1; zMask = 0; count = 4;
+    } else if (static_cast<float>(high[0] - low[0]) <= EPSILON) {
+        xMask = 0; count = 4;
+    } else if (static_cast<float>(high[1] - low[1]) <= EPSILON) {
+        xMask = 2; yMask = 0; count = 4;
+    }
+    double z[3][2], w[3][2];
+    for (int row = 0; row < 3; ++row) {
+        z[row][0] = low[row] * World_ProjectionMat[row][2];
+        z[row][1] = high[row] * World_ProjectionMat[row][2];
+        w[row][0] = low[row] * World_ProjectionMat[row][3];
+        w[row][1] = high[row] * World_ProjectionMat[row][3];
+    }
+    const double translationZ = World_ProjectionMat[3][2], translationW = World_ProjectionMat[3][3];
+    float projected[8];
+    for (int i = 0; i < count; ++i) {
+        double values[2];
+        const double components[2][4] = {
+            {z[0][(i & xMask) != 0], z[1][(i & yMask) != 0], z[2][(i & zMask) != 0], translationZ},
+            {w[0][(i & xMask) != 0], w[1][(i & yMask) != 0], w[2][(i & zMask) != 0], translationW}
+        };
+        for (int component = 0; component < 2; ++component) {
+            const double *terms = components[component];
+            double sum = ((terms[0] + terms[1]) + terms[2]) + terms[3];
+            const double magnitude = fabs(terms[0]) + fabs(terms[1]) + fabs(terms[2]) + fabs(terms[3]);
+            if (fabs(sum) < magnitude * (1.0 / 16777216.0)) {
+                // Recover terms lost before large opposite terms cancel.
+                sum = terms[0];
+                double correction = 0;
+                for (int row = 1; row < 4; ++row) {
+                    const double next = sum + terms[row];
+                    correction += fabs(sum) >= fabs(terms[row]) ? (sum - next) + terms[row] : (terms[row] - next) + sum;
+                    sum = next;
+                }
+                sum += correction;
+            }
+            values[component] = sum;
+        }
+        const double valueZ = values[0], valueW = values[1];
+        projected[i] = !(valueW < 0) ? static_cast<float>(valueZ / valueW) : 0;
+    }
+    // Inputs are fully consumed before these references can overwrite them.
+    // Keep each comparison/write ordered when both outputs name the same float.
+    if (&ZhMin == &ZhMax) {
+        ZhMin = 1.0e10f;
+        ZhMax = -1.0e10f;
+        for (int i = 0; i < count; ++i) {
+            if (projected[i] < ZhMin) ZhMin = projected[i];
+            if (projected[i] > ZhMax) ZhMax = projected[i];
+        }
         return;
     }
-
-    VxVector4 transformedVertex;
-
-    // Transform box minimum corner
-    Vx3DMultiplyMatrixVector4(&transformedVertex, World_ProjectionMat, &box.Min);
-
-    // Calculate box dimensions
-    VxVector boxSize = box.Max - box.Min;
-    float dx = boxSize.x;
-    float dy = boxSize.y;
-    float dz = boxSize.z;
-
-    // Pre-calculate matrix transformations for better performance
-    const VxVector4 &matRow0 = World_ProjectionMat[0];
-    const VxVector4 &matRow1 = World_ProjectionMat[1];
-    const VxVector4 &matRow2 = World_ProjectionMat[2];
-
-    // Store z,w pairs for each corner
-    VxVector4 corners[8];
-    int vertexCount;
-
-    corners[0] = transformedVertex;  // Min corner
-    VxVector4 deltaX(matRow0[0] * dx, matRow0[1] * dx, matRow0[2] * dx, matRow0[3] * dx);
-    VxVector4 deltaY(matRow1[0] * dy, matRow1[1] * dy, matRow1[2] * dy, matRow1[3] * dy);
-    VxVector4 deltaZ(matRow2[0] * dz, matRow2[1] * dz, matRow2[2] * dz, matRow2[3] * dz);
-
-    if (dz <= EPSILON) {
-        vertexCount = 4;
-
-        corners[1] = corners[0] + deltaX;      // Min + (dx, 0, 0)
-        corners[2] = corners[0] + deltaY;      // Min + (0, dy, 0)
-        corners[3] = corners[1] + deltaY;      // Min + (dx, dy, 0)
-    } else if (dx <= EPSILON) {
-        vertexCount = 4;
-
-        corners[1] = corners[0] + deltaZ;      // Min + (0, 0, dz)
-        corners[2] = corners[0] + deltaY;      // Min + (0, dy, 0)
-        corners[3] = corners[1] + deltaY;      // Min + (0, dy, dz)
-    } else if (dy <= EPSILON) {
-        vertexCount = 4;
-
-        corners[1] = corners[0] + deltaZ;      // Min + (0, 0, dz)
-        corners[2] = corners[0] + deltaX;      // Min + (dx, 0, 0)
-        corners[3] = corners[1] + deltaX;      // Min + (dx, 0, dz)
-    } else {
-        vertexCount = 8;
-
-        corners[1] = corners[0] + deltaZ;      // Min + (0, 0, dz)
-        corners[2] = corners[0] + deltaY;      // Min + (0, dy, 0)
-        corners[3] = corners[1] + deltaY;      // Min + (0, dy, dz)
-        corners[4] = corners[0] + deltaX;      // Min + (dx, 0, 0)
-        corners[5] = corners[4] + deltaZ;      // Min + (dx, 0, dz)
-        corners[6] = corners[4] + deltaY;      // Min + (dx, dy, 0)
-        corners[7] = corners[5] + deltaY;      // Min + (dx, dy, dz)
+    float minimum = 1.0e10f, maximum = -1.0e10f;
+    for (int i = 0; i < count; ++i) {
+        if (projected[i] < minimum) minimum = projected[i];
+        if (projected[i] > maximum) maximum = projected[i];
     }
-
-    // Find min and max projected Z values.
-    for (int i = 0; i < vertexCount; i++) {
-        float z = corners[i].z;
-        float w = corners[i].w;
-
-        float projZ = 0.0f;
-        if (w >= 0.0f)
-            projZ = z / w;
-
-        // Update min/max
-        if (projZ < ZhMin) ZhMin = projZ;
-        if (projZ > ZhMax) ZhMax = projZ;
-    }
+    ZhMin = minimum;
+    ZhMax = maximum;
 }
 
 void VxProjectBoxZExtents(const VxMatrix &World_ProjectionMat, const VxBbox &box, float &ZhMin, float &ZhMax) {
-    // Initialize return values
-    ZhMin = 1.0e10f;
-    ZhMax = -1.0e10f;
-
-    // Preserve invalid-box defaults before backend dispatch.
     if (!box.IsValid()) {
+        ZhMin = 1.0e10f;
+        ZhMax = -1.0e10f;
         return;
     }
 

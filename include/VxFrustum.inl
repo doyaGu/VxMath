@@ -590,66 +590,78 @@ VX_SIMD_INLINE XBOOL VxSIMDTransformBox2D(const VxMatrix *worldProjection, const
 
 VX_SIMD_INLINE void VxSIMDProjectBoxZExtents(const VxMatrix *worldProjection, const VxBbox *box, float *zhMin, float *zhMax) noexcept {
     if (!zhMin || !zhMax) return;
-    *zhMin = 1.0e10f;
-    *zhMax = -1.0e10f;
-
     if (!box || !box->IsValid()) {
+        *zhMin = 1.0e10f;
+        *zhMax = -1.0e10f;
         return;
     }
-
-    __m128 corners[8];
-    corners[0] = VxSIMDMatrixMultiplyVector3((const float *) &(*worldProjection)[0][0], VxSIMDLoadFloat3(&box->Min.x));
-
-    const float dx = box->Max.x - box->Min.x;
-    const float dy = box->Max.y - box->Min.y;
-    const float dz = box->Max.z - box->Min.z;
-
-    const __m128 col0 = _mm_loadu_ps((const float *) &(*worldProjection)[0][0]);
-    const __m128 col1 = _mm_loadu_ps((const float *) &(*worldProjection)[1][0]);
-    const __m128 col2 = _mm_loadu_ps((const float *) &(*worldProjection)[2][0]);
-    const __m128 deltaX = _mm_mul_ps(col0, _mm_set1_ps(dx));
-    const __m128 deltaY = _mm_mul_ps(col1, _mm_set1_ps(dy));
-    const __m128 deltaZ = _mm_mul_ps(col2, _mm_set1_ps(dz));
-
-    int vertexCount;
-    if (dz <= EPSILON) {
-        vertexCount = 4;
-        corners[1] = _mm_add_ps(corners[0], deltaX);
-        corners[2] = _mm_add_ps(corners[0], deltaY);
-        corners[3] = _mm_add_ps(corners[1], deltaY);
-    } else if (dx <= EPSILON) {
-        vertexCount = 4;
-        corners[1] = _mm_add_ps(corners[0], deltaZ);
-        corners[2] = _mm_add_ps(corners[0], deltaY);
-        corners[3] = _mm_add_ps(corners[1], deltaY);
-    } else if (dy <= EPSILON) {
-        vertexCount = 4;
-        corners[1] = _mm_add_ps(corners[0], deltaZ);
-        corners[2] = _mm_add_ps(corners[0], deltaX);
-        corners[3] = _mm_add_ps(corners[1], deltaX);
-    } else {
-        vertexCount = 8;
-        corners[1] = _mm_add_ps(corners[0], deltaZ);
-        corners[2] = _mm_add_ps(corners[0], deltaY);
-        corners[3] = _mm_add_ps(corners[1], deltaY);
-        corners[4] = _mm_add_ps(corners[0], deltaX);
-        corners[5] = _mm_add_ps(corners[4], deltaZ);
-        corners[6] = _mm_add_ps(corners[4], deltaY);
-        corners[7] = _mm_add_ps(corners[5], deltaY);
+    const double low[3] = {box->Min.x, box->Min.y, box->Min.z};
+    const double high[3] = {box->Max.x, box->Max.y, box->Max.z};
+    int xMask = 4, yMask = 2, zMask = 1, count = 8;
+    if (static_cast<float>(high[2] - low[2]) <= EPSILON) {
+        xMask = 1; zMask = 0; count = 4;
+    } else if (static_cast<float>(high[0] - low[0]) <= EPSILON) {
+        xMask = 0; count = 4;
+    } else if (static_cast<float>(high[1] - low[1]) <= EPSILON) {
+        xMask = 2; yMask = 0; count = 4;
     }
-
-    for (int i = 0; i < vertexCount; ++i) {
-        const __m128 v = corners[i];
-        const float w = _mm_cvtss_f32(_mm_shuffle_ps(v, v, _MM_SHUFFLE(3, 3, 3, 3)));
-        const float z = _mm_cvtss_f32(_mm_shuffle_ps(v, v, _MM_SHUFFLE(2, 2, 2, 2)));
-
-        float projZ = 0.0f;
-        if (w >= 0.0f)
-            projZ = z / w;
-
-        if (projZ < *zhMin) *zhMin = projZ;
-        if (projZ > *zhMax) *zhMax = projZ;
+    // Only Z/W columns are needed. Packed double preserves finite ratios even
+    // when float products, box dimensions, or intermediate coordinates overflow.
+    __m128d terms[3][2];
+    for (int row = 0; row < 3; ++row) {
+        const __m128d zw = _mm_cvtps_pd(_mm_castsi128_ps(_mm_loadl_epi64(reinterpret_cast<const __m128i *>(&(*worldProjection)[row][2]))));
+        terms[row][0] = _mm_mul_pd(zw, _mm_set1_pd(low[row]));
+        terms[row][1] = _mm_mul_pd(zw, _mm_set1_pd(high[row]));
     }
+    const __m128d translation = _mm_cvtps_pd(_mm_castsi128_ps(_mm_loadl_epi64(reinterpret_cast<const __m128i *>(&(*worldProjection)[3][2]))));
+    const __m128d zero = _mm_setzero_pd(), one = _mm_set1_pd(1);
+    float projected[8];
+    for (int i = 0; i < count; i += 2) {
+        __m128d points[2];
+        for (int point = 0; point < 2; ++point) {
+            const int corner = i + point;
+            const __m128d components[4] = {terms[0][(corner & xMask) != 0], terms[1][(corner & yMask) != 0], terms[2][(corner & zMask) != 0], translation};
+            __m128d sum = _mm_add_pd(_mm_add_pd(_mm_add_pd(components[0],components[1]),components[2]),components[3]);
+            const __m128d sign = _mm_set1_pd(-0.0);
+            const __m128d magnitude = _mm_add_pd(_mm_add_pd(_mm_andnot_pd(sign,components[0]),_mm_andnot_pd(sign,components[1])),_mm_add_pd(_mm_andnot_pd(sign,components[2]),_mm_andnot_pd(sign,components[3])));
+            if (_mm_movemask_pd(_mm_cmplt_pd(_mm_andnot_pd(sign,sum),_mm_mul_pd(magnitude,_mm_set1_pd(1.0 / 16777216.0))))) {
+                __m128d correction = zero;
+                sum = components[0];
+                for (int row = 1; row < 4; ++row) {
+                    const __m128d next = _mm_add_pd(sum,components[row]);
+                    const __m128d larger = _mm_cmpge_pd(_mm_andnot_pd(sign,sum),_mm_andnot_pd(sign,components[row]));
+                    const __m128d errorA = _mm_add_pd(_mm_sub_pd(sum,next),components[row]);
+                    const __m128d errorB = _mm_add_pd(_mm_sub_pd(components[row],next),sum);
+                    correction = _mm_add_pd(correction,_mm_or_pd(_mm_and_pd(larger,errorA),_mm_andnot_pd(larger,errorB)));
+                    sum = next;
+                }
+                sum = _mm_add_pd(sum,correction);
+            }
+            points[point] = sum;
+        }
+        const __m128d a = points[0], b = points[1];
+        const __m128d z = _mm_unpacklo_pd(a,b), w = _mm_unpackhi_pd(a,b);
+        const __m128d front = _mm_cmpnlt_pd(w,zero);
+        const __m128d denominator = _mm_or_pd(_mm_and_pd(front,w),_mm_andnot_pd(front,one));
+        const __m128 value = _mm_cvtpd_ps(_mm_div_pd(_mm_and_pd(front,z),denominator));
+        _mm_storel_epi64(reinterpret_cast<__m128i *>(projected+i),_mm_castps_si128(value));
+    }
+    if (zhMin == zhMax) {
+        *zhMin = 1.0e10f;
+        *zhMax = -1.0e10f;
+        for (int i = 0; i < count; ++i) {
+            if (projected[i] < *zhMin) *zhMin = projected[i];
+            if (projected[i] > *zhMax) *zhMax = projected[i];
+        }
+        return;
+    }
+    float minimum = 1.0e10f, maximum = -1.0e10f;
+    for (int i = 0; i < count; ++i) {
+        if (projected[i] < minimum) minimum = projected[i];
+        if (projected[i] > maximum) maximum = projected[i];
+    }
+    *zhMin = minimum;
+    *zhMax = maximum;
 }
 
 #endif // VX_SIMD_SSE
