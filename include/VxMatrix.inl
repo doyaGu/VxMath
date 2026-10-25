@@ -464,31 +464,29 @@ inline VxQuaternion Vx3DQuaternionFromMatrix(const VxMatrix &Mat) {
     return quat;
 }
 
-namespace VxQuaternionDetail {
-inline void NormalizeRotationAxis(VxVector &axis) {
+inline void VxNormalizeRotationAxis(VxVector &axis) {
     // Finite float squares fit in double even when float arithmetic would
     // underflow or overflow. Zero/nonfinite axes retain their NaN behavior.
-    const double inverse = 1.0/LengthWide(axis.x, axis.y, axis.z);
+    const double inverse = 1.0 / VxQuaternionLength(axis.x, axis.y, axis.z);
     axis.Set(static_cast<float>(axis.x*inverse),
              static_cast<float>(axis.y*inverse),
              static_cast<float>(axis.z*inverse));
 }
 
-inline float CrossComponentWide(float a, float b, float c, float d) {
+inline float VxRotationCrossComponent(float a, float b, float c, float d) {
     return static_cast<float>(static_cast<double>(a)*b - static_cast<double>(c)*d);
 }
-} // namespace VxQuaternionDetail
 
 inline void Vx3DNormalizeRotationRows(const VxMatrix &in, VxMatrix &out) {
     out = in;
     VxVector row0(in[0][0], in[0][1], in[0][2]);
     VxVector row1(in[1][0], in[1][1], in[1][2]);
-    VxQuaternionDetail::NormalizeRotationAxis(row0);
-    VxQuaternionDetail::NormalizeRotationAxis(row1);
+    VxNormalizeRotationAxis(row0);
+    VxNormalizeRotationAxis(row1);
     // Keep tiny products until subtraction and the final float store.
-    const VxVector row2(VxQuaternionDetail::CrossComponentWide(row1.z, row0.y, row0.z, row1.y),
-                        VxQuaternionDetail::CrossComponentWide(row0.z, row1.x, row0.x, row1.z),
-                        VxQuaternionDetail::CrossComponentWide(row0.x, row1.y, row1.x, row0.y));
+    const VxVector row2(VxRotationCrossComponent(row1.z, row0.y, row0.z, row1.y),
+                        VxRotationCrossComponent(row0.z, row1.x, row0.x, row1.z),
+                        VxRotationCrossComponent(row0.x, row1.y, row1.x, row0.y));
     out[0][0] = row0.x; out[0][1] = row0.y; out[0][2] = row0.z;
     out[1][0] = row1.x; out[1][1] = row1.y; out[1][2] = row1.z;
     out[2][0] = row2.x; out[2][1] = row2.y; out[2][2] = row2.z;
@@ -514,7 +512,7 @@ inline void VxQuaternion::FromMatrix(const VxMatrix &Mat, XBOOL MatIsUnit, XBOOL
     // A finite matrix can overflow a float sum while its quaternion is finite.
     const double trace = static_cast<double>((*matrix)[1][1]) + (*matrix)[2][2] + (*matrix)[0][0];
     if (trace >= 0.0) {
-        const double root = std::sqrt(trace + 1.0);
+        const double root = sqrt(trace + 1.0);
         w = static_cast<float>(root * 0.5);
         const double s = 0.5 / root;
         x = static_cast<float>((static_cast<double>((*matrix)[2][1]) - (*matrix)[1][2]) * s);
@@ -529,7 +527,7 @@ inline void VxQuaternion::FromMatrix(const VxMatrix &Mat, XBOOL MatIsUnit, XBOOL
         int k = next[j];
         const double other = static_cast<double>((*matrix)[k][k]) + (*matrix)[j][j];
         const double radicand = ((*matrix)[i][i] - other) + 1.0;
-        const double root = std::sqrt(radicand);
+        const double root = sqrt(radicand);
         float *q[4] = {&x, &y, &z, &w};
         *q[i] = static_cast<float>(root * 0.5);
         const double s = 0.5 / root;
@@ -543,7 +541,7 @@ inline void VxQuaternion::ToMatrix(VxMatrix &Mat) const {
     // Keep both the norm and scaled products wide. This is invariant under
     // finite nonzero quaternion scaling across the entire float range.
     const double dx = x, dy = y, dz = z, dw = w;
-    const double s = 2.0 / VxQuaternionDetail::SquaredLengthWide(x, y, z, w);
+    const double s = 2.0 / VxQuaternionSquaredLength(x, y, z, w);
     const double xs = dx*s, ys = dy*s, zs = dz*s;
     const double wx = dw*xs, wy = dw*ys, wz = dw*zs;
     const double xx = dx*xs, xy = dx*ys, xz = dx*zs;
@@ -711,10 +709,10 @@ inline float OriginCoordinate(float origin, float a, float x, float b, float y, 
 
 inline void Vx3DMatrixFromRotation(VxMatrix &ResultMat, const VxVector &Vector, float Angle) {
     float c, s;
-    VxQuaternionDetail::RotationSinCos(Angle, s, c);
+    VxRotationSinCos(Angle, s, c);
     const float t = 1.0f - c;
     VxVector axis = Vector;
-    VxQuaternionDetail::NormalizeRotationAxis(axis);
+    VxNormalizeRotationAxis(axis);
     const float x = axis.x, y = axis.y, z = axis.z;
     const float xx=x*x, yy=y*y, zz=z*z;
     const float xy=x*y, xz=x*z, yz=y*z;
@@ -744,9 +742,9 @@ inline void Vx3DMatrixFromRotationAndOrigin(VxMatrix &ResultMat, const VxVector 
 
 inline void Vx3DMatrixFromEulerAngles(VxMatrix &Mat, float eax, float eay, float eaz) {
     float cx, sx, cy, sy, cz, sz;
-    if (fabsf(eax) <= 1e-8f) { cx = 1.0f; sx = 0.0f; } else { VxQuaternionDetail::RotationSinCos(eax, sx, cx); }
-    if (fabsf(eay) <= 1e-8f) { cy = 1.0f; sy = 0.0f; } else { VxQuaternionDetail::RotationSinCos(eay, sy, cy); }
-    if (fabsf(eaz) <= 1e-8f) { cz = 1.0f; sz = 0.0f; } else { VxQuaternionDetail::RotationSinCos(eaz, sz, cz); }
+    if (fabsf(eax) <= 1e-8f) { cx = 1.0f; sx = 0.0f; } else { VxRotationSinCos(eax, sx, cx); }
+    if (fabsf(eay) <= 1e-8f) { cy = 1.0f; sy = 0.0f; } else { VxRotationSinCos(eay, sy, cy); }
+    if (fabsf(eaz) <= 1e-8f) { cz = 1.0f; sz = 0.0f; } else { VxRotationSinCos(eaz, sz, cz); }
     // 0x2429B280 stores the x/z products before multiplying by sin(y).
     // Reassociation changes overflow and zero products for large angles.
     const float cxcz=cx*cz, cxsz=cx*sz, sxcz=sx*cz, sxsz=sx*sz;
