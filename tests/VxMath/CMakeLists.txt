@@ -622,6 +622,13 @@ vx_add_test(VectorInverseScalarReferenceTest SOURCES VectorInverseReferenceTest.
 target_compile_definitions(VectorInverseScalarReferenceTest PRIVATE VX_SIMD_NONE=1)
 vx_copy_runtime_dependencies(VectorInverseScalarReferenceTest)
 
+vx_add_test(VectorDotReferenceTest SOURCES VectorDotReferenceTest.cpp)
+vx_copy_runtime_dependencies(VectorDotReferenceTest)
+
+vx_add_test(VectorDotScalarReferenceTest SOURCES VectorDotReferenceTest.cpp)
+target_compile_definitions(VectorDotScalarReferenceTest PRIVATE VX_SIMD_NONE=1)
+vx_copy_runtime_dependencies(VectorDotScalarReferenceTest)
+
 vx_add_test(VectorCrossReferenceTest SOURCES VectorCrossReferenceTest.cpp)
 vx_copy_runtime_dependencies(VectorCrossReferenceTest)
 
