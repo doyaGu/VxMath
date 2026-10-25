@@ -591,82 +591,66 @@ static XBOOL FillStructureScalarImpl(int Count, void *Dst, XDWORD Stride, XDWORD
  * Copies structures from one array to another
  */
 static XBOOL CopyStructureScalarImpl(int Count, void *Dst, XDWORD OutStride, XDWORD SizeSrc, const void *Src, XDWORD InStride) {
-    if (!Src || !Dst || !Count || !SizeSrc || !OutStride || !InStride || (SizeSrc & 3) != 0)
+    if (!Src || !Dst || Count <= 0 || !SizeSrc || !OutStride || !InStride || (SizeSrc & 3) != 0)
         return FALSE;
-
-    const XDWORD *pSrc = static_cast<const XDWORD *>(Src);
-    XDWORD *pDst = static_cast<XDWORD *>(Dst);
-
+    const XBYTE *src = static_cast<const XBYTE *>(Src);
+    XBYTE *dst = static_cast<XBYTE *>(Dst);
     switch (SizeSrc) {
-    case 4: {
-        int cnt = Count;
-        do {
-            *pDst = *pSrc;
-            pSrc = reinterpret_cast<const XDWORD *>(reinterpret_cast<const char *>(pSrc) + InStride);
-            pDst = reinterpret_cast<XDWORD *>(reinterpret_cast<char *>(pDst) + OutStride);
-            --cnt;
-        } while (cnt);
-        break;
+    case 4:
+        for (;;) {
+            XDWORD value;
+            memcpy(&value, src, 4);
+            memcpy(dst, &value, 4);
+            if (--Count == 0) return TRUE;
+            src += InStride;
+            dst += OutStride;
+        }
+    case 8:
+        for (;;) {
+            XDWORD pair[2];
+            memcpy(pair, src, 8);
+            memcpy(dst, pair, 8);
+            if (--Count == 0) return TRUE;
+            src += InStride;
+            dst += OutStride;
+        }
+    case 12:
+        for (;;) {
+            XDWORD xy[2], z;
+            memcpy(xy, src, 8);
+            memcpy(dst, xy, 4);
+            // The X write can change the source Z; Y remains snapshotted.
+            memcpy(&z, src + 8, 4);
+            memcpy(dst + 4, xy + 1, 4);
+            memcpy(dst + 8, &z, 4);
+            if (--Count == 0) return TRUE;
+            src += InStride;
+            dst += OutStride;
+        }
+    case 16:
+        for (;;) {
+            XDWORD pair[2];
+            memcpy(pair, src, 8);
+            memcpy(dst, pair, 8);
+            memcpy(pair, src + 8, 8);
+            memcpy(dst + 8, pair, 8);
+            if (--Count == 0) return TRUE;
+            src += InStride;
+            dst += OutStride;
+        }
+    default:
+        for (;;) {
+            for (XDWORD offset = 0; offset < SizeSrc; offset += 4) {
+                XDWORD value;
+                memcpy(&value, src + offset, 4);
+                memcpy(dst + offset, &value, 4);
+            }
+            if (--Count == 0) return TRUE;
+            // Advancing the record origins avoids unsigned stride-size wrap.
+            src += InStride;
+            dst += OutStride;
+        }
     }
-    case 8: {
-        int cnt = Count;
-        do {
-            XDWORD v1 = pSrc[1];
-            pDst[0] = pSrc[0];
-            pDst[1] = v1;
-            pSrc = reinterpret_cast<const XDWORD *>(reinterpret_cast<const char *>(pSrc) + InStride);
-            pDst = reinterpret_cast<XDWORD *>(reinterpret_cast<char *>(pDst) + OutStride);
-            --cnt;
-        } while (cnt);
-        break;
-    }
-    case 12: {
-        int cnt = Count;
-        do {
-            XDWORD v1 = pSrc[1];
-            pDst[0] = pSrc[0];
-            XDWORD v2 = pSrc[2];
-            pDst[1] = v1;
-            pDst[2] = v2;
-            pSrc = reinterpret_cast<const XDWORD *>(reinterpret_cast<const char *>(pSrc) + InStride);
-            pDst = reinterpret_cast<XDWORD *>(reinterpret_cast<char *>(pDst) + OutStride);
-            --cnt;
-        } while (cnt);
-        break;
-    }
-    case 16: {
-        int cnt = Count;
-        do {
-            XDWORD v1 = pSrc[1];
-            pDst[0] = pSrc[0];
-            pDst[1] = v1;
-            XDWORD v3 = pSrc[3];
-            pDst[2] = pSrc[2];
-            pDst[3] = v3;
-            pSrc = reinterpret_cast<const XDWORD *>(reinterpret_cast<const char *>(pSrc) + InStride);
-            pDst = reinterpret_cast<XDWORD *>(reinterpret_cast<char *>(pDst) + OutStride);
-            --cnt;
-        } while (cnt);
-        break;
-    }
-    default: {
-        int cnt = Count;
-        XDWORD InStrideAdj = InStride - SizeSrc;
-        do {
-            XDWORD dwordCount = SizeSrc >> 2;
-            do {
-                *pDst++ = *pSrc++;
-                --dwordCount;
-            } while (dwordCount);
-            pSrc = reinterpret_cast<const XDWORD *>(reinterpret_cast<const char *>(pSrc) + InStrideAdj);
-            pDst = reinterpret_cast<XDWORD *>(reinterpret_cast<char *>(pDst) + OutStride - SizeSrc);
-            --cnt;
-        } while (cnt);
-        break;
-    }
-    }
-
-    return TRUE;
 }
 
 /**

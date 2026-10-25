@@ -127,7 +127,11 @@ VX_EXPORT XBOOL VxFillStructure(int Count, void *Dst, XDWORD Stride, XDWORD Size
  * @param SizeSrc The size in bytes of a single source element.
  * @param Src Pointer to the source strided array.
  * @param InStride The stride in bytes of the source array.
- * @return TRUE on success, FALSE otherwise.
+ * @remarks Records proceed forwards with both byte strides. Size 8 snapshots
+ * one pair; size 12 writes X before reading Z while keeping Y cached; size 16
+ * copies two successive pairs. Other sizes copy DWORDs in forward order.
+ * @return TRUE on success; FALSE without buffer access for null pointers,
+ * nonpositive Count, zero strides, or a zero/non-DWORD SizeSrc.
  */
 VX_EXPORT XBOOL VxCopyStructure(int Count, void *Dst, XDWORD OutStride, XDWORD SizeSrc, const void *Src, XDWORD InStride);
 

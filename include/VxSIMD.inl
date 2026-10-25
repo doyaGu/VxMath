@@ -569,20 +569,205 @@ VX_SIMD_INLINE XBOOL VxSIMDFillStructure(int count, void *dst, XDWORD stride, XD
 }
 
 VX_SIMD_INLINE XBOOL VxSIMDCopyStructure(int count, void *dst, XDWORD outStride, XDWORD sizeSrc, const void *src, XDWORD inStride) noexcept {
-    if (!src || !dst || !count || !sizeSrc || !outStride || !inStride || (sizeSrc & 3) != 0) {
+    if (!src || !dst || count <= 0 || !sizeSrc || !outStride || !inStride || (sizeSrc & 3) != 0)
         return FALSE;
-    }
-
-    XBYTE *dstBytes = static_cast<XBYTE *>(dst);
     const XBYTE *srcBytes = static_cast<const XBYTE *>(src);
-
-    for (int i = 0; i < count; ++i) {
-        VxSIMDCopyDwordAlignedBlock(dstBytes, srcBytes, sizeSrc);
-        dstBytes += outStride;
-        srcBytes += inStride;
+    XBYTE *dstBytes = static_cast<XBYTE *>(dst);
+    if (outStride == sizeSrc && inStride == sizeSrc) {
+        const uint64_t length = static_cast<uint64_t>(static_cast<unsigned>(count))*sizeSrc;
+        const uintptr_t address = reinterpret_cast<uintptr_t>(dst), source = reinterpret_cast<uintptr_t>(src);
+        const uintptr_t gap = address > source ? address - source : source - address;
+        // Only disjoint complete arrays may ignore record-specific read order.
+        if (length <= static_cast<size_t>(-1) && gap >= length) {
+            size_t bytes = static_cast<size_t>(length);
+            while (bytes >= 64) {
+                _mm_storeu_si128(reinterpret_cast<__m128i *>(dstBytes), _mm_loadu_si128(reinterpret_cast<const __m128i *>(srcBytes)));
+                _mm_storeu_si128(reinterpret_cast<__m128i *>(dstBytes + 16), _mm_loadu_si128(reinterpret_cast<const __m128i *>(srcBytes + 16)));
+                _mm_storeu_si128(reinterpret_cast<__m128i *>(dstBytes + 32), _mm_loadu_si128(reinterpret_cast<const __m128i *>(srcBytes + 32)));
+                _mm_storeu_si128(reinterpret_cast<__m128i *>(dstBytes + 48), _mm_loadu_si128(reinterpret_cast<const __m128i *>(srcBytes + 48)));
+                dstBytes += 64;
+                srcBytes += 64;
+                bytes -= 64;
+            }
+            while (bytes >= 16) {
+                const __m128i value = _mm_loadu_si128(reinterpret_cast<const __m128i *>(srcBytes));
+                _mm_storeu_si128(reinterpret_cast<__m128i *>(dstBytes), value);
+                dstBytes += 16;
+                srcBytes += 16;
+                bytes -= 16;
+            }
+            while (bytes) {
+                XDWORD value;
+                memcpy(&value, srcBytes, 4);
+                memcpy(dstBytes, &value, 4);
+                dstBytes += 4;
+                srcBytes += 4;
+                bytes -= 4;
+            }
+            return TRUE;
+        }
     }
-
-    return TRUE;
+    switch (sizeSrc) {
+    case 4:
+        for (;;) {
+            const __m128 value = _mm_load_ss(reinterpret_cast<const float *>(srcBytes));
+            _mm_store_ss(reinterpret_cast<float *>(dstBytes), value);
+            if (--count == 0) return TRUE;
+            srcBytes += inStride;
+            dstBytes += outStride;
+        }
+    case 8:
+        for (;;) {
+            const __m128i pair = _mm_loadl_epi64(reinterpret_cast<const __m128i *>(srcBytes));
+            _mm_storel_epi64(reinterpret_cast<__m128i *>(dstBytes), pair);
+            if (--count == 0) return TRUE;
+            srcBytes += inStride;
+            dstBytes += outStride;
+        }
+    case 12:
+        if (outStride == inStride) {
+            const uintptr_t address = reinterpret_cast<uintptr_t>(dstBytes), source = reinterpret_cast<uintptr_t>(srcBytes);
+            if (address <= source || address - source <= 4 || address - source >= 12) {
+                for (;;) {
+                    const __m128i xy = _mm_loadl_epi64(reinterpret_cast<const __m128i *>(srcBytes));
+                    const __m128 z = _mm_load_ss(reinterpret_cast<const float *>(srcBytes + 8));
+                    _mm_storel_epi64(reinterpret_cast<__m128i *>(dstBytes), xy);
+                    _mm_store_ss(reinterpret_cast<float *>(dstBytes + 8), z);
+                    if (--count == 0) return TRUE;
+                    srcBytes += inStride;
+                    dstBytes += outStride;
+                }
+            }
+        }
+        for (;;) {
+            const uintptr_t address = reinterpret_cast<uintptr_t>(dstBytes), source = reinterpret_cast<uintptr_t>(srcBytes);
+            const __m128 xy = _mm_castsi128_ps(_mm_loadl_epi64(reinterpret_cast<const __m128i *>(srcBytes)));
+            if (address > source && address - source > 4 && address - source < 12) {
+                _mm_store_ss(reinterpret_cast<float *>(dstBytes), xy);
+                const __m128 z = _mm_load_ss(reinterpret_cast<const float *>(srcBytes + 8));
+                _mm_store_ss(reinterpret_cast<float *>(dstBytes + 4), _mm_shuffle_ps(xy, xy, _MM_SHUFFLE(1, 1, 1, 1)));
+                _mm_store_ss(reinterpret_cast<float *>(dstBytes + 8), z);
+            } else {
+                const __m128 z = _mm_load_ss(reinterpret_cast<const float *>(srcBytes + 8));
+                _mm_storel_epi64(reinterpret_cast<__m128i *>(dstBytes), _mm_castps_si128(xy));
+                _mm_store_ss(reinterpret_cast<float *>(dstBytes + 8), z);
+            }
+            if (--count == 0) return TRUE;
+            srcBytes += inStride;
+            dstBytes += outStride;
+        }
+    case 16:
+        for (;;) {
+            const uintptr_t address = reinterpret_cast<uintptr_t>(dstBytes), source = reinterpret_cast<uintptr_t>(srcBytes);
+            if (address > source && address - source == 4) {
+                const __m128i value = _mm_loadu_si128(reinterpret_cast<const __m128i *>(srcBytes));
+                _mm_storeu_si128(reinterpret_cast<__m128i *>(dstBytes), _mm_shuffle_epi32(value, _MM_SHUFFLE(3, 1, 1, 0)));
+            } else if (address > source && address - source < 16) {
+                // DWORD transfers avoid partial store forwarding stalls while
+                // retaining the two original pair snapshots.
+                XDWORD x, y, z, w;
+                memcpy(&x, srcBytes, 4);
+                memcpy(&y, srcBytes + 4, 4);
+                memcpy(dstBytes, &x, 4);
+                memcpy(dstBytes + 4, &y, 4);
+                memcpy(&z, srcBytes + 8, 4);
+                memcpy(&w, srcBytes + 12, 4);
+                memcpy(dstBytes + 8, &z, 4);
+                memcpy(dstBytes + 12, &w, 4);
+            } else {
+                const __m128i value = _mm_loadu_si128(reinterpret_cast<const __m128i *>(srcBytes));
+                _mm_storeu_si128(reinterpret_cast<__m128i *>(dstBytes), value);
+            }
+            if (--count == 0) return TRUE;
+            srcBytes += inStride;
+            dstBytes += outStride;
+        }
+    case 20:
+        for (;;) {
+            const uintptr_t address = reinterpret_cast<uintptr_t>(dstBytes), source = reinterpret_cast<uintptr_t>(srcBytes);
+            if (address > source && address - source < 16) {
+                XDWORD value;
+                memcpy(&value, srcBytes, 4);
+                memcpy(dstBytes, &value, 4);
+                memcpy(&value, srcBytes + 4, 4);
+                memcpy(dstBytes + 4, &value, 4);
+                memcpy(&value, srcBytes + 8, 4);
+                memcpy(dstBytes + 8, &value, 4);
+                memcpy(&value, srcBytes + 12, 4);
+                memcpy(dstBytes + 12, &value, 4);
+                memcpy(&value, srcBytes + 16, 4);
+                memcpy(dstBytes + 16, &value, 4);
+            } else {
+                const __m128i value = _mm_loadu_si128(reinterpret_cast<const __m128i *>(srcBytes));
+                _mm_storeu_si128(reinterpret_cast<__m128i *>(dstBytes), value);
+                XDWORD tail;
+                memcpy(&tail, srcBytes + 16, 4);
+                memcpy(dstBytes + 16, &tail, 4);
+            }
+            if (--count == 0) return TRUE;
+            srcBytes += inStride;
+            dstBytes += outStride;
+        }
+    case 32:
+        for (;;) {
+            const uintptr_t address = reinterpret_cast<uintptr_t>(dstBytes), source = reinterpret_cast<uintptr_t>(srcBytes);
+            const uintptr_t distance = address > source ? address - source : 16;
+            if (distance >= 16) {
+                const __m128i lo = _mm_loadu_si128(reinterpret_cast<const __m128i *>(srcBytes));
+                _mm_storeu_si128(reinterpret_cast<__m128i *>(dstBytes), lo);
+                const __m128i hi = _mm_loadu_si128(reinterpret_cast<const __m128i *>(srcBytes + 16));
+                _mm_storeu_si128(reinterpret_cast<__m128i *>(dstBytes + 16), hi);
+            } else if (distance >= 8) {
+                for (XDWORD offset = 0; offset < 32; offset += 8) {
+                    const __m128i value = _mm_loadl_epi64(reinterpret_cast<const __m128i *>(srcBytes + offset));
+                    _mm_storel_epi64(reinterpret_cast<__m128i *>(dstBytes + offset), value);
+                }
+            } else {
+                for (XDWORD offset = 0; offset < 32; offset += 4) {
+                    XDWORD value;
+                    memcpy(&value, srcBytes + offset, 4);
+                    memcpy(dstBytes + offset, &value, 4);
+                }
+            }
+            if (--count == 0) return TRUE;
+            srcBytes += inStride;
+            dstBytes += outStride;
+        }
+    default: {
+        const XDWORD end64 = sizeSrc & ~XDWORD(63), end16 = sizeSrc & ~XDWORD(15), end8 = sizeSrc & ~XDWORD(7);
+        for (;;) {
+            const uintptr_t address = reinterpret_cast<uintptr_t>(dstBytes), source = reinterpret_cast<uintptr_t>(srcBytes);
+            const uintptr_t distance = address > source ? address - source : 16;
+            XDWORD offset = 0;
+            if (distance >= 16) {
+                for (; offset < end64; offset += 64) {
+                    _mm_storeu_si128(reinterpret_cast<__m128i *>(dstBytes + offset), _mm_loadu_si128(reinterpret_cast<const __m128i *>(srcBytes + offset)));
+                    _mm_storeu_si128(reinterpret_cast<__m128i *>(dstBytes + offset + 16), _mm_loadu_si128(reinterpret_cast<const __m128i *>(srcBytes + offset + 16)));
+                    _mm_storeu_si128(reinterpret_cast<__m128i *>(dstBytes + offset + 32), _mm_loadu_si128(reinterpret_cast<const __m128i *>(srcBytes + offset + 32)));
+                    _mm_storeu_si128(reinterpret_cast<__m128i *>(dstBytes + offset + 48), _mm_loadu_si128(reinterpret_cast<const __m128i *>(srcBytes + offset + 48)));
+                }
+                for (; offset < end16; offset += 16) {
+                    const __m128i value = _mm_loadu_si128(reinterpret_cast<const __m128i *>(srcBytes + offset));
+                    _mm_storeu_si128(reinterpret_cast<__m128i *>(dstBytes + offset), value);
+                }
+            }
+            if (distance >= 8) {
+                for (; offset < end8; offset += 8) {
+                    const __m128i value = _mm_loadl_epi64(reinterpret_cast<const __m128i *>(srcBytes + offset));
+                    _mm_storel_epi64(reinterpret_cast<__m128i *>(dstBytes + offset), value);
+                }
+            }
+            for (; offset < sizeSrc; offset += 4) {
+                XDWORD value;
+                memcpy(&value, srcBytes + offset, 4);
+                memcpy(dstBytes + offset, &value, 4);
+            }
+            if (--count == 0) return TRUE;
+            srcBytes += inStride;
+            dstBytes += outStride;
+        }
+    }
+    }
 }
 
 VX_SIMD_INLINE XBOOL VxSIMDIndexedCopy(const VxStridedData &dst, const VxStridedData &src, XDWORD sizeSrc, const int *indices, int indexCount) noexcept {
