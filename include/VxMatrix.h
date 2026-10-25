@@ -387,13 +387,15 @@ public:
      */
     VxMatrix operator*(const VxMatrix &iMat) const;
 
-    /// @brief Transforms a 3D vector by this matrix.
+    // Both operand orders transform XYZ as a point with implicit w=1.
+    // Use the explicit VxVector4-input function overload to transform actual w.
+    /// @brief Returns the three point-transform coordinates.
     friend VxVector operator*(const VxMatrix &m, const VxVector &v);
-    /// @brief Transforms a 4D vector by this matrix.
+    /// @brief Returns all four point-transform coordinates, ignoring source w.
     friend VxVector4 operator*(const VxMatrix &m, const VxVector4 &v);
-    /// @brief Transforms a 3D vector by this matrix.
+    /// @brief Returns the three point-transform coordinates.
     friend VxVector operator*(const VxVector &v, const VxMatrix &m);
-    /// @brief Transforms a 4D vector by this matrix.
+    /// @brief Returns all four point-transform coordinates, ignoring source w.
     friend VxVector4 operator*(const VxVector4 &v, const VxMatrix &m);
 
 protected:

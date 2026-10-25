@@ -118,6 +118,8 @@ inline void VxMatrix::SetIdentity() {
 }
 
 // ---------- Matrix-vector operators ----------
+// Both operand orders apply the original XYZ point transform (implicit w=1).
+// Vector4 keeps all four result components, but its source w is ignored.
 
 inline VxVector operator*(const VxVector &v, const VxMatrix &m) {
     VxVector result;
@@ -133,13 +135,13 @@ inline VxVector operator*(const VxMatrix &m, const VxVector &v) {
 
 inline VxVector4 operator*(const VxMatrix &m, const VxVector4 &v) {
     VxVector4 result;
-    Vx3DMultiplyMatrixVector4(&result, m, &v);
+    Vx3DMultiplyMatrixVector4(&result, m, static_cast<const VxVector *>(&v));
     return result;
 }
 
 inline VxVector4 operator*(const VxVector4 &v, const VxMatrix &m) {
     VxVector4 result;
-    Vx3DMultiplyMatrixVector4(&result, m, &v);
+    Vx3DMultiplyMatrixVector4(&result, m, static_cast<const VxVector *>(&v));
     return result;
 }
 
