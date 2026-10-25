@@ -100,7 +100,7 @@ struct VxVector {
     /**
      * @brief Returns the magnitude (length) of the vector.
      * @return The length of the vector (sqrt(x*x + y*y + z*z)).
-     * @warning Calling this on a null vector (0,0,0) will result in NaN (Not aNumber).
+     * @remarks A zero vector has length +0; intermediate squares do not limit the length's range.
      * @see SquareMagnitude()
      */
     float Magnitude() const;
@@ -251,7 +251,7 @@ inline float SquareMagnitude(const VxVector &v);
  * @brief Returns the magnitude (length) of a vector.
  * @param v The vector.
  * @return The length of the vector (sqrt(x*x + y*y + z*z)).
- * @warning Calling this on a null vector (0,0,0) will result in NaN (Not aNumber).
+ * @remarks A zero vector has length +0; intermediate squares do not limit the length's range.
  * @see SquareMagnitude()
  */
 inline float Magnitude(const VxVector &v);

@@ -314,18 +314,46 @@ VX_SIMD_INLINE __m128 VxSIMDScale(__m128 v, float scalar) noexcept {
 }
 
 VX_SIMD_INLINE float VxSIMDLength3(__m128 v) noexcept {
-    __m128 dot = VxSIMDDotProduct3(v, v);
-    __m128 len = _mm_sqrt_ss(dot);
-    float result;
-    _mm_store_ss(&result, len);
-    return result;
+    const __m128d xy = _mm_cvtps_pd(v);
+    const __m128d z = _mm_cvtps_pd(_mm_movehl_ps(v, v));
+    const __m128d products = _mm_mul_pd(xy, xy);
+    const __m128d square = _mm_add_sd(_mm_add_sd(products, _mm_unpackhi_pd(products, products)), _mm_mul_sd(z, z));
+    const __m128d length = _mm_sqrt_sd(square, square);
+#if !defined(VX_SIMD_X64)
+    // Avoid the slow subnormal return conversion measured on Win32.
+    if (_mm_cvtsd_f64(length) < 0x1p-126) {
+        const int bits = _mm_cvtsd_si32(_mm_mul_sd(length, _mm_set_sd(0x1p149)));
+        return _mm_cvtss_f32(_mm_castsi128_ps(_mm_cvtsi32_si128(bits)));
+    }
+#endif
+    return static_cast<float>(_mm_cvtsd_f64(length));
 }
 
 VX_SIMD_INLINE float VxSIMDLengthSquared3(__m128 v) noexcept {
-    __m128 dot = VxSIMDDotProduct3(v, v);
-    float result;
-    _mm_store_ss(&result, dot);
-    return result;
+    const __m128d xy = _mm_cvtps_pd(v);
+    const __m128d z = _mm_cvtps_pd(_mm_movehl_ps(v, v));
+    const __m128d products = _mm_mul_pd(xy, xy);
+    const __m128d square = _mm_add_sd(_mm_add_sd(products, _mm_unpackhi_pd(products, products)), _mm_mul_sd(z, z));
+#if defined(VX_SIMD_X64)
+    return static_cast<float>(_mm_cvtsd_f64(square));
+#else
+    // The high word identifies doubles in [2^-126, 2^128), the normal
+    // float conversion range. Win32's extreme conversions need a separate path.
+    const unsigned high = static_cast<unsigned>(_mm_cvtsi128_si32(_mm_srli_si128(_mm_castpd_si128(square), 4)));
+    if (high - 0x38100000u < 0x0fe00000u) {
+        return static_cast<float>(_mm_cvtsd_f64(square));
+    }
+    if (high < 0x38100000u) {
+        // Round subnormal results as integer multiples of the minimum float,
+        // avoiding an underflowing double-to-float conversion.
+        const int bits = _mm_cvtsd_si32(_mm_mul_sd(square, _mm_set_sd(0x1p149)));
+        return _mm_cvtss_f32(_mm_castsi128_ps(_mm_cvtsi32_si128(bits)));
+    }
+    if (high >= 0x7ff00000u) {
+        return static_cast<float>(_mm_cvtsd_f64(square));
+    }
+    return _mm_cvtss_f32(_mm_castsi128_ps(_mm_set1_epi32(0x7f800000)));
+#endif
 }
 
 VX_SIMD_INLINE __m128 VxSIMDLerp(__m128 a, __m128 b, float t) noexcept {

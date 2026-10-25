@@ -35,14 +35,16 @@ inline float VxVector::SquareMagnitude() const {
 #if defined(VX_SIMD_SSE)
     return VxSIMDLengthSquaredVector(this);
 #else
-    return x * x + y * y + z * z;
+    const double vx = x, vy = y, vz = z;
+    return static_cast<float>((vx * vx + vy * vy) + vz * vz);
 #endif
 }
 inline float VxVector::Magnitude() const {
 #if defined(VX_SIMD_SSE)
     return VxSIMDLengthVector(this);
 #else
-    return sqrtf(SquareMagnitude());
+    const double vx = x, vy = y, vz = z;
+    return static_cast<float>(sqrt((vx * vx + vy * vy) + vz * vz));
 #endif
 }
 inline float VxVector::Dot(const VxVector &iV) const {
@@ -632,13 +634,13 @@ VX_SIMD_INLINE void VxSIMDCrossVector(VxVector *result, const VxVector *a, const
 }
 
 VX_SIMD_INLINE float VxSIMDLengthVector(const VxVector *v) noexcept {
-    const __m128 vec = VxSIMDLoadFloat3(&v->x);
-    return _mm_cvtss_f32(_mm_sqrt_ss(VxSIMDDotProduct3(vec, vec)));
+    const __m128 xy = _mm_castsi128_ps(_mm_loadl_epi64(reinterpret_cast<const __m128i *>(&v->x)));
+    return VxSIMDLength3(_mm_movelh_ps(xy, _mm_load_ss(&v->z)));
 }
 
 VX_SIMD_INLINE float VxSIMDLengthSquaredVector(const VxVector *v) noexcept {
-    const __m128 vec = VxSIMDLoadFloat3(&v->x);
-    return _mm_cvtss_f32(VxSIMDDotProduct3(vec, vec));
+    const __m128 xy = _mm_castsi128_ps(_mm_loadl_epi64(reinterpret_cast<const __m128i *>(&v->x)));
+    return VxSIMDLengthSquared3(_mm_movelh_ps(xy, _mm_load_ss(&v->z)));
 }
 
 VX_SIMD_INLINE float VxSIMDDistanceVector(const VxVector *a, const VxVector *b) noexcept {
