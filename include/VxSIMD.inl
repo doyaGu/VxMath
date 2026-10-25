@@ -109,10 +109,10 @@ VX_SIMD_INLINE __m128 VxSIMDDotProduct4(__m128 a, __m128 b) noexcept {
  */
 VX_SIMD_INLINE __m128 VxSIMDCrossProduct3(__m128 a, __m128 b) noexcept {
     __m128 a_yzx = _mm_shuffle_ps(a, a, _MM_SHUFFLE(3, 0, 2, 1));
-    __m128 b_zxy = _mm_shuffle_ps(b, b, _MM_SHUFFLE(3, 1, 0, 2));
-    __m128 a_zxy = _mm_shuffle_ps(a, a, _MM_SHUFFLE(3, 1, 0, 2));
     __m128 b_yzx = _mm_shuffle_ps(b, b, _MM_SHUFFLE(3, 0, 2, 1));
-    return VX_FNMADD_PS(a_zxy, b_yzx, _mm_mul_ps(a_yzx, b_zxy));
+    // Equal product rounding preserves a cross a = 0; rotate ZXY back to XYZ.
+    __m128 cross_zxy = _mm_sub_ps(_mm_mul_ps(a, b_yzx), _mm_mul_ps(a_yzx, b));
+    return _mm_shuffle_ps(cross_zxy, cross_zxy, _MM_SHUFFLE(3, 0, 2, 1));
 }
 
 // ============================================================================
