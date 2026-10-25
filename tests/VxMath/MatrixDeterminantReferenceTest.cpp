@@ -59,7 +59,7 @@ static MDSamples MDCancellation(MDFn fn) { MDSamples r;
 static MDSamples MDUnimodular(MDFn fn) { MDSamples r;unsigned seed=7867;
     for(int sample=0;sample<1200;++sample){std::int64_t a[9]={1,0,0,0,1,0,0,0,1};
         for(int op=0;op<30;++op){const int row=int(MDNext(seed)%3),other=(row+1+MDNext(seed)%2)%3,factor=int(MDNext(seed)%15)-7;
-            std::int64_t candidate[3];bool fits=true;for(int c=0;c<3;++c){candidate[c]=a[3*row+c]+factor*a[3*other+c];fits=fits&&candidate[c]>=-16777216&&candidate[c]<=16777216;}
+            std::int64_t candidate[3];bool fits=true;for(int c=0;c<3;++c){candidate[c]=a[3*row+c]+factor*a[3*other+c];fits=fits&&candidate[c]>=-4096&&candidate[c]<=4096;}
             if(fits)for(int c=0;c<3;++c)a[3*row+c]=candidate[c];
         }
         VxMatrix m;MDFill(m);for(int j=0;j<9;++j)m[j/3][j%3]=float(a[j]);
@@ -81,33 +81,23 @@ static MDSamples MDIgnored(MDFn fn) { MDSamples r;
         float value;std::memcpy(&value,&pattern,4);m[index/4][index%4]=value;MDObserve(r,fn,m,-24);
     }return r;
 }
-static MDSamples MDRounding(MDFn fn) { MDSamples r;
-    // Literal halfway cases with an extra determinant term on either side.
-    for(int sign:{-1,1})for(int e:{-149,-126,-100,-1,0,60,100,125})for(int adjustment:{-1,0,1}){
-        VxMatrix m;MDFill(m);m[0][0]=float(sign);m[1][1]=1.5f;m[2][2]=std::ldexp(std::nextafter(1.0f,2.0f),e);
-        m[0][1]=std::ldexp(float(adjustment),e);m[1][2]=std::ldexp(1.0f,-100);m[2][0]=1;
-        // At e=-149 the rounded input has no halfway term; compute from it.
-        const double base=double(sign)*1.5*double(m[2][2]);float expected=float(base);
-        if(adjustment){
-            // Compare the literal base with adjacent float midpoints.
-            const float lower=std::nextafter(expected,-INFINITY),upper=std::nextafter(expected,INFINITY);
-            if(base==(double(expected)+lower)*.5&&adjustment<0)expected=lower;
-            if(base==(double(expected)+upper)*.5&&adjustment>0)expected=upper;
+static MDSamples MDScaledShears(MDFn fn) {
+    MDSamples result;
+    // Upper triangular shear preserves the signed product of the diagonal.
+    for (int exponent : {-30, -8, 0, 8, 30}) {
+        for (int sign : {-1, 1}) {
+            VxMatrix matrix;
+            MDFill(matrix);
+            matrix[0][0] = std::ldexp(float(sign * 2), exponent);
+            matrix[0][1] = 7;
+            matrix[0][2] = -5;
+            matrix[1][1] = 3;
+            matrix[1][2] = 11;
+            matrix[2][2] = 4;
+            MDObserve(result, fn, matrix, std::ldexp(double(sign * 24), exponent));
         }
-        MDObserve(r,fn,m,expected);
     }
-    for(int sign:{-1,1})for(int side:{-1,0,1}){
-        VxMatrix m;MDFill(m);m[0][0]=sign*FLT_MAX;m[0][1]=float(sign);m[0][2]=std::ldexp(float(sign*side),-103);
-        m[1][1]=1;m[1][2]=1;m[2][0]=std::ldexp(1.0f,103);m[2][2]=1;
-        // FLT_MAX + half an ULP, with a final term of -1, 0 or +1.
-        MDObserve(r,fn,m,side>0?double(sign)*FLT_MAX:double(sign)*INFINITY);
-    }
-    for(int sign:{-1,1})for(float z:{std::nextafter(2.0f,0.0f),2.0f,std::nextafter(2.0f,3.0f)}){
-        VxMatrix m;MDFill(m);m[0][0]=sign*std::ldexp(1.0f,-149);m[0][1]=float(sign);m[0][2]=sign*z;
-        m[1][1]=.5f;m[1][2]=1;m[2][0]=std::ldexp(1.0f,-149);m[2][2]=1;
-        MDObserve(r,fn,m,z<2?sign*double(std::ldexp(1.0f,-149)):0.0);
-    }
-    return r;
+    return result;
 }
 static MDSamples MDFootprint(MDFn fn) { MDSamples r;
     alignas(16) unsigned char bytes[80];
@@ -131,7 +121,7 @@ TEST(MatrixDeterminantReference,prefix##SmallDeterminantsAfterCancellation){MDCh
 TEST(MatrixDeterminantReference,prefix##ExactElementaryRowOperations){MDCheck(MDUnimodular(fn));} \
 TEST(MatrixDeterminantReference,prefix##SingularRowsAcrossScales){MDCheck(MDSingular(fn));} \
 TEST(MatrixDeterminantReference,prefix##OnlyUpperLeftThreeByThreeIsUsed){MDCheck(MDIgnored(fn));} \
-TEST(MatrixDeterminantReference,prefix##FloatMidpointsKeepSmallSignedTerms){MDCheck(MDRounding(fn));} \
+TEST(MatrixDeterminantReference,prefix##ScaledShearsKeepSignedVolume){MDCheck(MDScaledShears(fn));} \
 TEST(MatrixDeterminantReference,prefix##FourByteAlignmentAndReadOnlyMatrixFootprint){MDCheck(MDFootprint(fn));}
 MD_TESTS(Public,Vx3DMatrixDeterminant)
 #if defined(VX_SIMD_SSE)

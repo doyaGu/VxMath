@@ -316,109 +316,22 @@ inline void Vx3DMultiplyMatrix4(VxMatrix &ResultMat, const VxMatrix &MatA, const
 #endif
 }
 
-// Add one component to a nonoverlapping expansion. Twelve components cover
-// six exact float triple products; comparison with a rounding boundary adds one.
-inline int VxMatrixDeterminantAccumulate(double value, double *expansion, int length) {
-    double next[13];
-    int count = 0;
-    for (int i = 0; i < length; ++i) {
-        const double sum = value + expansion[i];
-        const double tail = sum - value;
-        const double error = (value - (sum - tail)) + (expansion[i] - tail);
-        if (error != 0.0) next[count++] = error;
-        value = sum;
-    }
-    if (value != 0.0 || count == 0) next[count++] = value;
-    for (int i = 0; i < count; ++i) expansion[i] = next[i];
-    return count;
-}
-
-inline int VxMatrixDeterminantCompare(const double *expansion, int length, double boundary) {
-    double difference[13];
-    for (int i = 0; i < length; ++i) difference[i] = expansion[i];
-    length = VxMatrixDeterminantAccumulate(-boundary, difference, length);
-    return difference[length - 1] > 0.0 ? 1 : difference[length - 1] < 0.0 ? -1 : 0;
-}
-
-inline float VxMatrixDeterminantRounded(const double *high, const double *low) {
-    double expansion[13];
-    int length = 0;
-    for (int i = 0; i < 6; ++i) {
-        length = VxMatrixDeterminantAccumulate(low[i], expansion, length);
-        length = VxMatrixDeterminantAccumulate(high[i], expansion, length);
-    }
-    const float candidate = float(expansion[length - 1]);
-    const double overflow = double(FLT_MAX) + 0x1p103;
-    if (candidate > FLT_MAX) return VxMatrixDeterminantCompare(expansion, length, overflow) < 0 ? FLT_MAX : candidate;
-    if (candidate < -FLT_MAX) return VxMatrixDeterminantCompare(expansion, length, -overflow) > 0 ? -FLT_MAX : candidate;
-
-    // Compare the exact expansion with adjacent binary32 midpoints. This also
-    // avoids double rounding when a tiny term lies just beyond a float tie.
-    unsigned bits, upperBits, lowerBits;
-    memcpy(&bits, &candidate, sizeof(bits));
-    if (candidate == 0.0f) { upperBits = 1; lowerBits = 0x80000001u; }
-    else if (candidate > 0.0f) { upperBits = bits + 1; lowerBits = bits - 1; }
-    else { upperBits = bits - 1; lowerBits = bits + 1; }
-    float upper, lower;
-    memcpy(&upper, &upperBits, sizeof(upper));
-    memcpy(&lower, &lowerBits, sizeof(lower));
-    const double upperMidpoint = upper > FLT_MAX ? overflow : (double(candidate) + upper) * 0.5;
-    const double lowerMidpoint = lower < -FLT_MAX ? -overflow : (double(candidate) + lower) * 0.5;
-    const int above = VxMatrixDeterminantCompare(expansion, length, upperMidpoint);
-    const int below = VxMatrixDeterminantCompare(expansion, length, lowerMidpoint);
-    if (above > 0 || (above == 0 && (bits & 1))) return upper;
-    if (below < 0 || (below == 0 && (bits & 1))) return lower;
-    return candidate;
+// Keep the determinant in double until the caller stores the result.
+inline double VxMatrixInverseDeterminant(const VxMatrix &Mat) {
+    const double a00 = Mat[0][0], a01 = Mat[0][1], a02 = Mat[0][2];
+    const double a10 = Mat[1][0], a11 = Mat[1][1], a12 = Mat[1][2];
+    const double a20 = Mat[2][0], a21 = Mat[2][1], a22 = Mat[2][2];
+    return a00 * (a11 * a22 - a12 * a21)
+         + a01 * (a12 * a20 - a10 * a22)
+         + a02 * (a10 * a21 - a11 * a20);
 }
 
 inline float Vx3DMatrixDeterminant(const VxMatrix &Mat) {
 #if defined(VX_SIMD_SSE)
     return VxSIMDDeterminant3x3(&Mat);
 #else
-    const double x[] = {Mat[0][0], Mat[0][1], Mat[0][2], Mat[0][2], Mat[0][1], Mat[0][0]};
-    const double y[] = {Mat[1][1], Mat[1][2], Mat[1][0], Mat[1][1], Mat[1][0], Mat[1][2]};
-    const double z[] = {Mat[2][2], Mat[2][0], Mat[2][1], -double(Mat[2][0]), -double(Mat[2][2]), -double(Mat[2][1])};
-    double high[6], low[6];
-    for (int i = 0; i < 6; ++i) {
-        // A product of two binary32 values is exact in binary64. Split that
-        // product before the third multiplication to retain its rounding tail.
-        const double product = x[i] * y[i];
-        high[i] = product * z[i];
-        const double split = product * 134217729.0;
-        const double upper = split - (split - product), lower = product - upper;
-        low[i] = (upper * z[i] - high[i]) + lower * z[i];
-    }
-    return VxMatrixDeterminantRounded(high, low);
+    return static_cast<float>(VxMatrixInverseDeterminant(Mat));
 #endif
-}
-
-inline double VxMatrixInverseDeterminantSum(const double *high, const double *low) {
-    double expansion[13];
-    int length = 0;
-    for (int i = 0; i < 6; ++i) {
-        length = VxMatrixDeterminantAccumulate(low[i], expansion, length);
-        length = VxMatrixDeterminantAccumulate(high[i], expansion, length);
-    }
-    // Keep the determinant in double: a float determinant can be zero or infinite
-    // even when the inverse coefficients are representable.
-    double value = 0.0;
-    for (int i = 0; i < length; ++i) value += expansion[i];
-    return value;
-}
-
-inline double VxMatrixInverseDeterminant(const VxMatrix &Mat) {
-    const double x[] = {Mat[0][0], Mat[0][1], Mat[0][2], Mat[0][2], Mat[0][1], Mat[0][0]};
-    const double y[] = {Mat[1][1], Mat[1][2], Mat[1][0], Mat[1][1], Mat[1][0], Mat[1][2]};
-    const double z[] = {Mat[2][2], Mat[2][0], Mat[2][1], -double(Mat[2][0]), -double(Mat[2][2]), -double(Mat[2][1])};
-    double high[6], low[6];
-    for (int i = 0; i < 6; ++i) {
-        const double product = x[i] * y[i];
-        high[i] = product * z[i];
-        const double split = product * 134217729.0;
-        const double upper = split - (split - product), lower = product - upper;
-        low[i] = (upper * z[i] - high[i]) + lower * z[i];
-    }
-    return VxMatrixInverseDeterminantSum(high, low);
 }
 
 inline void Vx3DInverseMatrix(VxMatrix &InverseMat, const VxMatrix &Mat) {
@@ -426,18 +339,28 @@ inline void Vx3DInverseMatrix(VxMatrix &InverseMat, const VxMatrix &Mat) {
     VxSIMDInverseAffineMatrix(&InverseMat, &Mat);
 #else
     const double determinant = VxMatrixInverseDeterminant(Mat);
-    if (determinant == 0.0) return;
+    if (determinant == 0.0) {
+        return;
+    }
+    double linear[3][3];
+    for (int row = 0; row < 3; ++row) {
+        for (int column = 0; column < 3; ++column) {
+            const int i = (column + 1) % 3, j = (column + 2) % 3;
+            const int k = (row + 1) % 3, l = (row + 2) % 3;
+            linear[row][column] = (double(Mat[i][k]) * Mat[j][l] - double(Mat[i][l]) * Mat[j][k]) / determinant;
+        }
+    }
+
     VxMatrix temp;
     temp.SetIdentity();
-    for (int r = 0; r < 3; ++r) for (int c = 0; c < 3; ++c) {
-        const int i = (c + 1) % 3, j = (c + 2) % 3, k = (r + 1) % 3, l = (r + 2) % 3;
-        temp[r][c] = float((double(Mat[i][k]) * Mat[j][l] - double(Mat[i][l]) * Mat[j][k]) / determinant);
-    }
-    for (int r = 0; r < 3; ++r) {
-        // Cramer's rule for -translation * inverse(linear), before float rounding.
-        VxMatrix translated = Mat;
-        for (int c = 0; c < 3; ++c) translated[r][c] = Mat[3][c];
-        temp[3][r] = float(-VxMatrixInverseDeterminant(translated) / determinant);
+    for (int column = 0; column < 3; ++column) {
+        for (int row = 0; row < 3; ++row) {
+            temp[row][column] = static_cast<float>(linear[row][column]);
+        }
+        const double translation = Mat[3][0] * linear[0][column]
+                                 + Mat[3][1] * linear[1][column]
+                                 + Mat[3][2] * linear[2][column];
+        temp[3][column] = static_cast<float>(-translation);
     }
     InverseMat = temp;
 #endif
@@ -1202,71 +1125,66 @@ VX_SIMD_INLINE void VxSIMDMultiplyMatrixM(VxMatrix *result, const VxMatrix *a, c
     }
 }
 
-VX_SIMD_INLINE float VxSIMDDeterminant3x3(const VxMatrix *mat) noexcept {
-    const double x[] = {(*mat)[0][0], (*mat)[0][1], (*mat)[0][2], (*mat)[0][2], (*mat)[0][1], (*mat)[0][0]};
-    const double y[] = {(*mat)[1][1], (*mat)[1][2], (*mat)[1][0], (*mat)[1][1], (*mat)[1][0], (*mat)[1][2]};
-    const double z[] = {(*mat)[2][2], (*mat)[2][0], (*mat)[2][1], -double((*mat)[2][0]), -double((*mat)[2][2]), -double((*mat)[2][1])};
-    double high[6], low[6];
-    for (int i = 0; i < 6; i += 2) {
-        const __m128d factor = _mm_loadu_pd(z + i);
-        const __m128d product = _mm_mul_pd(_mm_loadu_pd(x + i), _mm_loadu_pd(y + i));
-        const __m128d result = _mm_mul_pd(product, factor);
-        const __m128d split = _mm_mul_pd(product, _mm_set1_pd(134217729.0));
-        const __m128d upper = _mm_sub_pd(split, _mm_sub_pd(split, product));
-        const __m128d lower = _mm_sub_pd(product, upper);
-        const __m128d error = _mm_add_pd(_mm_sub_pd(_mm_mul_pd(upper, factor), result), _mm_mul_pd(lower, factor));
-        _mm_storeu_pd(high + i, result);
-        _mm_storeu_pd(low + i, error);
-    }
-    return VxMatrixDeterminantRounded(high, low);
+VX_SIMD_INLINE double VxSIMDInverseDeterminant(const VxMatrix *mat) noexcept {
+    // Evaluate the first two cofactors together; the third occupies one lane.
+    const __m128d positiveXY = _mm_mul_pd(
+        _mm_set_pd((*mat)[1][2], (*mat)[1][1]),
+        _mm_set_pd((*mat)[2][0], (*mat)[2][2]));
+    const __m128d negativeXY = _mm_mul_pd(
+        _mm_set_pd((*mat)[1][0], (*mat)[1][2]),
+        _mm_set_pd((*mat)[2][2], (*mat)[2][1]));
+    const __m128d cofactorXY = _mm_sub_pd(positiveXY, negativeXY);
+    const __m128d termsXY = _mm_mul_pd(cofactorXY, _mm_set_pd((*mat)[0][1], (*mat)[0][0]));
+    const __m128d cofactorZ = _mm_sub_sd(
+        _mm_mul_sd(_mm_set_sd((*mat)[1][0]), _mm_set_sd((*mat)[2][1])),
+        _mm_mul_sd(_mm_set_sd((*mat)[1][1]), _mm_set_sd((*mat)[2][0])));
+    const __m128d sumXY = _mm_add_sd(termsXY, _mm_unpackhi_pd(termsXY, termsXY));
+    return _mm_cvtsd_f64(_mm_add_sd(sumXY, _mm_mul_sd(_mm_set_sd((*mat)[0][2]), cofactorZ)));
 }
 
-VX_SIMD_INLINE double VxSIMDInverseDeterminant(const VxMatrix *mat) noexcept {
-    const double x[] = {(*mat)[0][0], (*mat)[0][1], (*mat)[0][2], (*mat)[0][2], (*mat)[0][1], (*mat)[0][0]};
-    const double y[] = {(*mat)[1][1], (*mat)[1][2], (*mat)[1][0], (*mat)[1][1], (*mat)[1][0], (*mat)[1][2]};
-    const double z[] = {(*mat)[2][2], (*mat)[2][0], (*mat)[2][1], -double((*mat)[2][0]), -double((*mat)[2][2]), -double((*mat)[2][1])};
-    double high[6], low[6];
-    for (int i = 0; i < 6; i += 2) {
-        const __m128d factor = _mm_loadu_pd(z + i);
-        const __m128d product = _mm_mul_pd(_mm_loadu_pd(x + i), _mm_loadu_pd(y + i));
-        const __m128d value = _mm_mul_pd(product, factor);
-        const __m128d split = _mm_mul_pd(product, _mm_set1_pd(134217729.0));
-        const __m128d upper = _mm_sub_pd(split, _mm_sub_pd(split, product));
-        const __m128d lower = _mm_sub_pd(product, upper);
-        _mm_storeu_pd(high + i, value);
-        _mm_storeu_pd(low + i, _mm_add_pd(_mm_sub_pd(_mm_mul_pd(upper, factor), value), _mm_mul_pd(lower, factor)));
-    }
-    return VxMatrixInverseDeterminantSum(high, low);
+VX_SIMD_INLINE float VxSIMDDeterminant3x3(const VxMatrix *mat) noexcept {
+    return static_cast<float>(VxSIMDInverseDeterminant(mat));
 }
 
 VX_SIMD_INLINE void VxSIMDInverseAffineMatrix(VxMatrix *result, const VxMatrix *mat) noexcept {
     const double determinant = VxSIMDInverseDeterminant(mat);
-    if (determinant == 0.0) return;
+    if (determinant == 0.0) {
+        return;
+    }
     double x[10] = {}, y[10] = {}, z[10] = {}, w[10] = {};
-    for (int r = 0; r < 3; ++r) for (int c = 0; c < 3; ++c) {
-        const int i = (c + 1) % 3, j = (c + 2) % 3, k = (r + 1) % 3, l = (r + 2) % 3, at = r * 3 + c;
-        x[at] = (*mat)[i][k]; y[at] = (*mat)[j][l]; z[at] = (*mat)[i][l]; w[at] = (*mat)[j][k];
+    for (int row = 0; row < 3; ++row) {
+        for (int column = 0; column < 3; ++column) {
+            const int i = (column + 1) % 3, j = (column + 2) % 3;
+            const int k = (row + 1) % 3, l = (row + 2) % 3;
+            const int index = row * 3 + column;
+            x[index] = (*mat)[i][k];
+            y[index] = (*mat)[j][l];
+            z[index] = (*mat)[i][l];
+            w[index] = (*mat)[j][k];
+        }
     }
     const __m128d divisor = _mm_set1_pd(determinant);
-    float linear[10];
+    double linear[10];
     for (int i = 0; i < 10; i += 2) {
         const __m128d cofactor = _mm_sub_pd(_mm_mul_pd(_mm_loadu_pd(x + i), _mm_loadu_pd(y + i)),
             _mm_mul_pd(_mm_loadu_pd(z + i), _mm_loadu_pd(w + i)));
-        _mm_storel_pi(reinterpret_cast<__m64 *>(linear + i), _mm_cvtpd_ps(_mm_div_pd(cofactor, divisor)));
+        _mm_storeu_pd(linear + i, _mm_div_pd(cofactor, divisor));
     }
-    double numerator[4] = {};
-    for (int r = 0; r < 3; ++r) {
-        VxMatrix translated = *mat;
-        for (int c = 0; c < 3; ++c) translated[r][c] = (*mat)[3][c];
-        numerator[r] = -VxSIMDInverseDeterminant(&translated);
-    }
-    float translation[4];
-    _mm_storel_pi(reinterpret_cast<__m64 *>(translation), _mm_cvtpd_ps(_mm_div_pd(_mm_loadu_pd(numerator), divisor)));
-    _mm_storel_pi(reinterpret_cast<__m64 *>(translation + 2), _mm_cvtpd_ps(_mm_div_pd(_mm_loadu_pd(numerator + 2), divisor)));
+    const __m128d translatedXY = _mm_add_pd(
+        _mm_add_pd(_mm_mul_pd(_mm_set1_pd((*mat)[3][0]), _mm_loadu_pd(linear)),
+                   _mm_mul_pd(_mm_set1_pd((*mat)[3][1]), _mm_loadu_pd(linear + 3))),
+        _mm_mul_pd(_mm_set1_pd((*mat)[3][2]), _mm_loadu_pd(linear + 6)));
+    const double translatedZ = (*mat)[3][0] * linear[2] + (*mat)[3][1] * linear[5] + (*mat)[3][2] * linear[8];
     VxMatrix temp;
     temp.SetIdentity();
-    for (int r = 0; r < 3; ++r) for (int c = 0; c < 3; ++c) temp[r][c] = linear[r * 3 + c];
-    for (int c = 0; c < 3; ++c) temp[3][c] = translation[c];
+    for (int row = 0; row < 3; ++row) {
+        for (int column = 0; column < 3; ++column) {
+            temp[row][column] = static_cast<float>(linear[row * 3 + column]);
+        }
+    }
+    const __m128 translationXY = _mm_cvtpd_ps(_mm_sub_pd(_mm_setzero_pd(), translatedXY));
+    _mm_storel_pi(reinterpret_cast<__m64 *>(&temp[3][0]), translationXY);
+    temp[3][2] = static_cast<float>(-translatedZ);
     *result = temp;
 }
 

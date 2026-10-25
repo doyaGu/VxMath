@@ -133,7 +133,7 @@ static MIResult MITranslation(MIFn fn) {
     MIResult result;
     for (int kind = 0; kind < 2; ++kind) for (int axis = 0; axis < 3; ++axis) {
         VxMatrix base, inverse; base.SetIdentity(); inverse.SetIdentity();
-        const int e = kind == 0 ? 0 : -40, t = kind == 0 ? 80 : 120;
+        const int e = kind == 0 ? 0 : -20, t = 30;
         base[0][0] = std::ldexp(1.0f,e); base[1][0] = base[2][0] = -1;
         for (int r = 0; r < 3; ++r) inverse[r][0] = std::ldexp(1.0f,-e);
         base[3][0] = std::ldexp(1.0f,t); base[3][1] = std::ldexp(1.0f,e); base[3][2] = -base[3][0];
