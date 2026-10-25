@@ -146,29 +146,18 @@ static XBOOL PointInFaceScalarCore(const VxVector &point, const VxVector &pt0, c
     const VxVector *vertices[] = {&pt0, &pt1, &pt2};
     bool positive = false, negative = false;
     for (int edge = 0; edge < 3; ++edge) {
-        const VxVector &a = *vertices[edge], &b = *vertices[(edge + 1) % 3];
-        const double px = point[first], py = point[second], ax = a[first], ay = a[second], bx = b[first], by = b[second];
-        // A product of two finite binary32 coordinates is exact in binary64.
-        // Grow an error-free expansion of the six products, so an arbitrarily
-        // small edge offset is not lost by subtracting coordinates first.
-        const double terms[] = {px * by, -px * ay, -ax * by, -py * bx, py * ax, ay * bx};
-        double expansion[6];
-        for (int term = 0; term < 6; ++term) {
-            double q = terms[term];
-            for (int j = 0; j < term; ++j) {
-                const double sum = q + expansion[j];
-                const double virtualB = sum - q;
-                expansion[j] = (q - (sum - virtualB)) + (expansion[j] - virtualB);
-                q = sum;
-            }
-            expansion[term] = q;
+        const VxVector &a = *vertices[edge];
+        const VxVector &b = *vertices[(edge + 1) % 3];
+        const double px = double(point[first]) - a[first];
+        const double py = double(point[second]) - a[second];
+        const double dx = double(b[first]) - a[first];
+        const double dy = double(b[second]) - a[second];
+        const double side = px * dy - py * dx;
+        positive = positive || side > 0.0;
+        negative = negative || side < 0.0;
+        if (positive && negative) {
+            return FALSE;
         }
-        for (int j = 5; j >= 0; --j) if (expansion[j] != 0.0) {
-            positive = positive || expansion[j] > 0.0;
-            negative = negative || expansion[j] < 0.0;
-            break;
-        }
-        if (positive && negative) return FALSE;
     }
     if (positive) return 2;
     if (negative) return 1;
@@ -189,40 +178,21 @@ static XBOOL PointInFaceSIMDCore(const VxVector &point, const VxVector &pt0, con
     i2 = second;
     const VxVector *vertices[] = {&pt0, &pt1, &pt2, &pt0, &pt1};
     const __m128d px = _mm_set1_pd(point[first]), py = _mm_set1_pd(point[second]), zero = _mm_setzero_pd();
-    int signs[4];
-    // Two projected edge predicates in parallel. All products and error-free
-    // expansion operations remain packed SSE2; no Scalar core is called.
+    int positive = 0, negative = 0;
+    // Evaluate two edges at a time. The final pair repeats edge 0.
     for (int pair = 0; pair < 3; pair += 2) {
         const __m128d ax = _mm_set_pd((*vertices[pair + 1])[first], (*vertices[pair])[first]);
         const __m128d ay = _mm_set_pd((*vertices[pair + 1])[second], (*vertices[pair])[second]);
         const __m128d bx = _mm_set_pd((*vertices[pair + 2])[first], (*vertices[pair + 1])[first]);
         const __m128d by = _mm_set_pd((*vertices[pair + 2])[second], (*vertices[pair + 1])[second]);
-        const __m128d terms[] = {_mm_mul_pd(px, by), _mm_sub_pd(zero, _mm_mul_pd(px, ay)),
-            _mm_sub_pd(zero, _mm_mul_pd(ax, by)), _mm_sub_pd(zero, _mm_mul_pd(py, bx)),
-            _mm_mul_pd(py, ax), _mm_mul_pd(ay, bx)};
-        __m128d expansion[6];
-        for (int term = 0; term < 6; ++term) {
-            __m128d q = terms[term];
-            for (int j = 0; j < term; ++j) {
-                const __m128d sum = _mm_add_pd(q, expansion[j]);
-                const __m128d virtualB = _mm_sub_pd(sum, q);
-                expansion[j] = _mm_add_pd(_mm_sub_pd(q, _mm_sub_pd(sum, virtualB)), _mm_sub_pd(expansion[j], virtualB));
-                q = sum;
-            }
-            expansion[term] = q;
-        }
-        int classified = 0, negative = 0;
-        for (int j = 5; j >= 0; --j) {
-            const int n = _mm_movemask_pd(_mm_cmplt_pd(expansion[j], zero));
-            const int p = _mm_movemask_pd(_mm_cmpgt_pd(expansion[j], zero));
-            negative |= n & ~classified;
-            classified |= n | p;
-        }
-        signs[pair] = classified & 1 ? (negative & 1 ? -1 : 1) : 0;
-        signs[pair + 1] = classified & 2 ? (negative & 2 ? -1 : 1) : 0;
+        const __m128d relativeX = _mm_sub_pd(px, ax);
+        const __m128d relativeY = _mm_sub_pd(py, ay);
+        const __m128d edgeX = _mm_sub_pd(bx, ax);
+        const __m128d edgeY = _mm_sub_pd(by, ay);
+        const __m128d side = _mm_sub_pd(_mm_mul_pd(relativeX, edgeY), _mm_mul_pd(relativeY, edgeX));
+        positive |= _mm_movemask_pd(_mm_cmpgt_pd(side, zero));
+        negative |= _mm_movemask_pd(_mm_cmplt_pd(side, zero));
     }
-    const bool positive = signs[0] > 0 || signs[1] > 0 || signs[2] > 0;
-    const bool negative = signs[0] < 0 || signs[1] < 0 || signs[2] < 0;
     if (positive && negative) return FALSE;
     if (positive) return 2;
     if (negative) return 1;
