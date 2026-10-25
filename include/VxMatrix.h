@@ -139,7 +139,7 @@ inline void Vx3DMatrixFromRotation(VxMatrix &ResultMat, const VxVector &Vector, 
 inline void Vx3DMatrixFromRotationAndOrigin(VxMatrix &ResultMat, const VxVector &Vector, const VxVector &Origin, float Angle);
 
 /**
- * @brief Creates a rotation matrix from Euler angles.
+ * @brief Creates the row-vector rotation Rx * Ry * Rz from Euler angles.
  * @param Mat The resulting rotation matrix.
  * @param eax The rotation around the X-axis (pitch) in radians.
  * @param eay The rotation around the Y-axis (yaw) in radians.
@@ -148,7 +148,11 @@ inline void Vx3DMatrixFromRotationAndOrigin(VxMatrix &ResultMat, const VxVector 
 inline void Vx3DMatrixFromEulerAngles(VxMatrix &Mat, float eax, float eay, float eaz);
 
 /**
- * @brief Extracts Euler angles from a rotation matrix.
+ * @brief Extracts angles for the row-vector rotation Rx * Ry * Rz.
+ * @remarks At sqrt(m00*m00+m01*m01) <= 2^-19, fixes Z to zero and
+ * extracts X from -m21,m11. The threshold is absolute; no normalization
+ * is performed. Outputs are optional and written in X,Y,Z order from
+ * an input snapshot, including when an output aliases an input field.
  * @param Mat The input rotation matrix.
  * @param eax Pointer to store the X-axis rotation (pitch) in radians.
  * @param eay Pointer to store the Y-axis rotation (yaw) in radians.

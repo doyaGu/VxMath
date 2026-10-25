@@ -757,14 +757,16 @@ inline void Vx3DMatrixFromEulerAngles(VxMatrix &Mat, float eax, float eay, float
 inline void Vx3DMatrixToEulerAngles(const VxMatrix &Mat, float *eax, float *eay, float *eaz) {
     const float m00=Mat[0][0], m01=Mat[0][1], m02=Mat[0][2];
     const float m12=Mat[1][2], m22=Mat[2][2], m21=Mat[2][1], m11=Mat[1][1];
-    const float magnitude = sqrtf(m00*m00 + m01*m01);
+    // Binary32 squares fit exactly in double, including subnormal inputs.
+    // Keep the length wide through atan2: rounding it to float loses range.
+    const double magnitude = sqrt(static_cast<double>(m00)*m00 + static_cast<double>(m01)*m01);
     if (!(magnitude > 16.0f * EPSILON)) {
-        if (eay) *eay = atan2f(-m02, magnitude);
         if (eax) *eax = atan2f(-m21, m11);
+        if (eay) *eay = static_cast<float>(atan2(-static_cast<double>(m02), magnitude));
         if (eaz) *eaz = 0.0f;
     } else {
-        if (eay) *eay = atan2f(-m02, magnitude);
         if (eax) *eax = atan2f(m12, m22);
+        if (eay) *eay = static_cast<float>(atan2(-static_cast<double>(m02), magnitude));
         if (eaz) *eaz = atan2f(m01, m00);
     }
 }
