@@ -293,130 +293,75 @@ void InterpolateVectorArray(void *Res, void *Inarray1, void *Inarray2, float fac
 }
 
 static XBOOL TransformBox2DScalarCore(const VxMatrix &World_ProjectionMat, const VxBbox &box, VxRect *ScreenSize, VxRect *Extents, VXCLIP_FLAGS &OrClipFlags, VXCLIP_FLAGS &AndClipFlags) {
-    // Use local variables for thread safety
-    VxVector4 transformedVertices[8];
-    XDWORD allVerticesFlags = 0;
-    XDWORD allVerticesFlagsAnded = 0xFFFFFFFF;
-
-    // Transform first corner (Min)
-    Vx3DMultiplyMatrixVector4(&transformedVertices[0], World_ProjectionMat, &box.Min);
-
-    // Calculate box dimensions
-    VxVector boxSize = box.Max - box.Min;
-    float dx = boxSize.x;
-    float dy = boxSize.y;
-    float dz = boxSize.z;
-
-    int vertexCount;
-
-    // Pre-calculate matrix-vector products for better performance
-    // Extract matrix elements for clarity and performance
-    const VxVector4 &matRow0 = World_ProjectionMat[0];
-    const VxVector4 &matRow1 = World_ProjectionMat[1];
-    const VxVector4 &matRow2 = World_ProjectionMat[2];
-
-    VxVector4 deltaX(matRow0[0] * dx, matRow0[1] * dx, matRow0[2] * dx, matRow0[3] * dx);
-    VxVector4 deltaY(matRow1[0] * dy, matRow1[1] * dy, matRow1[2] * dy, matRow1[3] * dy);
-
-    if (dz == 0.0f) {
-        // Box is flat in Z dimension - only need 4 vertices
-        vertexCount = 4;
-
-        // Calculate corners in stable traversal order.
-        transformedVertices[1] = transformedVertices[0] + deltaX;              // Min + (dx, 0, 0)
-        transformedVertices[2] = transformedVertices[0] + deltaY;              // Min + (0, dy, 0)
-        transformedVertices[3] = transformedVertices[1] + deltaY;              // Min + (dx, dy, 0)
-    } else {
-        // Full 3D box - need all 8 vertices
-        vertexCount = 8;
-
-        VxVector4 deltaZ(matRow2[0] * dz, matRow2[1] * dz, matRow2[2] * dz, matRow2[3] * dz);
-
-        // Calculate all 8 corners in stable traversal order.
-        transformedVertices[1] = transformedVertices[0] + deltaZ;              // Min + (0, 0, dz)
-        transformedVertices[2] = transformedVertices[0] + deltaY;              // Min + (0, dy, 0)
-        transformedVertices[3] = transformedVertices[1] + deltaY;              // Min + (0, dy, dz)
-        transformedVertices[4] = transformedVertices[0] + deltaX;              // Min + (dx, 0, 0)
-        transformedVertices[5] = transformedVertices[4] + deltaZ;              // Min + (dx, 0, dz)
-        transformedVertices[6] = transformedVertices[4] + deltaY;              // Min + (dx, dy, 0)
-        transformedVertices[7] = transformedVertices[5] + deltaY;              // Min + (dx, dy, dz)
-    }
-
-    // Check each vertex against clip planes
-    for (int i = 0; i < vertexCount; i++) {
-        XDWORD vertexFlags = 0;
-        const VxVector4 &vertex = transformedVertices[i];
-
-        // Check against frustum planes using homogeneous coordinates
-        // Preserve the corner traversal order used by the projection code.
-        if (-vertex.w > vertex.x) vertexFlags |= VXCLIP_LEFT;    // bit 4 (0x10)
-        if (vertex.x > vertex.w) vertexFlags |= VXCLIP_RIGHT;    // bit 5 (0x20)
-        if (-vertex.w > vertex.y) vertexFlags |= VXCLIP_BOTTOM;  // bit 7 (0x80)
-        if (vertex.y > vertex.w) vertexFlags |= VXCLIP_TOP;      // bit 6 (0x40)
-        if (vertex.z < 0.0f) vertexFlags |= VXCLIP_FRONT;        // bit 8 (0x100) - z behind near plane
-        if (vertex.z > vertex.w) vertexFlags |= VXCLIP_BACK;     // bit 9 (0x200) - z beyond far plane
-
-        // Update combined flags
-        allVerticesFlags |= vertexFlags;
-        allVerticesFlagsAnded &= vertexFlags;
-    }
-
-    // Calculate screen coordinates if box is at least partially visible and screen extents are requested
-    if (Extents && ScreenSize && !(allVerticesFlagsAnded & VXCLIP_ALL)) {
-        float minX = 1.0e10f;
-        float minY = 1.0e10f;
-        float maxX = -1.0e10f;
-        float maxY = -1.0e10f;
-
-        // Calculate viewport parameters
-        float halfWidth = (ScreenSize->right - ScreenSize->left) * 0.5f;
-        float halfHeight = (ScreenSize->bottom - ScreenSize->top) * 0.5f;
-        float centerX = halfWidth + ScreenSize->left;
-        float centerY = halfHeight + ScreenSize->top;
-
-        // Project vertices and update extents
-        for (int i = 0; i < vertexCount; i++) {
-            VxVector4 &vertex = transformedVertices[i];
-
-            float invW = VxScreenReciprocalAbs(vertex.w);
-            vertex.w = invW;
-
-            // Convert to screen coordinates
-            float screenX = vertex.x * invW * halfWidth + centerX;
-            float screenY = centerY - vertex.y * invW * halfHeight;
-
-            // Store back into vertex for downstream screen conversion.
-            vertex.x = screenX;
-            vertex.y = screenY;
-
-            // Update extents
-            if (screenX < minX) minX = screenX;
-            if (screenY < minY) minY = screenY;
-            if (screenX > maxX) maxX = screenX;
-            if (screenY > maxY) maxY = screenY;
+    const double low[3] = {box.Min.x, box.Min.y, box.Min.z};
+    const double high[3] = {box.Max.x, box.Max.y, box.Max.z};
+    const bool flat = static_cast<float>(high[2] - low[2]) == 0;
+    const int count = flat ? 4 : 8;
+    const int xMask = flat ? 1 : 4, yMask = 2, zMask = flat ? 0 : 1;
+    double terms[4][3][2], translation[4];
+    for (int col = 0; col < 4; ++col) {
+        translation[col] = World_ProjectionMat[3][col];
+        for (int row = 0; row < 3; ++row) {
+            terms[col][row][0] = low[row] * World_ProjectionMat[row][col];
+            terms[col][row][1] = high[row] * World_ProjectionMat[row][col];
         }
-
-        // Set rectangle extents
-        Extents->left = minX;
-        Extents->top = minY;
-        Extents->right = maxX;
-        Extents->bottom = maxY;
     }
-
-    // Clamp to screen bounds only when some vertices are behind near plane (VXCLIP_FRONT set)
-    if ((allVerticesFlags & VXCLIP_FRONT) && Extents && ScreenSize) {
-        if (allVerticesFlags & VXCLIP_LEFT)   Extents->left = ScreenSize->left;
-        if (allVerticesFlags & VXCLIP_RIGHT)  Extents->right = ScreenSize->right;
-        if (allVerticesFlags & VXCLIP_TOP)    Extents->top = ScreenSize->top;
-        if (allVerticesFlags & VXCLIP_BOTTOM) Extents->bottom = ScreenSize->bottom;
+    double vertices[8][3];
+    unsigned combined = 0, common = 0xffffffffu;
+    for (int i = 0; i < count; ++i) {
+        double point[4];
+        for (int col = 0; col < 4; ++col) {
+            const double components[4] = {terms[col][0][(i & xMask) != 0], terms[col][1][(i & yMask) != 0], terms[col][2][(i & zMask) != 0], translation[col]};
+            double sum = ((components[0] + components[1]) + components[2]) + components[3];
+            const double magnitude = fabs(components[0]) + fabs(components[1]) + fabs(components[2]) + fabs(components[3]);
+            if (fabs(sum) < magnitude * (1.0 / 16777216.0)) {
+                sum = components[0];
+                double correction = 0;
+                for (int row = 1; row < 4; ++row) {
+                    const double next = sum + components[row];
+                    correction += fabs(sum) >= fabs(components[row]) ? (sum - next) + components[row] : (components[row] - next) + sum;
+                    sum = next;
+                }
+                sum += correction;
+            }
+            point[col] = sum;
+        }
+        const double x = point[0], y = point[1], z = point[2], w = point[3];
+        unsigned flags = 0;
+        if (x < -w) flags |= VXCLIP_LEFT;
+        if (x > w) flags |= VXCLIP_RIGHT;
+        if (y < -w) flags |= VXCLIP_BOTTOM;
+        if (y > w) flags |= VXCLIP_TOP;
+        if (z < 0) flags |= VXCLIP_FRONT;
+        if (z > w) flags |= VXCLIP_BACK;
+        combined |= flags; common &= flags;
+        vertices[i][0] = x; vertices[i][1] = y; vertices[i][2] = w;
     }
-
-    // Return flags
-    OrClipFlags = (VXCLIP_FLAGS) allVerticesFlags;
-    AndClipFlags = (VXCLIP_FLAGS) allVerticesFlagsAnded;
-
-    // Return TRUE if box is at least partially visible
-    return !(allVerticesFlagsAnded & VXCLIP_ALL);
+    if (Extents && ScreenSize) {
+        // Cache the viewport before an aliased output rectangle can overwrite it.
+        const double halfX = (double(ScreenSize->right) - ScreenSize->left) * 0.5;
+        const double halfY = (double(ScreenSize->bottom) - ScreenSize->top) * 0.5;
+        const double centerX = ScreenSize->left + halfX, centerY = ScreenSize->top + halfY;
+        float minX = 1.0e10f, minY = 1.0e10f, maxX = -1.0e10f, maxY = -1.0e10f;
+        if (!common) for (int i = 0; i < count; ++i) {
+            const double denominator = fabs(vertices[i][2]);
+            const float x = static_cast<float>(vertices[i][0] / denominator * halfX + centerX);
+            const float y = static_cast<float>(vertices[i][1] / denominator * (-halfY) + centerY);
+            // Match original SSE min/max selection, including ties and NaNs.
+            minX = minX < x ? minX : x; maxX = maxX > x ? maxX : x;
+            minY = minY < y ? minY : y; maxY = maxY > y ? maxY : y;
+        }
+        Extents->left = minX; Extents->right = maxX; Extents->top = minY; Extents->bottom = maxY;
+        if (combined & VXCLIP_FRONT) {
+            if (combined & VXCLIP_LEFT) Extents->left = ScreenSize->left;
+            if (combined & VXCLIP_RIGHT) Extents->right = ScreenSize->right;
+            if (combined & VXCLIP_TOP) Extents->top = ScreenSize->top;
+            if (combined & VXCLIP_BOTTOM) Extents->bottom = ScreenSize->bottom;
+        }
+    }
+    OrClipFlags = static_cast<VXCLIP_FLAGS>(combined);
+    AndClipFlags = static_cast<VXCLIP_FLAGS>(common);
+    return common == 0;
 }
 
 XBOOL VxTransformBox2D(const VxMatrix &World_ProjectionMat, const VxBbox &box, VxRect *ScreenSize, VxRect *Extents, VXCLIP_FLAGS &OrClipFlags, VXCLIP_FLAGS &AndClipFlags) {

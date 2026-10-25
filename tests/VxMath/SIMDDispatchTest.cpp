@@ -354,101 +354,13 @@ static XBOOL ScalarTransformBox2DReference(const VxMatrix &worldProjection, cons
     return !(allVerticesFlagsAnded & VXCLIP_ALL);
 }
 
+#include "TransformBox2DTestModel.h"
+
 static XBOOL ProjectedTransformBox2DReference(const VxMatrix &worldProjection, const VxBbox &box, const VxRect *screenSize, VxRect *extents, VXCLIP_FLAGS &orClipFlags, VXCLIP_FLAGS &andClipFlags) {
-    VxVector4 transformedVertices[8];
-    Vx3DMultiplyMatrixVector4(&transformedVertices[0], worldProjection, &box.Min);
-
-    const VxVector boxSize = box.Max - box.Min;
-    const float dx = boxSize.x;
-    const float dy = boxSize.y;
-    const float dz = boxSize.z;
-
-    const VxVector4 &matRow0 = worldProjection[0];
-    const VxVector4 &matRow1 = worldProjection[1];
-    const VxVector4 &matRow2 = worldProjection[2];
-    const VxVector4 deltaX(matRow0[0] * dx, matRow0[1] * dx, matRow0[2] * dx, matRow0[3] * dx);
-    const VxVector4 deltaY(matRow1[0] * dy, matRow1[1] * dy, matRow1[2] * dy, matRow1[3] * dy);
-
-    int vertexCount;
-    if (dz == 0.0f) {
-        vertexCount = 4;
-        transformedVertices[1] = transformedVertices[0] + deltaX;
-        transformedVertices[2] = transformedVertices[0] + deltaY;
-        transformedVertices[3] = transformedVertices[1] + deltaY;
-    } else {
-        vertexCount = 8;
-        const VxVector4 deltaZ(matRow2[0] * dz, matRow2[1] * dz, matRow2[2] * dz, matRow2[3] * dz);
-        transformedVertices[1] = transformedVertices[0] + deltaZ;
-        transformedVertices[2] = transformedVertices[0] + deltaY;
-        transformedVertices[3] = transformedVertices[1] + deltaY;
-        transformedVertices[4] = transformedVertices[0] + deltaX;
-        transformedVertices[5] = transformedVertices[4] + deltaZ;
-        transformedVertices[6] = transformedVertices[4] + deltaY;
-        transformedVertices[7] = transformedVertices[5] + deltaY;
-    }
-
-    XDWORD allVerticesFlags = 0;
-    XDWORD allVerticesFlagsAnded = 0xFFFFFFFFu;
-    for (int i = 0; i < vertexCount; ++i) {
-        XDWORD vertexFlags = 0;
-        const VxVector4 &vertex = transformedVertices[i];
-        if (-vertex.w > vertex.x) vertexFlags |= VXCLIP_LEFT;
-        if (vertex.x > vertex.w) vertexFlags |= VXCLIP_RIGHT;
-        if (-vertex.w > vertex.y) vertexFlags |= VXCLIP_BOTTOM;
-        if (vertex.y > vertex.w) vertexFlags |= VXCLIP_TOP;
-        if (vertex.z < 0.0f) vertexFlags |= VXCLIP_FRONT;
-        if (vertex.z > vertex.w) vertexFlags |= VXCLIP_BACK;
-        allVerticesFlags |= vertexFlags;
-        allVerticesFlagsAnded &= vertexFlags;
-    }
-
-    if (extents && screenSize) {
-        extents->left = 1.0e10f;
-        extents->top = 1.0e10f;
-        extents->right = -1.0e10f;
-        extents->bottom = -1.0e10f;
-    }
-
-    if (extents && screenSize && !(allVerticesFlagsAnded & VXCLIP_ALL)) {
-        float minX = 1.0e10f;
-        float minY = 1.0e10f;
-        float maxX = -1.0e10f;
-        float maxY = -1.0e10f;
-
-        const float halfWidth = (screenSize->right - screenSize->left) * 0.5f;
-        const float halfHeight = (screenSize->bottom - screenSize->top) * 0.5f;
-        const float centerX = halfWidth + screenSize->left;
-        const float centerY = halfHeight + screenSize->top;
-
-        for (int i = 0; i < vertexCount; ++i) {
-            const VxVector4 &vertex = transformedVertices[i];
-            __m128 reciprocal = _mm_rcp_ss(_mm_set_ss(vertex.w));
-            reciprocal = _mm_and_ps(_mm_shuffle_ps(reciprocal, reciprocal, _MM_SHUFFLE(0, 0, 0, 0)), VX_SIMD_ABS_MASK);
-            const float invAbsW = _mm_cvtss_f32(reciprocal);
-            const float screenX = (vertex.x * halfWidth) * invAbsW + centerX;
-            const float screenY = centerY - ((vertex.y * halfHeight) * invAbsW);
-            if (screenX < minX) minX = screenX;
-            if (screenY < minY) minY = screenY;
-            if (screenX > maxX) maxX = screenX;
-            if (screenY > maxY) maxY = screenY;
-        }
-
-        extents->left = minX;
-        extents->top = minY;
-        extents->right = maxX;
-        extents->bottom = maxY;
-    }
-
-    if ((allVerticesFlags & VXCLIP_FRONT) && extents && screenSize) {
-        if (allVerticesFlags & VXCLIP_LEFT) extents->left = screenSize->left;
-        if (allVerticesFlags & VXCLIP_RIGHT) extents->right = screenSize->right;
-        if (allVerticesFlags & VXCLIP_TOP) extents->top = screenSize->top;
-        if (allVerticesFlags & VXCLIP_BOTTOM) extents->bottom = screenSize->bottom;
-    }
-
-    orClipFlags = static_cast<VXCLIP_FLAGS>(allVerticesFlags);
-    andClipFlags = static_cast<VXCLIP_FLAGS>(allVerticesFlagsAnded);
-    return !(allVerticesFlagsAnded & VXCLIP_ALL);
+    const TBFlags result = TBModel(worldProjection, box, screenSize, extents, 0);
+    orClipFlags = static_cast<VXCLIP_FLAGS>(result.combined);
+    andClipFlags = static_cast<VXCLIP_FLAGS>(result.common);
+    return result.visible;
 }
 
 static void ScalarRectTransform(VxRect &rect, const VxRect &destScreen, const VxRect &srcScreen) {
@@ -878,23 +790,10 @@ TEST(SIMDDispatchTest, TransformBox2DFlatBoxProjectsToScreenBounds) {
     EXPECT_TRUE(visible);
     EXPECT_EQ(orFlags, static_cast<VXCLIP_FLAGS>(0));
     EXPECT_EQ(andFlags, static_cast<VXCLIP_FLAGS>(0));
-#if defined(VX_SIMD_USE_SIMDE)
-    VxRect expectedExtents;
-    VXCLIP_FLAGS expectedOr = static_cast<VXCLIP_FLAGS>(0);
-    VXCLIP_FLAGS expectedAnd = static_cast<VXCLIP_FLAGS>(0);
-    ASSERT_TRUE(ProjectedTransformBox2DReference(worldProjection, box, &screen, &expectedExtents, expectedOr, expectedAnd));
-    EXPECT_EQ(expectedOr, static_cast<VXCLIP_FLAGS>(0));
-    EXPECT_EQ(expectedAnd, static_cast<VXCLIP_FLAGS>(0));
-    EXPECT_NEAR(extents.left, expectedExtents.left, kDispatchScreenTolerance);
-    EXPECT_NEAR(extents.top, expectedExtents.top, kDispatchScreenTolerance);
-    EXPECT_NEAR(extents.right, expectedExtents.right, kDispatchScreenTolerance);
-    EXPECT_NEAR(extents.bottom, expectedExtents.bottom, kDispatchScreenTolerance);
-#else
-    EXPECT_NEAR(extents.left, 0.09765625f, 1.0e-7f);
-    EXPECT_NEAR(extents.top, 0.0732421875f, 1.0e-7f);
-    EXPECT_NEAR(extents.right, 799.90234375f, 1.0e-5f);
-    EXPECT_NEAR(extents.bottom, 599.9267578125f, 1.0e-5f);
-#endif
+    EXPECT_EQ(extents.left, 0.0f);
+    EXPECT_EQ(extents.top, 0.0f);
+    EXPECT_EQ(extents.right, 800.0f);
+    EXPECT_EQ(extents.bottom, 600.0f);
 }
 
 TEST(SIMDDispatchTest, ProjectBoxZExtentsInvalidBoxKeepsDefaults) {
@@ -1883,7 +1782,7 @@ TEST(SIMDDispatchTest, TransformBox2DSIMDKeepsSentinelExtentsWhenFullyCulled) {
     EXPECT_FLOAT_EQ(extents.bottom, -1.0e10f);
 }
 
-TEST(SIMDDispatchTest, TransformBox2DSIMDMatchesReciprocalRegression) {
+TEST(SIMDDispatchTest, TransformBox2DSIMDMatchesExactProjectionRegression) {
     VxMatrix worldProjection;
     worldProjection[0] = VxVector4(-3.368487f, 0.2355946f, 0.004631328f, -0.09115571f);
     worldProjection[1] = VxVector4(-0.2346917f, 3.249751f, -0.0268865f, -0.1143637f);

@@ -573,3 +573,6 @@ vx_copy_runtime_dependencies(IndexedCopyReferenceTest)
 
 vx_add_test(ProjectBoxZExtentsReferenceTest SOURCES ProjectBoxZExtentsReferenceTest.cpp)
 vx_copy_runtime_dependencies(ProjectBoxZExtentsReferenceTest)
+
+vx_add_test(TransformBox2DReferenceTest SOURCES TransformBox2DReferenceTest.cpp)
+vx_copy_runtime_dependencies(TransformBox2DReferenceTest)

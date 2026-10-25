@@ -468,124 +468,86 @@ VX_SIMD_INLINE void VxSIMDFrustumTransform(VxFrustum *frustum, const VxMatrix *i
 
 VX_SIMD_INLINE XBOOL VxSIMDTransformBox2D(const VxMatrix *worldProjection, const VxBbox *box, VxRect *extents, const VxRect *screenSize, VXCLIP_FLAGS *orClipFlags, VXCLIP_FLAGS *andClipFlags) noexcept {
     if (!box || !box->IsValid()) {
-        if (orClipFlags) *orClipFlags = (VXCLIP_FLAGS) VXCLIP_ALL;
-        if (andClipFlags) *andClipFlags = (VXCLIP_FLAGS) VXCLIP_ALL;
+        if (orClipFlags) *orClipFlags = static_cast<VXCLIP_FLAGS>(VXCLIP_ALL);
+        if (andClipFlags) *andClipFlags = static_cast<VXCLIP_FLAGS>(VXCLIP_ALL);
         return FALSE;
     }
-
-    __m128 verts[8];
-    const float dx = box->Max.x - box->Min.x;
-    const float dy = box->Max.y - box->Min.y;
-    const float dz = box->Max.z - box->Min.z;
-
-    const __m128 col0 = _mm_loadu_ps((const float *) &(*worldProjection)[0][0]);
-    const __m128 col1 = _mm_loadu_ps((const float *) &(*worldProjection)[1][0]);
-    const __m128 col2 = _mm_loadu_ps((const float *) &(*worldProjection)[2][0]);
-    const __m128 col3 = _mm_loadu_ps((const float *) &(*worldProjection)[3][0]);
-
-    const __m128 minX = _mm_shuffle_ps(_mm_set_ss(box->Min.x), _mm_set_ss(box->Min.x), _MM_SHUFFLE(0, 0, 0, 0));
-    const __m128 minY = _mm_shuffle_ps(_mm_set_ss(box->Min.y), _mm_set_ss(box->Min.y), _MM_SHUFFLE(0, 0, 0, 0));
-    const __m128 minZ = _mm_shuffle_ps(_mm_set_ss(box->Min.z), _mm_set_ss(box->Min.z), _MM_SHUFFLE(0, 0, 0, 0));
-    verts[0] = _mm_add_ps(
-        _mm_add_ps(
-            _mm_add_ps(_mm_mul_ps(minX, col0), _mm_mul_ps(minY, col1)),
-            col3),
-        _mm_mul_ps(minZ, col2));
-
-    const __m128 deltaX = _mm_mul_ps(col0, _mm_set1_ps(dx));
-    const __m128 deltaY = _mm_mul_ps(col1, _mm_set1_ps(dy));
-    const int vertexCount = (dz == 0.0f) ? 4 : 8;
-
-    if (vertexCount == 4) {
-        verts[1] = _mm_add_ps(verts[0], deltaX);
-        verts[2] = _mm_add_ps(verts[0], deltaY);
-        verts[3] = _mm_add_ps(verts[1], deltaY);
-    } else {
-        const __m128 deltaZ = _mm_mul_ps(col2, _mm_set1_ps(dz));
-        verts[1] = _mm_add_ps(verts[0], deltaZ);
-        verts[2] = _mm_add_ps(verts[0], deltaY);
-        verts[3] = _mm_add_ps(verts[1], deltaY);
-        verts[4] = _mm_add_ps(verts[0], deltaX);
-        verts[5] = _mm_add_ps(verts[4], deltaZ);
-        verts[6] = _mm_add_ps(verts[4], deltaY);
-        verts[7] = _mm_add_ps(verts[5], deltaY);
-    }
-
-    XDWORD allOr = 0;
-    XDWORD allAnd = 0xFFFFFFFFu;
-    const __m128 zero = _mm_setzero_ps();
-
-    for (int i = 0; i < vertexCount; ++i) {
-        __m128 v = verts[i];
-        __m128 w = _mm_shuffle_ps(v, v, _MM_SHUFFLE(3, 3, 3, 3));
-        __m128 negW = _mm_sub_ps(zero, w);
-
-        __m128 x = _mm_shuffle_ps(v, v, _MM_SHUFFLE(0, 0, 0, 0));
-        __m128 y = _mm_shuffle_ps(v, v, _MM_SHUFFLE(1, 1, 1, 1));
-        __m128 z = _mm_shuffle_ps(v, v, _MM_SHUFFLE(2, 2, 2, 2));
-
-        XDWORD flags = 0;
-        if (_mm_comilt_ss(x, negW)) flags |= VXCLIP_LEFT;
-        if (_mm_comigt_ss(x, w)) flags |= VXCLIP_RIGHT;
-        if (_mm_comilt_ss(y, negW)) flags |= VXCLIP_BOTTOM;
-        if (_mm_comigt_ss(y, w)) flags |= VXCLIP_TOP;
-        if (_mm_comilt_ss(z, zero)) flags |= VXCLIP_FRONT;
-        if (_mm_comigt_ss(z, w)) flags |= VXCLIP_BACK;
-
-        allOr |= flags;
-        allAnd &= flags;
-    }
-
-    if (extents && screenSize) {
-        extents->left = 1.0e10f;
-        extents->top = 1.0e10f;
-        extents->right = -1.0e10f;
-        extents->bottom = -1.0e10f;
-    }
-
-    if (extents && screenSize && (allAnd & VXCLIP_ALL) == 0) {
-        __m128 minXY = _mm_set1_ps(1.0e10f);
-        __m128 maxXY = _mm_set1_ps(-1.0e10f);
-
-        const float halfWidth = (screenSize->right - screenSize->left) * 0.5f;
-        const float halfHeight = (screenSize->bottom - screenSize->top) * 0.5f;
-        const float centerX = halfWidth + screenSize->left;
-        const float centerY = halfHeight + screenSize->top;
-
-        __m128 viewScale = _mm_setr_ps(halfWidth, -halfHeight, 0.0f, 0.0f);
-        __m128 viewOffset = _mm_setr_ps(centerX, centerY, 0.0f, 0.0f);
-
-        for (int i = 0; i < vertexCount; ++i) {
-            __m128 v = verts[i];
-            __m128 w = _mm_shuffle_ps(v, v, _MM_SHUFFLE(3, 3, 3, 3));
-            __m128 invW = _mm_rcp_ss(w);
-            invW = _mm_and_ps(_mm_shuffle_ps(invW, invW, _MM_SHUFFLE(0, 0, 0, 0)), VX_SIMD_ABS_MASK);
-
-            __m128 projected = _mm_add_ps(_mm_mul_ps(_mm_mul_ps(v, viewScale), invW), viewOffset);
-            minXY = _mm_min_ps(minXY, projected);
-            maxXY = _mm_max_ps(maxXY, projected);
+    const double low[3] = {box->Min.x, box->Min.y, box->Min.z};
+    const double high[3] = {box->Max.x, box->Max.y, box->Max.z};
+    const bool flat = static_cast<float>(high[2] - low[2]) == 0;
+    const int count = flat ? 4 : 8;
+    const int xMask = flat ? 1 : 4, yMask = 2, zMask = flat ? 0 : 1;
+    __m128d terms[2][3][2], translation[2];
+    for (int pair = 0; pair < 2; ++pair) {
+        translation[pair] = _mm_cvtps_pd(_mm_castsi128_ps(_mm_loadl_epi64(reinterpret_cast<const __m128i *>(&(*worldProjection)[3][pair*2]))));
+        for (int row = 0; row < 3; ++row) {
+            const __m128d coefficients = _mm_cvtps_pd(_mm_castsi128_ps(_mm_loadl_epi64(reinterpret_cast<const __m128i *>(&(*worldProjection)[row][pair*2]))));
+            terms[pair][row][0] = _mm_mul_pd(coefficients,_mm_set1_pd(low[row]));
+            terms[pair][row][1] = _mm_mul_pd(coefficients,_mm_set1_pd(high[row]));
         }
-
-        alignas(16) float minf[4], maxf[4];
-        _mm_store_ps(minf, minXY);
-        _mm_store_ps(maxf, maxXY);
-
-        extents->left = minf[0];
-        extents->bottom = maxf[1];
-        extents->right = maxf[0];
-        extents->top = minf[1];
     }
-
-    if ((allOr & VXCLIP_FRONT) != 0 && extents && screenSize) {
-        if ((allOr & VXCLIP_LEFT) != 0) extents->left = screenSize->left;
-        if ((allOr & VXCLIP_RIGHT) != 0) extents->right = screenSize->right;
-        if ((allOr & VXCLIP_TOP) != 0) extents->top = screenSize->top;
-        if ((allOr & VXCLIP_BOTTOM) != 0) extents->bottom = screenSize->bottom;
+    const __m128d zero = _mm_setzero_pd(), sign = _mm_set1_pd(-0.0);
+    __m128d xy[8]; double ws[8];
+    unsigned combined = 0, common = 0xffffffffu;
+    for (int i = 0; i < count; ++i) {
+        __m128d point[2];
+        for (int pair = 0; pair < 2; ++pair) {
+            const __m128d components[4] = {terms[pair][0][(i & xMask) != 0],terms[pair][1][(i & yMask) != 0],terms[pair][2][(i & zMask) != 0],translation[pair]};
+            __m128d sum = _mm_add_pd(_mm_add_pd(_mm_add_pd(components[0],components[1]),components[2]),components[3]);
+            const __m128d magnitude = _mm_add_pd(_mm_add_pd(_mm_andnot_pd(sign,components[0]),_mm_andnot_pd(sign,components[1])),_mm_add_pd(_mm_andnot_pd(sign,components[2]),_mm_andnot_pd(sign,components[3])));
+            if (_mm_movemask_pd(_mm_cmplt_pd(_mm_andnot_pd(sign,sum),_mm_mul_pd(magnitude,_mm_set1_pd(1.0 / 16777216.0))))) {
+                sum = components[0];
+                __m128d correction = zero;
+                for (int row = 1; row < 4; ++row) {
+                    const __m128d next = _mm_add_pd(sum,components[row]);
+                    const __m128d larger = _mm_cmpge_pd(_mm_andnot_pd(sign,sum),_mm_andnot_pd(sign,components[row]));
+                    const __m128d errorA = _mm_add_pd(_mm_sub_pd(sum,next),components[row]);
+                    const __m128d errorB = _mm_add_pd(_mm_sub_pd(components[row],next),sum);
+                    correction = _mm_add_pd(correction,_mm_or_pd(_mm_and_pd(larger,errorA),_mm_andnot_pd(larger,errorB)));
+                    sum = next;
+                }
+                sum = _mm_add_pd(sum,correction);
+            }
+            point[pair] = sum;
+        }
+        const __m128d w = _mm_unpackhi_pd(point[1],point[1]);
+        const __m128d negative = _mm_cmplt_pd(point[0],_mm_sub_pd(zero,w));
+        const __m128d positive = _mm_cmpgt_pd(point[0],w);
+        // Gather four side predicates and two depth predicates with two
+        // vector-to-integer transfers instead of one transfer per comparison.
+        const unsigned sides = _mm_movemask_ps(_mm_shuffle_ps(_mm_castpd_ps(negative),_mm_castpd_ps(positive),_MM_SHUFFLE(2,0,2,0)));
+        const __m128d depth = _mm_unpacklo_pd(_mm_cmplt_sd(point[1],zero),_mm_cmpgt_sd(point[1],w));
+        unsigned flags = ((sides & 1) << 4) | ((sides & 2) << 6) | ((sides & 12) << 3) | (_mm_movemask_pd(depth) << 8);
+        combined |= flags; common &= flags;
+        xy[i] = point[0]; ws[i] = _mm_cvtsd_f64(w);
     }
-
-    if (orClipFlags) *orClipFlags = (VXCLIP_FLAGS) allOr;
-    if (andClipFlags) *andClipFlags = (VXCLIP_FLAGS) allAnd;
-    return (allAnd & VXCLIP_ALL) == 0;
+    if (extents && screenSize) {
+        const double halfX = (double(screenSize->right) - screenSize->left) * 0.5;
+        const double halfY = (double(screenSize->bottom) - screenSize->top) * 0.5;
+        const __m128d scale = _mm_set_pd(-halfY,halfX);
+        const __m128d center = _mm_set_pd(screenSize->top+halfY,screenSize->left+halfX);
+        __m128 minimum = _mm_set1_ps(1.0e10f), maximum = _mm_set1_ps(-1.0e10f);
+        if (!common) for (int i = 0; i < count; ++i) {
+            const __m128d denominator = _mm_andnot_pd(sign,_mm_set1_pd(ws[i]));
+            const __m128 projected = _mm_cvtpd_ps(_mm_add_pd(_mm_mul_pd(_mm_div_pd(xy[i],denominator),scale),center));
+            minimum = _mm_min_ps(minimum,projected);
+            maximum = _mm_max_ps(maximum,projected);
+        }
+        float lo[2],hi[2];
+        _mm_storel_epi64(reinterpret_cast<__m128i *>(lo),_mm_castps_si128(minimum));
+        _mm_storel_epi64(reinterpret_cast<__m128i *>(hi),_mm_castps_si128(maximum));
+        extents->left = lo[0]; extents->right = hi[0]; extents->top = lo[1]; extents->bottom = hi[1];
+        // Preserve the original live viewport reads after the extent writes.
+        if (combined & VXCLIP_FRONT) {
+            if (combined & VXCLIP_LEFT) extents->left = screenSize->left;
+            if (combined & VXCLIP_RIGHT) extents->right = screenSize->right;
+            if (combined & VXCLIP_TOP) extents->top = screenSize->top;
+            if (combined & VXCLIP_BOTTOM) extents->bottom = screenSize->bottom;
+        }
+    }
+    if (orClipFlags) *orClipFlags = static_cast<VXCLIP_FLAGS>(combined);
+    if (andClipFlags) *andClipFlags = static_cast<VXCLIP_FLAGS>(common);
+    return common == 0;
 }
 
 VX_SIMD_INLINE void VxSIMDProjectBoxZExtents(const VxMatrix *worldProjection, const VxBbox *box, float *zhMin, float *zhMax) noexcept {

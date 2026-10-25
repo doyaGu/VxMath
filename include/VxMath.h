@@ -92,6 +92,11 @@ VX_EXPORT void InterpolateVectorArray(void *Res, void *Inarray1, void *Inarray2,
  * @param OrClipFlags Output parameter for the combined (ORed) clip flags of the box's vertices.
  * @param AndClipFlags Output parameter for the common (ANDed) clip flags of the box's vertices.
  * @return TRUE if the box is at least partially visible, FALSE otherwise.
+ * @remarks Uses the original SSE contract across current backends: strict
+ * homogeneous clipping, four corners only for zero Z thickness, and projection
+ * through abs(W). With both rectangles supplied, culled results write +/-1e10
+ * defaults before near-plane side clamping. ScreenSize may equal Extents;
+ * flags are written OR first, AND second. Projection uses wide exact division.
  */
 VX_EXPORT XBOOL VxTransformBox2D(const VxMatrix &World_ProjectionMat, const VxBbox &box, VxRect *ScreenSize, VxRect *Extents, VXCLIP_FLAGS &OrClipFlags, VXCLIP_FLAGS &AndClipFlags);
 
