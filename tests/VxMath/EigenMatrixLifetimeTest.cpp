@@ -51,7 +51,11 @@ static bool ELZero(const void *storage) {
     for(int i=0;i<64;++i)if(bytes[i]!=0)return false;
     return true;
 }
-
+static void ELBits(VxEigenMatrix &m,int seed) {
+    const unsigned values[]={0,0x80000000u,0x7fc12345u,0x7f800000u,0xff800000u,0x3f800000u,0xbf800000u,0x7f7fffffu,0x00800000u,1,0xffffffffu,0x3eaaaaabu,0xa5a5a5a5u,0x00012345u,0x80800000u,0x41200000u};
+    unsigned words[16];for(int i=0;i<16;++i)words[i]=values[(i+seed)%16];
+    memcpy(&m,words,sizeof(words));
+}
 static void ELConstruct(ELAction action) {
     const unsigned char patterns[]={0,0xa5,0xff,0x3f};
     for(unsigned char pattern:patterns)for(int offset=0;offset<16;offset+=4) {
@@ -84,9 +88,50 @@ TEST(EigenMatrixLifetime,DefaultArrayConstructionZerosEveryElement) {
     for(int i=0;i<16;++i){EXPECT_EQ(storage[i],0xa5);EXPECT_EQ(storage[3*64+16+i],0xa5);}
     for(int i=0;i<3;++i)reinterpret_cast<VxEigenMatrix *>(storage+16+i*64)->~VxEigenMatrix();
 }
+TEST(EigenMatrixLifetime,CopyAndMoveConstructionTransportEveryFieldBit) {
+    for(int seed=0;seed<16;++seed)for(int op=ELCopy;op<=ELMove;++op) {
+        VxEigenMatrix source;ELBits(source,seed);unsigned char saved[64];memcpy(saved,&source,64);
+        alignas(16) unsigned char storage[64];memset(storage,0x3c,64);bool fault=false;
+        VxEigenMatrix *copy=ELPerform(storage,&source,static_cast<ELAction>(op),fault);
+        ASSERT_FALSE(fault);ASSERT_NE(copy,nullptr);EXPECT_EQ(memcmp(copy,saved,64),0);EXPECT_EQ(memcmp(&source,saved,64),0);
+        ELPerform(copy,nullptr,ELDestroy,fault);EXPECT_FALSE(fault);
+    }
+}
+TEST(EigenMatrixLifetime,AssignmentAndSelfAssignmentTransportEveryFieldBit) {
+    for(int seed=0;seed<16;++seed)for(int op=ELAssign;op<=ELMoveAssign;++op) {
+        VxEigenMatrix source,destination;ELBits(source,seed);unsigned char saved[64];memcpy(saved,&source,64);bool fault=false;
+        EXPECT_EQ(ELPerform(&destination,&source,static_cast<ELAction>(op),fault),&destination);ASSERT_FALSE(fault);
+        EXPECT_EQ(memcmp(&destination,saved,64),0);EXPECT_EQ(memcmp(&source,saved,64),0);
+        ELPerform(&destination,&destination,static_cast<ELAction>(op),fault);EXPECT_FALSE(fault);EXPECT_EQ(memcmp(&destination,saved,64),0);
+    }
+}
+TEST(EigenMatrixLifetime,DestructionLeavesBackingStorageUnchanged) {
+    for(int seed=0;seed<16;++seed) {
+        alignas(16) unsigned char storage[64];VxEigenMatrix *m=::new(storage)VxEigenMatrix;ELBits(*m,seed);unsigned char saved[64];memcpy(saved,storage,64);bool fault=false;
+        EXPECT_EQ(ELPerform(m,nullptr,ELDestroy,fault),m);EXPECT_FALSE(fault);EXPECT_EQ(memcmp(storage,saved,64),0);
+    }
+}
 
 #if defined(_WIN32)
-
+TEST(EigenMatrixLifetime,GuardedConstructCopyAssignAndDestroyRespectExactStorage) {
+    SYSTEM_INFO info;GetSystemInfo(&info);const size_t page=info.dwPageSize;
+    unsigned char *source=static_cast<unsigned char *>(VirtualAlloc(nullptr,page*3,MEM_RESERVE|MEM_COMMIT,PAGE_NOACCESS));ASSERT_NE(source,nullptr);
+    unsigned char *destination=static_cast<unsigned char *>(VirtualAlloc(nullptr,page*3,MEM_RESERVE|MEM_COMMIT,PAGE_NOACCESS));
+    if(!destination){VirtualFree(source,0,MEM_RELEASE);FAIL()<<"destination allocation failed";}
+    for(int edge=0;edge<4;++edge)for(int action=ELDefault;action<=ELMoveAssign;++action) {
+        DWORD old;ASSERT_TRUE(VirtualProtect(source+page,page,PAGE_READWRITE,&old));ASSERT_TRUE(VirtualProtect(destination+page,page,PAGE_READWRITE,&old));
+        VxEigenMatrix *src=::new(source+page+((edge&1)?page-64:0))VxEigenMatrix;ELBits(*src,edge+action);unsigned char saved[64];memcpy(saved,src,64);
+        unsigned char *dst=destination+page+((edge&2)?page-64:0);memset(dst,0xa5,64);
+        if(action>=ELAssign)::new(dst)VxEigenMatrix;
+        ASSERT_TRUE(VirtualProtect(source+page,page,PAGE_READONLY,&old));bool fault=false;
+        VxEigenMatrix *result=ELPerform(dst,src,static_cast<ELAction>(action),fault);EXPECT_FALSE(fault);ASSERT_EQ(result,reinterpret_cast<VxEigenMatrix *>(dst));
+        if(action<=ELValue)EXPECT_TRUE(ELZero(dst));else EXPECT_EQ(memcmp(dst,saved,64),0);
+        EXPECT_EQ(memcmp(src,saved,64),0);
+        ASSERT_TRUE(VirtualProtect(destination+page,page,PAGE_NOACCESS,&old));ELPerform(result,nullptr,ELDestroy,fault);EXPECT_FALSE(fault);
+        ASSERT_TRUE(VirtualProtect(source+page,page,PAGE_NOACCESS,&old));ELPerform(src,nullptr,ELDestroy,fault);EXPECT_FALSE(fault);
+    }
+    EXPECT_TRUE(VirtualFree(source,0,MEM_RELEASE));EXPECT_TRUE(VirtualFree(destination,0,MEM_RELEASE));
+}
 TEST(EigenMatrixLifetime,PrivateAdapterDoesNotClaimOriginalEigenEntryPointABI) {
     const int previous=VxGetSIMDOverride();(void)previous;
     HMODULE module=GetModuleHandleW(L"VxMath.dll");ASSERT_NE(module,nullptr);
