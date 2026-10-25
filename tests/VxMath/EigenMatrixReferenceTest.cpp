@@ -42,6 +42,13 @@ static void EMTriCall(EMMatrix &m,float *d,float *e,bool &fault) {
     (void)fault;m.Tridiagonal(d,e);
 #endif
 }
+static bool EMQLCall(EMMatrix &m,float *d,float *e,bool &fault) {
+#if defined(_WIN32)
+    __try {return m.QLAlgorithm(d,e)!=0;}__except(EXCEPTION_EXECUTE_HANDLER) {fault=true;return false;}
+#else
+    (void)fault;return m.QLAlgorithm(d,e)!=0;
+#endif
+}
 
 static void EMCovModel(const void *data,unsigned stride,int count,double out[3][3]) {
     float points[17][3];const unsigned char *bytes=static_cast<const unsigned char *>(data);
@@ -126,6 +133,26 @@ static EMResult EMTriBranches() {
     EMResult result;for(int kind=0;kind<5;++kind){float a[3][3]={{1,2,0},{2,4,3},{0,3,5}};if(kind){float edge=kind==1?EMFloat(0x33ffffff):kind==2?EMFloat(0x34000000):kind==3?EMFloat(0x34000001):ldexpf(1,-100);for(int r=0;r<3;++r)for(int c=0;c<3;++c)a[r][c]*=edge;a[0][2]=a[2][0]=edge;}EMTriObserve(result,a,true);}
     return result;
 }
+static EMResult EMQLDiagonal() {
+    EMResult result;const float sets[][3]={{7,-2,3},{2,2,2},{0,0,0},{-3,4,-3}};
+    for(const auto &v:sets){const float identity[3][3]={{1,0,0},{0,1,0},{0,0,1}};EMMatrix m;EMSet(m,identity);EMMatrix before=m;float d[3],e[]={0,0,37};memcpy(d,v,12);bool fault=false;bool ok=EMQLCall(m,d,e,fault);++result.calls;result.faults+=fault;result.errors+=fault||!ok||memcmp(&m,&before,sizeof(m))!=0||memcmp(d,v,12)!=0||e[2]!=37;}
+    return result;
+}
+static void EMQLObserve(EMResult &result,int index,int power,bool rotated) {
+    const float basis[3][3]={{0.6f,-0.8f,0},{0.8f,0.6f,0},{0,0,1}},identity[3][3]={{1,0,0},{0,1,0},{0,0,1}};
+    EMMatrix m;EMSet(m,rotated?basis:identity);EMMatrix before=m;
+    float d[]={float(ldexp(index%7-3,power)),float(ldexp((index*3)%11-5,power)),float(ldexp((index*5)%13-6,power))};
+    float e[]={float(ldexp(index%5-2,power)),float(ldexp((index*7)%5-2,power)),37};float input[3][3];
+    for(int r=0;r<3;++r)for(int c=0;c<3;++c){double sum=0;for(int k=0;k<3;++k)sum+=double(m[r][k])*d[k]*m[c][k];for(int k=0;k<2;++k)sum+=e[k]*(double(m[r][k])*m[c][k+1]+double(m[r][k+1])*m[c][k]);input[r][c]=float(sum);}
+    bool fault=false;bool ok=EMQLCall(m,d,e,fault);++result.calls;result.faults+=fault;
+    result.errors+=fault||!ok||!EMReconstruct(input,m,d,nullptr);
+}
+static EMResult EMQLGeneral() {EMResult r;for(int i=0;i<64;++i)for(int rotated=0;rotated<2;++rotated)EMQLObserve(r,i,0,rotated!=0);return r;}
+static EMResult EMQLRange() {EMResult r;const int powers[]={-140,-100,100,124};for(int p:powers)for(int i=0;i<32;++i)EMQLObserve(r,i,p,false);return r;}
+static EMResult EMQLFailure() {
+    EMResult r;for(int k=0;k<2;++k){const float identity[3][3]={{1,0,0},{0,1,0},{0,0,1}};EMMatrix m;EMSet(m,identity);float d[]={1,2,3},e[]={1,2,0};if(k)d[0]=EMFloat(0x7fc12345);else e[0]=EMFloat(0x7fc12345);bool fault=false;bool ok=EMQLCall(m,d,e,fault);++r.calls;r.faults+=fault;r.errors+=fault||ok;}
+    return r;
+}
 
 #ifndef VX_EIGEN_MATRIX_PROBE
 static void EMCheck(EMResult r,int calls){EXPECT_EQ(r.calls,calls);EXPECT_EQ(r.errors,0);EXPECT_EQ(r.faults,0);}
@@ -136,6 +163,10 @@ TEST(EigenMatrixReference,ZeroCountProducesUndefinedCovarianceWithoutReadingPoin
 TEST(EigenMatrixReference,TridiagonalReconstructsSymmetricInput){EMCheck(EMTriOrdinary(),64);}
 TEST(EigenMatrixReference,TridiagonalPreservesTinyAndLargeOffDiagonalTerms){EMCheck(EMTriRange(),80);}
 TEST(EigenMatrixReference,TridiagonalUsesUpperTriangleAndBothHouseholderBranches){EMCheck(EMTriBranches(),5);}
+TEST(EigenMatrixReference,QLLeavesDiagonalOrderAndUnusedSentinelAlone){EMCheck(EMQLDiagonal(),4);}
+TEST(EigenMatrixReference,QLAccumulatesRotationsIntoSuppliedBasis){EMCheck(EMQLGeneral(),128);}
+TEST(EigenMatrixReference,QLAvoidsFloatShiftAndRotationOverflow){EMCheck(EMQLRange(),128);}
+TEST(EigenMatrixReference,QLReportsNonconvergenceForUnorderedInputs){EMCheck(EMQLFailure(),2);}
 #if defined(_WIN32)
 #endif
 #endif

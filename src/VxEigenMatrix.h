@@ -108,82 +108,64 @@ public:
     }
 
     XBOOL QLAlgorithm(float *const diagonal, float *const offDiagonal) {
-        // Only i=0..1 are processed for 3x3
-        for (int i = 0; i <= 1; ++i) {
-            int iter = 0;
-            for (; iter < 32; ++iter) {
+        // Keep shifts, rotations and their accumulated basis in double until
+        // the final float outputs. The original iteration bound is retained.
+        double d[3], e[3], basis[3][3];
+        for (int i = 0; i < 3; ++i) {
+            d[i] = diagonal[i]; e[i] = offDiagonal[i];
+            for (int j = 0; j < 3; ++j) basis[i][j] = m_Data[i][j];
+        }
+        XBOOL converged = TRUE;
+        for (int i = 0; i < 3; ++i) {
+            int iteration = 0;
+            for (; iteration < 32; ++iteration) {
                 int m = i;
-                while (m <= 1) {
-                    const double s = fabs(diagonal[m]) + fabs(diagonal[m + 1]);
-                    if (fabs(offDiagonal[m]) + s == s) {
-                        break;
-                    }
+                while (m < 2) {
+                    const double sum = fabs(d[m]) + fabs(d[m + 1]);
+                    if (fabs(e[m]) + sum == sum) break;
                     ++m;
                 }
-
-                if (m == i) {
-                    break;
-                }
-
-                // Implicit shift
-                const float g0 = (diagonal[i + 1] - diagonal[i]) / (offDiagonal[i] + offDiagonal[i]);
-                const float r0 = sqrtf(g0 * g0 + 1.0f);
-                float g;
-                if (g0 >= 0.0f) {
-                    g = offDiagonal[i] / (g0 + r0) + diagonal[m] - diagonal[i];
-                } else {
-                    g = offDiagonal[i] / (g0 - r0) + diagonal[m] - diagonal[i];
-                }
-
-                float c = 1.0f;
-                float s = 1.0f;
-                float p = 0.0f;
-
+                if (m == i) break;
+                const double shift = (d[i + 1] - d[i]) / (2 * e[i]);
+                const double radius = sqrt(shift * shift + 1);
+                double g = e[i] / (shift >= 0 ? shift + radius : shift - radius) + d[m] - d[i];
+                double sine = 1, cosine = 1, correction = 0;
                 for (int j = m - 1; j >= i; --j) {
-                    const float f = c * offDiagonal[j];
-                    const float b = s * offDiagonal[j];
-
+                    const double f = sine * e[j], b = cosine * e[j];
                     if (fabs(g) > fabs(f)) {
-                        const float t = f / g;
-                        const float r = sqrtf(t * t + 1.0f);
-                        offDiagonal[j + 1] = r * g;
-                        s = 1.0f / r;
-                        c = t * s;
+                        const double ratio = f / g, norm = sqrt(ratio * ratio + 1);
+                        e[j + 1] = norm * g;
+                        cosine = 1 / norm;
+                        sine = ratio * cosine;
                     } else {
-                        const float t = g / f;
-                        const float r = sqrtf(t * t + 1.0f);
-                        offDiagonal[j + 1] = f * r;
-                        c = 1.0f / r;
-                        s = t * c;
+                        const double ratio = g / f, norm = sqrt(ratio * ratio + 1);
+                        e[j + 1] = f * norm;
+                        sine = 1 / norm;
+                        cosine = ratio * sine;
                     }
-
-                    const float g2 = diagonal[j + 1] - p;
-                    const float r2 = (diagonal[j] - g2) * c + 2.0f * b * s;
-                    p = c * r2;
-                    diagonal[j + 1] = g2 + p;
-                    g = s * r2 - b;
-
-                    // Update eigenvectors (exact order from the binary)
+                    const double old = d[j + 1] - correction;
+                    const double rotated = (d[j] - old) * sine + 2 * b * cosine;
+                    correction = sine * rotated;
+                    d[j + 1] = old + correction;
+                    g = cosine * rotated - b;
                     for (int row = 0; row < 3; ++row) {
-                        VxVector4 &rowVec = (*this)[row];
-                        const float t = rowVec[j + 1];
-                        const float u = rowVec[j];
-                        rowVec[j + 1] = s * t + c * u;
-                        rowVec[j] = s * u - c * t;
+                        const double next = basis[row][j + 1], previous = basis[row][j];
+                        basis[row][j + 1] = cosine * next + sine * previous;
+                        basis[row][j] = cosine * previous - sine * next;
                     }
                 }
-
-                diagonal[i] -= p;
-                offDiagonal[i] = g;
-                offDiagonal[m] = 0.0f;
+                d[i] -= correction;
+                e[i] = g;
+                e[m] = 0;
             }
-
-            if (iter == 32) {
-                return FALSE;
-            }
+            if (iteration == 32) { converged = FALSE; break; }
         }
-
-        return TRUE;
+        for (int i = 0; i < 3; ++i) {
+            diagonal[i] = static_cast<float>(d[i]);
+            offDiagonal[i] = static_cast<float>(e[i]);
+            for (int j = 0; j < 3; ++j) m_Data[i][j] = static_cast<float>(basis[i][j]);
+        }
+        return converged;
     }
 
     void EigenStuff3() {
