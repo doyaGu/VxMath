@@ -111,7 +111,22 @@ TEST(EigenMatrixLifetime,DestructionLeavesBackingStorageUnchanged) {
         EXPECT_EQ(ELPerform(m,nullptr,ELDestroy,fault),m);EXPECT_FALSE(fault);EXPECT_EQ(memcmp(storage,saved,64),0);
     }
 }
-
+TEST(EigenMatrixLifetime,ConstructionBeforeCovarianceAndEigenSolveDoesNotDependOnOldStorage) {
+    const float points[][3]={{1,2,3},{3,4,5}};
+    for(int seed=0;seed<16;++seed) {
+        alignas(16) unsigned char storage[64];memset(storage,seed*13,sizeof(storage));VxEigenMatrix *m=::new(storage)VxEigenMatrix;
+        m->Covariance(&points[0][0],12,2);for(int r=0;r<3;++r)for(int c=0;c<3;++c)EXPECT_EQ((*m)[r][c],1);
+        m->EigenStuff3();bool principal=false;
+        for(int col=0;col<3;++col) {
+            const double sum=(*m)[0][col]+double((*m)[1][col])+(*m)[2][col],lambda=sum*sum;
+            if(fabs(lambda-3)<1e-5)principal=true;
+            for(int r=0;r<3;++r)EXPECT_NEAR(sum,lambda*(*m)[r][col],1e-5);
+        }
+        EXPECT_TRUE(principal);
+        for(int a=0;a<3;++a)for(int b=0;b<3;++b){double dot=0;for(int r=0;r<3;++r)dot+=double((*m)[r][a])*(*m)[r][b];EXPECT_NEAR(dot,a==b?1:0,1e-5);}
+        m->~VxEigenMatrix();
+    }
+}
 #if defined(_WIN32)
 TEST(EigenMatrixLifetime,GuardedConstructCopyAssignAndDestroyRespectExactStorage) {
     SYSTEM_INFO info;GetSystemInfo(&info);const size_t page=info.dwPageSize;
