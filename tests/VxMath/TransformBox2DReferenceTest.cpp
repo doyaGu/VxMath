@@ -122,9 +122,9 @@ static void TBWideCase(int kind,VxMatrix &m,VxBbox &b,VxRect &screen,VxMatrix &o
     if(kind==0){b=VxBbox(VxVector(-FLT_MAX,-0.25f,0.25f),VxVector(FLT_MAX,0.25f,0.75f));m[3][3]=FLT_MAX;}
     if(kind==1){b.Min.x=b.Max.x=FLT_MAX;m[0][0]=m[0][3]=2;m[3][3]=0;}
     if(kind==2){b.Min.x=b.Max.x=TBFloat(1);m[0][0]=m[0][3]=TBFloat(1);m[3][3]=0;m[3][2]=0;}
-    if(kind==3||kind==4){b=VxBbox(VxVector(1,1,1),VxVector(1,1,1));m[3][0]=0.5f;m[0][0]=0;m[3][1]=-0.25f;m[1][1]=0;m[2][2]=0;m[0][3]=1.0e30f;m[1][3]=kind==3?1:-1;m[2][3]=-1.0e30f;m[3][3]=0;}
+    if(kind==3||kind==4){b=VxBbox(VxVector(1,1,1),VxVector(1,1,1));m[3][0]=0.5f;m[0][0]=0;m[3][1]=-0.25f;m[1][1]=0;m[2][2]=0;m[0][3]=0x1p30f;m[1][3]=kind==3?1:-1;m[2][3]=-0x1p30f;m[3][3]=0;}
     if(kind==5){b=VxBbox(VxVector(-1,-1,0.5f),VxVector(1,1,0.5f));screen=VxRect(-FLT_MAX,-FLT_MAX,FLT_MAX,FLT_MAX);}
-    if(kind==6){b=VxBbox(VxVector(1,1,1),VxVector(1,1,1));m[0][0]=1.0e30f;m[1][0]=1;m[2][0]=-1.0e30f;m[2][2]=0;}
+    if(kind==6){b=VxBbox(VxVector(1,1,1),VxVector(1,1,1));m[0][0]=0x1p30f;m[1][0]=1;m[2][0]=-0x1p30f;m[2][2]=0;}
     if(kind==7){b=VxBbox(VxVector(1,1,1),VxVector(1,1,1));m[3][3]=FLT_MAX;m[0][0]=2;m[1][0]=-2;b.Min.x=b.Max.x=FLT_MAX;b.Min.y=b.Max.y=FLT_MAX;m[3][0]=FLT_MAX;}
     memcpy(&oracle,&m,sizeof(m));
     // The cancelled homogeneous coordinate is analytically +/-1, independent

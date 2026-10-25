@@ -297,20 +297,10 @@ static XBOOL TransformBox2DScalarCore(const VxMatrix &World_ProjectionMat, const
     for (int i = 0; i < count; ++i) {
         double point[4];
         for (int col = 0; col < 4; ++col) {
-            const double components[4] = {terms[col][0][(i & xMask) != 0], terms[col][1][(i & yMask) != 0], terms[col][2][(i & zMask) != 0], translation[col]};
-            double sum = ((components[0] + components[1]) + components[2]) + components[3];
-            const double magnitude = fabs(components[0]) + fabs(components[1]) + fabs(components[2]) + fabs(components[3]);
-            if (fabs(sum) < magnitude * (1.0 / 16777216.0)) {
-                sum = components[0];
-                double correction = 0;
-                for (int row = 1; row < 4; ++row) {
-                    const double next = sum + components[row];
-                    correction += fabs(sum) >= fabs(components[row]) ? (sum - next) + components[row] : (components[row] - next) + sum;
-                    sum = next;
-                }
-                sum += correction;
-            }
-            point[col] = sum;
+            const double x = terms[col][0][(i & xMask) != 0];
+            const double y = terms[col][1][(i & yMask) != 0];
+            const double z = terms[col][2][(i & zMask) != 0];
+            point[col] = x + y + z + translation[col];
         }
         const double x = point[0], y = point[1], z = point[2], w = point[3];
         unsigned flags = 0;

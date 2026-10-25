@@ -492,23 +492,10 @@ VX_SIMD_INLINE XBOOL VxSIMDTransformBox2D(const VxMatrix *worldProjection, const
     for (int i = 0; i < count; ++i) {
         __m128d point[2];
         for (int pair = 0; pair < 2; ++pair) {
-            const __m128d components[4] = {terms[pair][0][(i & xMask) != 0],terms[pair][1][(i & yMask) != 0],terms[pair][2][(i & zMask) != 0],translation[pair]};
-            __m128d sum = _mm_add_pd(_mm_add_pd(_mm_add_pd(components[0],components[1]),components[2]),components[3]);
-            const __m128d magnitude = _mm_add_pd(_mm_add_pd(_mm_andnot_pd(sign,components[0]),_mm_andnot_pd(sign,components[1])),_mm_add_pd(_mm_andnot_pd(sign,components[2]),_mm_andnot_pd(sign,components[3])));
-            if (_mm_movemask_pd(_mm_cmplt_pd(_mm_andnot_pd(sign,sum),_mm_mul_pd(magnitude,_mm_set1_pd(1.0 / 16777216.0))))) {
-                sum = components[0];
-                __m128d correction = zero;
-                for (int row = 1; row < 4; ++row) {
-                    const __m128d next = _mm_add_pd(sum,components[row]);
-                    const __m128d larger = _mm_cmpge_pd(_mm_andnot_pd(sign,sum),_mm_andnot_pd(sign,components[row]));
-                    const __m128d errorA = _mm_add_pd(_mm_sub_pd(sum,next),components[row]);
-                    const __m128d errorB = _mm_add_pd(_mm_sub_pd(components[row],next),sum);
-                    correction = _mm_add_pd(correction,_mm_or_pd(_mm_and_pd(larger,errorA),_mm_andnot_pd(larger,errorB)));
-                    sum = next;
-                }
-                sum = _mm_add_pd(sum,correction);
-            }
-            point[pair] = sum;
+            const __m128d x = terms[pair][0][(i & xMask) != 0];
+            const __m128d y = terms[pair][1][(i & yMask) != 0];
+            const __m128d z = terms[pair][2][(i & zMask) != 0];
+            point[pair] = _mm_add_pd(_mm_add_pd(_mm_add_pd(x, y), z), translation[pair]);
         }
         const __m128d w = _mm_unpackhi_pd(point[1],point[1]);
         const __m128d negative = _mm_cmplt_pd(point[0],_mm_sub_pd(zero,w));
