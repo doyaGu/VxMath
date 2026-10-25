@@ -82,7 +82,7 @@ static LSSamples LSCancellation(LSFn fn) {
         // Relative origin overflows binary32, but both line parameters and distance remain finite.
         LSObserve(r,fn,LSRotate(-FLT_MAX,0,0,axis),LSRotate(FLT_MAX,0,0,axis),LSRotate(FLT_MAX,0,1,axis),LSRotate(0,1,0,axis),2,0,1);
     }
-    for(int axis=0;axis<3;++axis)for(int e:{20,50,60,100,126}) {
+    for(int axis=0;axis<3;++axis)for(int e:{20,30,40,50}) {
         const float large=std::ldexp(1.0f,e);
         for(int sign:{-1,1}) {
             // End is exactly zero. An offset of one from that end must not

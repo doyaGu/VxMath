@@ -119,21 +119,11 @@ static float LineSegmentSquareDistanceSIMDImpl(const VxRay &line, const VxRay &s
                                        _mm_mul_pd(_mm_setr_pd(uz, ux), _mm_setr_pd(wy, wz)));
     const __m128d tXY = _mm_mul_pd(uCrossWXY, nXY);
     const double segmentNumerator = _mm_cvtsd_f64(_mm_add_sd(tXY, _mm_unpackhi_pd(tXY, tXY))) + (ux * wy - uy * wx) * nz;
-    // Error-free endpoint addition retains a small component beside a
-    // much larger origin; use it before comparing against the end plane.
-    const __m128d originXY = _mm_setr_pd(segment.m_Origin.x, segment.m_Origin.y);
     const __m128d vXY = _mm_setr_pd(vx, vy);
-    const __m128d endXY = _mm_add_pd(originXY, vXY);
-    const __m128d virtualXY = _mm_sub_pd(endXY, originXY);
-    const __m128d errorXY = _mm_add_pd(_mm_sub_pd(originXY, _mm_sub_pd(endXY, virtualXY)),
-                                      _mm_sub_pd(vXY, virtualXY));
-    const __m128d endWXY = _mm_sub_pd(_mm_sub_pd(_mm_setr_pd(line.m_Origin.x, line.m_Origin.y), endXY), errorXY);
+    const __m128d endWXY = _mm_sub_pd(wXY, vXY);
     const double ewx = _mm_cvtsd_f64(endWXY);
     const double ewy = _mm_cvtsd_f64(_mm_unpackhi_pd(endWXY, endWXY));
-    const double endZ = double(segment.m_Origin.z) + vz;
-    const double virtualZ = endZ - segment.m_Origin.z;
-    const double errorZ = (double(segment.m_Origin.z) - (endZ - virtualZ)) + (vz - virtualZ);
-    const double ewz = (double(line.m_Origin.z) - endZ) - errorZ;
+    const double ewz = wz - vz;
     const __m128d endCrossXY = _mm_sub_pd(_mm_mul_pd(_mm_setr_pd(uy, uz), _mm_setr_pd(ewz, ewx)),
                                         _mm_mul_pd(_mm_setr_pd(uz, ux), _mm_setr_pd(ewy, ewz)));
     const __m128d endDotXY = _mm_mul_pd(endCrossXY, nXY);
@@ -533,19 +523,9 @@ static float LineSegmentSquareDistanceScalarImpl(const VxRay &line, const VxRay 
     const double nz = ux * vy - uy * vx;
     const double denominator = nx * nx + ny * ny + nz * nz;
     const double segmentNumerator = (uy * wz - uz * wy) * nx + (uz * wx - ux * wz) * ny + (ux * wy - uy * wx) * nz;
-    // Keep the low part of the endpoint sum when large coordinates cancel.
-    const double endX = double(segment.m_Origin.x) + vx;
-    const double virtualX = endX - segment.m_Origin.x;
-    const double errorX = (double(segment.m_Origin.x) - (endX - virtualX)) + (vx - virtualX);
-    const double ewx = (double(line.m_Origin.x) - endX) - errorX;
-    const double endY = double(segment.m_Origin.y) + vy;
-    const double virtualY = endY - segment.m_Origin.y;
-    const double errorY = (double(segment.m_Origin.y) - (endY - virtualY)) + (vy - virtualY);
-    const double ewy = (double(line.m_Origin.y) - endY) - errorY;
-    const double endZ = double(segment.m_Origin.z) + vz;
-    const double virtualZ = endZ - segment.m_Origin.z;
-    const double errorZ = (double(segment.m_Origin.z) - (endZ - virtualZ)) + (vz - virtualZ);
-    const double ewz = (double(line.m_Origin.z) - endZ) - errorZ;
+    const double ewx = wx - vx;
+    const double ewy = wy - vy;
+    const double ewz = wz - vz;
     const double endNumerator = (uy * ewz - uz * ewy) * nx + (uz * ewx - ux * ewz) * ny + (ux * ewy - uy * ewx) * nz;
     double s, t, square;
     if (denominator == 0.0 || segmentNumerator < 0.0 || endNumerator > 0.0) {
