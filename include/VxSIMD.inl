@@ -403,7 +403,7 @@ VX_SIMD_INLINE void VxSIMDCopyDwordAlignedBlock(void *dst, const void *src, XDWO
     }
 
     for (; offset < sizeBytes; offset += 4) {
-        std::memcpy(dstBytes + offset, srcBytes + offset, sizeof(XDWORD));
+        memcpy(dstBytes + offset, srcBytes + offset, sizeof(XDWORD));
     }
 }
 
