@@ -569,24 +569,10 @@ VX_SIMD_INLINE void VxSIMDProjectBoxZExtents(const VxMatrix *worldProjection, co
         __m128d points[2];
         for (int point = 0; point < 2; ++point) {
             const int corner = i + point;
-            const __m128d components[4] = {terms[0][(corner & xMask) != 0], terms[1][(corner & yMask) != 0], terms[2][(corner & zMask) != 0], translation};
-            __m128d sum = _mm_add_pd(_mm_add_pd(_mm_add_pd(components[0],components[1]),components[2]),components[3]);
-            const __m128d sign = _mm_set1_pd(-0.0);
-            const __m128d magnitude = _mm_add_pd(_mm_add_pd(_mm_andnot_pd(sign,components[0]),_mm_andnot_pd(sign,components[1])),_mm_add_pd(_mm_andnot_pd(sign,components[2]),_mm_andnot_pd(sign,components[3])));
-            if (_mm_movemask_pd(_mm_cmplt_pd(_mm_andnot_pd(sign,sum),_mm_mul_pd(magnitude,_mm_set1_pd(1.0 / 16777216.0))))) {
-                __m128d correction = zero;
-                sum = components[0];
-                for (int row = 1; row < 4; ++row) {
-                    const __m128d next = _mm_add_pd(sum,components[row]);
-                    const __m128d larger = _mm_cmpge_pd(_mm_andnot_pd(sign,sum),_mm_andnot_pd(sign,components[row]));
-                    const __m128d errorA = _mm_add_pd(_mm_sub_pd(sum,next),components[row]);
-                    const __m128d errorB = _mm_add_pd(_mm_sub_pd(components[row],next),sum);
-                    correction = _mm_add_pd(correction,_mm_or_pd(_mm_and_pd(larger,errorA),_mm_andnot_pd(larger,errorB)));
-                    sum = next;
-                }
-                sum = _mm_add_pd(sum,correction);
-            }
-            points[point] = sum;
+            const __m128d x = terms[0][(corner & xMask) != 0];
+            const __m128d y = terms[1][(corner & yMask) != 0];
+            const __m128d z = terms[2][(corner & zMask) != 0];
+            points[point] = _mm_add_pd(_mm_add_pd(_mm_add_pd(x, y), z), translation);
         }
         const __m128d a = points[0], b = points[1];
         const __m128d z = _mm_unpacklo_pd(a,b), w = _mm_unpackhi_pd(a,b);

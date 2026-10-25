@@ -388,20 +388,7 @@ static void ProjectBoxZExtentsScalarCore(const VxMatrix &World_ProjectionMat, co
         };
         for (int component = 0; component < 2; ++component) {
             const double *terms = components[component];
-            double sum = ((terms[0] + terms[1]) + terms[2]) + terms[3];
-            const double magnitude = fabs(terms[0]) + fabs(terms[1]) + fabs(terms[2]) + fabs(terms[3]);
-            if (fabs(sum) < magnitude * (1.0 / 16777216.0)) {
-                // Recover terms lost before large opposite terms cancel.
-                sum = terms[0];
-                double correction = 0;
-                for (int row = 1; row < 4; ++row) {
-                    const double next = sum + terms[row];
-                    correction += fabs(sum) >= fabs(terms[row]) ? (sum - next) + terms[row] : (terms[row] - next) + sum;
-                    sum = next;
-                }
-                sum += correction;
-            }
-            values[component] = sum;
+            values[component] = terms[0] + terms[1] + terms[2] + terms[3];
         }
         const double valueZ = values[0], valueW = values[1];
         projected[i] = !(valueW < 0) ? static_cast<float>(valueZ / valueW) : 0;

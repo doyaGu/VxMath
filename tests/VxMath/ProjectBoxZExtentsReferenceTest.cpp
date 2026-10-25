@@ -208,8 +208,8 @@ static void PZWideCase(int kind, VxMatrix &m, VxBbox &b, float &lo, float &hi) {
     if (kind==6) { b.Min.x=b.Max.x=1; m[0][2]=PZFloat(1); m[0][3]=PZFloat(1); m[3][3]=0; }
     if (kind>=7) {
         b=VxBbox(VxVector(1,1,1),VxVector(1,1,1));
-        if (kind==7) { m[0][2]=1.0e30f; m[1][2]=1; m[2][2]=-1.0e30f; }
-        else { m[3][2]=4; m[0][3]=1.0e30f; m[1][3]=kind==8 ? 1.0f : -1.0f; m[2][3]=-1.0e30f; m[3][3]=0; lo=hi=kind==8 ? 4.0f : 0; }
+        if (kind==7) { m[0][2]=0x1p30f; m[1][2]=1; m[2][2]=-0x1p30f; }
+        else { m[3][2]=4; m[0][3]=0x1p30f; m[1][3]=kind==8 ? 1.0f : -1.0f; m[2][3]=-0x1p30f; m[3][3]=0; lo=hi=kind==8 ? 4.0f : 0; }
     }
 }
 static PZResult PZWide(PZFn fn) {
