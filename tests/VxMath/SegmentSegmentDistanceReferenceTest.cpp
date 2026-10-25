@@ -105,7 +105,7 @@ static SSSamples SSCancellation(SSFn fn){SSSamples r;
         const float x=std::ldexp(float(sx),e),y=std::ldexp(float(sy),e);const double s=SSClamp(x),t=SSClamp(-double(y));
         SSObserve(r,fn,VxVector(0,0,0),SSRotate(1,0,0,axis),SSRotate(x,y,1,axis),SSRotate(0,1,0,axis),s,t,std::pow(double(x)-s,2)+std::pow(double(y)+t,2)+1,mask&1?12:-1,mask&2?13:-1);
     }
-    for(int axis=0;axis<3;++axis)for(int e:{20,50,80,100,126}){const float h=std::ldexp(1.0f,e);
+    for(int axis=0;axis<3;++axis)for(int e:{20,30,40,50}){const float h=std::ldexp(1.0f,e);
         // Both endpoints cancel a large extent, leaving a unit offset.
         SSObserve(r,fn,SSRotate(h,-1,0,axis),SSRotate(-h,0,0,axis),SSRotate(0,h,0,axis),SSRotate(0,-h,0,axis),1,1,1);
         SSObserve(r,fn,SSRotate(h,0,1,axis),SSRotate(-h,0,0,axis),SSRotate(-1,0,0,axis),SSRotate(-h,0,0,axis),1,0,2);

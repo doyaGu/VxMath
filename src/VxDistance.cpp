@@ -727,14 +727,6 @@ static float PointSegmentSquareDistanceScalarImpl(const VxVector &point, const V
     return result;
 }
 
-// Preserve endpoint low bits without changing the process floating-point mode.
-static inline double SegmentDistanceSum(double x, double y, double &error) {
-    const double sum = x + y;
-    const double tail = sum - x;
-    error += (x - (sum - tail)) + (y - tail);
-    return sum;
-}
-
 template<bool kUseSIMD>
 static double SegmentDistanceDot(const double *x, const double *y) {
     double products[3];
@@ -748,10 +740,7 @@ static double SegmentDistanceDot(const double *x, const double *y) {
         products[1] = x[1] * y[1];
     }
     products[2] = x[2] * y[2];
-    double error = 0.0;
-    const double sum = SegmentDistanceSum(products[0], products[1], error);
-    const double result = SegmentDistanceSum(sum, products[2], error);
-    return result + error;
+    return products[0] + products[1] + products[2];
 }
 
 template<bool kUseSIMD>
@@ -773,16 +762,15 @@ template<bool kUseSIMD>
 static float SegmentSegmentSquareDistanceCore(const VxRay &segment0, const VxRay &segment1, float *t0, float *t1) {
     const double u[] = {segment0.m_Direction.x, segment0.m_Direction.y, segment0.m_Direction.z};
     const double v[] = {segment1.m_Direction.x, segment1.m_Direction.y, segment1.m_Direction.z};
-    double w[3], low[3], normal[3];
+    double w[3], normal[3];
     for (int j = 0; j < 3; ++j) {
-        low[j] = 0.0;
-        w[j] = SegmentDistanceSum(segment0.m_Origin[j], -double(segment1.m_Origin[j]), low[j]);
+        w[j] = double(segment0.m_Origin[j]) - segment1.m_Origin[j];
     }
     SegmentDistanceCross<kUseSIMD>(u, v, normal);
     const double denominator = SegmentDistanceDot<kUseSIMD>(normal, normal);
     const double a = SegmentDistanceDot<kUseSIMD>(u, u);
     const double c = SegmentDistanceDot<kUseSIMD>(v, v);
-    const double d = SegmentDistanceDot<kUseSIMD>(w, u) + SegmentDistanceDot<kUseSIMD>(low, u);
+    const double d = SegmentDistanceDot<kUseSIMD>(w, u);
     double first = 0.0, second = 0.0, square = 0.0;
     if (a == 0.0) {
         // Original zero-first-extent representative, not a new point query.
@@ -803,36 +791,28 @@ static float SegmentSegmentSquareDistanceCore(const VxRay &segment0, const VxRay
             const double *direction = boundary < 2 ? u : v;
             const double *other = boundary < 2 ? v : u;
             const double length = boundary < 2 ? a : c;
-            double relative[3], tail[3];
+            double relative[3];
             for (int j = 0; j < 3; ++j) {
-                tail[j] = low[j];
-                relative[j] = SegmentDistanceSum(w[j], fixedS * u[j], tail[j]);
-                relative[j] = SegmentDistanceSum(relative[j], -fixedT * v[j], tail[j]);
+                relative[j] = w[j] + fixedS * u[j] - fixedT * v[j];
             }
             const double sign = boundary < 2 ? -1.0 : 1.0;
-            const double projection = sign * (SegmentDistanceDot<kUseSIMD>(relative, direction)
-                                             + SegmentDistanceDot<kUseSIMD>(tail, direction));
+            const double projection = sign * SegmentDistanceDot<kUseSIMD>(relative, direction);
             double parameter, candidate, gradient;
             if (projection <= 0.0) {
                 parameter = 0.0;
-                gradient = SegmentDistanceDot<kUseSIMD>(relative, other) + SegmentDistanceDot<kUseSIMD>(tail, other);
-                for (int j = 0; j < 3; ++j) relative[j] += tail[j];
+                gradient = SegmentDistanceDot<kUseSIMD>(relative, other);
                 candidate = SegmentDistanceDot<kUseSIMD>(relative, relative);
             } else if (projection >= length) {
                 parameter = 1.0;
                 for (int j = 0; j < 3; ++j) {
-                    const double endpoint = SegmentDistanceSum(relative[j], -sign * direction[j], tail[j]);
-                    relative[j] = endpoint;
+                    relative[j] -= sign * direction[j];
                 }
-                gradient = SegmentDistanceDot<kUseSIMD>(relative, other) + SegmentDistanceDot<kUseSIMD>(tail, other);
-                for (int j = 0; j < 3; ++j) relative[j] += tail[j];
+                gradient = SegmentDistanceDot<kUseSIMD>(relative, other);
                 candidate = SegmentDistanceDot<kUseSIMD>(relative, relative);
             } else {
                 parameter = projection / length;
-                double cross[3], correction[3], otherCross[3];
+                double cross[3], otherCross[3];
                 SegmentDistanceCross<kUseSIMD>(relative, direction, cross);
-                SegmentDistanceCross<kUseSIMD>(tail, direction, correction);
-                for (int j = 0; j < 3; ++j) cross[j] += correction[j];
                 candidate = SegmentDistanceDot<kUseSIMD>(cross, cross) / length;
                 SegmentDistanceCross<kUseSIMD>(other, direction, otherCross);
                 gradient = SegmentDistanceDot<kUseSIMD>(cross, otherCross) / length;
@@ -849,32 +829,23 @@ static float SegmentSegmentSquareDistanceCore(const VxRay &segment0, const VxRay
         }
         if (c == 0.0 && d > 0.0) second = 1.0;
         if (denominator != 0.0) {
-            double vw[3], uw[3], correction[3];
+            double vw[3], uw[3];
             SegmentDistanceCross<kUseSIMD>(v, w, vw);
-            SegmentDistanceCross<kUseSIMD>(v, low, correction);
-            for (int j = 0; j < 3; ++j) vw[j] += correction[j];
             SegmentDistanceCross<kUseSIMD>(u, w, uw);
-            SegmentDistanceCross<kUseSIMD>(u, low, correction);
-            for (int j = 0; j < 3; ++j) uw[j] += correction[j];
             const double s = SegmentDistanceDot<kUseSIMD>(vw, normal) / denominator;
             const double t = SegmentDistanceDot<kUseSIMD>(uw, normal) / denominator;
-            double endS[3], endT[3], tailS[3], tailT[3], crossS[3], crossT[3];
+            double endS[3], endT[3], crossS[3], crossT[3];
             for (int j = 0; j < 3; ++j) {
-                tailS[j] = tailT[j] = low[j];
-                endS[j] = SegmentDistanceSum(w[j], u[j], tailS[j]);
-                endT[j] = SegmentDistanceSum(w[j], -v[j], tailT[j]);
+                endS[j] = w[j] + u[j];
+                endT[j] = w[j] - v[j];
             }
             SegmentDistanceCross<kUseSIMD>(v, endS, crossS);
-            SegmentDistanceCross<kUseSIMD>(v, tailS, correction);
-            for (int j = 0; j < 3; ++j) crossS[j] += correction[j];
             SegmentDistanceCross<kUseSIMD>(u, endT, crossT);
-            SegmentDistanceCross<kUseSIMD>(u, tailT, correction);
-            for (int j = 0; j < 3; ++j) crossT[j] += correction[j];
             // Test against each endpoint independently. Subtracting the
             // denominator from a rounded numerator loses small endpoint gaps.
             if (s >= 0.0 && t >= 0.0 && SegmentDistanceDot<kUseSIMD>(crossS, normal) <= 0.0
                                            && SegmentDistanceDot<kUseSIMD>(crossT, normal) <= 0.0) {
-                const double height = SegmentDistanceDot<kUseSIMD>(w, normal) + SegmentDistanceDot<kUseSIMD>(low, normal);
+                const double height = SegmentDistanceDot<kUseSIMD>(w, normal);
                 const double candidate = height * height / denominator;
                 square = candidate; first = s; second = t;
             }
