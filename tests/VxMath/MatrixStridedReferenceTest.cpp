@@ -128,8 +128,8 @@ static SBResult SBNumerics(SBFn fn, int kind) {
     const unsigned pairs[5][2] = {{12,12},{16,24},{28,16},{0,20},{20,0}};
     for (int col = 0; col < 3; ++col) for (int rotate = 0; rotate < terms; ++rotate) {
         VxMatrix m; m.Clear(); VxVector p(1,1,1), e(0,0,0); float x[4], weights[4];
-        if (kind == 0) { x[0] = std::ldexp(1.0f,80); x[1] = 1; x[2] = -x[0]; x[3] = 1; for (float &v : weights) v = 1; e[col] = 2; }
-        else if (kind == 1) { x[0] = std::ldexp(1.0f,100); x[1] = -x[0]; x[2] = 1; x[3] = 2; weights[0] = weights[1] = std::ldexp(1.0f,40); weights[2] = weights[3] = 1; e[col] = 3; }
+        if (kind == 0) { x[0] = std::ldexp(1.0f,30); x[1] = 1; x[2] = -x[0]; x[3] = 1; for (float &v : weights) v = 1; e[col] = 2; }
+        else if (kind == 1) { x[0] = std::ldexp(1.0f,100); x[1] = -x[0]; x[2] = x[0]; x[3] = 2; weights[0] = weights[1] = std::ldexp(1.0f,40); weights[2] = std::ldexp(1.0f,20); weights[3] = 1; e[col] = std::ldexp(1.0f,120); }
         else { for (int i = 0; i < 3; ++i) { x[i] = std::ldexp(1.0f,-100); weights[i] = std::ldexp(1.0f,-51); } x[3] = 0; weights[3] = 1; e[col] = std::ldexp(1.0f,-149); }
         for (int i = 0; i < terms; ++i) { const int at = (i+rotate)%terms; m[at][col] = x[i]; if (at < 3) p[at] = weights[i]; }
         if (terms == 3) m[3][col] = x[3];

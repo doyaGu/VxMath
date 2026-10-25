@@ -219,18 +219,8 @@ VX_SIMD_INLINE __m128 VxSIMDMatrixMultiplyVector3(const float *mat, __m128 v) no
         const __m128d y = _mm_mul_pd(_mm_cvtps_pd(half ? _mm_movehl_ps(row1, row1) : row1), vy);
         const __m128d z = _mm_mul_pd(_mm_cvtps_pd(half ? _mm_movehl_ps(row2, row2) : row2), vz);
         const __m128d w = _mm_cvtps_pd(half ? _mm_movehl_ps(row3, row3) : row3);
-        const __m128d ordinary = _mm_add_pd(_mm_add_pd(_mm_add_pd(x, y), z), w);
-        const __m128d terms[] = {y, z, w};
-        __m128d sum = x, error = _mm_setzero_pd();
-        // Float products are exact in double; preserve addition tails until the final store.
-        for (int term = 0; term < 3; ++term) {
-            const __m128d next = _mm_add_pd(sum, terms[term]), delta = _mm_sub_pd(next, sum);
-            error = _mm_add_pd(error, _mm_add_pd(_mm_sub_pd(sum, _mm_sub_pd(next, delta)), _mm_sub_pd(terms[term], delta)));
-            sum = next;
-        }
-        const __m128d finite = _mm_cmple_pd(_mm_andnot_pd(_mm_set1_pd(-0.0), ordinary), _mm_set1_pd(DBL_MAX));
-        const __m128d compensated = _mm_add_pd(sum, error);
-        parts[half] = _mm_cvtpd_ps(_mm_or_pd(_mm_and_pd(finite, compensated), _mm_andnot_pd(finite, ordinary)));
+        const __m128d sum = _mm_add_pd(_mm_add_pd(_mm_add_pd(x, y), z), w);
+        parts[half] = _mm_cvtpd_ps(sum);
     }
     return _mm_movelh_ps(parts[0], parts[1]);
 }
@@ -250,19 +240,8 @@ VX_SIMD_INLINE __m128 VxSIMDMatrixRotateVector3(const float *mat, __m128 v) noex
         const __m128d x = _mm_mul_pd(_mm_cvtps_pd(half ? _mm_movehl_ps(row0, row0) : row0), vx);
         const __m128d y = _mm_mul_pd(_mm_cvtps_pd(half ? _mm_movehl_ps(row1, row1) : row1), vy);
         const __m128d z = _mm_mul_pd(_mm_cvtps_pd(half ? _mm_movehl_ps(row2, row2) : row2), vz);
-        const __m128d w = _mm_setzero_pd();
-        const __m128d ordinary = _mm_add_pd(_mm_add_pd(_mm_add_pd(x, y), z), w);
-        const __m128d terms[] = {y, z, w};
-        __m128d sum = x, error = _mm_setzero_pd();
-        // Float products are exact in double; preserve addition tails until the final store.
-        for (int term = 0; term < 3; ++term) {
-            const __m128d next = _mm_add_pd(sum, terms[term]), delta = _mm_sub_pd(next, sum);
-            error = _mm_add_pd(error, _mm_add_pd(_mm_sub_pd(sum, _mm_sub_pd(next, delta)), _mm_sub_pd(terms[term], delta)));
-            sum = next;
-        }
-        const __m128d finite = _mm_cmple_pd(_mm_andnot_pd(_mm_set1_pd(-0.0), ordinary), _mm_set1_pd(DBL_MAX));
-        const __m128d compensated = _mm_add_pd(sum, error);
-        parts[half] = _mm_cvtpd_ps(_mm_or_pd(_mm_and_pd(finite, compensated), _mm_andnot_pd(finite, ordinary)));
+        const __m128d sum = _mm_add_pd(_mm_add_pd(x, y), z);
+        parts[half] = _mm_cvtpd_ps(sum);
     }
     return _mm_movelh_ps(parts[0], parts[1]);
 }
@@ -283,18 +262,8 @@ VX_SIMD_INLINE __m128 VxSIMDMatrixMultiplyVector4(const float *mat, __m128 v) no
         const __m128d y = _mm_mul_pd(_mm_cvtps_pd(half ? _mm_movehl_ps(row1, row1) : row1), vy);
         const __m128d z = _mm_mul_pd(_mm_cvtps_pd(half ? _mm_movehl_ps(row2, row2) : row2), vz);
         const __m128d w = _mm_mul_pd(_mm_cvtps_pd(half ? _mm_movehl_ps(row3, row3) : row3), vw);
-        const __m128d ordinary = _mm_add_pd(_mm_add_pd(_mm_add_pd(x, y), z), w);
-        const __m128d terms[] = {y, z, w};
-        __m128d sum = x, error = _mm_setzero_pd();
-        // Float products are exact in double; preserve addition tails until the final store.
-        for (int term = 0; term < 3; ++term) {
-            const __m128d next = _mm_add_pd(sum, terms[term]), delta = _mm_sub_pd(next, sum);
-            error = _mm_add_pd(error, _mm_add_pd(_mm_sub_pd(sum, _mm_sub_pd(next, delta)), _mm_sub_pd(terms[term], delta)));
-            sum = next;
-        }
-        const __m128d finite = _mm_cmple_pd(_mm_andnot_pd(_mm_set1_pd(-0.0), ordinary), _mm_set1_pd(DBL_MAX));
-        const __m128d compensated = _mm_add_pd(sum, error);
-        parts[half] = _mm_cvtpd_ps(_mm_or_pd(_mm_and_pd(finite, compensated), _mm_andnot_pd(finite, ordinary)));
+        const __m128d sum = _mm_add_pd(_mm_add_pd(_mm_add_pd(x, y), z), w);
+        parts[half] = _mm_cvtpd_ps(sum);
     }
     return _mm_movelh_ps(parts[0], parts[1]);
 }

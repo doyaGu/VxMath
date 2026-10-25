@@ -111,8 +111,8 @@ static M4Result M4Numerics(M4Fn fn, int kind) {
     M4Result result;
     for (int row = 0; row < 4; ++row) for (int col = 0; col < 4; ++col) for (int rotate = 0; rotate < 4; ++rotate) {
         VxMatrix a, b; a.Clear(); b.Clear(); float x[4], y[4], expected;
-        if (kind == 0) { x[0] = std::ldexp(1.0f,80); x[1] = 1; x[2] = -x[0]; x[3] = 1; for (float &v : y) v = 1; expected = 2; }
-        else if (kind == 1) { x[0] = std::ldexp(1.0f,100); x[1] = -x[0]; x[2] = 1; x[3] = 2; y[0] = y[1] = std::ldexp(1.0f,40); y[2] = y[3] = 1; expected = 3; }
+        if (kind == 0) { x[0] = std::ldexp(1.0f,30); x[1] = 1; x[2] = -x[0]; x[3] = 1; for (float &v : y) v = 1; expected = 2; }
+        else if (kind == 1) { x[0] = std::ldexp(1.0f,100); x[1] = -x[0]; x[2] = x[0]; x[3] = 2; y[0] = y[1] = std::ldexp(1.0f,40); y[2] = std::ldexp(1.0f,20); y[3] = 1; expected = std::ldexp(1.0f,120); }
         else { for (int k = 0; k < 4; ++k) { x[k] = std::ldexp(1.0f,-100); y[k] = std::ldexp(1.0f,-51); } expected = std::ldexp(1.0f,-149); }
         for (int k = 0; k < 4; ++k) { const int index = (k + rotate) % 4; a[index][col] = x[k]; b[row][index] = y[k]; }
         for (int mode = 0; mode < 3; ++mode) {

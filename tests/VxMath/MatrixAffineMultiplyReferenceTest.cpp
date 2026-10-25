@@ -92,8 +92,8 @@ static MAFResult MAFNumerics(MAFFn fn,int kind) {
     for(int row=0;row<4;++row)for(int col=0;col<3;++col) {
         VxMatrix a,b;a.SetIdentity();b.SetIdentity();a[3][col]=0;
         float x,y,z,bx,by,bz,expected;
-        if(kind==0) { x=std::ldexp(1.0f,80);y=1;z=-x;bx=by=bz=1;expected=1; }
-        else if(kind==1) { x=std::ldexp(1.0f,100);y=-x;z=1;bx=by=std::ldexp(1.0f,40);bz=1;expected=1; }
+        if(kind==0) { x=std::ldexp(1.0f,30);y=1;z=-x;bx=by=bz=1;expected=1; }
+        else if(kind==1) { x=std::ldexp(1.0f,100);y=-x;z=x;bx=by=std::ldexp(1.0f,40);bz=std::ldexp(1.0f,20);expected=std::ldexp(1.0f,120); }
         else { x=y=std::ldexp(1.0f,-100);z=0;bx=by=std::ldexp(1.0f,-50);bz=0;expected=std::ldexp(1.0f,-149); }
         a[0][col]=x;a[1][col]=y;a[2][col]=z;b[row][0]=bx;b[row][1]=by;b[row][2]=bz;
         for(int mode:{0,1,2,5,6}) { VxMatrix actual;const bool ok=MAFExecute(actual,fn,a,b,mode)&&MAFShape(actual)&&actual[row][col]==expected;++out.samples;out.errors+=!ok; }

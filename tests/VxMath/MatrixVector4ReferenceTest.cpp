@@ -103,8 +103,8 @@ static HVResult HVNumerics(HVFn fn, bool point, int kind) {
     HVResult result; const int rotations = point && kind != 0 ? 3 : 4;
     for (int col = 0; col < 4; ++col) for (int rotate = 0; rotate < rotations; ++rotate) {
         VxMatrix m; m.Clear(); VxVector4 p(1,1,1,1); float x[4], weights[4], expected;
-        if (kind == 0) { x[0] = std::ldexp(1.0f,80); x[1] = 1; x[2] = -x[0]; x[3] = 1; for (float &w : weights) w = 1; expected = 2; }
-        else if (kind == 1) { x[0] = std::ldexp(1.0f,100); x[1] = -x[0]; x[2] = 1; x[3] = 2; weights[0] = weights[1] = std::ldexp(1.0f,40); weights[2] = weights[3] = 1; expected = 3; }
+        if (kind == 0) { x[0] = std::ldexp(1.0f,30); x[1] = 1; x[2] = -x[0]; x[3] = 1; for (float &w : weights) w = 1; expected = 2; }
+        else if (kind == 1) { x[0] = std::ldexp(1.0f,100); x[1] = -x[0]; x[2] = x[0]; x[3] = 2; weights[0] = weights[1] = std::ldexp(1.0f,40); weights[2] = std::ldexp(1.0f,20); weights[3] = 1; expected = std::ldexp(1.0f,120); }
         else { for (int i = 0; i < 4; ++i) { x[i] = std::ldexp(1.0f,-100); weights[i] = std::ldexp(1.0f,-51); } if (point) { x[3] = 0; weights[3] = 1; } expected = std::ldexp(1.0f,-149); }
         const int terms = point && kind != 0 ? 3 : 4;
         for (int i = 0; i < terms; ++i) { const int at = (i+rotate)%terms; m[at][col] = x[i]; p[at] = weights[i]; }

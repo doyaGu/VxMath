@@ -215,16 +215,7 @@ inline const VxVector Rotate(const VxMatrix &mat, const VxVector &pt) {
 inline void Vx3DMatrixIdentity(VxMatrix &Mat) { Mat.SetIdentity(); }
 
 inline float VxMatrixAffineSum(double x, double y, double z, double translation) {
-    // Float products are exact in double. Keep the addition tails when large terms cancel.
-    const double terms[] = {y, z, translation};
-    double sum = x, error = 0.0;
-    for (int i = 0; i < 3; ++i) {
-        const double next = sum + terms[i];
-        const double delta = next - sum;
-        error += (sum - (next - delta)) + (terms[i] - delta);
-        sum = next;
-    }
-    return float(sum + error);
+    return static_cast<float>(x + y + z + translation);
 }
 
 inline void Vx3DMultiplyMatrixVector4(VxVector4 *ResultVector, const VxMatrix &Mat, const VxVector4 *Vector) {
@@ -235,8 +226,7 @@ inline void Vx3DMultiplyMatrixVector4(VxVector4 *ResultVector, const VxMatrix &M
     VxVector4 temp;
     for (int c = 0; c < 4; ++c) {
         const double x = vx * Mat[0][c], y = vy * Mat[1][c], z = vz * Mat[2][c], w = vw * Mat[3][c];
-        const double sum = x + y + z + w;
-        temp[c] = fabs(sum) <= DBL_MAX ? VxMatrixAffineSum(x, y, z, w) : float(sum);
+        temp[c] = static_cast<float>(x + y + z + w);
     }
     *ResultVector = temp;
 #endif
@@ -259,8 +249,7 @@ inline void Vx3DRotateVector(VxVector *ResultVector, const VxMatrix &Mat, const 
     VxVector temp;
     for (int c = 0; c < 3; ++c) {
         const double x = vx * Mat[0][c], y = vy * Mat[1][c], z = vz * Mat[2][c];
-        const double sum = x + y + z;
-        temp[c] = fabs(sum) <= DBL_MAX ? VxMatrixAffineSum(x, y, z, 0.0) : float(sum);
+        temp[c] = static_cast<float>(x + y + z);
     }
     *ResultVector = temp;
 #endif
@@ -274,8 +263,7 @@ inline void Vx3DMultiplyMatrixVector(VxVector *ResultVector, const VxMatrix &Mat
     VxVector temp;
     for (int c = 0; c < 3; ++c) {
         const double x = vx * Mat[0][c], y = vy * Mat[1][c], z = vz * Mat[2][c], translation = Mat[3][c];
-        const double sum = x + y + z + translation;
-        temp[c] = fabs(sum) <= DBL_MAX ? VxMatrixAffineSum(x, y, z, translation) : float(sum);
+        temp[c] = static_cast<float>(x + y + z + translation);
     }
     *ResultVector = temp;
 #endif
@@ -307,9 +295,7 @@ inline void Vx3DMultiplyMatrix4(VxMatrix &ResultMat, const VxMatrix &MatA, const
         for (int j = 0; j < 4; j++) {
             const double x = double(MatA[0][j]) * bi0, y = double(MatA[1][j]) * bi1;
             const double z = double(MatA[2][j]) * bi2, w = double(MatA[3][j]) * bi3;
-            const double sum = x + y + z + w;
-            // Compensate finite products without changing infinity/NaN propagation.
-            temp[i][j] = fabs(sum) <= DBL_MAX ? VxMatrixAffineSum(x, y, z, w) : float(sum);
+            temp[i][j] = static_cast<float>(x + y + z + w);
         }
     }
     ResultMat = temp;
@@ -536,8 +522,7 @@ inline void Vx3DRotateVectorMany(VxVector *ResultVector, const VxMatrix &Mat, co
         VxVector temp;
         for (int c = 0; c < 3; ++c) {
             const double x = vx * rows[0][c], y = vy * rows[1][c], z = vz * rows[2][c];
-            const double sum = x + y + z;
-            temp[c] = fabs(sum) <= DBL_MAX ? VxMatrixAffineSum(x, y, z, 0.0) : float(sum);
+            temp[c] = static_cast<float>(x + y + z);
         }
         *reinterpret_cast<VxVector *>(dstPtr) = temp;
         if (--count == 0) break;
@@ -602,8 +587,7 @@ inline void Vx3DRotateVectorStrided(VxStridedData *Dest, VxStridedData *Src, con
         VxVector temp;
         for (int c = 0; c < 3; ++c) {
             const double x = vx * rows[0][c], y = vy * rows[1][c], z = vz * rows[2][c];
-            const double sum = x + y + z;
-            temp[c] = fabs(sum) <= DBL_MAX ? VxMatrixAffineSum(x, y, z, 0.0) : float(sum);
+            temp[c] = static_cast<float>(x + y + z);
         }
         *reinterpret_cast<VxVector *>(dstPtr) = temp;
         if (--count == 0) break;
@@ -1066,17 +1050,7 @@ VX_SIMD_INLINE XBOOL VxSIMDIsPureTranslationMatrix(const VxMatrix *mat) noexcept
 }
 
 VX_SIMD_INLINE __m128d VxSIMDMatrixAffineSum(__m128d x, __m128d y, __m128d z, __m128d translation) noexcept {
-    __m128d sum = _mm_add_pd(x, y);
-    __m128d delta = _mm_sub_pd(sum, x);
-    __m128d error = _mm_add_pd(_mm_sub_pd(x, _mm_sub_pd(sum, delta)), _mm_sub_pd(y, delta));
-    __m128d next = _mm_add_pd(sum, z);
-    delta = _mm_sub_pd(next, sum);
-    error = _mm_add_pd(error, _mm_add_pd(_mm_sub_pd(sum, _mm_sub_pd(next, delta)), _mm_sub_pd(z, delta)));
-    sum = next;
-    next = _mm_add_pd(sum, translation);
-    delta = _mm_sub_pd(next, sum);
-    error = _mm_add_pd(error, _mm_add_pd(_mm_sub_pd(sum, _mm_sub_pd(next, delta)), _mm_sub_pd(translation, delta)));
-    return _mm_add_pd(next, error);
+    return _mm_add_pd(_mm_add_pd(_mm_add_pd(x, y), z), translation);
 }
 
 VX_SIMD_INLINE void VxSIMDMultiplyMatrixM(VxMatrix *result, const VxMatrix *a, const VxMatrix *b) noexcept {
@@ -1213,9 +1187,7 @@ VX_SIMD_INLINE void VxSIMDMultiplyMatrixM4(VxMatrix *result, const VxMatrix *a, 
             const __m128d x = _mm_mul_pd(rows[0][half], bx), y = _mm_mul_pd(rows[1][half], by);
             const __m128d z = _mm_mul_pd(rows[2][half], bz), w = _mm_mul_pd(rows[3][half], bw);
             const __m128d sum = _mm_add_pd(_mm_add_pd(_mm_add_pd(x, y), z), w);
-            const __m128d finite = _mm_cmple_pd(_mm_andnot_pd(_mm_set1_pd(-0.0), sum), _mm_set1_pd(DBL_MAX));
-            const __m128d compensated = VxSIMDMatrixAffineSum(x, y, z, w);
-            parts[half] = _mm_cvtpd_ps(_mm_or_pd(_mm_and_pd(finite, compensated), _mm_andnot_pd(finite, sum)));
+            parts[half] = _mm_cvtpd_ps(sum);
         }
         _mm_storeu_ps(&(*out)[i][0], _mm_movelh_ps(parts[0], parts[1]));
     }
@@ -1254,9 +1226,7 @@ VX_SIMD_INLINE void VxSIMDMultiplyMatrixVector(VxVector *result, const VxMatrix 
     for (int half = 0; half < 2; ++half) {
         const __m128d x = _mm_mul_pd(rows[0][half], vx), y = _mm_mul_pd(rows[1][half], vy), z = _mm_mul_pd(rows[2][half], vz);
         const __m128d sum = _mm_add_pd(_mm_add_pd(_mm_add_pd(x, y), z), rows[3][half]);
-        const __m128d finite = _mm_cmple_pd(_mm_andnot_pd(_mm_set1_pd(-0.0), sum), _mm_set1_pd(DBL_MAX));
-        const __m128d compensated = VxSIMDMatrixAffineSum(x, y, z, rows[3][half]);
-        parts[half] = _mm_cvtpd_ps(_mm_or_pd(_mm_and_pd(finite, compensated), _mm_andnot_pd(finite, sum)));
+        parts[half] = _mm_cvtpd_ps(sum);
     }
     VxSIMDStoreFloat3(&result->x, _mm_movelh_ps(parts[0], parts[1]));
 }
@@ -1275,9 +1245,7 @@ VX_SIMD_INLINE void VxSIMDMultiplyMatrixVector4(VxVector4 *result, const VxMatri
         const __m128d x = _mm_mul_pd(rows[0][half], vx), y = _mm_mul_pd(rows[1][half], vy);
         const __m128d z = _mm_mul_pd(rows[2][half], vz), w = _mm_mul_pd(rows[3][half], vw);
         const __m128d sum = _mm_add_pd(_mm_add_pd(_mm_add_pd(x, y), z), w);
-        const __m128d finite = _mm_cmple_pd(_mm_andnot_pd(_mm_set1_pd(-0.0), sum), _mm_set1_pd(DBL_MAX));
-        const __m128d compensated = VxSIMDMatrixAffineSum(x, y, z, w);
-        parts[half] = _mm_cvtpd_ps(_mm_or_pd(_mm_and_pd(finite, compensated), _mm_andnot_pd(finite, sum)));
+        parts[half] = _mm_cvtpd_ps(sum);
     }
     VxSIMDStoreFloat4(&result->x, _mm_movelh_ps(parts[0], parts[1]));
 }
@@ -1305,9 +1273,7 @@ VX_SIMD_INLINE void VxSIMDRotateVectorM(VxVector *result, const VxMatrix *mat, c
     for (int half = 0; half < 2; ++half) {
         const __m128d x = _mm_mul_pd(rows[0][half], vx), y = _mm_mul_pd(rows[1][half], vy), z = _mm_mul_pd(rows[2][half], vz);
         const __m128d sum = _mm_add_pd(_mm_add_pd(x, y), z);
-        const __m128d finite = _mm_cmple_pd(_mm_andnot_pd(_mm_set1_pd(-0.0), sum), _mm_set1_pd(DBL_MAX));
-        const __m128d compensated = VxSIMDMatrixAffineSum(x, y, z, _mm_setzero_pd());
-        parts[half] = _mm_cvtpd_ps(_mm_or_pd(_mm_and_pd(finite, compensated), _mm_andnot_pd(finite, sum)));
+        parts[half] = _mm_cvtpd_ps(sum);
     }
     VxSIMDStoreFloat3(&result->x, _mm_movelh_ps(parts[0], parts[1]));
 }
@@ -1330,9 +1296,7 @@ VX_SIMD_INLINE void VxSIMDMultiplyMatrixVectorMany(VxVector *resultVectors, cons
         for (int half = 0; half < 2; ++half) {
             const __m128d x = _mm_mul_pd(rows[0][half], vx), y = _mm_mul_pd(rows[1][half], vy), z = _mm_mul_pd(rows[2][half], vz);
             const __m128d sum = _mm_add_pd(_mm_add_pd(_mm_add_pd(x, y), z), rows[3][half]);
-            const __m128d finite = _mm_cmple_pd(_mm_andnot_pd(_mm_set1_pd(-0.0), sum), _mm_set1_pd(DBL_MAX));
-            const __m128d compensated = VxSIMDMatrixAffineSum(x, y, z, rows[3][half]);
-            parts[half] = _mm_cvtpd_ps(_mm_or_pd(_mm_and_pd(finite, compensated), _mm_andnot_pd(finite, sum)));
+            parts[half] = _mm_cvtpd_ps(sum);
         }
         VxSIMDStoreFloat3(&dstVec->x, _mm_movelh_ps(parts[0], parts[1]));
         if (--count == 0) break;
@@ -1358,9 +1322,7 @@ VX_SIMD_INLINE void VxSIMDRotateVectorMany(VxVector *resultVectors, const VxMatr
         for (int half = 0; half < 2; ++half) {
             const __m128d x = _mm_mul_pd(rows[0][half], vx), y = _mm_mul_pd(rows[1][half], vy), z = _mm_mul_pd(rows[2][half], vz);
             const __m128d sum = _mm_add_pd(_mm_add_pd(x, y), z);
-            const __m128d finite = _mm_cmple_pd(_mm_andnot_pd(_mm_set1_pd(-0.0), sum), _mm_set1_pd(DBL_MAX));
-            const __m128d compensated = VxSIMDMatrixAffineSum(x, y, z, _mm_setzero_pd());
-            parts[half] = _mm_cvtpd_ps(_mm_or_pd(_mm_and_pd(finite, compensated), _mm_andnot_pd(finite, sum)));
+            parts[half] = _mm_cvtpd_ps(sum);
         }
         VxSIMDStoreFloat3(&dstVec->x, _mm_movelh_ps(parts[0], parts[1]));
         if (--count == 0) break;
@@ -1398,9 +1360,7 @@ VX_SIMD_INLINE void VxSIMDMultiplyMatrixVectorStrided(VxStridedData *dest, const
         for (int half = 0; half < 2; ++half) {
             const __m128d x = _mm_mul_pd(rows[0][half], vx), y = _mm_mul_pd(rows[1][half], vy), z = _mm_mul_pd(rows[2][half], vz);
             const __m128d sum = _mm_add_pd(_mm_add_pd(_mm_add_pd(x, y), z), rows[3][half]);
-            const __m128d finite = _mm_cmple_pd(_mm_andnot_pd(_mm_set1_pd(-0.0), sum), _mm_set1_pd(DBL_MAX));
-            const __m128d compensated = VxSIMDMatrixAffineSum(x, y, z, rows[3][half]);
-            parts[half] = _mm_cvtpd_ps(_mm_or_pd(_mm_and_pd(finite, compensated), _mm_andnot_pd(finite, sum)));
+            parts[half] = _mm_cvtpd_ps(sum);
         }
         VxSIMDStoreFloat3(&dstVec->x, _mm_movelh_ps(parts[0], parts[1]));
         if (--count == 0) break;
@@ -1428,9 +1388,7 @@ VX_SIMD_INLINE void VxSIMDMultiplyMatrixVector4Strided(VxStridedData *dest, cons
         for (int half = 0; half < 2; ++half) {
             const __m128d x = _mm_mul_pd(rows[0][half], vx), y = _mm_mul_pd(rows[1][half], vy), z = _mm_mul_pd(rows[2][half], vz);
             const __m128d sum = _mm_add_pd(_mm_add_pd(_mm_add_pd(x, y), z), rows[3][half]);
-            const __m128d finite = _mm_cmple_pd(_mm_andnot_pd(_mm_set1_pd(-0.0), sum), _mm_set1_pd(DBL_MAX));
-            const __m128d compensated = VxSIMDMatrixAffineSum(x, y, z, rows[3][half]);
-            parts[half] = _mm_cvtpd_ps(_mm_or_pd(_mm_and_pd(finite, compensated), _mm_andnot_pd(finite, sum)));
+            parts[half] = _mm_cvtpd_ps(sum);
         }
         VxSIMDStoreFloat4(&dstVec->x, _mm_movelh_ps(parts[0], parts[1]));
         if (--count == 0) break;
@@ -1464,9 +1422,7 @@ VX_SIMD_INLINE void VxSIMDRotateVectorStrided(VxStridedData *dest, const VxStrid
         for (int half = 0; half < 2; ++half) {
             const __m128d x = _mm_mul_pd(rows[0][half], vx), y = _mm_mul_pd(rows[1][half], vy), z = _mm_mul_pd(rows[2][half], vz);
             const __m128d sum = _mm_add_pd(_mm_add_pd(x, y), z);
-            const __m128d finite = _mm_cmple_pd(_mm_andnot_pd(_mm_set1_pd(-0.0), sum), _mm_set1_pd(DBL_MAX));
-            const __m128d compensated = VxSIMDMatrixAffineSum(x, y, z, _mm_setzero_pd());
-            parts[half] = _mm_cvtpd_ps(_mm_or_pd(_mm_and_pd(finite, compensated), _mm_andnot_pd(finite, sum)));
+            parts[half] = _mm_cvtpd_ps(sum);
         }
         VxSIMDStoreFloat3(&dstVec->x, _mm_movelh_ps(parts[0], parts[1]));
         if (--count == 0) break;

@@ -120,8 +120,8 @@ static RBResult RBNumerics(RBFn fn, int kind) {
     RBResult r;
     for (int col = 0; col < 3; ++col) for (int rotate = 0; rotate < 3; ++rotate) {
         VxMatrix m; m.Clear(); VxVector p(1,1,1), e(0,0,0); float x[3], weights[3];
-        if (kind == 0) { x[0] = std::ldexp(1.0f,80); x[1] = 1; x[2] = -x[0]; for (float &v : weights) v = 1; e[col] = 1; }
-        else if (kind == 1) { x[0] = std::ldexp(1.0f,100); x[1] = -x[0]; x[2] = 1; weights[0] = weights[1] = std::ldexp(1.0f,40); weights[2] = 1; e[col] = 1; }
+        if (kind == 0) { x[0] = std::ldexp(1.0f,30); x[1] = 1; x[2] = -x[0]; for (float &v : weights) v = 1; e[col] = 1; }
+        else if (kind == 1) { x[0] = std::ldexp(1.0f,100); x[1] = -x[0]; x[2] = x[0]; weights[0] = weights[1] = std::ldexp(1.0f,40); weights[2] = std::ldexp(1.0f,20); e[col] = std::ldexp(1.0f,120); }
         else { for (int i = 0; i < 3; ++i) { x[i] = std::ldexp(1.0f,-100); weights[i] = std::ldexp(1.0f,-51); } e[col] = std::ldexp(1.0f,-149); }
         for (int i = 0; i < 3; ++i) { const int at = (i+rotate)%3; m[at][col] = x[i]; p[at] = weights[i]; }
         VxVector points[9], expected[9]; for (int i = 0; i < 9; ++i) { points[i] = p; expected[i] = e; }

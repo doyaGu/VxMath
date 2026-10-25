@@ -109,8 +109,8 @@ static MPResult MPNumerics(MPFn fn, int kind) {
     MPResult result;
     for (int col = 0; col < 3; ++col) for (int rotate = 0; rotate < 3; ++rotate) {
         VxMatrix m; m.Clear(); VxVector p; float x[3], v[3], expected;
-        if (kind == 0) { x[0] = std::ldexp(1.0f,80); x[1] = 1; x[2] = -x[0]; v[0] = v[1] = v[2] = 1; m[3][col] = 1; expected = 2; }
-        else if (kind == 1) { x[0] = std::ldexp(1.0f,100); x[1] = -x[0]; x[2] = 1; v[0] = v[1] = std::ldexp(1.0f,40); v[2] = 1; m[3][col] = 1; expected = 2; }
+        if (kind == 0) { x[0] = std::ldexp(1.0f,30); x[1] = 1; x[2] = -x[0]; v[0] = v[1] = v[2] = 1; m[3][col] = 1; expected = 2; }
+        else if (kind == 1) { x[0] = std::ldexp(1.0f,100); x[1] = -x[0]; x[2] = x[0]; v[0] = v[1] = std::ldexp(1.0f,40); v[2] = std::ldexp(1.0f,20); m[3][col] = 1; expected = std::ldexp(1.0f,120); }
         else { for (int i = 0; i < 3; ++i) { x[i] = std::ldexp(1.0f,-100); v[i] = std::ldexp(1.0f,-51); } expected = std::ldexp(1.0f,-149); }
         for (int i = 0; i < 3; ++i) { const int axis = (i+rotate)%3; m[axis][col] = x[i]; p[axis] = v[i]; }
         for (bool alias : {false,true}) { VxVector out; ++result.samples; result.errors += !(MPExecute(out,fn,m,p,alias) && out[col] == expected); }

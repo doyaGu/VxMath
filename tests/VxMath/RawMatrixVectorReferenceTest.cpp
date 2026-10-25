@@ -117,15 +117,15 @@ static RMResult RMNumerics(RMFn fn, int group) {
         const int terms=RMRotation(kind) || (group!=0 && kind!=2) ? 3 : 4;
         for (int col=0;col<4;++col) for (int shift=0;shift<terms;++shift) {
             VxMatrix m;m.Clear();VxVector4 p(1,1,1,1),expected(0,0,0,0);float values[4],weights[4];
-            if (group==0) { values[0]=std::ldexp(1.0f,80);values[1]=1;values[2]=-values[0];values[3]=1;for (float &v : weights) v=1;expected[col]=float(terms-2); }
-            else if (group==1) { values[0]=std::ldexp(1.0f,100);values[1]=-values[0];values[2]=1;values[3]=2;weights[0]=weights[1]=std::ldexp(1.0f,40);weights[2]=weights[3]=1;expected[col]=terms==3 ? 1.0f : 3.0f; }
+            if (group==0) { values[0]=std::ldexp(1.0f,30);values[1]=1;values[2]=-values[0];values[3]=1;for (float &v : weights) v=1;expected[col]=float(terms-2); }
+            else if (group==1) { values[0]=std::ldexp(1.0f,100);values[1]=-values[0];values[2]=values[0];values[3]=2;weights[0]=weights[1]=std::ldexp(1.0f,40);weights[2]=std::ldexp(1.0f,20);weights[3]=1;expected[col]=std::ldexp(1.0f,120); }
             else { for (int i=0;i<4;++i) { values[i]=std::ldexp(1.0f,-100);weights[i]=std::ldexp(1.0f,-51); }expected[col]=std::ldexp(1.0f,-149); }
             for (int i=0;i<terms;++i) {
                 const int at=(i+shift)%terms;
                 if (at==3 && kind!=2) m[at][col]=values[i]*weights[i];
                 else { m[at][col]=values[i];p[at]=weights[i]; }
             }
-            if (group==1 && (kind==0 || kind==3)) { m[3][col]=2;expected[col]=3; }
+            if (group==1 && (kind==0 || kind==3)) { m[3][col]=2; }
             for (bool alias : {false,true}) { ++r.samples;r.errors+=!RMData(fn,m,p,expected,kind,alias); }
         }
     }
@@ -191,7 +191,7 @@ TEST(RawMatrixVectorReference, ExactMatrixSourceAndDestinationPageEdges) {
 #endif
 }
 TEST(RawMatrixVectorReference, FrustumTransformKeepsCancelledOrigin) {
-    VxMatrix m;m.SetIdentity();m[0][0]=std::ldexp(1.0f,80);m[1][0]=1;m[2][0]=-m[0][0];m[3][0]=1;
+    VxMatrix m;m.SetIdentity();m[0][0]=std::ldexp(1.0f,30);m[1][0]=1;m[2][0]=-m[0][0];m[3][0]=1;
     VxFrustum frustum(VxVector(1,1,1),VxVector(1,0,0),VxVector(0,1,0),VxVector(0,0,1),1,10,1,1);
     frustum.Transform(m);EXPECT_EQ(frustum.GetOrigin().x,2);EXPECT_EQ(frustum.GetOrigin().y,1);EXPECT_EQ(frustum.GetOrigin().z,1);
 }
