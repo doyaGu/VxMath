@@ -172,8 +172,34 @@ inline int operator==(const VxVector &v1, const VxVector &v2) {
 inline int operator!=(const VxVector &v1, const VxVector &v2) { return !(v1 == v2); }
 inline float SquareMagnitude(const VxVector &v) { return v.SquareMagnitude(); }
 inline float Magnitude(const VxVector &v) { return v.Magnitude(); }
-inline float InvSquareMagnitude(const VxVector &v) { return 1.0f / SquareMagnitude(v); }
-inline float InvMagnitude(const VxVector &v) { return 1.0f / Magnitude(v); }
+inline float InvSquareMagnitude(const VxVector &v) {
+#if defined(VX_SIMD_SSE)
+    const __m128 inputXY = _mm_castsi128_ps(_mm_loadl_epi64(reinterpret_cast<const __m128i *>(&v.x)));
+    const __m128d xy = _mm_cvtps_pd(inputXY);
+    const __m128d z = _mm_cvtps_pd(_mm_load_ss(&v.z));
+    const __m128d products = _mm_mul_pd(xy, xy);
+    const __m128d square = _mm_add_sd(_mm_add_sd(products, _mm_unpackhi_pd(products, products)), _mm_mul_sd(z, z));
+    const __m128d inverse = _mm_div_sd(_mm_set_sd(1), square);
+    return static_cast<float>(_mm_cvtsd_f64(inverse));
+#else
+    const double x = v.x, y = v.y, z = v.z;
+    return static_cast<float>(1.0 / ((x * x + y * y) + z * z));
+#endif
+}
+inline float InvMagnitude(const VxVector &v) {
+#if defined(VX_SIMD_SSE)
+    const __m128 inputXY = _mm_castsi128_ps(_mm_loadl_epi64(reinterpret_cast<const __m128i *>(&v.x)));
+    const __m128d xy = _mm_cvtps_pd(inputXY);
+    const __m128d z = _mm_cvtps_pd(_mm_load_ss(&v.z));
+    const __m128d products = _mm_mul_pd(xy, xy);
+    const __m128d square = _mm_add_sd(_mm_add_sd(products, _mm_unpackhi_pd(products, products)), _mm_mul_sd(z, z));
+    const __m128d inverse = _mm_div_sd(_mm_set_sd(1), _mm_sqrt_sd(square, square));
+    return static_cast<float>(_mm_cvtsd_f64(inverse));
+#else
+    const double x = v.x, y = v.y, z = v.z;
+    return static_cast<float>(1.0 / sqrt((x * x + y * y) + z * z));
+#endif
+}
 inline const VxVector Normalize(const VxVector &v) {
 #if defined(VX_SIMD_SSE)
     const __m128 value = VxSIMDLoadFloat3(&v.x);

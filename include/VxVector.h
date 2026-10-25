@@ -260,7 +260,7 @@ inline float Magnitude(const VxVector &v);
  * @brief Returns the inverse of the squared magnitude of a vector.
  * @param v The vector.
  * @return 1.0f / (x*x + y*y + z*z).
- * @warning The result is undefined for a null vector (0,0,0).
+ * @remarks Zero returns +Inf; the reciprocal is computed before narrowing the squared length.
  * @see SquareMagnitude()
  */
 inline float InvSquareMagnitude(const VxVector &v);
@@ -269,7 +269,7 @@ inline float InvSquareMagnitude(const VxVector &v);
  * @brief Returns the inverse of the magnitude of a vector.
  * @param v The vector.
  * @return 1.0f / sqrt(x*x + y*y + z*z).
- * @warning Calling this on a null vector (0,0,0) will result in NaN (Not aNumber).
+ * @remarks Zero returns +Inf; the reciprocal is computed before narrowing the length.
  * @see Magnitude()
  */
 inline float InvMagnitude(const VxVector &v);
