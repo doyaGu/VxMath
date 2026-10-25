@@ -169,6 +169,16 @@ public:
     }
 
     void EigenStuff3() {
+        // Only eigenvectors escape this wrapper. A positive uniform scale
+        // preserves them and keeps the float tridiagonal work arrays in range.
+        float scale = 0;
+        for (int r = 0; r < 3; ++r)
+            for (int c = r; c < 3; ++c)
+                if (fabs(m_Data[r][c]) > scale) scale = static_cast<float>(fabs(m_Data[r][c]));
+        if (scale > 0 && scale != 1)
+            for (int r = 0; r < 3; ++r)
+                for (int c = r; c < 3; ++c)
+                    m_Data[r][c] = static_cast<float>(double(m_Data[r][c]) / scale);
         float diagonal[3];
         float offDiagonal[3];
         Tridiagonal(diagonal, offDiagonal);
