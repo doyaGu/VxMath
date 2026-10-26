@@ -303,7 +303,8 @@ inline float Min(const VxVector &v) {
     __m128 y = _mm_shuffle_ps(vec, vec, _MM_SHUFFLE(1, 1, 1, 1));
     __m128 z = _mm_shuffle_ps(vec, vec, _MM_SHUFFLE(2, 2, 2, 2));
     __m128 m = _mm_min_ss(vec, y);
-    m = _mm_min_ss(m, z);
+    // Keep the selected X/Y value when Z is equal or unordered.
+    m = _mm_min_ss(z, m);
     float result;
     _mm_store_ss(&result, m);
     return result;
@@ -320,8 +321,9 @@ inline float Max(const VxVector &v) {
     __m128 vec = VxSIMDLoadFloat3(&v.x);
     __m128 y = _mm_shuffle_ps(vec, vec, _MM_SHUFFLE(1, 1, 1, 1));
     __m128 z = _mm_shuffle_ps(vec, vec, _MM_SHUFFLE(2, 2, 2, 2));
-    __m128 m = _mm_max_ss(vec, y);
-    m = _mm_max_ss(m, z);
+    // The original keeps the earlier component on equal or unordered values.
+    __m128 m = _mm_max_ss(y, vec);
+    m = _mm_max_ss(z, m);
     float result;
     _mm_store_ss(&result, m);
     return result;
