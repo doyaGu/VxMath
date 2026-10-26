@@ -104,6 +104,8 @@ set(VXMATH_TEST_SOURCES
         VectorCoreScalarReferenceTest.cpp
         VectorInterpolationReferenceTest.cpp
         VectorInterpolationScalarReferenceTest.cpp
+        Vector4ReferenceTest.cpp
+        Vector4ScalarReferenceTest.cpp
         QuaternionTest.cpp
         QuaternionReferenceTest.cpp
         QuaternionConversionTest.cpp

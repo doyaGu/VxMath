@@ -396,11 +396,11 @@ public:
     /// @brief Default constructor. Initializes to (0,0,0,0).
     VxVector4();
     /// @brief Uniform constructor. Initializes all four components to the same value.
-    VxVector4(float f);
+    explicit VxVector4(float f);
     /// @brief Component-wise constructor.
     VxVector4(float _x, float _y, float _z, float _w);
     /// @brief Array constructor.
-    VxVector4(const float f[4]);
+    explicit VxVector4(const float f[4]);
 
     /**
      * @brief Assignment from a 3D vector. The 'w' component is not modified.
