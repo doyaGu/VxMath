@@ -356,23 +356,7 @@ VX_SIMD_INLINE void VxSIMDScaleQuaternion(VxQuaternion *result, const VxQuaterni
 }
 
 VX_SIMD_INLINE void VxSIMDNormalizeQuaternion(VxQuaternion *q) noexcept {
-    const __m128 quat = _mm_loadu_ps(&q->x);
-    const __m128d xy = _mm_cvtps_pd(quat);
-    const __m128d zw = _mm_cvtps_pd(_mm_movehl_ps(quat, quat));
-    const __m128d squaresXY = _mm_mul_pd(xy, xy);
-    const __m128d squaresZW = _mm_mul_pd(zw, zw);
-    __m128d sum = _mm_add_sd(squaresXY, _mm_unpackhi_pd(squaresXY, squaresXY));
-    sum = _mm_add_sd(sum, squaresZW);
-    sum = _mm_add_sd(sum, _mm_unpackhi_pd(squaresZW, squaresZW));
-    if (_mm_cvtsd_f64(sum) == 0.0) {
-        *q = VxQuaternion();
-        return;
-    }
-    const __m128d inverse = _mm_div_sd(_mm_set_sd(1.0), _mm_sqrt_sd(sum, sum));
-    const __m128d scale = _mm_unpacklo_pd(inverse, inverse);
-    const __m128 resultXY = _mm_cvtpd_ps(_mm_mul_pd(xy, scale));
-    const __m128 resultZW = _mm_cvtpd_ps(_mm_mul_pd(zw, scale));
-    _mm_storeu_ps(&q->x, _mm_movelh_ps(resultXY, resultZW));
+    _mm_storeu_ps(&q->x, VxSIMDQuaternionNormalize(_mm_loadu_ps(&q->x)));
 }
 
 VX_SIMD_INLINE void VxSIMDMultiplyQuaternion(VxQuaternion *result, const VxQuaternion *a, const VxQuaternion *b) noexcept {

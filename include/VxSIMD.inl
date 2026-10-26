@@ -326,14 +326,22 @@ VX_SIMD_INLINE __m128 VxSIMDReflect3(__m128 incident, __m128 normal) noexcept {
 // ============================================================================
 
 VX_SIMD_INLINE __m128 VxSIMDQuaternionNormalize(__m128 q) noexcept {
-    __m128 magSq = VxSIMDDotProduct4(q, q);
-    __m128 isZero = _mm_cmpeq_ps(magSq, _mm_setzero_ps());
-    int zeroMask = _mm_movemask_ps(isZero);
-    if (zeroMask & 1) {
-        return VX_SIMD_QUAT_IDENTITY;
+    const __m128 square = VxSIMDDotProduct4(q, q);
+    const float lengthSquared = _mm_cvtss_f32(square);
+    if (lengthSquared >= 0x1p-100f && lengthSquared <= 0x1p100f) {
+        return _mm_div_ps(q, _mm_sqrt_ps(square));
     }
-    __m128 invNorm = VxSIMDReciprocalSqrtAccurate(magSq);
-    return _mm_mul_ps(q, invNorm);
+
+    // Widen at the extremes so finite nonzero inputs keep their direction.
+    const __m128d xy = _mm_cvtps_pd(q), zw = _mm_cvtps_pd(_mm_movehl_ps(q, q));
+    const __m128d squaresXY = _mm_mul_pd(xy, xy), squaresZW = _mm_mul_pd(zw, zw);
+    __m128d sum = _mm_add_sd(squaresXY, _mm_unpackhi_pd(squaresXY, squaresXY));
+    sum = _mm_add_sd(sum, squaresZW);
+    sum = _mm_add_sd(sum, _mm_unpackhi_pd(squaresZW, squaresZW));
+    if (_mm_cvtsd_f64(sum) == 0.0) return VX_SIMD_QUAT_IDENTITY;
+    const __m128d inverse = _mm_div_sd(_mm_set_sd(1.0), _mm_sqrt_sd(sum, sum));
+    const __m128d scale = _mm_unpacklo_pd(inverse, inverse);
+    return _mm_movelh_ps(_mm_cvtpd_ps(_mm_mul_pd(xy, scale)), _mm_cvtpd_ps(_mm_mul_pd(zw, scale)));
 }
 
 VX_SIMD_INLINE __m128 VxSIMDQuaternionMultiply(__m128 qa, __m128 qb) noexcept {
