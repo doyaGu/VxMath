@@ -704,3 +704,10 @@ vx_copy_runtime_dependencies(StridedDataReferenceTest)
 vx_add_test(StridedDataScalarReferenceTest SOURCES StridedDataReferenceTest.cpp)
 target_compile_definitions(StridedDataScalarReferenceTest PRIVATE VX_SIMD_NONE=1)
 vx_copy_runtime_dependencies(StridedDataScalarReferenceTest)
+
+vx_add_test(UVReferenceTest SOURCES UVReferenceTest.cpp)
+vx_copy_runtime_dependencies(UVReferenceTest)
+
+vx_add_test(UVScalarReferenceTest SOURCES UVReferenceTest.cpp)
+target_compile_definitions(UVScalarReferenceTest PRIVATE VX_SIMD_NONE=1)
+vx_copy_runtime_dependencies(UVScalarReferenceTest)
