@@ -526,9 +526,6 @@ inline VxVector4::operator float *() const { return (float *) &v[0]; }
 
 // --- VxCompressedVector bodies -----------------------------------------------
 
-/**
- * @brief Performs spherical linear interpolation between two compressed vectors.
- */
 inline VxCompressedVectorOld::VxCompressedVectorOld() { xa = ya = 0; }
 
 inline VxCompressedVectorOld::VxCompressedVectorOld(float _x, float _y, float _z) { Set(_x, _y, _z); }
@@ -537,7 +534,7 @@ inline void VxCompressedVectorOld::Slerp(float step, VxCompressedVectorOld &v1, 
     int v1y = ((int) v1.ya + 16384) & 16383;
     int v2y = ((int) v2.ya + 16384) & 16383;
     v2y = (v2y - v1y);
-    if (v2y > 8192) v2y = 16384 - v2y;
+    if (v2y > 8192) v2y -= 16384;
     else if (v2y < -8192) v2y = 16384 + v2y;
     xa = (int) ((float) v1.xa + (float) (v2.xa - v1.xa) * step);
     ya = (int) ((float) v1y + (float) v2y * step);
@@ -562,7 +559,7 @@ inline void VxCompressedVector::Slerp(float step, VxCompressedVector &v1, VxComp
     int v1y = ((int) v1.ya + 16384) & 16383;
     int v2y = ((int) v2.ya + 16384) & 16383;
     v2y = (v2y - v1y);
-    if (v2y > 8192) v2y = 16384 - v2y;
+    if (v2y > 8192) v2y -= 16384;
     else if (v2y < -8192) v2y = 16384 + v2y;
     xa = (short int) ((int) v1.xa + (((v2.xa - v1.xa) * coef) >> 16));
     ya = (short int) (v1y + ((v2y * coef) >> 16));

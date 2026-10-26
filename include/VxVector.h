@@ -344,7 +344,7 @@ typedef struct VxCompressedVector {
     /// @brief Sets the compressed vector from a 3D vector's components.
     void Set(float X, float Y, float Z);
 
-    /// @brief Performs spherical linear interpolation between two compressed vectors.
+    /// @brief Interpolates polar angles, taking the shorter yaw arc with 16.16 fixed-point weights.
     void Slerp(float step, VxCompressedVector &v1, VxCompressedVector &v2);
 
     /// @brief Assigns a VxVector to this compressed vector, performing the conversion.
@@ -369,7 +369,7 @@ typedef struct VxCompressedVectorOld {
 
     /// @brief Sets the compressed vector from a 3D vector's components.
     void Set(float X, float Y, float Z);
-    /// @brief Performs spherical linear interpolation between two old compressed vectors.
+    /// @brief Interpolates polar angles, taking the shorter yaw arc with floating-point weights.
     void Slerp(float step, VxCompressedVectorOld &v1, VxCompressedVectorOld &v2);
 
     /// @brief Assigns a VxVector to this compressed vector.
