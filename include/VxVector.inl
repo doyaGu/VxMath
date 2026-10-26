@@ -250,14 +250,8 @@ inline const VxVector Reflect(const VxVector &v1, const VxVector &Norm) {
     return result;
 }
 inline const VxVector Rotate(const VxVector &v1, const VxVector &v2, float angle) {
-    const float axisMagSq = v2.x * v2.x + v2.y * v2.y + v2.z * v2.z;
-    if (axisMagSq <= EPSILON) {
-        return v1;
-    }
-    const float axisInvMag = 1.0f / sqrtf(axisMagSq);
-    const float nx = v2.x * axisInvMag;
-    const float ny = v2.y * axisInvMag;
-    const float nz = v2.z * axisInvMag;
+    const VxVector axis = Normalize(v2);
+    const float nx = axis.x, ny = axis.y, nz = axis.z;
 
     const float sinAngle = sinf(angle);
     const float cosAngle = cosf(angle);

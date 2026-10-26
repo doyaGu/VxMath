@@ -94,6 +94,8 @@ set(VXMATH_TEST_SOURCES
         VectorTest.cpp
         VectorReflectReferenceTest.cpp
         VectorReflectScalarReferenceTest.cpp
+        VectorAxisRotationReferenceTest.cpp
+        VectorAxisRotationScalarReferenceTest.cpp
         QuaternionTest.cpp
         QuaternionReferenceTest.cpp
         QuaternionConversionTest.cpp

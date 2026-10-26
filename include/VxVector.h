@@ -314,7 +314,7 @@ inline const VxVector Reflect(const VxVector &v1, const VxVector &Norm);
 
 /// @brief Rotates a vector using a transformation matrix.
 inline const VxVector Rotate(const VxMatrix &mat, const VxVector &pt);
-/// @brief Rotates a vector around an axis by a specified angle.
+/// @brief Rotates around a normalized copy of the axis; radians, +X towards -Y about +Z.
 inline const VxVector Rotate(const VxVector &v1, const VxVector &v2, float angle);
 /// @brief Rotates a vector around an axis by a specified angle (pointer version).
 inline const VxVector Rotate(const VxVector *v1, const VxVector *v2, float angle);

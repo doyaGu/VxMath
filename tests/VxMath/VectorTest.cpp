@@ -860,8 +860,7 @@ TEST_F(VxVectorRotateTest, RotateWithMatrix) {
 }
 
 TEST_F(VxVectorRotateTest, RotateAroundAxis) {
-    // The ground-truth DLL Rotate(v, axis, angle) may use a different rotation direction
-    // (possibly negative angle convention). Test that rotation produces a valid result.
+    // Original positive angles turn +X towards -Y about +Z.
     VxVector rotated = Rotate(x_axis, z_axis, PI / 2.0f);
     
     // Verify the result is still a unit vector (rotation preserves length)
@@ -870,11 +869,15 @@ TEST_F(VxVectorRotateTest, RotateAroundAxis) {
     
     // The rotated vector should be perpendicular to Z-axis and have z=0
     EXPECT_NEAR(rotated.z, 0.0f, SIMD_TOL);
+    EXPECT_NEAR(rotated.x, 0.0f, SIMD_TOL);
+    EXPECT_NEAR(rotated.y, -1.0f, SIMD_TOL);
     
     // Y-axis around X-axis rotation
     VxVector rotated2 = Rotate(y_axis, x_axis, PI / 2.0f);
     EXPECT_NEAR(rotated2.Magnitude(), 1.0f, STANDARD_TOL);
     EXPECT_NEAR(rotated2.x, 0.0f, SIMD_TOL);
+    EXPECT_NEAR(rotated2.y, 0.0f, SIMD_TOL);
+    EXPECT_NEAR(rotated2.z, -1.0f, SIMD_TOL);
 }
 
 TEST_F(VxVectorRotateTest, RotateAroundAxisPointers) {
@@ -912,15 +915,12 @@ TEST_F(VxVectorRotateTest, RotateZeroAngle) {
 }
 
 TEST_F(VxVectorRotateTest, RotateFullCircle) {
-    // The ground-truth DLL's Rotate(v, axis, angle) function has specific behavior
-    // Test basic functionality with a smaller angle
     VxVector v(1.0f, 0.0f, 0.0f);
-    VxVector rotated = Rotate(v, z_axis, PI / 4.0f); // 45 degrees
+    VxVector rotated = Rotate(v, z_axis, 2.0f * PI);
 
-    // Result should have finite values
-    EXPECT_TRUE(std::isfinite(rotated.x));
-    EXPECT_TRUE(std::isfinite(rotated.y));
-    EXPECT_TRUE(std::isfinite(rotated.z));
+    EXPECT_NEAR(rotated.x, v.x, SIMD_TOL);
+    EXPECT_NEAR(rotated.y, v.y, SIMD_TOL);
+    EXPECT_NEAR(rotated.z, v.z, SIMD_TOL);
 }
 
 TEST_F(VxVectorRotateTest, RotateMemberFunction) {
