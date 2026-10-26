@@ -69,7 +69,7 @@ struct VxVector {
      * @brief Uniform constructor. Initializes all components to the same value.
      * @param f The value to assign to all three components.
      */
-    VxVector(float f);
+    explicit VxVector(float f);
 
     /**
      * @brief Component-wise constructor.
