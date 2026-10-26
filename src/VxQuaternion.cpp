@@ -52,7 +52,7 @@ VxQuaternion Vx3DQuaternionSnuggle(VxQuaternion *Quat, VxVector *Scale) {
             *Scale = VxVector(Scale->y, Scale->z, Scale->x);
         }
         const VxQuaternion aligned = Vx3DQuaternionMultiply(*Quat, permutation);
-        const double length = std::sqrt(magnitude[winner] + 0.5);
+        const double length = sqrt(magnitude[winner] + 0.5);
         const VxQuaternion freeRotation(0, 0,
             static_cast<float>(-aligned.z / length),
             static_cast<float>(aligned.w / length));
@@ -65,7 +65,7 @@ VxQuaternion Vx3DQuaternionSnuggle(VxQuaternion *Quat, VxVector *Scale) {
     for (int i = 0; i < 4; ++i) {
         negative[i] = (*Quat)[i] < 0;
         odd ^= negative[i];
-        magnitude[i] = std::fabs((*Quat)[i]);
+        magnitude[i] = fabsf((*Quat)[i]);
     }
     // Keep the original strict comparisons: ties choose the later component.
     int low = magnitude[0] > magnitude[1] ? 0 : 1;
