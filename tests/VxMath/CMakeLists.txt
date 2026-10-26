@@ -711,3 +711,6 @@ vx_copy_runtime_dependencies(UVReferenceTest)
 vx_add_test(UVScalarReferenceTest SOURCES UVReferenceTest.cpp)
 target_compile_definitions(UVScalarReferenceTest PRIVATE VX_SIMD_NONE=1)
 vx_copy_runtime_dependencies(UVScalarReferenceTest)
+
+vx_add_test(PathSplitterReferenceTest SOURCES PathSplitterReferenceTest.cpp)
+vx_copy_runtime_dependencies(PathSplitterReferenceTest)

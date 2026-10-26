@@ -3,7 +3,6 @@
 
 #include <stdlib.h>
 #include <stdio.h>
-#include <ctype.h>
 
 static void CopyBounded(char *dst, size_t dstSize, const char *src, size_t count) {
     if (!dst || dstSize == 0) {
@@ -32,7 +31,7 @@ static const char *FindLastPathSeparator(const char *path) {
 }
 
 static bool HasDrivePrefix(const char *path) {
-    return path && isalpha(static_cast<unsigned char>(path[0])) && path[1] == ':';
+    return path && path[0] && path[1] == ':';
 }
 
 static char *DuplicatePathString(const char *text) {
@@ -111,7 +110,7 @@ CKPathSplitter::CKPathSplitter(const char *file) : m_Drive(), m_Dir(), m_Filenam
     }
 
     const char *lastDot = strrchr(baseName, '.');
-    if (lastDot && lastDot != baseName) {
+    if (lastDot) {
         CopyBounded(m_Filename, sizeof(m_Filename), baseName, static_cast<size_t>(lastDot - baseName));
         CopyBounded(m_Ext, sizeof(m_Ext), lastDot, strlen(lastDot));
     } else {
