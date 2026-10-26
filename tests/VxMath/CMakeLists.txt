@@ -92,6 +92,8 @@ endfunction()
 
 set(VXMATH_TEST_SOURCES
         VectorTest.cpp
+        VectorReflectReferenceTest.cpp
+        VectorReflectScalarReferenceTest.cpp
         QuaternionTest.cpp
         QuaternionReferenceTest.cpp
         QuaternionConversionTest.cpp

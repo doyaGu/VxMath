@@ -411,8 +411,8 @@ TEST_F(SIMDVectorTest, Lerp_MatchesScalar) {
 //=============================================================================
 
 TEST_F(SIMDVectorTest, Reflect_PerpendicularIncidence) {
-    // Ray straight down, normal pointing up
-    VxVector incident(0.0f, -1.0f, 0.0f);
+    // Both vectors point away from the surface.
+    VxVector incident(0.0f, 1.0f, 0.0f);
     VxVector normal(0.0f, 1.0f, 0.0f);
     VxVector result;
 
@@ -426,7 +426,7 @@ TEST_F(SIMDVectorTest, Reflect_PerpendicularIncidence) {
 
 TEST_F(SIMDVectorTest, Reflect_45DegreeAngle) {
     // 45 degree incidence
-    VxVector incident(1.0f, -1.0f, 0.0f);
+    VxVector incident(1.0f, 1.0f, 0.0f);
     incident.Normalize();
     VxVector normal(0.0f, 1.0f, 0.0f);
     VxVector result;
@@ -434,7 +434,7 @@ TEST_F(SIMDVectorTest, Reflect_45DegreeAngle) {
     VxSIMDReflectVector(&result, &incident, &normal);
 
     // Should reflect at 45 degrees opposite
-    VxVector expected(incident.x, -incident.y, incident.z);
+    VxVector expected(-incident.x, incident.y, -incident.z);
     EXPECT_SIMD_VEC3_NEAR(result, expected, SIMD_SCALAR_TOL);
 }
 

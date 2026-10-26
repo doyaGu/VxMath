@@ -304,10 +304,10 @@ inline const VxVector CrossProduct(const VxVector &Vect1, const VxVector &Vect2)
 
 /**
  * @brief Reflects an incident vector about a surface normal.
- * @param v1 The incident vector (should point towards the surface).
+ * @param v1 The incident vector (should point away from the surface).
  * @param Norm The normal of the reflection plane (should be a unit vector).
- * @return The reflected vector, calculated as R = v1 - 2 * (v1 . N) * N.
- * @remarks For a correct reflection, the incident vector should point towards the surface.
+ * @return The reflected vector, calculated as R = 2 * (v1 . N) * N - v1.
+ * @remarks The incident and reflected vectors both point away from the surface.
  * @see DotProduct()
  */
 inline const VxVector Reflect(const VxVector &v1, const VxVector &Norm);

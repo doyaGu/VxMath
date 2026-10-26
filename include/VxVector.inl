@@ -245,7 +245,7 @@ inline const VxVector Reflect(const VxVector &v1, const VxVector &Norm) {
     VxSIMDReflectVector(&result, &v1, &Norm);
 #else
     float dp2 = 2.0f * DotProduct(v1, Norm);
-    result = VxVector(v1.x - dp2 * Norm.x, v1.y - dp2 * Norm.y, v1.z - dp2 * Norm.z);
+    result = VxVector(dp2 * Norm.x - v1.x, dp2 * Norm.y - v1.y, dp2 * Norm.z - v1.z);
 #endif
     return result;
 }
@@ -691,7 +691,7 @@ VX_SIMD_INLINE void VxSIMDReflectVector(VxVector *result, const VxVector *incide
     __m128 dotVec = VxSIMDDotProduct3(iVec, nVec);
     __m128 twoVec = VX_SIMD_TWO;
     __m128 factor = _mm_mul_ps(twoVec, dotVec);
-    __m128 reflection = VX_FNMADD_PS(factor, nVec, iVec);
+    __m128 reflection = VX_FMSUB_PS(factor, nVec, iVec);
     VxSIMDStoreFloat3(&result->x, reflection);
 }
 

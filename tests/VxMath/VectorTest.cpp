@@ -246,11 +246,11 @@ TEST_F(VxVectorTest, Interpolate) {
 }
 
 TEST_F(VxVectorTest, Reflect) {
-    VxVector incident(1.0f, -1.0f, 0.0f);
+    VxVector incident(1.0f, 1.0f, 0.0f);
     VxVector normal(0.0f, 1.0f, 0.0f);
     VxVector reflected = Reflect(incident, normal);
 
-    EXPECT_NEAR(reflected.x, 1.0f, STANDARD_TOL);
+    EXPECT_NEAR(reflected.x, -1.0f, STANDARD_TOL);
     EXPECT_NEAR(reflected.y, 1.0f, STANDARD_TOL);
     EXPECT_NEAR(reflected.z, 0.0f, STANDARD_TOL);
 }
@@ -570,14 +570,10 @@ TEST_F(VxVectorEnhancedTest, ReflectionNonUnitNormal) {
     VxVector non_unit_normal(0.0f, 2.0f, 0.0f);
     VxVector reflected_non_unit = Reflect(incident, non_unit_normal);
 
-    // Test that the reflection produces a valid result (finite values)
-    EXPECT_TRUE(std::isfinite(reflected_non_unit.x));
-    EXPECT_TRUE(std::isfinite(reflected_non_unit.y));
-    EXPECT_TRUE(std::isfinite(reflected_non_unit.z));
-
-    // Test that the reflection changes the direction appropriately
-    // (y component should be negative after reflecting off a y-axis normal)
-    EXPECT_LT(reflected_non_unit.y, 0.0f);
+    // The original formula uses the supplied normal without normalizing it.
+    EXPECT_FLOAT_EQ(reflected_non_unit.x, -1.0f);
+    EXPECT_FLOAT_EQ(reflected_non_unit.y, 7.0f);
+    EXPECT_FLOAT_EQ(reflected_non_unit.z, 0.0f);
 }
 
 TEST_F(VxVectorEnhancedTest, MatrixTransformations) {

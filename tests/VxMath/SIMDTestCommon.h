@@ -188,9 +188,9 @@ inline void VectorLerp(VxVector& result, const VxVector& a, const VxVector& b, f
 
 inline void VectorReflect(VxVector& result, const VxVector& incident, const VxVector& normal) {
     const float dot = 2.0f * DotProduct3(incident, normal);
-    result.x = incident.x - dot * normal.x;
-    result.y = incident.y - dot * normal.y;
-    result.z = incident.z - dot * normal.z;
+    result.x = dot * normal.x - incident.x;
+    result.y = dot * normal.y - incident.y;
+    result.z = dot * normal.z - incident.z;
 }
 
 inline void VectorMinimize(VxVector& result, const VxVector& a, const VxVector& b) {

@@ -318,7 +318,7 @@ VX_SIMD_INLINE __m128 VxSIMDMax(__m128 a, __m128 b) noexcept {
 VX_SIMD_INLINE __m128 VxSIMDReflect3(__m128 incident, __m128 normal) noexcept {
     __m128 dot = VxSIMDDotProduct3(incident, normal);
     __m128 two_dot = _mm_add_ps(dot, dot);
-    return VX_FNMADD_PS(two_dot, normal, incident);
+    return VX_FMSUB_PS(two_dot, normal, incident);
 }
 
 // ============================================================================
