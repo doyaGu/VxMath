@@ -438,9 +438,9 @@ inline VxVector4 &VxVector4::operator/=(const VxVector4 &v) {
 }
 inline VxVector4 &VxVector4::operator+=(const VxVector &v) {
 #if defined(VX_SIMD_SSE)
-    __m128 lhs = VxSIMDLoadFloat4((const float *) this);
+    __m128 lhs = VxSIMDLoadFloat3(&x);
     __m128 rhs = _mm_setr_ps(v.x, v.y, v.z, 0.0f);
-    VxSIMDStoreFloat4((float *) this, _mm_add_ps(lhs, rhs));
+    VxSIMDStoreFloat3(&x, _mm_add_ps(lhs, rhs));
 #else
     x += v.x; y += v.y; z += v.z;
 #endif
@@ -448,9 +448,9 @@ inline VxVector4 &VxVector4::operator+=(const VxVector &v) {
 }
 inline VxVector4 &VxVector4::operator-=(const VxVector &v) {
 #if defined(VX_SIMD_SSE)
-    __m128 lhs = VxSIMDLoadFloat4((const float *) this);
+    __m128 lhs = VxSIMDLoadFloat3(&x);
     __m128 rhs = _mm_setr_ps(v.x, v.y, v.z, 0.0f);
-    VxSIMDStoreFloat4((float *) this, _mm_sub_ps(lhs, rhs));
+    VxSIMDStoreFloat3(&x, _mm_sub_ps(lhs, rhs));
 #else
     x -= v.x; y -= v.y; z -= v.z;
 #endif
@@ -458,9 +458,9 @@ inline VxVector4 &VxVector4::operator-=(const VxVector &v) {
 }
 inline VxVector4 &VxVector4::operator*=(const VxVector &v) {
 #if defined(VX_SIMD_SSE)
-    __m128 lhs = VxSIMDLoadFloat4((const float *) this);
+    __m128 lhs = VxSIMDLoadFloat3(&x);
     __m128 rhs = _mm_setr_ps(v.x, v.y, v.z, 1.0f);
-    VxSIMDStoreFloat4((float *) this, _mm_mul_ps(lhs, rhs));
+    VxSIMDStoreFloat3(&x, _mm_mul_ps(lhs, rhs));
 #else
     x *= v.x; y *= v.y; z *= v.z;
 #endif
@@ -468,9 +468,9 @@ inline VxVector4 &VxVector4::operator*=(const VxVector &v) {
 }
 inline VxVector4 &VxVector4::operator/=(const VxVector &v) {
 #if defined(VX_SIMD_SSE)
-    __m128 lhs = VxSIMDLoadFloat4((const float *) this);
+    __m128 lhs = VxSIMDLoadFloat3(&x);
     __m128 rhs = _mm_setr_ps(v.x, v.y, v.z, 1.0f);
-    VxSIMDStoreFloat4((float *) this, _mm_div_ps(lhs, rhs));
+    VxSIMDStoreFloat3(&x, _mm_div_ps(lhs, rhs));
 #else
     x /= v.x; y /= v.y; z /= v.z;
 #endif
