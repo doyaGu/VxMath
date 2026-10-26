@@ -231,9 +231,9 @@ public:
     /// @brief Unary plus operator, returns a copy of the quaternion.
     VxQuaternion operator+() const;
 
-    /// @brief Checks for bitwise equality.
+    /// @brief Checks for component-wise numeric equality.
     friend int operator==(const VxQuaternion &q1, const VxQuaternion &q2);
-    /// @brief Checks for bitwise inequality.
+    /// @brief Checks for component-wise numeric inequality.
     friend int operator!=(const VxQuaternion &q1, const VxQuaternion &q2);
 
     /// @brief Calculates the squared magnitude of a quaternion.
