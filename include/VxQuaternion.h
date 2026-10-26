@@ -100,9 +100,9 @@ inline VxQuaternion Ln(const VxQuaternion &Quat);
  * @brief Computes the rotation exponential of a quaternion's vector part.
  * @param Quat The input quaternion.
  * @return Vector part scaled by sin(length(xyz)) / length(xyz), with w = cos(length(xyz)).
- * @remarks The input w component is ignored; a near-zero vector uses scale 1.
- * Follows the original x87 argument reduction and range limit: for a finite
- * vector with rounded length at least 2^63, returns xyz unchanged and w = length.
+ * @remarks The input w component is ignored; a zero vector uses scale 1.
+ * Uses the platform trigonometric functions, with SDL's portable libm on MSVC x86
+ * to retain large-angle phase accuracy.
  */
 inline VxQuaternion Exp(const VxQuaternion &Quat);
 ///@}

@@ -4,6 +4,7 @@
 #ifndef VX_QUATERNION_FUNCTIONS_PROBE
 #include "VxMath.h"
 #include <gtest/gtest.h>
+#include "TrigonometricReferenceSamples.h"
 #endif
 
 struct QuaternionFunctionChecks {
@@ -186,6 +187,28 @@ TEST(QuaternionFunctionsReferenceTest, LogIsRotationOnlyAndLogDifferenceHasTheOr
 TEST(QuaternionFunctionsReferenceTest, ExpIgnoresScalarPartAndHandlesZeroAndTinyVectors) { EXPECT_EQ(0,QuaternionExponentials().errors); }
 TEST(QuaternionFunctionsReferenceTest, SnugglePreservesScaleTensorAndChoosesASmallerRotation) { EXPECT_EQ(0,QuaternionSnuggleTensor().errors); }
 TEST(QuaternionFunctionsReferenceTest, SnuggleWorkspaceMutationAndExactWriteFootprints) { EXPECT_EQ(0,QuaternionSnuggleWrites().errors); }
+
+TEST(QuaternionFunctionsReferenceTest, ExpAndSinCosMatchIndependentLargeAngleReferences) {
+    int checked = 0, trigReferences = 0;
+    for (const auto &sample : TrigonometricReference::Samples) {
+        double sine,cosine;
+        VxQuaternionSinCos(sample.angle,sine,cosine);
+        EXPECT_NEAR(sample.sine,sine,.000000000000002);
+        EXPECT_NEAR(sample.cosine,cosine,.000000000000002);
+        ++trigReferences;
+        const float angle = static_cast<float>(sample.angle);
+        if (fabs(sample.angle) > FLT_MAX || double(angle) != sample.angle) continue;
+        const VxQuaternion result = Exp(VxQuaternion(angle,0,0,nanf("")));
+        EXPECT_NEAR(sample.sine,result.x,.0000003);
+        EXPECT_NEAR(sample.cosine,result.w,.0000003);
+        EXPECT_EQ(0,result.y); EXPECT_EQ(0,result.z);
+        ++checked;
+    }
+    RecordProperty("full_trig_references",trigReferences);
+    RecordProperty("full_exp_references",checked);
+    EXPECT_EQ(803,trigReferences);
+    EXPECT_EQ(455,checked);
+}
 
 TEST(QuaternionFunctionsReferenceTest, SnuggleKeepsExistingNullInputExtension) {
     VxQuaternion q(.5f,.5f,.5f,.5f);

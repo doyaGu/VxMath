@@ -187,6 +187,17 @@ function(vx_configure_target TARGET_NAME)
             ${VXMATH_PRIVATE_HEADERS}
     )
 
+    if (MSVC AND VXMATH_TARGET_IS_X86 AND CMAKE_SIZEOF_VOID_P EQUAL 4)
+        set(_vx_libm_dir "${VXMATH_SOURCE_DIR}/../deps/sdl-libm")
+        set(_vx_libm_sources)
+        foreach(_vx_libm_file s_sin s_cos s_fabs s_floor s_scalbn s_copysign
+                e_rem_pio2 k_rem_pio2 k_sin k_cos)
+            list(APPEND _vx_libm_sources "${_vx_libm_dir}/${_vx_libm_file}.c")
+        endforeach()
+        target_sources(${TARGET_NAME} PRIVATE ${_vx_libm_sources})
+        set_source_files_properties(${_vx_libm_sources} PROPERTIES COMPILE_OPTIONS "/fp:precise;/arch:SSE2")
+    endif()
+
     target_include_directories(${TARGET_NAME}
             PUBLIC
             $<BUILD_INTERFACE:${VXMATH_INCLUDE_DIR}>

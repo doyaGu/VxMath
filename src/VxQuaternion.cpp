@@ -101,3 +101,14 @@ VxQuaternion Vx3DQuaternionSnuggle(VxQuaternion *Quat, VxVector *Scale) {
     }
     return Vx3DQuaternionConjugate(permutation);
 }
+
+#if defined(_MSC_VER) && defined(_M_IX86)
+extern "C" double VxLibmSin(double angle);
+extern "C" double VxLibmCos(double angle);
+
+void VxQuaternionSinCos(double angle, double &sine, double &cosine) {
+    // Use SDL's portable libm; the x86 UCRT loses phase for large arguments.
+    sine = VxLibmSin(angle);
+    cosine = VxLibmCos(angle);
+}
+#endif

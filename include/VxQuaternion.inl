@@ -172,10 +172,14 @@ inline void VxQuaternion::Multiply(const VxQuaternion &Quat) {
     *this = Vx3DQuaternionMultiply(*this, Quat);
 }
 
+#if defined(_MSC_VER) && defined(_M_IX86)
+VX_EXPORT void VxQuaternionSinCos(double angle, double &sine, double &cosine);
+#else
 inline void VxQuaternionSinCos(double angle, double &sine, double &cosine) {
     sine = sin(angle);
     cosine = cos(angle);
 }
+#endif
 
 template <typename SineType>
 inline void VxRotationSinCos(float angle, SineType &sine, float &cosine) {
