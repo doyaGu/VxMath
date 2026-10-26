@@ -1,0 +1,67 @@
+{
+  "project": "SDL libm (fdlibm/uClibc subset)",
+  "commit": "d9d5536704d585616d4db3c8ba3c4ff6fc2757e1",
+  "release": "3.4.8",
+  "files": {
+    "math_libm.h": {
+      "url": "https://raw.githubusercontent.com/libsdl-org/SDL/d9d5536704d585616d4db3c8ba3c4ff6fc2757e1/src/libm/math_libm.h",
+      "sha256": "d7d5e3f1786e45c687f5a6c07c57eb282391919e4e151c86e2900bcc6bcfbfb0",
+      "bytes": 1966
+    },
+    "math_private.h": {
+      "url": "https://raw.githubusercontent.com/libsdl-org/SDL/d9d5536704d585616d4db3c8ba3c4ff6fc2757e1/src/libm/math_private.h",
+      "sha256": "272824bc6b5e66632e15cd9639250c33a2ab6c7868bd296c4d3233c3cd3d43b5",
+      "bytes": 7152
+    },
+    "s_sin.c": {
+      "url": "https://raw.githubusercontent.com/libsdl-org/SDL/d9d5536704d585616d4db3c8ba3c4ff6fc2757e1/src/libm/s_sin.c",
+      "sha256": "765b8964025c9eaa98f7a5a495e37c0721f5bb97f52261d50327639cf3550d11",
+      "bytes": 1961
+    },
+    "s_cos.c": {
+      "url": "https://raw.githubusercontent.com/libsdl-org/SDL/d9d5536704d585616d4db3c8ba3c4ff6fc2757e1/src/libm/s_cos.c",
+      "sha256": "035a03bfbcba98d0eed589ffa702d87faf4b496beeef636ec9395d04fcfd8df0",
+      "bytes": 1970
+    },
+    "e_rem_pio2.c": {
+      "url": "https://raw.githubusercontent.com/libsdl-org/SDL/d9d5536704d585616d4db3c8ba3c4ff6fc2757e1/src/libm/e_rem_pio2.c",
+      "sha256": "9cee3e1c5f452d484afa3791bd546f7998b6cd7d8604422dda05bae4e6db18d7",
+      "bytes": 5286
+    },
+    "k_rem_pio2.c": {
+      "url": "https://raw.githubusercontent.com/libsdl-org/SDL/d9d5536704d585616d4db3c8ba3c4ff6fc2757e1/src/libm/k_rem_pio2.c",
+      "sha256": "f59983970ddf8b8c4d2307f4776801e28a33b5c9e03ec81cf4b2d7f52d31b7b8",
+      "bytes": 8603
+    },
+    "k_sin.c": {
+      "url": "https://raw.githubusercontent.com/libsdl-org/SDL/d9d5536704d585616d4db3c8ba3c4ff6fc2757e1/src/libm/k_sin.c",
+      "sha256": "34ed2b1bb059c49ce91a76ca9a86de6f64533763e4f0b8356498af736dbe80a8",
+      "bytes": 2293
+    },
+    "k_cos.c": {
+      "url": "https://raw.githubusercontent.com/libsdl-org/SDL/d9d5536704d585616d4db3c8ba3c4ff6fc2757e1/src/libm/k_cos.c",
+      "sha256": "812d7b768a5599b2735de255bfe87d8e5c4bc39cc7da4f9a44e182d845aa28f1",
+      "bytes": 2926
+    },
+    "s_scalbn.c": {
+      "url": "https://raw.githubusercontent.com/libsdl-org/SDL/d9d5536704d585616d4db3c8ba3c4ff6fc2757e1/src/libm/s_scalbn.c",
+      "sha256": "4b962d5e7d18e1e7b88135f988b87d8d94a227f9e0a96e13b5b1049ed3e56dd4",
+      "bytes": 1863
+    },
+    "s_fabs.c": {
+      "url": "https://raw.githubusercontent.com/libsdl-org/SDL/d9d5536704d585616d4db3c8ba3c4ff6fc2757e1/src/libm/s_fabs.c",
+      "sha256": "b9acaee6242eb61f8b56eb180fdc562e7863f82ea875f8eb5e2524b31d029a2a",
+      "bytes": 759
+    },
+    "s_floor.c": {
+      "url": "https://raw.githubusercontent.com/libsdl-org/SDL/d9d5536704d585616d4db3c8ba3c4ff6fc2757e1/src/libm/s_floor.c",
+      "sha256": "5a607cf49677bea1a1dee7e69ab015ba85b7e42e2389f5a0e3cbee1ccd410f64",
+      "bytes": 1787
+    },
+    "s_copysign.c": {
+      "url": "https://raw.githubusercontent.com/libsdl-org/SDL/d9d5536704d585616d4db3c8ba3c4ff6fc2757e1/src/libm/s_copysign.c",
+      "sha256": "774b72f76728be5296ade91592bb55d54154fa14d4d8f621a953dde8dc5fcc80",
+      "bytes": 782
+    }
+  }
+}
