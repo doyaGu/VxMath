@@ -47,6 +47,81 @@ static Vector4Checks Vector4Construction() {
     return checks;
 }
 
+static Vector4Checks Vector4Access() {
+    Vector4Checks checks;
+    VxVector4 value(1,2,3,-4);
+    const VxVector4 &reference = value;
+    checks.Check(&value[0] == &value.x && &value[1] == &value.y && &value[2] == &value.z && &value[3] == &value.w);
+    checks.Check(&reference[0] == &reference.x && &reference[3] == &reference.w);
+    value[3] = -7;
+    checks.Check(reference.w == -7);
+    float *pointer = reference;
+    checks.Check(pointer == &value.x && &pointer[3] == &value.w);
+    pointer[3] = -9;
+    checks.Check(value.w == -9);
+    value.Set(4,5,6);
+    checks.Vector(value, 4,5,6,-9);
+    value.Set(1,2,3,4);
+    checks.Vector(value, 1,2,3,4);
+    const VxVector source(6,-8,12);
+    checks.Check(&(value = source) == &value);
+    checks.Vector(value, 6,-8,12,4);
+    checks.Check(&(value = static_cast<const VxVector &>(value)) == &value);
+    checks.Vector(value, 6,-8,12,4);
+    return checks;
+}
+
+static const float Vector4ArithmeticResults[][4] = {
+    {8,-4,9,12}, {4,-12,15,4}, {12,-32,-36,32}, {3,-2,-4,2},
+    {3,-4,6,4}, {3,-4,6,4}, {3,-4,6,4}, {6,-8,12,8}, {-6,8,-12,-8},
+    {8,-6,14,10}, {4,-10,10,6}, {8,-4,9,12}, {4,-12,15,4},
+    {12,-32,-36,32}, {3,-2,-4,2}, {3,-4,6,4}, {3,-4,6,4}
+};
+
+static VxVector4 Vector4Arithmetic(int operation, VxVector4 &a, const VxVector4 &b, bool &reference) {
+    reference = true;
+    switch (operation) {
+    case 0: return a + b;
+    case 1: return a - b;
+    case 2: return a * b;
+    case 3: return a / b;
+    case 4: return a * 0.5f;
+    case 5: return 0.5f * a;
+    case 6: return a / 2.0f;
+    case 7: return +a;
+    case 8: return -a;
+    case 9: return a + 2.0f;
+    case 10: return a - 2.0f;
+    case 11: reference = &(a += b) == &a; return a;
+    case 12: reference = &(a -= b) == &a; return a;
+    case 13: reference = &(a *= b) == &a; return a;
+    case 14: reference = &(a /= b) == &a; return a;
+    case 15: reference = &(a *= 0.5f) == &a; return a;
+    case 16: reference = &(a /= 2.0f) == &a; return a;
+    default: reference = false; return a;
+    }
+}
+
+static Vector4Checks Vector4ArithmeticCases() {
+    Vector4Checks checks;
+    for (int operation = 0; operation < 17; ++operation) {
+        VxVector4 a(6,-8,12,8), b(2,4,-3,4);
+        bool reference;
+        const VxVector4 result = Vector4Arithmetic(operation, a, b, reference);
+        const float *expected = Vector4ArithmeticResults[operation];
+        checks.Vector(result, expected[0], expected[1], expected[2], expected[3]);
+        checks.Check(reference);
+        checks.Vector(b, 2,4,-3,4);
+        if (operation < 11) checks.Vector(a, 6,-8,12,8);
+    }
+    VxVector4 value(2,-4,8,16);
+    value += value; checks.Vector(value, 4,-8,16,32);
+    value -= value; checks.Vector(value, 0,0,0,0);
+    value.Set(2,-4,8,16); value *= value; checks.Vector(value, 4,16,64,256);
+    value.Set(2,-4,8,16); value /= value; checks.Vector(value, 1,1,1,1);
+    return checks;
+}
+
 static VxVector4 &Vector4Mixed(int operation, VxVector4 &value, const VxVector &operand) {
     switch (operation) {
     case 0: return value += operand;
@@ -79,6 +154,42 @@ static Vector4Checks Vector4MixedCases() {
     VxVector4 value(2,4,8,-7);
     Vector4Mixed(0, value, static_cast<const VxVector &>(value));
     checks.Vector(value, 4,8,16,-7);
+    return checks;
+}
+
+static Vector4Checks Vector4DotAndEquality() {
+    Vector4Checks checks;
+    VxVector4 a(1,2,3,100), b(4,5,6,-200);
+    checks.Check(a.Dot(b) == 32);
+    a.w = nanf(""); b.w = HUGE_VALF;
+    checks.Check(a.Dot(b) == 32);
+    checks.Check(VxVector4(1,2,3,4) != VxVector4(1,2,3,5));
+    checks.Check(VxVector4(1,2,3,-0.0f) == VxVector4(1,2,3,0.0f));
+    checks.Check(!(a == a) && a != a);
+    return checks;
+}
+
+static Vector4Checks Vector4UnalignedCases() {
+    Vector4Checks checks;
+    for (int offset = 0; offset < 16; offset += 4) {
+        alignas(16) unsigned char storage[96], before[96];
+        memset(storage, 0x6d, sizeof(storage));
+        VxVector4 *a = ::new(storage + offset) VxVector4(6,-8,12,8);
+        VxVector4 *b = ::new(storage + 32 + offset) VxVector4(2,4,-3,4);
+        VxVector4 *result = ::new(storage + 64 + offset) VxVector4;
+        for (int operation = 0; operation < 17; ++operation) {
+            a->Set(6,-8,12,8);
+            memcpy(before, storage, sizeof(storage));
+            bool reference;
+            *result = Vector4Arithmetic(operation, *a, *b, reference);
+            const float *expected = Vector4ArithmeticResults[operation];
+            checks.Vector(*result, expected[0], expected[1], expected[2], expected[3]);
+            checks.Check(reference);
+            checks.Check(memcmp(before, storage, offset) == 0);
+            checks.Check(memcmp(before + offset + 16, storage + offset + 16, 48) == 0);
+            checks.Check(memcmp(before + offset + 80, storage + offset + 80, 16 - offset) == 0);
+        }
+    }
     return checks;
 }
 
@@ -119,8 +230,55 @@ static Vector4Checks Vector4InaccessibleW() {
 #ifndef VX_VECTOR4_PROBE
 static void ExpectVector4(Vector4Checks checks) { EXPECT_GT(checks.calls, 0); EXPECT_EQ(checks.errors, 0); }
 TEST(Vector4Reference, ConstructorsAreExplicitAndLayoutHasFourFloats) { ExpectVector4(Vector4Construction()); }
+TEST(Vector4Reference, AccessorsSettersAndBaseAssignmentPreserveTheirContracts) { ExpectVector4(Vector4Access()); }
+TEST(Vector4Reference, FourComponentArithmeticAndReturnedReferences) { ExpectVector4(Vector4ArithmeticCases()); }
 TEST(Vector4Reference, MixedArithmeticPreservesEveryWBit) { ExpectVector4(Vector4MixedCases()); }
+TEST(Vector4Reference, DotIgnoresWWhileEqualityIncludesW) { ExpectVector4(Vector4DotAndEquality()); }
+TEST(Vector4Reference, FourByteAlignmentAndFullObjectCanaries) { ExpectVector4(Vector4UnalignedCases()); }
 #if defined(_WIN32)
 TEST(Vector4Reference, MixedArithmeticDoesNotReadOrWriteTheWField) { ExpectVector4(Vector4InaccessibleW()); }
+#endif
+
+TEST(Vector4Reference, MatrixOperatorsUseTheOriginalPointConvention) {
+    const float rows[4][4] = {{2,1,-1,7},{3,-2,4,-3},{-1,5,2,9},{7,11,-13,2}};
+    VxMatrix matrix;
+    memcpy(&matrix, rows, sizeof(matrix));
+    const float fourth[] = {0,1,2,-5,nanf(""),HUGE_VALF};
+    for (float w : fourth) {
+        const VxVector4 value(2,-3,5,w);
+        const VxVector4 left = matrix * value, right = value * matrix;
+        EXPECT_EQ(left, VxVector4(-3,44,-17,70));
+        EXPECT_EQ(right, VxVector4(-3,44,-17,70));
+    }
+}
+
+#if defined(_WIN32)
+TEST(Vector4Reference, ConstructionAndFullArithmeticUseExactlySixteenBytes) {
+    SYSTEM_INFO info;
+    GetSystemInfo(&info);
+    const size_t page = info.dwPageSize;
+    unsigned char *memory = static_cast<unsigned char *>(VirtualAlloc(nullptr, 5 * page, MEM_RESERVE | MEM_COMMIT, PAGE_NOACCESS));
+    ASSERT_NE(memory, nullptr);
+    DWORD old;
+    ASSERT_TRUE(VirtualProtect(memory + page, page, PAGE_READWRITE, &old));
+    ASSERT_TRUE(VirtualProtect(memory + 3 * page, page, PAGE_READWRITE, &old));
+    float *input = reinterpret_cast<float *>(memory + 2 * page - 16);
+    input[0] = 6; input[1] = -8; input[2] = 12; input[3] = 8;
+    ASSERT_TRUE(VirtualProtect(memory + page, page, PAGE_READONLY, &old));
+    VxVector4 *output = ::new(memory + 4 * page - 16) VxVector4(input);
+    for (int operation = 0; operation < 17; ++operation) {
+        *output = VxVector4(input);
+        bool reference;
+        *output = Vector4Arithmetic(operation, *output, VxVector4(2,4,-3,4), reference);
+        const float *expected = Vector4ArithmeticResults[operation];
+        EXPECT_EQ(*output, VxVector4(expected));
+        EXPECT_TRUE(reference);
+    }
+    output->~VxVector4();
+    output = ::new(output) VxVector4;
+    EXPECT_EQ(*output, VxVector4(0,0,0,0));
+    output->~VxVector4();
+    VirtualFree(memory, 0, MEM_RELEASE);
+}
 #endif
 #endif
