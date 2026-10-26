@@ -714,3 +714,6 @@ vx_copy_runtime_dependencies(UVScalarReferenceTest)
 
 vx_add_test(PathSplitterReferenceTest SOURCES PathSplitterReferenceTest.cpp)
 vx_copy_runtime_dependencies(PathSplitterReferenceTest)
+
+vx_add_test(PathMakerReferenceTest SOURCES PathMakerReferenceTest.cpp)
+vx_copy_runtime_dependencies(PathMakerReferenceTest)

@@ -50,7 +50,7 @@ static XBOOL AddPathPartLength(size_t &total, const char *part) {
     }
 
     const size_t length = strlen(part);
-    if (length > ((size_t) -1) - total) {
+    if (length >= ((size_t) -1) - total) {
         return FALSE;
     }
     total += length;
@@ -58,27 +58,36 @@ static XBOOL AddPathPartLength(size_t &total, const char *part) {
 }
 
 static char *CreatePathMakerFileName(const char *drive, const char *dir, const char *name, const char *dot, const char *ext) {
-    size_t length = 0;
-    if (!AddPathPartLength(length, drive) ||
-        !AddPathPartLength(length, dir) ||
-        !AddPathPartLength(length, name) ||
-        !AddPathPartLength(length, dot) ||
-        !AddPathPartLength(length, ext)) {
-        return DuplicatePathString("");
+    char drivePrefix[3] = {};
+    if (drive[0]) {
+        drivePrefix[0] = drive[0];
+        drivePrefix[1] = ':';
+    }
+
+    const size_t directoryLength = strlen(dir);
+    bool hasSeparator = directoryLength && (dir[directoryLength - 1] == '/' || dir[directoryLength - 1] == '\\');
+    // Only a possible DBCS trail separator needs a character-boundary scan.
+    if (hasSeparator && directoryLength > 1 && static_cast<unsigned char>(dir[directoryLength - 2]) >= 0x80) {
+        hasSeparator = VxPathEndsWithSeparator(dir);
+    }
+    const char *separator = directoryLength && !hasSeparator ? "\\" : "";
+
+    const char *parts[] = {drivePrefix, dir, separator, name, dot, ext};
+    size_t lengths[6], length = 0;
+    for (int i = 0; i < 6; ++i) {
+        const size_t previousLength = length;
+        if (!AddPathPartLength(length, parts[i])) {
+            return DuplicatePathString("");
+        }
+        lengths[i] = length - previousLength;
     }
 
     char *fileName = new char[length + 1];
     size_t pos = 0;
-    const char *parts[] = {drive, dir, name, dot, ext};
-    for (int i = 0; i < 5; ++i) {
-        const char *part = parts[i];
-        if (!part) {
-            continue;
-        }
-        const size_t partLength = strlen(part);
-        if (partLength > 0) {
-            memcpy(fileName + pos, part, partLength);
-            pos += partLength;
+    for (int i = 0; i < 6; ++i) {
+        if (lengths[i]) {
+            memcpy(fileName + pos, parts[i], lengths[i]);
+            pos += lengths[i];
         }
     }
     fileName[pos] = '\0';
