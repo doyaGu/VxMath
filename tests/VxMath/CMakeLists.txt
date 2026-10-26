@@ -98,6 +98,8 @@ set(VXMATH_TEST_SOURCES
         VectorAxisRotationScalarReferenceTest.cpp
         VectorExtremaReferenceTest.cpp
         VectorExtremaScalarReferenceTest.cpp
+        VectorAbsoluteReferenceTest.cpp
+        VectorAbsoluteScalarReferenceTest.cpp
         QuaternionTest.cpp
         QuaternionReferenceTest.cpp
         QuaternionConversionTest.cpp
