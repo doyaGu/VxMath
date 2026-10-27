@@ -784,38 +784,12 @@ XBOOL VxConfiguration::ManageEntry(const char *line, VxConfigurationSection *cur
 VxConfigurationSection::~VxConfigurationSection() { Clear(); }
 
 void VxConfigurationSection::Clear() {
-    // Collect all entries first, then delete them
-    XArray<VxConfigurationEntry*> entriesToDelete;
-    EntryIt entIt = m_Entries.Begin();
-    while (entIt != m_Entries.End()) {
-        VxConfigurationEntry *entry = *entIt;
-        if (entry) entriesToDelete.PushBack(entry);
-        ++entIt;
-    }
+    for (EntryIt it = m_Entries.Begin(); it != m_Entries.End(); ++it)
+        delete *it;
     m_Entries.Clear();
-
-    // Now safely delete all entries
-    for (int i = 0; i < entriesToDelete.Size(); i++) {
-        delete entriesToDelete[i];
-    }
-
-    // Same for subsections
-    XArray<VxConfigurationSection*> sectionsToDelete;
-    SectionIt secIt = m_SubSections.Begin();
-    while (secIt != m_SubSections.End()) {
-        VxConfigurationSection *section = *secIt;
-        if (section) {
-            section->Clear();
-            sectionsToDelete.PushBack(section);
-        }
-        ++secIt;
-    }
+    for (SectionIt it = m_SubSections.Begin(); it != m_SubSections.End(); ++it)
+        delete *it;
     m_SubSections.Clear();
-
-    // Now safely delete all sections
-    for (int i = 0; i < sectionsToDelete.Size(); i++) {
-        delete sectionsToDelete[i];
-    }
 }
 
 size_t VxConfigurationSection::GetNumberOfSubSections() const { return m_SubSections.Size(); }
@@ -850,108 +824,73 @@ void VxConfigurationSection::AddEntry(const char *ename, const char *evalue, VxC
     if (!ename) return;
 
     VxConfigurationEntry *entry = GetEntry(ename);
-    if (entry) {
-        entry->SetValue(evalue);
-        if (result) *result = entry;
-        return;
-    }
+    if (result) *result = entry;
+    if (entry) return;
 
     entry = new VxConfigurationEntry(this, ename, evalue ? evalue : "");
     m_Entries.Insert(ename, entry);
-
-    if (result)
-        *result = entry;
 }
 
 void VxConfigurationSection::AddEntry(const char *ename, int evalue, VxConfigurationEntry **result) {
     if (!ename) return;
 
     VxConfigurationEntry *entry = GetEntry(ename);
-    if (entry) {
-        entry->SetValue(evalue);
-        if (result) *result = entry; return;
-    }
+    if (result) *result = entry;
+    if (entry) return;
 
     entry = new VxConfigurationEntry(this, ename, evalue);
     m_Entries.Insert(ename, entry);
-
-    if (result)
-        *result = entry;
 }
 
 void VxConfigurationSection::AddEntry(const char *ename, long evalue, VxConfigurationEntry **result) {
     if (!ename) return;
 
     VxConfigurationEntry *entry = GetEntry(ename);
-    if (entry) {
-        entry->SetValue(evalue);
-        if (result)
-            *result = entry; return;
-    }
+    if (result) *result = entry;
+    if (entry) return;
 
     entry = new VxConfigurationEntry(this, ename, evalue);
     m_Entries.Insert(ename, entry);
-
-    if (result)
-        *result = entry;
 }
 
 void VxConfigurationSection::AddEntry(const char *ename, unsigned int evalue, VxConfigurationEntry **result) {
     if (!ename) return;
 
     VxConfigurationEntry *entry = GetEntry(ename);
-    if (entry) {
-        entry->SetValue(evalue);
-        if (result) *result = entry;
-        return;
-    }
+    if (result) *result = entry;
+    if (entry) return;
 
     entry = new VxConfigurationEntry(this, ename, evalue);
     m_Entries.Insert(ename, entry);
-
-    if (result)
-        *result = entry;
 }
 
 void VxConfigurationSection::AddEntry(const char *ename, unsigned long evalue, VxConfigurationEntry **result) {
     if (!ename) return;
 
     VxConfigurationEntry *entry = GetEntry(ename);
-    if (entry) {
-        entry->SetValue(evalue);
-        if (result) *result = entry;
-        return;
-    }
+    if (result) *result = entry;
+    if (entry) return;
 
     entry = new VxConfigurationEntry(this, ename, evalue);
     m_Entries.Insert(ename, entry);
-
-    if (result)
-        *result = entry;
 }
 
 void VxConfigurationSection::AddEntry(const char *ename, float evalue, VxConfigurationEntry **result) {
     if (!ename) return;
 
     VxConfigurationEntry *entry = GetEntry(ename);
-    if (entry) {
-        entry->SetValue(evalue);
-        if (result) *result = entry;
-        return;
-    }
+    if (result) *result = entry;
+    if (entry) return;
 
     entry = new VxConfigurationEntry(this, ename, evalue);
     m_Entries.Insert(ename, entry);
-
-    if (result)
-        *result = entry;
 }
 
 VxConfigurationSection *VxConfigurationSection::CreateSubSection(const char *sname) {
     if (!sname) return NULL;
 
     VxConfigurationSection *section = GetSubSection(sname);
-    if (section) return section;
+    if (section) return NULL;
 
     section = new VxConfigurationSection(sname, this);
     m_SubSections.Insert(sname, section);
@@ -960,27 +899,16 @@ VxConfigurationSection *VxConfigurationSection::CreateSubSection(const char *sna
 }
 
 XBOOL VxConfigurationSection::DeleteEntry(const char *ename) {
-    if (!ename) return FALSE;
-
-    VxConfigurationEntry *entry = GetEntry(ename);
+    VxConfigurationEntry *entry = RemoveEntry(ename);
     if (!entry) return FALSE;
-
     delete entry;
-    m_Entries.Remove(ename);
-
     return TRUE;
 }
 
 XBOOL VxConfigurationSection::DeleteSection(const char *sname) {
-    if (!sname) return FALSE;
-
-    VxConfigurationSection *section = GetSubSection(sname);
+    VxConfigurationSection *section = RemoveSection(sname);
     if (!section) return FALSE;
-
-    section->Clear();
     delete section;
-    m_SubSections.Remove(sname);
-
     return TRUE;
 }
 
@@ -990,40 +918,8 @@ VxConfigurationEntry *VxConfigurationSection::RemoveEntry(const char *ename) {
     VxConfigurationEntry *entry = GetEntry(ename);
     if (!entry) return NULL;
 
-    // Save the entry data before removing it
-    XString name = entry->GetName();
-    XString value = entry->GetValue();
-
-    // Remove and delete the original entry
-    delete entry;
     m_Entries.Remove(ename);
-
-    // Create a new entry with the saved data (parent set to NULL since it's being removed)
-    VxConfigurationEntry *newEntry = new VxConfigurationEntry(nullptr, name.CStr(), value.CStr());
-
-    return newEntry;
-}
-
-// Helper function to recursively copy a section
-static void CopySection(VxConfigurationSection *source, VxConfigurationSection *dest) {
-    if (!source || !dest) return;
-
-    // Copy all entries
-    ConstEntryIt entIt = source->BeginChildEntry();
-    VxConfigurationEntry *entry;
-    while ((entry = source->GetNextChildEntry(entIt)) != nullptr) {
-        dest->AddEntry(const_cast<char*>(entry->GetName()), entry->GetValue());
-    }
-
-    // Copy all subsections recursively
-    ConstSectionIt secIt = source->BeginChildSection();
-    VxConfigurationSection *subSection;
-    while ((subSection = source->GetNextChildSection(secIt)) != nullptr) {
-        VxConfigurationSection *newSubSection = dest->CreateSubSection(const_cast<char*>(subSection->GetName()));
-        if (newSubSection) {
-            CopySection(subSection, newSubSection);
-        }
-    }
+    return entry;
 }
 
 VxConfigurationSection *VxConfigurationSection::RemoveSection(const char *sname) {
@@ -1032,16 +928,8 @@ VxConfigurationSection *VxConfigurationSection::RemoveSection(const char *sname)
     VxConfigurationSection *section = GetSubSection(sname);
     if (!section) return NULL;
 
-    // Create a copy of the section (parent set to NULL since it's being removed)
-    VxConfigurationSection *copy = new VxConfigurationSection(sname, nullptr);
-    CopySection(section, copy);
-
-    // Delete the original section
-    section->Clear();
-    delete section;
     m_SubSections.Remove(sname);
-
-    return copy;
+    return section;
 }
 
 ConstEntryIt VxConfigurationSection::BeginChildEntry() const { return m_Entries.Begin(); }
@@ -1463,8 +1351,11 @@ XBOOL VxConfig::WriteRawEntry(const char *iKey, const char *iValue, VxConfigValu
     XString section = VxNormalizeRegistryPath(m_Root, m_BaseSection.CStr(), m_CurrentSectionName.CStr());
     XString key = VxNormalizeRegistryValueName(iKey);
     XString typeKey = key + ".type";
-    config.AddEntry(section.CStr(), key.CStr(), iValue);
-    config.AddEntry(section.CStr(), typeKey.CStr(), VxConfigTypeName(iType));
+    VxConfigurationEntry *existing = NULL;
+    config.AddEntry(section.CStr(), key.CStr(), iValue, &existing);
+    if (existing) existing->SetValue(iValue);
+    config.AddEntry(section.CStr(), typeKey.CStr(), VxConfigTypeName(iType), &existing);
+    if (existing) existing->SetValue(VxConfigTypeName(iType));
     return config.SaveToFile(file.CStr());
 }
 

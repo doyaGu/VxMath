@@ -720,3 +720,6 @@ vx_copy_runtime_dependencies(PathMakerReferenceTest)
 
 vx_add_test(ConfigurationEntryReferenceTest SOURCES ConfigurationEntryReferenceTest.cpp)
 vx_copy_runtime_dependencies(ConfigurationEntryReferenceTest)
+
+vx_add_test(ConfigurationSectionReferenceTest SOURCES ConfigurationSectionReferenceTest.cpp)
+vx_copy_runtime_dependencies(ConfigurationSectionReferenceTest)

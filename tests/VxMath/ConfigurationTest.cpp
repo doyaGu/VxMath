@@ -79,7 +79,7 @@ TEST_F(VxConfigurationTest, ConstructorInitializesCorrectly) {
 TEST_F(VxConfigurationTest, AddStringEntryToRoot) {
     VxConfigurationEntry *result = nullptr;
     EXPECT_TRUE(config->AddEntry(nullptr, "TestKey", "TestValue", &result));
-    EXPECT_NE(result, nullptr);
+    EXPECT_EQ(result, nullptr); // No previous entry existed.
     EXPECT_EQ(config->GetNumberOfEntries(), 1);
 
     VxConfigurationEntry *entry = config->GetEntry("TestKey", FALSE);
@@ -90,7 +90,7 @@ TEST_F(VxConfigurationTest, AddStringEntryToRoot) {
 TEST_F(VxConfigurationTest, AddIntegerEntry) {
     VxConfigurationEntry *result = nullptr;
     EXPECT_TRUE(config->AddEntry(nullptr, "IntKey", 42, &result));
-    EXPECT_NE(result, nullptr);
+    EXPECT_EQ(result, nullptr); // No previous entry existed.
 
     VxConfigurationEntry *entry = config->GetEntry("IntKey", FALSE);
     EXPECT_NE(entry, nullptr);
@@ -103,7 +103,7 @@ TEST_F(VxConfigurationTest, AddIntegerEntry) {
 TEST_F(VxConfigurationTest, AddFloatEntry) {
     VxConfigurationEntry *result = nullptr;
     EXPECT_TRUE(config->AddEntry(nullptr, "FloatKey", 3.14f, &result));
-    EXPECT_NE(result, nullptr);
+    EXPECT_EQ(result, nullptr); // No previous entry existed.
 
     VxConfigurationEntry *entry = config->GetEntry("FloatKey", FALSE);
     EXPECT_NE(entry, nullptr);
@@ -116,7 +116,7 @@ TEST_F(VxConfigurationTest, AddFloatEntry) {
 TEST_F(VxConfigurationTest, AddEntryToSubSection) {
     VxConfigurationEntry *result = nullptr;
     EXPECT_TRUE(config->AddEntry("Section1", "Key1", "Value1", &result));
-    EXPECT_NE(result, nullptr);
+    EXPECT_EQ(result, nullptr); // No previous entry existed.
     EXPECT_EQ(config->GetNumberOfSubSections(), 1);
 
     VxConfigurationSection *section = config->GetSubSection("Section1", FALSE);
@@ -519,18 +519,18 @@ TEST_F(VxConfigurationSectionTest, AddDifferentTypes) {
     EXPECT_FLOAT_EQ(floatValue, 3.14f);
 }
 
-TEST_F(VxConfigurationSectionTest, UpdateExistingEntry) {
+TEST_F(VxConfigurationSectionTest, AddExistingEntryPreservesItsValue) {
     section->AddEntry("Key1", "OriginalValue");
 
     VxConfigurationEntry *entry1 = section->GetEntry("Key1");
     EXPECT_STREQ(entry1->GetValue(), "OriginalValue");
 
-    // Add again with same key - should update
+    // Adding a duplicate preserves the existing entry and its value.
     section->AddEntry("Key1", "UpdatedValue");
     EXPECT_EQ(section->GetNumberOfEntries(), 1); // Still only one entry
 
     VxConfigurationEntry *entry2 = section->GetEntry("Key1");
-    EXPECT_STREQ(entry2->GetValue(), "UpdatedValue");
+    EXPECT_STREQ(entry2->GetValue(), "OriginalValue");
     EXPECT_EQ(entry1, entry2); // Should be the same entry object
 }
 
@@ -630,7 +630,9 @@ TEST_F(VxConfigurationSectionTest, Clear) {
 // VxConfigurationEntry Tests
 TEST_F(VxConfigurationEntryTest, StringValue) {
     VxConfigurationEntry *entry;
-    section->AddEntry("StringKey", "TestString", &entry);
+    section->AddEntry("StringKey", "TestString");
+    entry = section->GetEntry("StringKey");
+    ASSERT_NE(nullptr, entry);
 
     EXPECT_STREQ(entry->GetName(), "StringKey");
     EXPECT_STREQ(entry->GetValue(), "TestString");
@@ -639,7 +641,9 @@ TEST_F(VxConfigurationEntryTest, StringValue) {
 
 TEST_F(VxConfigurationEntryTest, IntegerValue) {
     VxConfigurationEntry *entry;
-    section->AddEntry("IntKey", 42, &entry);
+    section->AddEntry("IntKey", 42);
+    entry = section->GetEntry("IntKey");
+    ASSERT_NE(nullptr, entry);
 
     EXPECT_STREQ(entry->GetName(), "IntKey");
 
@@ -654,7 +658,9 @@ TEST_F(VxConfigurationEntryTest, IntegerValue) {
 TEST_F(VxConfigurationEntryTest, LongValue) {
     VxConfigurationEntry *entry;
     long testValue = 123456789L;
-    section->AddEntry("LongKey", testValue, &entry);
+    section->AddEntry("LongKey", testValue);
+    entry = section->GetEntry("LongKey");
+    ASSERT_NE(nullptr, entry);
 
     long value;
     EXPECT_TRUE(entry->GetValueAsLong(value));
@@ -664,7 +670,9 @@ TEST_F(VxConfigurationEntryTest, LongValue) {
 TEST_F(VxConfigurationEntryTest, UnsignedIntegerValue) {
     VxConfigurationEntry *entry;
     unsigned int testValue = 4294967295U;
-    section->AddEntry("UIntKey", testValue, &entry);
+    section->AddEntry("UIntKey", testValue);
+    entry = section->GetEntry("UIntKey");
+    ASSERT_NE(nullptr, entry);
 
     unsigned int value;
     EXPECT_TRUE(entry->GetValueAsUnsignedInteger(value));
@@ -674,7 +682,9 @@ TEST_F(VxConfigurationEntryTest, UnsignedIntegerValue) {
 TEST_F(VxConfigurationEntryTest, UnsignedLongValue) {
     VxConfigurationEntry *entry;
     unsigned long testValue = 4294967295UL;
-    section->AddEntry("ULongKey", testValue, &entry);
+    section->AddEntry("ULongKey", testValue);
+    entry = section->GetEntry("ULongKey");
+    ASSERT_NE(nullptr, entry);
 
     unsigned long value;
     EXPECT_TRUE(entry->GetValueAsUnsignedLong(value));
@@ -683,7 +693,9 @@ TEST_F(VxConfigurationEntryTest, UnsignedLongValue) {
 
 TEST_F(VxConfigurationEntryTest, FloatValue) {
     VxConfigurationEntry *entry;
-    section->AddEntry("FloatKey", 3.14159f, &entry);
+    section->AddEntry("FloatKey", 3.14159f);
+    entry = section->GetEntry("FloatKey");
+    ASSERT_NE(nullptr, entry);
 
     float value;
     EXPECT_TRUE(entry->GetValueAsFloat(value));
@@ -692,7 +704,9 @@ TEST_F(VxConfigurationEntryTest, FloatValue) {
 
 TEST_F(VxConfigurationEntryTest, SetValue) {
     VxConfigurationEntry *entry;
-    section->AddEntry("TestKey", "InitialValue", &entry);
+    section->AddEntry("TestKey", "InitialValue");
+    entry = section->GetEntry("TestKey");
+    ASSERT_NE(nullptr, entry);
 
     // Test setting different types
     entry->SetValue("StringValue");
@@ -711,7 +725,9 @@ TEST_F(VxConfigurationEntryTest, SetValue) {
 
 TEST_F(VxConfigurationEntryTest, TypeConversionFailure) {
     VxConfigurationEntry *entry;
-    section->AddEntry("TextKey", "NotANumber", &entry);
+    section->AddEntry("TextKey", "NotANumber");
+    entry = section->GetEntry("TextKey");
+    ASSERT_NE(nullptr, entry);
 
     int intValue;
     EXPECT_FALSE(entry->GetValueAsInteger(intValue));
@@ -725,7 +741,9 @@ TEST_F(VxConfigurationEntryTest, TypeConversionFailure) {
 
 TEST_F(VxConfigurationEntryTest, EmptyValue) {
     VxConfigurationEntry *entry;
-    section->AddEntry("EmptyKey", "", &entry);
+    section->AddEntry("EmptyKey", "");
+    entry = section->GetEntry("EmptyKey");
+    ASSERT_NE(nullptr, entry);
 
     EXPECT_STREQ(entry->GetValue(), "");
 
@@ -735,7 +753,9 @@ TEST_F(VxConfigurationEntryTest, EmptyValue) {
 
 TEST_F(VxConfigurationEntryTest, NullValue) {
     VxConfigurationEntry *entry;
-    section->AddEntry("NullKey", static_cast<const char *>(nullptr), &entry);
+    section->AddEntry("NullKey", static_cast<const char *>(nullptr));
+    entry = section->GetEntry("NullKey");
+    ASSERT_NE(nullptr, entry);
 
     EXPECT_STREQ(entry->GetValue(), "");
 }
@@ -809,7 +829,8 @@ TEST_F(VxConfigurationIntegrationTest, DefaultConfigurationFallback) {
     config->AddDefaultEntry("Defaults", "Setting1", 100);
     config->AddDefaultEntry("Defaults", "Setting2", "Auto");
 
-    // Override some defaults
+    // Add an explicit section in the main tree to override a default entry.
+    ASSERT_NE(nullptr, config->CreateSubSection(nullptr, "Defaults"));
     config->AddEntry("Defaults", "Setting1", 200);
 
     // Test fallback behavior
