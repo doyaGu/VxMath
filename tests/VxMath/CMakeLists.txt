@@ -737,3 +737,6 @@ vx_copy_runtime_dependencies(ConfigStateReferenceTest)
 
 vx_add_test(ConfigValueReferenceTest SOURCES ConfigValueReferenceTest.cpp)
 vx_copy_runtime_dependencies(ConfigValueReferenceTest)
+
+vx_add_test(ConfigTypeDeleteReferenceTest SOURCES ConfigTypeDeleteReferenceTest.cpp)
+vx_copy_runtime_dependencies(ConfigTypeDeleteReferenceTest)

@@ -7,6 +7,8 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+#include <errno.h>
+#include <limits.h>
 
 VxConfiguration::VxConfiguration(unsigned short indent) : m_Root(NULL), m_DefaultRoot(NULL), m_Indent(indent) {
     m_Root = new VxConfigurationSection("root", NULL);
@@ -1198,17 +1200,23 @@ XBOOL VxConfig::ReadStringEntry(const char *iKey, char *oData, size_t iSize) {
 }
 
 XBOOL VxConfig::ReadIntegerEntry(const char *iKey, int *oData) {
-    char buffer[64];
-    if (!oData || !ReadRawEntry(iKey, buffer, sizeof(buffer), NULL))
+    XString text;
+    if (!oData || !ReadEntryValue(iKey, text, NULL))
         return FALSE;
-    return sscanf(buffer, "%d", oData) == 1;
+    char *end;
+    errno = 0;
+    long value = strtol(text.CStr(), &end, 10);
+    if (end == text.CStr() || errno == ERANGE || value < INT_MIN || value > INT_MAX)
+        return FALSE;
+    *oData = static_cast<int>(value);
+    return TRUE;
 }
 
 XBOOL VxConfig::ReadFloatEntry(const char *iKey, float *oData) {
-    char buffer[64];
-    if (!oData || !ReadRawEntry(iKey, buffer, sizeof(buffer), NULL))
+    XString text;
+    if (!oData || !ReadEntryValue(iKey, text, NULL))
         return FALSE;
-    return sscanf(buffer, "%f", oData) == 1;
+    return sscanf(text.CStr(), "%f", oData) == 1;
 }
 
 XBOOL VxConfig::ReadBooleanEntry(const char *iKey, XBOOL *oData) {
@@ -1220,7 +1228,7 @@ XBOOL VxConfig::ReadBooleanEntry(const char *iKey, XBOOL *oData) {
 }
 
 XBOOL VxConfig::DeleteEntry(const char *iKey) {
-    if (!(m_CurrentMode & WRITE) || !iKey)
+    if (!(m_CurrentMode & WRITE))
         return FALSE;
     XString file;
     if (!VxGetRegistryFilePathString(file))
@@ -1243,6 +1251,7 @@ XBOOL VxConfig::DeleteEntry(const char *iKey) {
 }
 
 XBOOL VxConfig::DeleteSection(const char *iSection) {
+    if (!iSection && !(m_CurrentMode & WRITE)) return FALSE;
     XString sectionName = iSection ? iSection : m_CurrentSectionName.CStr();
     XString file;
     if (!VxGetRegistryFilePathString(file))
@@ -1252,10 +1261,17 @@ XBOOL VxConfig::DeleteSection(const char *iSection) {
     XString section = VxNormalizeRegistryPath(m_Root, m_BaseSection.CStr(), sectionName.CStr());
     VxConfigurationSection *target = VxGetRegistrySection(config, section.CStr(), FALSE);
     if (!target) return FALSE;
-    XBOOL removed = target->GetParent()->DeleteSection(target->GetName());
-    if (removed)
-        return config.SaveToFile(file.CStr());
-    return FALSE;
+    XBOOL closesCurrent = FALSE;
+    if (m_CurrentMode) {
+        XString currentPath = VxNormalizeRegistryPath(m_Root, m_BaseSection.CStr(), m_CurrentSectionName.CStr());
+        VxConfigurationSection *current = VxGetRegistrySection(config, currentPath.CStr(), FALSE);
+        for (; current; current = current->GetParent()) {
+            if (current == target) { closesCurrent = TRUE; break; }
+        }
+    }
+    if (!target->GetParent()->DeleteSection(target->GetName()) || !config.SaveToFile(file.CStr())) return FALSE;
+    if (closesCurrent) CloseSection(NULL);
+    return TRUE;
 }
 
 XBOOL VxConfig::EntryExists(const char *iKey) {
@@ -1286,7 +1302,7 @@ XBOOL VxConfig::GetRegistryFilePath(char *oPath, size_t iSize) {
 }
 
 XBOOL VxConfig::WriteRawEntry(const char *iKey, const char *iValue, VxConfigValueType iType) {
-    if (!(m_CurrentMode & WRITE) || !iKey || !iValue)
+    if (!(m_CurrentMode & WRITE) || !iValue)
         return FALSE;
     size_t length = strlen(iValue);
     if (length > XString::MAX_LENGTH) return FALSE;
@@ -1321,7 +1337,24 @@ XBOOL VxConfig::WriteRawEntry(const char *iKey, const char *iValue, VxConfigValu
 }
 
 XBOOL VxConfig::ReadRawEntry(const char *iKey, char *oData, size_t iSize, VxConfigValueType *oType, size_t *oLength) {
-    if (!(m_CurrentMode & READ) || !iKey || (!oData && !oLength) || (oData && iSize == 0))
+    if ((!oData && !oLength) || (oData && iSize == 0)) return FALSE;
+    XString value;
+    VxConfigValueType type;
+    if (!ReadEntryValue(iKey, value, &type)) return FALSE;
+    if (oLength) {
+        *oLength = value.Length() + 1;
+        if (oData && *oLength > iSize) return FALSE;
+    }
+    if (oData) {
+        strncpy(oData, value.CStr(), iSize - 1);
+        oData[iSize - 1] = '\0';
+    }
+    if (oType) *oType = type;
+    return TRUE;
+}
+
+XBOOL VxConfig::ReadEntryValue(const char *iKey, XString &result, VxConfigValueType *oType) {
+    if (!(m_CurrentMode & READ))
         return FALSE;
     XString file;
     if (!VxGetRegistryFilePathString(file))
@@ -1349,15 +1382,7 @@ XBOOL VxConfig::ReadRawEntry(const char *iKey, char *oData, size_t iSize, VxConf
         if (tail && !VxDecodeRegistryValue(tail->GetValue(), decoded)) return FALSE;
         value = decoded.CStr();
     }
-    if (oLength) {
-        *oLength = strlen(value) + 1;
-        if (oData && *oLength > iSize)
-            return FALSE;
-    }
-    if (oData) {
-        strncpy(oData, value, iSize - 1);
-        oData[iSize - 1] = '\0';
-    }
+    result = value;
     if (oType) {
         *oType = typeEntry ? VxConfigTypeFromName(typeEntry->GetValue()) : VXCONFIG_VALUE_STRING;
     }

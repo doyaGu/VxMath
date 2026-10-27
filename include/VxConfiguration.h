@@ -396,6 +396,7 @@ public:
 private:
     XBOOL WriteRawEntry(const char *iKey, const char *iValue, VxConfigValueType iType);
     XBOOL ReadRawEntry(const char *iKey, char *oData, size_t iSize, VxConfigValueType *oType, size_t *oLength = NULL);
+    XBOOL ReadEntryValue(const char *iKey, XString &value, VxConfigValueType *oType);
 
     void *m_VirtoolsSection; ///< A handle or key to the main "Virtools" section, likely in the system registry.
     void *m_CurrentSection;  ///< A handle or key to the currently open section.
