@@ -104,6 +104,66 @@ TEST(URLTest, OversizedPlainInputFailsWithoutTruncatingTheOutput) {
     EXPECT_STREQ("keep", output.CStr());
 }
 
+TEST(URLTest, UnescapeDecodesHexBytesRatherThanDecimalText) {
+    XString value("%20%2f%2F%41%7f"); VxUnEscapeUrl(value);
+    const char expected[] = {' ', '/', '/', 'A', 0x7f, 0};
+    EXPECT_EQ(5u, value.Length()); EXPECT_EQ(0, memcmp(value.CStr(), expected, sizeof(expected)));
+}
+
+TEST(URLTest, UnescapePreservesMalformedAndIncompleteSequences) {
+    const char *inputs[] = {"%", "%2", "%GG", "%g0", "%0g", "x%2", "end%", "%G0%20"};
+    const char *expected[] = {"%", "%2", "%GG", "%g0", "%0g", "x%2", "end%", "%G0 "};
+    for (int i = 0; i < 8; ++i) {
+        XString value(inputs[i]); VxUnEscapeUrl(value); EXPECT_STREQ(expected[i], value.CStr());
+    }
+}
+
+TEST(URLTest, UnescapePerformsOnePassAndDoesNotTranslatePlus) {
+    XString value("%2520+a+b"); VxUnEscapeUrl(value); EXPECT_STREQ("%20+a+b", value.CStr());
+}
+
+TEST(URLTest, UnescapePreservesTheLengthOfDecodedZeroBytes) {
+    XString value("A%00B"); VxUnEscapeUrl(value);
+    const char expected[] = {'A', 0, 'B', 0};
+    EXPECT_EQ(3u, value.Length()); EXPECT_EQ(0, memcmp(value.CStr(), expected, sizeof(expected)));
+}
+
+TEST(URLTest, UnescapeHandlesControlAndHighBytes) {
+    XString value("%01%09%0a%0D%20%7f%80%ff"); VxUnEscapeUrl(value);
+    const unsigned char expected[] = {1, 9, 10, 13, 32, 127, 128, 255, 0};
+    EXPECT_EQ(8u, value.Length()); EXPECT_EQ(0, memcmp(value.CStr(), expected, sizeof(expected)));
+}
+
+TEST(URLTest, UnescapeCoversEveryByteWithBothHexCases) {
+    for (int byte = 0; byte < 256; ++byte) {
+        const char *formats[] = {"%%%02x", "%%%02X"};
+        for (const char *format : formats) {
+            char encoded[4]; snprintf(encoded, sizeof(encoded), format, byte);
+            XString value(encoded); VxUnEscapeUrl(value);
+            ASSERT_EQ(1u, value.Length());
+            EXPECT_EQ(static_cast<unsigned char>(byte), static_cast<unsigned char>(value[0]));
+            EXPECT_EQ(0, value.CStr()[1]);
+        }
+    }
+}
+
+TEST(URLTest, EmptyAndLiteralUnescapeInputsRemainUnchanged) {
+    XString empty; VxUnEscapeUrl(empty); EXPECT_TRUE(empty.Empty());
+    XString literal("http://host/path?a+b"); VxUnEscapeUrl(literal); EXPECT_STREQ("http://host/path?a+b", literal.CStr());
+}
+
+TEST(URLTest, MaximumLengthUnescapeInputRetainsAllLiteralBytes) {
+    XString value; value.Reserve(XString::MAX_LENGTH);
+    for (int i = 0; i < XString::MAX_LENGTH; ++i) value << 'x';
+    VxUnEscapeUrl(value); ASSERT_EQ(XString::MAX_LENGTH, value.Length());
+    for (int i = 0; i < value.Length(); ++i) ASSERT_EQ('x', value[i]);
+}
+
+TEST(URLTest, EscapeAndDecodeRetainDataAndNormalizeNativeSeparators) {
+    XString value; ASSERT_EQ(0u, VxEscapeURL("C:\\a b\\file#x", value));
+    VxUnEscapeUrl(value); EXPECT_STREQ("file://C:/a b/file#x", value.CStr());
+}
+
 #ifdef _WIN32
 TEST(URLTest, DbcsTrailBackslashIsPartOfTheNativeCharacter) {
     char native[16] = {}; BOOL substituted = FALSE;

@@ -1,18 +1,11 @@
 #include "VxWindowFunctions.h"
-
 #include "VxPathEncoding.h"
-
-static bool IsHexDigit(char c) {
-    return (c >= '0' && c <= '9') ||
-        (c >= 'A' && c <= 'F') ||
-        (c >= 'a' && c <= 'f');
-}
 
 static int HexCharToValue(char c) {
     if (c >= '0' && c <= '9') return c - '0';
     if (c >= 'A' && c <= 'F') return c - 'A' + 10;
     if (c >= 'a' && c <= 'f') return c - 'a' + 10;
-    return 0;
+    return -1;
 }
 
 XDWORD VxEscapeURL(const char *InURL, XString &OutURL) {
@@ -66,69 +59,19 @@ XDWORD VxEscapeURL(const char *InURL, XString &OutURL) {
 }
 
 void VxUnEscapeUrl(XString &str) {
-    if (str.Length() == 0) return;
-
+    if (str.Empty()) return;
     XString result;
     result.Reserve(str.Length());
-
     for (int i = 0; i < str.Length(); ++i) {
         if (str[i] == '%' && i + 2 < str.Length()) {
-            char hex1 = str[i + 1];
-            char hex2 = str[i + 2];
-
-            // Validate that both characters are valid hex digits
-            if (IsHexDigit(hex1) && IsHexDigit(hex2)) {
-                // Convert hex to character
-                int value = (HexCharToValue(hex1) << 4) | HexCharToValue(hex2);
-                result += (char) value;
-                i += 2; // Skip the next two characters
-            } else {
-                // Invalid hex sequence, keep the % and continue
-                result += str[i];
+            int high = HexCharToValue(str[i + 1]), low = HexCharToValue(str[i + 2]);
+            if (high >= 0 && low >= 0) {
+                result << static_cast<char>((high << 4) | low);
+                i += 2;
+                continue;
             }
-        } else {
-            // Regular character or incomplete % sequence at end
-            result += str[i];
         }
+        result << str[i];
     }
-
-    str = result;
-}
-
-// Alternative version of VxUnEscapeUrl with more strict validation
-void VxUnEscapeUrlStrict(XString &str) {
-    if (str.Length() == 0) {
-        return;
-    }
-
-    XString result;
-    result.Reserve(str.Length());
-
-    for (int i = 0; i < str.Length(); ++i) {
-        if (str[i] == '%') {
-            // Check if we have enough characters for a complete hex sequence
-            if (i + 2 < str.Length()) {
-                char hex1 = str[i + 1];
-                char hex2 = str[i + 2];
-
-                if (IsHexDigit(hex1) && IsHexDigit(hex2)) {
-                    // Valid hex sequence
-                    int value = (HexCharToValue(hex1) << 4) | HexCharToValue(hex2);
-                    result += (char) value;
-                    i += 2;
-                } else {
-                    // Invalid hex sequence - could either skip or treat as literal
-                    // This version treats as literal %
-                    result += str[i];
-                }
-            } else {
-                // Incomplete sequence at end of string
-                result += str[i];
-            }
-        } else {
-            result += str[i];
-        }
-    }
-
     str = result;
 }
