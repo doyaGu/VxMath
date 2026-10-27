@@ -1,6 +1,6 @@
 #include "VxWindowFunctions.h"
 
-#include <new>
+#include "VxPathEncoding.h"
 
 static bool IsHexDigit(char c) {
     return (c >= '0' && c <= '9') ||
@@ -15,127 +15,53 @@ static int HexCharToValue(char c) {
     return 0;
 }
 
-static bool HasProtocol(const char *url) {
-    // Look for "://" but ensure it's at the beginning of a protocol
-    // A protocol should start with a letter and contain only alphanumeric chars and +.-
-    const char *colonSlashSlash = strstr(url, "://");
-    if (!colonSlashSlash) return false;
-
-    // Check that everything before "://" looks like a valid protocol
-    for (const char *p = url; p < colonSlashSlash; ++p) {
-        if (p == url) {
-            // First character must be a letter
-            if (!(((*p >= 'a') && (*p <= 'z')) || ((*p >= 'A') && (*p <= 'Z')))) {
-                return false;
-            }
-        } else {
-            // Subsequent characters can be alphanumeric or +.-
-            if (!(((*p >= 'a') && (*p <= 'z')) ||
-                ((*p >= 'A') && (*p <= 'Z')) ||
-                ((*p >= '0') && (*p <= '9')) ||
-                (*p == '+') || (*p == '.') || (*p == '-'))) {
-                return false;
-            }
-        }
-    }
-
-    return true;
-}
-
 XDWORD VxEscapeURL(const char *InURL, XString &OutURL) {
-    // Handle null input
     if (!InURL) {
         OutURL = "";
-        return (XDWORD) -1;
+        return static_cast<XDWORD>(-1);
     }
-
-    // Handle empty string
-    if (*InURL == '\0') {
-        OutURL = "file://";
+    size_t length = strlen(InURL);
+    if (length > XString::MAX_LENGTH) return static_cast<XDWORD>(-1);
+    if (strnicmp(InURL, "file://", 7) == 0) {
+        OutURL = InURL;
         return 0;
     }
 
-    bool hasProtocol = HasProtocol(InURL);
-    bool isFileProtocol = false;
-
-    // Check if it's already a file URL (case insensitive)
-    if (hasProtocol && strnicmp(InURL, "file://", 7) == 0) {
-        isFileProtocol = true;
-    }
-
-    // Count special characters that need escaping
-    const char *str = InURL;
-    int specialCharCount = 0;
-
-    // If it's a file protocol, start counting after "file://"
-    if (isFileProtocol) {
-        str += 7; // Skip "file://"
-    }
-
-    while (*str) {
-        if (strchr(" #$%&\\+,/:;=?@[]^{}", *str)) {
-            specialCharCount++;
+    const char *special = " #$%&\\+,;=@[]^{}";
+    size_t required = length;
+    bool escaped = false;
+    for (const char *p = InURL; *p;) {
+        const char *next = VxNextPathCharacter(p);
+        if (next == p + 1 && strchr(special, *p)) {
+            escaped = true;
+            if (*p != '\\') required += 2;
         }
-        str++;
+        p = next;
     }
-
-    // If no special characters and it's already a complete URL, return as-is
-    if (specialCharCount == 0) {
-        if (hasProtocol) {
-            OutURL = InURL;
-        } else {
-            OutURL = "file://";
-            OutURL += InURL;
-        }
+    bool prefix = escaped && !strstr(InURL, "://");
+    if (prefix) required += 7;
+    if (required > XString::MAX_LENGTH) return static_cast<XDWORD>(-1);
+    if (!escaped) {
+        OutURL = InURL;
         return 0;
     }
 
-    // Calculate required buffer size
-    size_t originalLen = strlen(InURL);
-    size_t bufferSize = originalLen + 1 + (2 * specialCharCount); // +1 for null terminator, +2 for each escaped char
-
-    if (!hasProtocol) {
-        bufferSize += 7; // Add space for "file://"
-    }
-
-    // Allocate buffer
-    char *buf = new(std::nothrow) char[bufferSize];
-    if (!buf) {
-        OutURL = "";
-        return (XDWORD) -1; // Memory allocation failed
-    }
-
-    // Build the escaped URL
-    const char *pi = InURL;
-    char *pb = buf;
-
-    // Add file:// if no protocol exists
-    if (!hasProtocol) {
-        strcpy(pb, "file://");
-        pb += 7;
-    } else if (isFileProtocol) {
-        // Copy the "file://" part as-is
-        strncpy(pb, pi, 7);
-        pb += 7;
-        pi += 7;
-    }
-
-    // Process the rest of the URL
-    while (*pi) {
-        if (strchr(" #$%&\\+,/:;=?@[]^{}", *pi)) {
-            // Escape special character
-            snprintf(pb, 4, "%%%02X", (unsigned char) *pi);
-            pb += 3;
-        } else {
-            // Copy normal character
-            *pb++ = *pi;
+    const char *digits = "0123456789abcdef";
+    XString result;
+    result.Reserve(static_cast<XWORD>(required));
+    if (prefix) result << "file://";
+    for (const char *p = InURL; *p;) {
+        const char *next = VxNextPathCharacter(p);
+        if (next != p + 1) {
+            while (p != next) result << *p++;
+            continue;
         }
-        pi++;
+        unsigned char c = static_cast<unsigned char>(*p++);
+        if (c == '\\') result << '/';
+        else if (strchr(special, c)) result << '%' << digits[c >> 4] << digits[c & 15];
+        else result << static_cast<char>(c);
     }
-    *pb = '\0';
-
-    OutURL = buf;
-    delete[] buf;
+    OutURL = result;
     return 0;
 }
 
