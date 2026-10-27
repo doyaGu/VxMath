@@ -46,3 +46,19 @@ TEST(ConfigurationParserHelperTest, ShrinkTrimsSpacesTabsAndLineFeedsButNotCarri
     char carriage[] = " value\r ";
     EXPECT_STREQ("value\r", Shrink(carriage));
 }
+
+TEST(ConfigurationParserHelperTest, EntryKeyAndSeparatorDoNotReduceTheValueCapacity) {
+    ConfigurationParserView config;
+    const int length = XString::MAX_LENGTH;
+    XAP<char> line(new char[length + 9]);
+    memcpy(line, "value = ", 8);
+    memset(static_cast<char *>(line) + 8, 'x', length);
+    line[length + 8] = 0;
+    XString error;
+    ASSERT_TRUE(config.ManageEntry(line, config.Root(), error));
+    VxConfigurationEntry *entry = config.Root()->GetEntry("value");
+    ASSERT_NE(nullptr, entry);
+    EXPECT_EQ(static_cast<size_t>(length), strlen(entry->GetValue()));
+    EXPECT_EQ(0, memcmp(entry->GetValue(), static_cast<char *>(line) + 8, length + 1));
+    EXPECT_EQ(0, memcmp(static_cast<char *>(line), "value = ", 8));
+}

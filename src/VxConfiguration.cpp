@@ -616,16 +616,17 @@ XBOOL VxConfiguration::ManageSection(const char *line, VxConfigurationSection **
 
 XBOOL VxConfiguration::ManageEntry(const char *line, VxConfigurationSection *current, XString &error) {
     if (!line || !current) return FALSE;
-    XString entry(line);
-    int separator = entry.Find('=');
-    if (separator == XString::NOTFOUND) {
+    const char *separator = strchr(line, '=');
+    if (!separator) {
         error = "can't find equal ('=') separator";
         return FALSE;
     }
-    entry[separator] = '\0';
-    char *key = Shrink(entry.Str());
-    char *value = Shrink(entry.Str() + separator + 1);
-    current->AddEntry(key, value);
+    XString key;
+    if (separator != line) key = XString(line, static_cast<int>(separator - line));
+    const char *text = separator + 1;
+    text += strspn(text, " \t\n");
+    XString value(text);
+    current->AddEntry(key.Empty() ? "" : Shrink(key.Str()), value.Empty() ? "" : Shrink(value.Str()));
     return TRUE;
 }
 
