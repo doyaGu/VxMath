@@ -8,6 +8,19 @@ static int HexCharToValue(char c) {
     return -1;
 }
 
+static bool HasProtocol(const char *url) {
+    if (!((*url >= 'a' && *url <= 'z') || (*url >= 'A' && *url <= 'Z')))
+        return false;
+    for (const char *p = url + 1; *p; ++p) {
+        if (*p == ':') return p[1] == '/' && p[2] == '/';
+        bool letter = (*p >= 'a' && *p <= 'z') || (*p >= 'A' && *p <= 'Z');
+        bool digit = *p >= '0' && *p <= '9';
+        if (!letter && !digit && *p != '+' && *p != '.' && *p != '-')
+            return false;
+    }
+    return false;
+}
+
 XDWORD VxEscapeURL(const char *InURL, XString &OutURL) {
     if (!InURL) {
         OutURL = "";
@@ -20,10 +33,13 @@ XDWORD VxEscapeURL(const char *InURL, XString &OutURL) {
         return 0;
     }
 
+    bool prefix = !HasProtocol(InURL);
+    const char *body = prefix ? InURL : strstr(InURL, "://") + 3;
+
     const char *special = " #$%&\\+,;=@[]^{}";
-    size_t required = length;
+    size_t required = length + (prefix ? 7 : 0);
     bool escaped = false;
-    for (const char *p = InURL; *p;) {
+    for (const char *p = body; *p;) {
         const char *next = VxNextPathCharacter(p);
         if (next == p + 1 && strchr(special, *p)) {
             escaped = true;
@@ -31,10 +47,8 @@ XDWORD VxEscapeURL(const char *InURL, XString &OutURL) {
         }
         p = next;
     }
-    bool prefix = escaped && !strstr(InURL, "://");
-    if (prefix) required += 7;
     if (required > XString::MAX_LENGTH) return static_cast<XDWORD>(-1);
-    if (!escaped) {
+    if (!prefix && !escaped) {
         OutURL = InURL;
         return 0;
     }
@@ -42,8 +56,12 @@ XDWORD VxEscapeURL(const char *InURL, XString &OutURL) {
     const char *digits = "0123456789abcdef";
     XString result;
     result.Reserve(static_cast<XWORD>(required));
-    if (prefix) result << "file://";
-    for (const char *p = InURL; *p;) {
+    if (prefix) {
+        result << "file://";
+    } else {
+        for (const char *p = InURL; p != body; ++p) result << *p;
+    }
+    for (const char *p = body; *p;) {
         const char *next = VxNextPathCharacter(p);
         if (next != p + 1) {
             while (p != next) result << *p++;

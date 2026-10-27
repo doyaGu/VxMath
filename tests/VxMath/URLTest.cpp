@@ -17,11 +17,19 @@ TEST(URLTest, NullInputClearsTheOutputAndReturnsFailure) {
     EXPECT_EQ(static_cast<XDWORD>(-1), VxEscapeURL(nullptr, output)); EXPECT_TRUE(output.Empty());
 }
 
-TEST(URLTest, EmptyInputRemainsEmpty) { ExpectEscaped("", ""); }
+TEST(URLTest, EmptyPathAcquiresTheFilePrefix) {
+    ExpectEscaped("", "file://");
+}
 
-TEST(URLTest, UnchangedPathsDoNotAcquireAFilePrefix) {
-    const char *inputs[] = {"plain", "/path/to/file", "C:/file.txt", "relative/file.txt", "a:b?c"};
-    for (const char *input : inputs) ExpectEscaped(input, input);
+TEST(URLTest, PlainPathsAlwaysAcquireAFilePrefix) {
+    const struct { const char *input; const char *expected; } cases[] = {
+        {"plain", "file://plain"},
+        {"/path/to/file", "file:///path/to/file"},
+        {"C:/file.txt", "file://C:/file.txt"},
+        {"relative/file.txt", "file://relative/file.txt"},
+        {"a:b?c", "file://a:b?c"}
+    };
+    for (const auto &test : cases) ExpectEscaped(test.input, test.expected);
 }
 
 TEST(URLTest, FileProtocolPassesThroughVerbatim) {
@@ -34,8 +42,30 @@ TEST(URLTest, ProtocolAndPathDelimitersArePreserved) {
     ExpectEscaped("https://host/a b?x=1&y=2", "https://host/a%20b?x%3d1%26y%3d2");
 }
 
-TEST(URLTest, OriginalProtocolMarkerSuppressesTheFilePrefix) {
-    ExpectEscaped(":// a", "://%20a"); ExpectEscaped("1bad://a b", "1bad://a%20b");
+TEST(URLTest, ValidSchemesSuppressTheFilePrefix) {
+    const struct { const char *input; const char *expected; } cases[] = {
+        {"x://a b", "x://a%20b"},
+        {"HTTP://host/a b", "HTTP://host/a%20b"},
+        {"a1+.-://a b", "a1+.-://a%20b"}
+    };
+    for (const auto &test : cases) ExpectEscaped(test.input, test.expected);
+}
+
+TEST(URLTest, InvalidOrMisplacedSchemesRemainFilePaths) {
+    const struct { const char *input; const char *expected; } cases[] = {
+        {":// a", "file://://%20a"},
+        {"1bad://a b", "file://1bad://a%20b"},
+        {"+bad://a b", "file://%2bbad://a%20b"},
+        {"a_b://a b", "file://a_b://a%20b"},
+        {"a b://c", "file://a%20b://c"},
+        {"dir/http://a b", "file://dir/http://a%20b"},
+        {"x:", "file://x:"},
+        {"x:/", "file://x:/"},
+        {"x", "file://x"},
+        {":", "file://:"},
+        {":/", "file://:/"}
+    };
+    for (const auto &test : cases) ExpectEscaped(test.input, test.expected);
 }
 
 TEST(URLTest, SpecialCharactersUseTheOriginalTableAndLowercaseHex) {
@@ -51,7 +81,8 @@ TEST(URLTest, BackslashesNormalizeToPathSeparators) {
 }
 
 TEST(URLTest, CharactersOutsideTheOriginalTableArePreserved) {
-    ExpectEscaped("a\tb\r\nc", "a\tb\r\nc"); ExpectEscaped("!'()*<>\"", "!'()*<>\"");
+    ExpectEscaped("a\tb\r\nc", "file://a\tb\r\nc");
+    ExpectEscaped("!'()*<>\"", "file://!'()*<>\"");
 }
 
 TEST(URLTest, RepeatedEscapesAdvanceWithoutLosingBytes) {
@@ -73,12 +104,32 @@ TEST(URLTest, OutputCanOwnAnInteriorInputPointer) {
     EXPECT_STREQ("file://a%20b", value.CStr());
 }
 
-TEST(URLTest, MaximumLengthPlainInputIsNotTruncatedOrPrefixed) {
+TEST(URLTest, MaximumLengthExistingUrlIsNotTruncated) {
     XAP<char> input(new char[XString::MAX_LENGTH + 1]);
-    memset(input, 'x', XString::MAX_LENGTH); input[XString::MAX_LENGTH] = 0;
+    memset(input, 'x', XString::MAX_LENGTH);
+    memcpy(input, "http://", 7);
+    input[XString::MAX_LENGTH] = 0;
     XString output; ASSERT_EQ(0u, VxEscapeURL(input, output));
     EXPECT_EQ(XString::MAX_LENGTH, output.Length());
     EXPECT_EQ(0, memcmp(output.CStr(), input, XString::MAX_LENGTH + 1));
+}
+
+TEST(URLTest, PlainPathCapacityIncludesTheFilePrefix) {
+    const int length = XString::MAX_LENGTH - 7;
+    XAP<char> input(new char[length + 2]);
+    memset(input, 'x', length + 1);
+    input[length] = 0;
+    XString output;
+    ASSERT_EQ(0u, VxEscapeURL(input, output));
+    ASSERT_EQ(XString::MAX_LENGTH, output.Length());
+    EXPECT_EQ(0, memcmp(output.CStr(), "file://", 7));
+    EXPECT_EQ(0, memcmp(output.CStr() + 7, input, length + 1));
+
+    input[length] = 'x';
+    input[length + 1] = 0;
+    output = "keep";
+    EXPECT_EQ(static_cast<XDWORD>(-1), VxEscapeURL(input, output));
+    EXPECT_STREQ("keep", output.CStr());
 }
 
 TEST(URLTest, EncodedOutputCanFillTheEntireStringCapacity) {
@@ -170,7 +221,9 @@ TEST(URLTest, DbcsTrailBackslashIsPartOfTheNativeCharacter) {
     int length = WideCharToMultiByte(GetACP(), GetACP() == CP_UTF8 ? WC_ERR_INVALID_CHARS : WC_NO_BEST_FIT_CHARS,
         L"\u4E57", -1, native, sizeof(native), nullptr, GetACP() == CP_UTF8 ? nullptr : &substituted);
     if (!length || substituted) { SUCCEED() << "Character is unavailable in this ANSI code page"; return; }
-    ExpectEscaped(native, native);
+    XString prefixed = XString("file://") + native;
+    ExpectEscaped(native, prefixed.CStr());
+    ExpectEscaped(prefixed.CStr(), prefixed.CStr());
     XString input = XString(native) + " path";
     XString expected = XString("file://") + native + "%20path";
     ExpectEscaped(input.CStr(), expected.CStr());

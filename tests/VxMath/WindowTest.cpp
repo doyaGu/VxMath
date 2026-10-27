@@ -288,7 +288,7 @@ TEST_F(VxWindowFunctionsTest, EnvironmentVariable) {
 TEST_F(VxWindowFunctionsTest, UrlEscaping) {
     XString escapedUrl;
     const char *originalUrl = "http://example.com/a path?q=a&b=c";
-    const char *expectedEscaped = "http%3A%2F%2Fexample.com%2Fa%20path%3Fq%3Da%26b%3Dc";
+    const char *expectedEscaped = "http://example.com/a%20path?q%3da%26b%3dc";
 
     VxEscapeURL(originalUrl, escapedUrl);
     EXPECT_STREQ(escapedUrl.CStr(), expectedEscaped);
