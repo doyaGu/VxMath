@@ -726,3 +726,5 @@ vx_copy_runtime_dependencies(ConfigurationSectionReferenceTest)
 
 vx_add_test(ConfigurationReferenceTest SOURCES ConfigurationReferenceTest.cpp)
 vx_copy_runtime_dependencies(ConfigurationReferenceTest)
+vx_add_test(ConfigurationParserHelperTest SOURCES ConfigurationParserHelperTest.cpp)
+vx_copy_runtime_dependencies(ConfigurationParserHelperTest)

@@ -1,23 +1,10 @@
 #include "VxConfiguration.h"
 #include "VxWindowFunctions.h"
+#include "XP.h"
 
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
-
-static XString GetSectionPath(const VxConfigurationSection *section) {
-    if (!section || !section->GetParent()) {
-        return "";
-    }
-
-    XString path(section->GetName());
-    const VxConfigurationSection *parent = section->GetParent();
-    while (parent && parent->GetParent()) {
-        path = XString(parent->GetName()) + "." + path;
-        parent = parent->GetParent();
-    }
-    return path;
-}
 
 VxConfiguration::VxConfiguration(unsigned short indent) : m_Root(NULL), m_DefaultRoot(NULL), m_Indent(indent) {
     m_Root = new VxConfigurationSection("root", NULL);
@@ -416,11 +403,15 @@ VxConfigurationEntry *VxConfiguration::GetEntry(const char *ename, XBOOL usedot)
 }
 
 XBOOL VxConfiguration::BuildFromDataFile(const char *name, XString &error) {
-    int line = 0;
-    return BuildFromFile(name, line, error);
+    return FALSE;
 }
 
 XBOOL VxConfiguration::BuildFromFile(const char *name, int &cline, XString &error) {
+    Clear();
+    if (!name) {
+        error = "Null filename";
+        return FALSE;
+    }
     FILE *file = fopen(name, "rb");
     if (!file) {
         error = "Could not open file: ";
@@ -428,83 +419,77 @@ XBOOL VxConfiguration::BuildFromFile(const char *name, int &cline, XString &erro
         return FALSE;
     }
 
-    // Read file contents into memory
-    fseek(file, 0, SEEK_END);
-    long fileSize = ftell(file);
-    fseek(file, 0, SEEK_SET);
-
-    char *buffer = new char[fileSize + 1];
-    if (!buffer) {
+    if (fseek(file, 0, SEEK_END) != 0) {
         fclose(file);
-        error = "Out of memory";
+        error = "Could not seek configuration file";
         return FALSE;
     }
-
-    size_t read = fread(buffer, 1, fileSize, file);
+    long fileSize = ftell(file);
+    if (fileSize < 0 || fseek(file, 0, SEEK_SET) != 0) {
+        fclose(file);
+        error = "Could not read configuration file size";
+        return FALSE;
+    }
+    XAP<char> buffer;
+    try {
+        buffer.Set(new char[static_cast<size_t>(fileSize) + 1]);
+    } catch (...) {
+        fclose(file);
+        throw;
+    }
+    size_t read = fread(buffer, 1, static_cast<size_t>(fileSize), file);
+    bool failed = ferror(file) != 0;
     fclose(file);
-
-    if (read != (size_t)fileSize) {
-        delete[] buffer;
+    if (failed || read != static_cast<size_t>(fileSize)) {
         error = "Failed to read entire file";
         return FALSE;
     }
 
     buffer[read] = '\0';
 
-    XBOOL result = BuildFromMemory(buffer, cline, error);
-
-    delete[] buffer;
-    return result;
+    return BuildFromMemory(buffer, cline, error);
 }
 
 XBOOL VxConfiguration::BuildFromMemory(const char *buffer, int &cline, XString &error) {
-    if (!buffer || !m_Root) return FALSE;
-
     Clear();
-
-    char *bufferCopy = new char[strlen(buffer) + 1];
+    cline = 0;
+    if (!buffer || !m_Root) {
+        error = "Null configuration buffer";
+        return FALSE;
+    }
+    XAP<char> bufferCopy(new char[strlen(buffer) + 1]);
     strcpy(bufferCopy, buffer);
-
     VxConfigurationSection *currentSection = m_Root;
-    char *line = strtok(bufferCopy, "\n\r");
-    cline = 1;
-
-    while (line) {
-        // Skip comments and empty lines
-        char *trimmed = Shrink(line);
-        if (trimmed && *trimmed && *trimmed != '#' && *trimmed != ';') {
-            if (*trimmed == '<') {
-                // This is a section start or end tag
-                if (!ManageSection(trimmed, &currentSection, error)) {
-                    delete[] bufferCopy;
-                    return FALSE;
-                }
-            } else {
-                // This is an entry
-                if (!ManageEntry(trimmed, currentSection, error)) {
-                    delete[] bufferCopy;
-                    return FALSE;
-                }
-            }
+    char *next = bufferCopy;
+    while (*next) {
+        char *line = next;
+        next += strcspn(next, "\r\n");
+        if (*next) {
+            char separator = *next;
+            *next++ = '\0';
+            if (separator == '\r' && *next == '\n') ++next;
         }
-
-        line = strtok(NULL, "\n\r");
+        char *trimmed = Shrink(line);
+        if (*trimmed && *trimmed != '#') {
+            XBOOL result = *trimmed == '<'
+                ? ManageSection(trimmed + 1, &currentSection, error)
+                : ManageEntry(trimmed, currentSection, error);
+            if (!result) return FALSE;
+        }
         ++cline;
     }
 
     if (currentSection != m_Root) {
         error = "Missing closing tag for section: ";
         error += currentSection->GetName();
-        delete[] bufferCopy;
         return FALSE;
     }
-
-    delete[] bufferCopy;
+    error = "OK";
     return TRUE;
 }
 
 XBOOL VxConfiguration::SaveToDataFile(const char *name) {
-    return SaveToFile(name);
+    return FALSE;
 }
 
 XBOOL VxConfiguration::SaveToFile(const char *name) {
@@ -630,146 +615,54 @@ VxConfigurationSection *VxConfiguration::GetSubSection(VxConfigurationSection *r
 
 XBOOL VxConfiguration::ManageSection(const char *line, VxConfigurationSection **current, XString &error) {
     if (!line || !current || !m_Root) return FALSE;
-
-    char *lineStorage = new char[strlen(line) + 1];
-    strcpy(lineStorage, line);
-
-    // Remove leading and trailing spaces
-    char *lineCopy = Shrink(lineStorage);
-
-    // Check for closing tag format </SectionName>
-    size_t len = strlen(lineCopy);
-    if (len > 3 && lineCopy[0] == '<' && lineCopy[1] == '/' && lineCopy[len - 1] == '>') {
-        XString tagName(lineCopy + 2, static_cast<int>(len - 3));
-        char *closingTag = Shrink(tagName.Str());
-        if (!closingTag || !*closingTag) {
-            error = "Invalid closing tag format: ";
-            error += line;
-            delete[] lineStorage;
-            return FALSE;
-        }
-
-        if (!*current || *current == m_Root) {
-            error = "Unexpected closing tag: ";
-            error += closingTag;
-            delete[] lineStorage;
-            return FALSE;
-        }
-
-        const char *expectedName = (*current)->GetName();
-        XString expectedPath = GetSectionPath(*current);
-        const bool matchesName = strcmp(closingTag, expectedName) == 0;
-        const bool matchesPath = !expectedPath.Empty() && strcmp(closingTag, expectedPath.CStr()) == 0;
-        if (!matchesName && !matchesPath) {
-            error = "Mismatched closing tag: ";
-            error += closingTag;
-            error += " (expected ";
-            error += expectedName;
-            if (!expectedPath.Empty()) {
-                error += " or ";
-                error += expectedPath.CStr();
-            }
-            error += ")";
-            delete[] lineStorage;
-            return FALSE;
-        }
-
-        if (matchesPath && !matchesName) {
-            // A dotted close tag (for example </Parent.Child>) closes the full dotted hierarchy.
-            VxConfigurationSection *section = *current;
-            while (section && section->GetParent() && section->GetParent() != m_Root) {
-                section = section->GetParent();
-            }
-            *current = section ? section->GetParent() : m_Root;
-        } else {
-            *current = (*current)->GetParent();
-        }
-        if (!*current) {
-            *current = m_Root;
-        }
-        delete[] lineStorage;
-        return TRUE;
-    }
-
-    // Check for opening tag format <SectionName>
-    if (len < 3 || lineCopy[0] != '<' || lineCopy[len - 1] != '>') {
-        error = "Invalid section format: ";
-        error += lineCopy;
-        delete[] lineStorage;
+    XString tag(line);
+    int end = tag.RFind('>');
+    if (end == XString::NOTFOUND) {
+        error = "can't find end of section tag";
         return FALSE;
     }
-
-    XString sectionNameStr(lineCopy + 1, static_cast<int>(len - 2));  // Skip brackets, copy substring
-    const char *sectionName = sectionNameStr.CStr();
-
-    // Handle dot notation in sections
-    XString section(sectionName);
-    size_t dotPos = section.Find('.');
-    if (dotPos == XString::NOTFOUND) {
-        // Simple section name
-        VxConfigurationSection *existingSection = (*current)->GetSubSection(sectionName);
-        if (existingSection) {
-            *current = existingSection;
-        } else {
-            *current = (*current)->CreateSubSection(sectionName);
-            if (!*current) {
-                error = "Failed to create section: ";
-                error += sectionName;
-                delete[] lineStorage;
-                return FALSE;
-            }
+    tag[end] = '\0';
+    const char *name = tag.CStr();
+    if (*name == '/') {
+        ++name;
+        if (!*current || *current == m_Root) {
+            error = "Unexpected closing tag: ";
+            error += name;
+            return FALSE;
         }
-    } else {
-        // Hierarchical section name
-        *current = GetSubSection(sectionName, TRUE);
-        if (!*current) {
-            *current = CreateSubSection(m_Root, sectionName, TRUE);
-            if (!*current) {
-                error = "Failed to create hierarchical section: ";
-                error += sectionName;
-                delete[] lineStorage;
-                return FALSE;
-            }
+        if (strcmp(name, (*current)->GetName()) != 0) {
+            error = "Mismatched closing tag: ";
+            error += name;
+            error += " (expected ";
+            error += (*current)->GetName();
+            error += ")";
+            return FALSE;
         }
+        *current = (*current)->GetParent();
+        return TRUE;
     }
-
-    delete[] lineStorage;
+    VxConfigurationSection *section = (*current)->CreateSubSection(name);
+    if (!section) {
+        error = "can't create subsection: ";
+        error += name;
+        return FALSE;
+    }
+    *current = section;
     return TRUE;
 }
 
 XBOOL VxConfiguration::ManageEntry(const char *line, VxConfigurationSection *current, XString &error) {
     if (!line || !current) return FALSE;
-
-    char *lineStorage = new char[strlen(line) + 1];
-    strcpy(lineStorage, line);
-
-    // Remove leading and trailing spaces
-    char *lineCopy = Shrink(lineStorage);
-
-    // Find key-value separator
-    char *separator = strchr(lineCopy, '=');
-    if (!separator) {
-        error = "Invalid entry format (missing '='): ";
-        error += lineCopy;
-        delete[] lineStorage;
+    XString entry(line);
+    int separator = entry.Find('=');
+    if (separator == XString::NOTFOUND) {
+        error = "can't find equal ('=') separator";
         return FALSE;
     }
-
-    // Split line into key and value
-    *separator = '\0';
-    char *key = Shrink(lineCopy);
-    char *value = Shrink(separator + 1);
-
-    if (!key || !*key) {
-        error = "Empty key in entry: ";
-        error += lineCopy;
-        delete[] lineStorage;
-        return FALSE;
-    }
-
-    // Add the entry to the current section
-    current->AddEntry(key, value ? value : "");
-    delete[] lineStorage;
+    entry[separator] = '\0';
+    char *key = Shrink(entry.Str());
+    char *value = Shrink(entry.Str() + separator + 1);
+    current->AddEntry(key, value);
     return TRUE;
 }
 
@@ -1052,7 +945,7 @@ char *Shrink(char *str) {
     if (!str) return NULL;
 
     // Skip leading whitespace
-    while (*str && (*str == ' ' || *str == '\t')) str++;
+    while (*str && (*str == ' ' || *str == '\t' || *str == '\n')) str++;
 
     // Empty string
     if (!*str) return str;
@@ -1061,7 +954,7 @@ char *Shrink(char *str) {
     char *end = str + (int)strlen(str) - 1;
 
     // Remove trailing whitespace
-    while (end > str && (*end == ' ' || *end == '\t')) *end-- = '\0';
+    while (end > str && (*end == ' ' || *end == '\t' || *end == '\n')) *end-- = '\0';
 
     return str;
 }

@@ -363,7 +363,7 @@ TEST_F(VxConfigurationTest, BuildFromMemoryRejectsMissingClosingTags) {
     EXPECT_NE(error.Find("Missing closing tag"), XString::NOTFOUND);
 }
 
-TEST_F(VxConfigurationTest, BuildFromMemoryAcceptsDottedClosingTagPath) {
+TEST_F(VxConfigurationTest, BuildFromMemoryKeepsDottedTagNamesLiteral) {
     const char *configText =
         "<Parent.Child>\n"
         "  Key = Value\n"
@@ -373,8 +373,11 @@ TEST_F(VxConfigurationTest, BuildFromMemoryAcceptsDottedClosingTagPath) {
     XString error;
     EXPECT_TRUE(config->BuildFromMemory(configText, line, error));
 
-    VxConfigurationEntry *entry = config->GetEntry("Parent.Child.Key", TRUE);
-    EXPECT_NE(entry, nullptr);
+    VxConfigurationSection *section = config->GetSubSection("Parent.Child", FALSE);
+    ASSERT_NE(section, nullptr);
+    EXPECT_EQ(config->GetSubSection("Parent", FALSE), nullptr);
+    VxConfigurationEntry *entry = section->GetEntry("Key");
+    ASSERT_NE(entry, nullptr);
     EXPECT_STREQ(entry->GetValue(), "Value");
 }
 
