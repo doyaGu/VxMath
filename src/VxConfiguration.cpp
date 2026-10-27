@@ -1117,7 +1117,7 @@ void VxConfigurationEntry::SetValue(unsigned long value) {
 }
 
 void VxConfigurationEntry::SetValue(float value) {
-    char buffer[32];
+    char buffer[64]; // Sign, 39 integer digits, decimal point and six fractional digits.
     snprintf(buffer, sizeof(buffer), "%f", value);
     m_Value = buffer;
 }
