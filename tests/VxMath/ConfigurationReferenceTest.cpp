@@ -292,6 +292,42 @@ TEST_F(ConfigurationReferenceTest, DataFileEntrypointsAreUnsupportedAndHaveNoTex
     EXPECT_STREQ("sentinel", ReadOutput().CStr());
 }
 
+TEST_F(ConfigurationReferenceTest, SavingUsesAccumulatedIndentationWithoutExtraBlankLinesOrDefaults) {
+    VxConfiguration config(3);
+    ASSERT_TRUE(config.AddEntry(nullptr, "root", "value"));
+    ASSERT_TRUE(config.AddEntry("A", "a", "one"));
+    ASSERT_TRUE(config.AddEntry("A.B", "b", "two"));
+    ASSERT_TRUE(config.AddDefaultEntry(nullptr, "fallback", "omitted"));
+    ASSERT_TRUE(config.SaveToFile(Output));
+    EXPECT_STREQ("root = value\n<A>\n   a = one\n   <B>\n      b = two\n   </B>\n</A>\n", ReadOutput().CStr());
+}
+
+TEST_F(ConfigurationReferenceTest, ZeroIndentAndEmptyConfigurationsSaveAsExpected) {
+    VxConfiguration config(0);
+    ASSERT_TRUE(config.SaveToFile(Output));
+    EXPECT_STREQ("", ReadOutput().CStr());
+    ASSERT_TRUE(config.AddEntry("A.B", "key", "value"));
+    ASSERT_TRUE(config.SaveToFile(Output));
+    EXPECT_STREQ("<A>\n<B>\nkey = value\n</B>\n</A>\n", ReadOutput().CStr());
+}
+
+TEST_F(ConfigurationReferenceTest, SavingALiteralDottedSectionRoundTripsItsIdentityAndBytes) {
+    VxConfigurationSection *section = Config.CreateSubSection(nullptr, "A.B");
+    ASSERT_NE(nullptr, section);
+    section->AddEntry("key", "value");
+    ASSERT_TRUE(Config.SaveToFile(Output));
+    int line = 0; XString error;
+    ASSERT_TRUE(Config.BuildFromFile(Output, line, error));
+    ASSERT_NE(nullptr, Config.GetSubSection("A.B", FALSE));
+    EXPECT_EQ(nullptr, Config.GetSubSection("A", FALSE));
+    EXPECT_STREQ("value", Config.GetSubSection("A.B", FALSE)->GetEntry("key")->GetValue());
+}
+
+TEST_F(ConfigurationReferenceTest, SaveFailureDoesNotReportSuccessForADirectory) {
+    ASSERT_TRUE(Config.AddEntry(nullptr, "key", "value"));
+    EXPECT_FALSE(Config.SaveToFile("."));
+}
+
 TEST_F(ConfigurationReferenceTest, LongConfigurationLinesAreProcessedAsCompleteLines) {
     char text[4096];
     strcpy(text, "key=");
@@ -304,3 +340,4 @@ TEST_F(ConfigurationReferenceTest, LongConfigurationLinesAreProcessedAsCompleteL
     ASSERT_NE(nullptr, Config.GetEntry("key", FALSE));
     EXPECT_EQ(sizeof(text) - 6, strlen(Config.GetEntry("key", FALSE)->GetValue()));
 }
+

@@ -494,75 +494,36 @@ XBOOL VxConfiguration::SaveToDataFile(const char *name) {
 
 XBOOL VxConfiguration::SaveToFile(const char *name) {
     if (!m_Root || !name) return FALSE;
-
-    FILE *file = fopen(name, "wb");
+    FILE *file = fopen(name, "wt");
     if (!file) return FALSE;
-
-    // Helper function to build full section path
-    struct SectionHelper {
-        static XString GetFullPath(VxConfigurationSection *section) {
-            if (!section || !section->GetParent()) {
-                return XString(section ? section->GetName() : "");
-            }
-
-            XString parentPath = GetFullPath(section->GetParent());
-            if (parentPath.Length() == 0 || strcmp(parentPath.CStr(), "root") == 0) {
-                return XString(section->GetName());
-            } else {
-                return parentPath + "." + section->GetName();
-            }
-        }
-    };
-
-    // Lambda-like function to write indentation
-    struct Indent {
-        static void Write(FILE *f, int level, unsigned short indentSize) {
-            for (int i = 0; i < level * indentSize; i++)
-                fprintf(f, " ");
-        }
-    };
-
-    // Lambda-like function to recursively write sections
     struct WriteSection {
         static bool DoWrite(FILE *f, VxConfigurationSection *section, int level, unsigned short indentSize) {
-            if (!section) return true;
-
-            // Write section header using XML-like tags
-            if (level > 0) {
-                // Don't write header for root
-                fprintf(f, "<%s>\n", section->GetName());
-            }
-
-            // Write entries with proper indentation
+            int padding = level * indentSize;
+            if (fprintf(f, "%*s<%s>\n", padding, "", section->GetName()) < 0) return false;
             ConstEntryIt entIt = section->BeginChildEntry();
             VxConfigurationEntry *entry;
             while ((entry = section->GetNextChildEntry(entIt)) != NULL) {
-                if (level > 0) Indent::Write(f, 1, indentSize);
-                fprintf(f, "%s = %s\n", entry->GetName(), entry->GetValue());
+                if (fprintf(f, "%*s%s = %s\n", padding + indentSize, "", entry->GetName(), entry->GetValue()) < 0)
+                    return false;
             }
-
-            // Write subsections
             ConstSectionIt secIt = section->BeginChildSection();
             VxConfigurationSection *subSection;
             while ((subSection = section->GetNextChildSection(secIt)) != NULL) {
-                if (level == 0 && (section->GetNumberOfEntries() > 0 || section->GetNumberOfSubSections() > 1))
-                    fprintf(f, "\n");
-                if (!DoWrite(f, subSection, level + 1, indentSize))
-                    return false;
+                if (!DoWrite(f, subSection, level + 1, indentSize)) return false;
             }
-
-            // Write closing tag for non-root sections
-            if (level > 0) {
-                fprintf(f, "</%s>\n", section->GetName());
-            }
-
-            return true;
+            return fprintf(f, "%*s</%s>\n", padding, "", section->GetName()) >= 0;
         }
     };
-
-    bool success = WriteSection::DoWrite(file, m_Root, 0, m_Indent);
-
-    fclose(file);
+    bool success = true;
+    ConstEntryIt entIt = m_Root->BeginChildEntry();
+    VxConfigurationEntry *entry;
+    while (success && (entry = m_Root->GetNextChildEntry(entIt)) != NULL)
+        success = fprintf(file, "%s = %s\n", entry->GetName(), entry->GetValue()) >= 0;
+    ConstSectionIt secIt = m_Root->BeginChildSection();
+    VxConfigurationSection *section;
+    while (success && (section = m_Root->GetNextChildSection(secIt)) != NULL)
+        success = WriteSection::DoWrite(file, section, 0, m_Indent);
+    if (fclose(file) != 0) success = false;
     return success ? TRUE : FALSE;
 }
 
