@@ -24,20 +24,14 @@ VxConfiguration::VxConfiguration(unsigned short indent) : m_Root(NULL), m_Defaul
 }
 
 VxConfiguration::~VxConfiguration() {
-    Clear();
-    ClearDefault();
     delete m_Root;
-    m_Root = NULL;
+    delete m_DefaultRoot;
 }
 
 void VxConfiguration::Clear() { if (m_Root) m_Root->Clear(); }
 
 void VxConfiguration::ClearDefault() {
-    if (m_DefaultRoot) {
-        m_DefaultRoot->Clear();
-        delete m_DefaultRoot;
-        m_DefaultRoot = NULL;
-    }
+    if (m_DefaultRoot) m_DefaultRoot->Clear();
 }
 
 size_t VxConfiguration::GetNumberOfSubSections() const {
@@ -389,7 +383,7 @@ VxConfigurationSection *VxConfiguration::GetSubSection(const char *sname, XBOOL 
 VxConfigurationEntry *VxConfiguration::GetEntry(const char *ename, XBOOL usedot) const {
     if (!ename) return NULL;
     
-    if (!usedot) {
+    if (!usedot || !strchr(ename, '.')) {
         VxConfigurationEntry *entry = m_Root ? m_Root->GetEntry(ename) : NULL;
         if (!entry && m_DefaultRoot)
             entry = m_DefaultRoot->GetEntry(ename);
