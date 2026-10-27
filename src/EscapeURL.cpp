@@ -21,6 +21,14 @@ static bool HasProtocol(const char *url) {
     return false;
 }
 
+static const char *NextURLCharacter(const char *p, bool fileURL) {
+    // File URLs may already contain escapes; raw paths treat '%' literally.
+    if (fileURL && *p == '%' && p[1] && p[2] &&
+        HexCharToValue(p[1]) >= 0 && HexCharToValue(p[2]) >= 0)
+        return p + 3;
+    return VxNextPathCharacter(p);
+}
+
 XDWORD VxEscapeURL(const char *InURL, XString &OutURL) {
     if (!InURL) {
         OutURL = "";
@@ -28,19 +36,16 @@ XDWORD VxEscapeURL(const char *InURL, XString &OutURL) {
     }
     size_t length = strlen(InURL);
     if (length > XString::MAX_LENGTH) return static_cast<XDWORD>(-1);
-    if (strnicmp(InURL, "file://", 7) == 0) {
-        OutURL = InURL;
-        return 0;
-    }
 
     bool prefix = !HasProtocol(InURL);
+    bool fileURL = strnicmp(InURL, "file://", 7) == 0;
     const char *body = prefix ? InURL : strstr(InURL, "://") + 3;
 
     const char *special = " #$%&\\+,;=@[]^{}";
     size_t required = length + (prefix ? 7 : 0);
     bool escaped = false;
     for (const char *p = body; *p;) {
-        const char *next = VxNextPathCharacter(p);
+        const char *next = NextURLCharacter(p, fileURL);
         if (next == p + 1 && strchr(special, *p)) {
             escaped = true;
             if (*p != '\\') required += 2;
@@ -62,7 +67,7 @@ XDWORD VxEscapeURL(const char *InURL, XString &OutURL) {
         for (const char *p = InURL; p != body; ++p) result << *p;
     }
     for (const char *p = body; *p;) {
-        const char *next = VxNextPathCharacter(p);
+        const char *next = NextURLCharacter(p, fileURL);
         if (next != p + 1) {
             while (p != next) result << *p++;
             continue;

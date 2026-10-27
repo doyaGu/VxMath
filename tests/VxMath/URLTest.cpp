@@ -32,9 +32,35 @@ TEST(URLTest, PlainPathsAlwaysAcquireAFilePrefix) {
     for (const auto &test : cases) ExpectEscaped(test.input, test.expected);
 }
 
-TEST(URLTest, FileProtocolPassesThroughVerbatim) {
-    const char *inputs[] = {"file:///a b", "FILE:///a#b", "File://a%20b", "file://C:\\a b"};
-    for (const char *input : inputs) ExpectEscaped(input, input);
+TEST(URLTest, FileUrlsEscapeRawContentAndPreserveSeparators) {
+    ExpectEscaped("file:///a b", "file:///a%20b");
+    ExpectEscaped("FILE:///a#b", "FILE:///a%23b");
+    ExpectEscaped("file://C:\\a b", "file://C:/a%20b");
+    ExpectEscaped("file:////server/share/a b", "file:////server/share/a%20b");
+    ExpectEscaped("file:///a?b:c/d", "file:///a?b:c/d");
+}
+
+TEST(URLTest, FileUrlsPreserveExistingEscapesAlongsideRawSpaces) {
+    ExpectEscaped("File://a%20b", "File://a%20b");
+    ExpectEscaped("file:///a%2Fb c%5c%00", "file:///a%2Fb%20c%5c%00");
+    ExpectEscaped("file:///a%2520b", "file:///a%2520b");
+}
+
+TEST(URLTest, FileUrlsEscapeMalformedAndIncompletePercentSequences) {
+    const struct { const char *input; const char *expected; } cases[] = {
+        {"file://%", "file://%25"},
+        {"file://%2", "file://%252"},
+        {"file://%GG", "file://%25GG"},
+        {"file://%0g", "file://%250g"},
+        {"file://%g0", "file://%25g0"},
+        {"file://%%20", "file://%25%20"}
+    };
+    for (const auto &test : cases) ExpectEscaped(test.input, test.expected);
+}
+
+TEST(URLTest, RawPathsTreatPercentEscapesAsLiteralFileNameText) {
+    ExpectEscaped("a%20b", "file://a%2520b");
+    ExpectEscaped("C:/a%2fb%25c", "file://C:/a%252fb%2525c");
 }
 
 TEST(URLTest, ProtocolAndPathDelimitersArePreserved) {
@@ -94,6 +120,17 @@ TEST(URLTest, EscapingPercentDoesNotInterpretAnExistingEscape) {
     ExpectEscaped("http://host/%2f", "http://host/%252f");
 }
 
+TEST(URLTest, RepeatedFileUrlEscapingDoesNotEncodeExistingEscapesAgain) {
+    XString value;
+    ASSERT_EQ(0u, VxEscapeURL("C:\\a b%2f\\#x", value));
+    const char *expected = "file://C:/a%20b%252f/%23x";
+    EXPECT_STREQ(expected, value.CStr());
+    for (int i = 0; i < 3; ++i) {
+        ASSERT_EQ(0u, VxEscapeURL(value.CStr(), value));
+        EXPECT_STREQ(expected, value.CStr());
+    }
+}
+
 TEST(URLTest, OutputCanOwnTheInputBuffer) {
     XString value("http://host/a b"); ASSERT_EQ(0u, VxEscapeURL(value.CStr(), value));
     EXPECT_STREQ("http://host/a%20b", value.CStr());
@@ -102,6 +139,15 @@ TEST(URLTest, OutputCanOwnTheInputBuffer) {
 TEST(URLTest, OutputCanOwnAnInteriorInputPointer) {
     XString value("prefix:a b"); ASSERT_EQ(0u, VxEscapeURL(value.CStr() + 7, value));
     EXPECT_STREQ("file://a%20b", value.CStr());
+}
+
+TEST(URLTest, FileUrlOutputCanOwnTheInputAndAnInteriorPointer) {
+    XString value("file:///a%2f b");
+    ASSERT_EQ(0u, VxEscapeURL(value.CStr(), value));
+    EXPECT_STREQ("file:///a%2f%20b", value.CStr());
+    value = "prefix:file:///a%20b c";
+    ASSERT_EQ(0u, VxEscapeURL(value.CStr() + 7, value));
+    EXPECT_STREQ("file:///a%20b%20c", value.CStr());
 }
 
 TEST(URLTest, MaximumLengthExistingUrlIsNotTruncated) {
@@ -130,6 +176,28 @@ TEST(URLTest, PlainPathCapacityIncludesTheFilePrefix) {
     output = "keep";
     EXPECT_EQ(static_cast<XDWORD>(-1), VxEscapeURL(input, output));
     EXPECT_STREQ("keep", output.CStr());
+}
+
+TEST(URLTest, FileUrlCapacityCountsNewEscapesButNotExistingEscapes) {
+    XAP<char> input(new char[XString::MAX_LENGTH + 1]);
+    memset(input, 'x', XString::MAX_LENGTH);
+    memcpy(input, "file://%2F", 10);
+    input[XString::MAX_LENGTH] = 0;
+    XString output;
+    ASSERT_EQ(0u, VxEscapeURL(input, output));
+    EXPECT_EQ(XString::MAX_LENGTH, output.Length());
+    EXPECT_EQ(0, memcmp(output.CStr(), input, XString::MAX_LENGTH + 1));
+
+    input[XString::MAX_LENGTH - 1] = ' ';
+    output = "keep";
+    EXPECT_EQ(static_cast<XDWORD>(-1), VxEscapeURL(input, output));
+    EXPECT_STREQ("keep", output.CStr());
+
+    input[XString::MAX_LENGTH - 3] = ' ';
+    input[XString::MAX_LENGTH - 2] = 0;
+    ASSERT_EQ(0u, VxEscapeURL(input, output));
+    EXPECT_EQ(XString::MAX_LENGTH, output.Length());
+    EXPECT_STREQ("%20", output.CStr() + output.Length() - 3);
 }
 
 TEST(URLTest, EncodedOutputCanFillTheEntireStringCapacity) {
@@ -227,6 +295,8 @@ TEST(URLTest, DbcsTrailBackslashIsPartOfTheNativeCharacter) {
     XString input = XString(native) + " path";
     XString expected = XString("file://") + native + "%20path";
     ExpectEscaped(input.CStr(), expected.CStr());
+    XString fileInput = XString("file://") + native + " path";
+    ExpectEscaped(fileInput.CStr(), expected.CStr());
     printf("URLNativeACP: %u; Bytes:", GetACP());
     for (int i = 0; i < length - 1; ++i) printf("%02x", static_cast<unsigned char>(native[i]));
     printf("\n");
