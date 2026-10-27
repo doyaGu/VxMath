@@ -402,7 +402,7 @@ private:
     VxConfigRoot m_Root;
     XString m_BaseSection;
     XString m_CurrentSectionName;
-    Mode m_CurrentMode;
+    Mode m_CurrentMode; ///< Access bits; zero means no section is open.
 };
 
 #endif // VXCONFIGURATION_H

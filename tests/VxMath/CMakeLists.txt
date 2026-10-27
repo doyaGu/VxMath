@@ -731,3 +731,6 @@ vx_copy_runtime_dependencies(ConfigurationParserHelperTest)
 
 vx_add_test(ConfigStringReferenceTest SOURCES ConfigStringReferenceTest.cpp)
 vx_copy_runtime_dependencies(ConfigStringReferenceTest)
+
+vx_add_test(ConfigStateReferenceTest SOURCES ConfigStateReferenceTest.cpp)
+vx_copy_runtime_dependencies(ConfigStateReferenceTest)

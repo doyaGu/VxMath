@@ -74,12 +74,13 @@ static XBOOL LoadRegistryConfig(VxConfiguration &config) {
 TEST(VxConfigRegistryTest, TypedRoundTripAndDelete) {
     VxConfig config(VXCONFIG_ROOT_CURRENT_USER, kVxConfigTestBase);
     config.DeleteSection("Unit/Registry");
-    config.OpenSection("Unit/Registry", VxConfig::WRITE);
+    config.DeleteSection("Unit\\Registry");
+    config.OpenSection("Unit\\Registry", VxConfig::WRITE);
     config.WriteStringEntry("StringValue", "Ballance");
     config.WriteIntegerEntry("IntegerValue", 42);
     config.WriteFloatEntry("FloatValue", 3.5f);
     config.WriteBooleanEntry("BooleanValue", TRUE);
-    config.CloseSection("Unit/Registry");
+    config.CloseSection("Unit\\Registry");
 
     config.OpenSection("Unit\\Registry", VxConfig::READ);
     char stringValue[64] = {0};
@@ -106,10 +107,14 @@ TEST(VxConfigRegistryTest, TypedRoundTripAndDelete) {
     ASSERT_TRUE(config.GetEntryType("BooleanValue", &type));
     EXPECT_EQ(type, VXCONFIG_VALUE_BOOLEAN);
 
+    config.CloseSection("Unit\\Registry");
+    config.OpenSection("Unit\\Registry", VxConfig::WRITE);
     EXPECT_TRUE(config.DeleteEntry("StringValue"));
+    config.CloseSection("Unit\\Registry");
+    config.OpenSection("Unit\\Registry", VxConfig::READ);
     EXPECT_FALSE(config.EntryExists("StringValue"));
     config.CloseSection("Unit\\Registry");
-    config.DeleteSection("Unit/Registry");
+    config.DeleteSection("Unit\\Registry");
 }
 
 TEST(VxConfigRegistryTest, ValuesPersistAcrossInstances) {
@@ -132,7 +137,7 @@ TEST(VxConfigRegistryTest, ValuesPersistAcrossInstances) {
     reader.DeleteSection("Unit/CrossInstance");
 }
 
-TEST(VxConfigRegistryTest, SlashAndBackslashSectionsAreEquivalent) {
+TEST(VxConfigRegistryTest, SlashSectionsAreDistinctFromBackslashHierarchy) {
     VxConfig config(VXCONFIG_ROOT_CURRENT_USER, kVxConfigTestBase);
     config.DeleteSection("Unit/SlashBackslash");
     config.OpenSection("Unit/SlashBackslash", VxConfig::WRITE);
@@ -141,9 +146,13 @@ TEST(VxConfigRegistryTest, SlashAndBackslashSectionsAreEquivalent) {
 
     config.OpenSection("Unit\\SlashBackslash", VxConfig::READ);
     XBOOL value = FALSE;
+    EXPECT_FALSE(config.ReadBooleanEntry("SharedSectionValue", &value));
+    config.CloseSection("Unit\\SlashBackslash");
+    config.OpenSection("Unit/SlashBackslash", VxConfig::READ);
     EXPECT_TRUE(config.ReadBooleanEntry("SharedSectionValue", &value));
     EXPECT_TRUE(value);
     config.DeleteSection("Unit/SlashBackslash");
+    config.DeleteSection("Unit\\SlashBackslash");
 }
 
 TEST(VxConfigRegistryTest, DeletingEntryRemovesTypeMetadata) {
@@ -155,7 +164,7 @@ TEST(VxConfigRegistryTest, DeletingEntryRemovesTypeMetadata) {
     VxConfiguration registry;
     ASSERT_TRUE(LoadRegistryConfig(registry));
     VxConfigurationSection *section = registry.GetSubSection(
-        "CurrentUser.Software.Virtools.UserConfig.BallanceTest.Unit.DeleteMetadata", TRUE);
+        "CurrentUser.Software.Virtools.UserConfig.BallanceTest.Unit%2FDeleteMetadata", TRUE);
     ASSERT_NE(section, nullptr);
     ASSERT_NE(section->GetEntry("DeleteMetadataValue"), nullptr);
     ASSERT_NE(section->GetEntry("DeleteMetadataValue.type"), nullptr);
@@ -163,7 +172,7 @@ TEST(VxConfigRegistryTest, DeletingEntryRemovesTypeMetadata) {
     EXPECT_TRUE(config.DeleteEntry("DeleteMetadataValue"));
     ASSERT_TRUE(LoadRegistryConfig(registry));
     section = registry.GetSubSection(
-        "CurrentUser.Software.Virtools.UserConfig.BallanceTest.Unit.DeleteMetadata", TRUE);
+        "CurrentUser.Software.Virtools.UserConfig.BallanceTest.Unit%2FDeleteMetadata", TRUE);
     ASSERT_NE(section, nullptr);
     EXPECT_EQ(section->GetEntry("DeleteMetadataValue"), nullptr);
     EXPECT_EQ(section->GetEntry("DeleteMetadataValue.type"), nullptr);

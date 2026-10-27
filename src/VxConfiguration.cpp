@@ -1,6 +1,8 @@
 #include "VxConfiguration.h"
 #include "VxWindowFunctions.h"
+#include "VxPathEncoding.h"
 #include "XP.h"
+#include <SDL3/SDL_stdinc.h>
 
 #include <stdio.h>
 #include <string.h>
@@ -929,42 +931,92 @@ static const char *VxRegistryRootName(VxConfigRoot root) {
     return root == VXCONFIG_ROOT_LOCAL_MACHINE ? "LocalMachine" : "CurrentUser";
 }
 
+static void VxAppendRegistryName(XString &result, const char *begin, const char *end) {
+    const char *digits = "0123456789ABCDEF";
+    for (const char *p = begin; p != end;) {
+        const char *next = VxNextPathCharacter(p);
+        unsigned char c = static_cast<unsigned char>(*p);
+        if (next == p + 1 && !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+                              (c >= '0' && c <= '9') || c == '_' || c == '-' || c >= 128)) {
+            result << '%' << digits[c >> 4] << digits[c & 15];
+            p = next;
+        } else {
+            while (p != next) result << *p++;
+        }
+    }
+}
+
 static XString VxNormalizeRegistryPath(VxConfigRoot root, const char *base, const char *section) {
     XString path(VxRegistryRootName(root));
     const char *parts[2] = {base, section};
     for (int p = 0; p < 2; ++p) {
         const char *part = parts[p];
-        if (!part)
-            continue;
-        if (!path.Empty() && path[path.Length() - 1] != '.')
-            path << '.';
-        for (const char *c = part; *c; ++c) {
-            if (*c == '"' || *c == '\'')
-                continue;
-            if (*c == '\\' || *c == '/' || *c == '.') {
-                if (!path.Empty() && path[path.Length() - 1] != '.')
-                    path << '.';
-            } else {
-                path << *c;
+        while (part && *part) {
+            const char *end = part;
+            while (*end && *end != '\\') end = VxNextPathCharacter(end);
+            if (end != part) {
+                path << '.';
+                VxAppendRegistryName(path, part, end);
             }
+            part = *end ? end + 1 : end;
         }
     }
-    while (!path.Empty() && path[path.Length() - 1] == '.')
-        path.PopBack();
     return path;
 }
 
 static XString VxNormalizeRegistryValueName(const char *key) {
     XString value;
-    if (!key)
-        return value;
-    for (const char *c = key; *c; ++c) {
-        if (*c == '\\' || *c == '/' || *c == '.' || *c == '"' || *c == '\'')
-            value << '_';
-        else
-            value << *c;
-    }
+    if (key) VxAppendRegistryName(value, key, key + strlen(key));
     return value;
+}
+
+static XBOOL VxRegistryNamesEqual(const char *left, const char *right) {
+    if (strcmp(left, right) == 0) return TRUE;
+#ifdef _WIN32
+    XArray<wchar_t> a, b;
+    return VxPathToWide(left, GetACP(), a) && VxPathToWide(right, GetACP(), b) &&
+        CompareStringOrdinal(a.Begin(), -1, b.Begin(), -1, TRUE) == CSTR_EQUAL;
+#else
+    return SDL_strcasecmp(left, right) == 0;
+#endif
+}
+
+static VxConfigurationSection *VxGetRegistrySection(VxConfiguration &config, const char *path, XBOOL create) {
+    VxConfigurationSection *parent = NULL;
+    while (*path) {
+        const char *end = strchr(path, '.');
+        if (!end) end = path + strlen(path);
+        XString name(path, static_cast<int>(end - path));
+        VxConfigurationSection *child = parent ? parent->GetSubSection(name.CStr()) : config.GetSubSection(name.CStr(), FALSE);
+        if (!child) {
+            ConstSectionIt it = parent ? parent->BeginChildSection() : config.BeginSections();
+            VxConfigurationSection *candidate;
+            while ((candidate = parent ? parent->GetNextChildSection(it) : config.GetNextSection(it)) != NULL) {
+                if (VxRegistryNamesEqual(candidate->GetName(), name.CStr())) { child = candidate; break; }
+            }
+        }
+        if (!child && create)
+            child = parent ? parent->CreateSubSection(name.CStr()) : config.CreateSubSection(NULL, name.CStr());
+        if (!child) return NULL;
+        parent = child;
+        path = *end ? end + 1 : end;
+    }
+    return parent;
+}
+
+static VxConfigurationEntry *VxGetRegistryEntry(VxConfigurationSection *section, const char *name) {
+    VxConfigurationEntry *entry = section->GetEntry(name);
+    if (entry) return entry;
+    ConstEntryIt it = section->BeginChildEntry();
+    while ((entry = section->GetNextChildEntry(it)) != NULL)
+        if (VxRegistryNamesEqual(entry->GetName(), name)) return entry;
+    return NULL;
+}
+
+static XBOOL VxLoadRegistryFile(VxConfiguration &config, const char *file) {
+    XString error;
+    int line = 0;
+    return config.BuildFromFile(file, line, error) || !VxFileExists(file);
 }
 
 static const char *VxConfigTypeName(VxConfigValueType type) {
@@ -1042,19 +1094,30 @@ XBOOL VxConfig::OpenRoot(VxConfigRoot root, const char *baseSection) {
     m_CurrentSectionName = "";
     m_CurrentSection = NULL;
     m_VirtoolsSection = NULL;
+    m_CurrentMode = static_cast<Mode>(0);
     return TRUE;
 }
 
 void VxConfig::OpenSection(const char *iSection, VxConfig::Mode iOpeningMode) {
-    m_CurrentSectionName = iSection ? iSection : "";
+    CloseSection(NULL);
+    if (!iSection || *iSection == '\\') return;
+    XString file;
+    if (!VxGetRegistryFilePathString(file)) return;
+    VxConfiguration config;
+    if (!VxLoadRegistryFile(config, file.CStr())) return;
+    XString path = VxNormalizeRegistryPath(m_Root, m_BaseSection.CStr(), iSection);
+    if (!VxGetRegistrySection(config, path.CStr(), FALSE)) {
+        if (!VxGetRegistrySection(config, path.CStr(), TRUE) || !config.SaveToFile(file.CStr())) return;
+    }
+    m_CurrentSectionName = iSection;
     m_CurrentMode = iOpeningMode;
-    m_CurrentSection = NULL;
 }
 
 void VxConfig::CloseSection(const char *iSection) {
     (void)iSection;
     m_CurrentSection = NULL;
     m_CurrentSectionName = "";
+    m_CurrentMode = static_cast<Mode>(0);
 }
 
 void VxConfig::WriteStringEntry(const char *iKey, const char *iValue) {
@@ -1111,23 +1174,24 @@ XBOOL VxConfig::ReadBooleanEntry(const char *iKey, XBOOL *oData) {
 }
 
 XBOOL VxConfig::DeleteEntry(const char *iKey) {
-    if (!iKey)
+    if (!(m_CurrentMode & WRITE) || !iKey)
         return FALSE;
     XString file;
     if (!VxGetRegistryFilePathString(file))
         return FALSE;
     VxConfiguration config;
-    XString error;
-    int line = 0;
-    config.BuildFromFile(file.CStr(), line, error);
+    if (!VxLoadRegistryFile(config, file.CStr())) return FALSE;
     XString section = VxNormalizeRegistryPath(m_Root, m_BaseSection.CStr(), m_CurrentSectionName.CStr());
     XString key = VxNormalizeRegistryValueName(iKey);
     XString typeKey = key + ".type";
-    VxConfigurationSection *sectionObject = config.GetSubSection(section.CStr(), TRUE);
+    VxConfigurationSection *sectionObject = VxGetRegistrySection(config, section.CStr(), FALSE);
     if (!sectionObject)
         return FALSE;
-    XBOOL removed = sectionObject->DeleteEntry(key.CStr());
-    sectionObject->DeleteEntry(typeKey.CStr());
+    VxConfigurationEntry *entry = VxGetRegistryEntry(sectionObject, key.CStr());
+    if (!entry) return FALSE;
+    XBOOL removed = sectionObject->DeleteEntry(entry->GetName());
+    VxConfigurationEntry *typeEntry = VxGetRegistryEntry(sectionObject, typeKey.CStr());
+    if (typeEntry) sectionObject->DeleteEntry(typeEntry->GetName());
     if (removed)
         return config.SaveToFile(file.CStr());
     return FALSE;
@@ -1139,19 +1203,11 @@ XBOOL VxConfig::DeleteSection(const char *iSection) {
     if (!VxGetRegistryFilePathString(file))
         return FALSE;
     VxConfiguration config;
-    XString error;
-    int line = 0;
-    config.BuildFromFile(file.CStr(), line, error);
+    if (!VxLoadRegistryFile(config, file.CStr())) return FALSE;
     XString section = VxNormalizeRegistryPath(m_Root, m_BaseSection.CStr(), sectionName.CStr());
-    int dot = section.RFind('.');
-    XBOOL removed;
-    if (dot != XString::NOTFOUND) {
-        section[dot] = '\0';
-        VxConfigurationSection *parent = config.GetSubSection(section.CStr(), TRUE);
-        removed = parent ? parent->DeleteSection(&section[dot + 1]) : FALSE;
-    } else {
-        removed = config.DeleteSection(NULL, section.CStr());
-    }
+    VxConfigurationSection *target = VxGetRegistrySection(config, section.CStr(), FALSE);
+    if (!target) return FALSE;
+    XBOOL removed = target->GetParent()->DeleteSection(target->GetName());
     if (removed)
         return config.SaveToFile(file.CStr());
     return FALSE;
@@ -1185,29 +1241,30 @@ XBOOL VxConfig::GetRegistryFilePath(char *oPath, size_t iSize) {
 }
 
 XBOOL VxConfig::WriteRawEntry(const char *iKey, const char *iValue, VxConfigValueType iType) {
-    if (!iKey || !iValue)
+    if (!(m_CurrentMode & WRITE) || !iKey || !iValue)
         return FALSE;
     XString file;
     if (!VxGetRegistryFilePathString(file))
         return FALSE;
     VxCreateFileTree(file.CStr());
     VxConfiguration config;
-    XString error;
-    int line = 0;
-    config.BuildFromFile(file.CStr(), line, error);
+    if (!VxLoadRegistryFile(config, file.CStr())) return FALSE;
     XString section = VxNormalizeRegistryPath(m_Root, m_BaseSection.CStr(), m_CurrentSectionName.CStr());
     XString key = VxNormalizeRegistryValueName(iKey);
     XString typeKey = key + ".type";
-    VxConfigurationEntry *existing = NULL;
-    config.AddEntry(section.CStr(), key.CStr(), iValue, &existing);
+    VxConfigurationSection *sectionObject = VxGetRegistrySection(config, section.CStr(), TRUE);
+    if (!sectionObject) return FALSE;
+    VxConfigurationEntry *existing = VxGetRegistryEntry(sectionObject, key.CStr());
     if (existing) existing->SetValue(iValue);
-    config.AddEntry(section.CStr(), typeKey.CStr(), VxConfigTypeName(iType), &existing);
+    else sectionObject->AddEntry(key.CStr(), iValue);
+    existing = VxGetRegistryEntry(sectionObject, typeKey.CStr());
     if (existing) existing->SetValue(VxConfigTypeName(iType));
+    else sectionObject->AddEntry(typeKey.CStr(), VxConfigTypeName(iType));
     return config.SaveToFile(file.CStr());
 }
 
 XBOOL VxConfig::ReadRawEntry(const char *iKey, char *oData, size_t iSize, VxConfigValueType *oType, size_t *oLength) {
-    if (!iKey || (!oData && !oLength) || (oData && iSize == 0))
+    if (!(m_CurrentMode & READ) || !iKey || (!oData && !oLength) || (oData && iSize == 0))
         return FALSE;
     XString file;
     if (!VxGetRegistryFilePathString(file))
@@ -1219,10 +1276,10 @@ XBOOL VxConfig::ReadRawEntry(const char *iKey, char *oData, size_t iSize, VxConf
         return FALSE;
     XString section = VxNormalizeRegistryPath(m_Root, m_BaseSection.CStr(), m_CurrentSectionName.CStr());
     XString key = VxNormalizeRegistryValueName(iKey);
-    VxConfigurationSection *sectionObject = config.GetSubSection(section.CStr(), TRUE);
+    VxConfigurationSection *sectionObject = VxGetRegistrySection(config, section.CStr(), FALSE);
     if (!sectionObject)
         return FALSE;
-    VxConfigurationEntry *entry = sectionObject->GetEntry(key.CStr());
+    VxConfigurationEntry *entry = VxGetRegistryEntry(sectionObject, key.CStr());
     if (!entry)
         return FALSE;
     if (oLength) {
@@ -1236,7 +1293,7 @@ XBOOL VxConfig::ReadRawEntry(const char *iKey, char *oData, size_t iSize, VxConf
     }
     if (oType) {
         XString typeKey = key + ".type";
-        VxConfigurationEntry *typeEntry = sectionObject->GetEntry(typeKey.CStr());
+        VxConfigurationEntry *typeEntry = VxGetRegistryEntry(sectionObject, typeKey.CStr());
         *oType = typeEntry ? VxConfigTypeFromName(typeEntry->GetValue()) : VXCONFIG_VALUE_STRING;
     }
     return TRUE;

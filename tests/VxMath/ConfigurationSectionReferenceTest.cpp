@@ -306,6 +306,8 @@ TEST(ConfigurationSectionConsumerTest, RegistryWritesStillReplaceExistingValuesA
     config.OpenSection(section, VxConfig::WRITE);
     config.WriteStringEntry("value", "initial");
     config.WriteIntegerEntry("value", 37);
+    config.CloseSection(section);
+    config.OpenSection(section, VxConfig::READ);
     char text[32] = {};
     int value = 0;
     VxConfigValueType type = VXCONFIG_VALUE_STRING;
