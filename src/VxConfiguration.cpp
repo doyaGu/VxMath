@@ -1014,6 +1014,51 @@ static VxConfigurationEntry *VxGetRegistryEntry(VxConfigurationSection *section,
     return NULL;
 }
 
+// NULL removes private metadata; an empty string remains a stored value.
+static VxConfigurationEntry *VxUpdateRegistryEntry(VxConfigurationSection *section, const char *name, const char *value) {
+    VxConfigurationEntry *entry = VxGetRegistryEntry(section, name);
+    if (!value) {
+        if (entry) section->DeleteEntry(entry->GetName());
+        return NULL;
+    }
+    if (entry) entry->SetValue(value);
+    else {
+        section->AddEntry(name, value);
+        entry = section->GetEntry(name);
+    }
+    return entry;
+}
+
+static XString VxEncodeRegistryValue(const char *value, size_t length) {
+    const char *digits = "0123456789ABCDEF";
+    XString result;
+    result.Reserve(static_cast<XWORD>(length * 2));
+    for (size_t i = 0; i < length; ++i) {
+        unsigned char c = static_cast<unsigned char>(value[i]);
+        result << digits[c >> 4] << digits[c & 15];
+    }
+    return result;
+}
+
+static int VxRegistryHexDigit(char c) {
+    if (c >= '0' && c <= '9') return c - '0';
+    if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+    if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+    return -1;
+}
+
+static XBOOL VxDecodeRegistryValue(const char *text, XString &result) {
+    size_t length = strlen(text);
+    if (length % 2 || length / 2 > XString::MAX_LENGTH - result.Length()) return FALSE;
+    result.Reserve(static_cast<XWORD>(result.Length() + length / 2));
+    for (size_t i = 0; i < length; i += 2) {
+        int high = VxRegistryHexDigit(text[i]), low = VxRegistryHexDigit(text[i + 1]);
+        if (high < 0 || low < 0 || (high == 0 && low == 0)) return FALSE;
+        result << static_cast<char>((high << 4) | low);
+    }
+    return TRUE;
+}
+
 static XBOOL VxLoadRegistryFile(VxConfiguration &config, const char *file) {
     XString error;
     int line = 0;
@@ -1184,15 +1229,14 @@ XBOOL VxConfig::DeleteEntry(const char *iKey) {
     if (!VxLoadRegistryFile(config, file.CStr())) return FALSE;
     XString section = VxNormalizeRegistryPath(m_Root, m_BaseSection.CStr(), m_CurrentSectionName.CStr());
     XString key = VxNormalizeRegistryValueName(iKey);
-    XString typeKey = key + ".type";
     VxConfigurationSection *sectionObject = VxGetRegistrySection(config, section.CStr(), FALSE);
     if (!sectionObject)
         return FALSE;
     VxConfigurationEntry *entry = VxGetRegistryEntry(sectionObject, key.CStr());
     if (!entry) return FALSE;
     XBOOL removed = sectionObject->DeleteEntry(entry->GetName());
-    VxConfigurationEntry *typeEntry = VxGetRegistryEntry(sectionObject, typeKey.CStr());
-    if (typeEntry) sectionObject->DeleteEntry(typeEntry->GetName());
+    VxUpdateRegistryEntry(sectionObject, (key + ".type").CStr(), NULL);
+    VxUpdateRegistryEntry(sectionObject, (key + ".tail").CStr(), NULL);
     if (removed)
         return config.SaveToFile(file.CStr());
     return FALSE;
@@ -1244,6 +1288,21 @@ XBOOL VxConfig::GetRegistryFilePath(char *oPath, size_t iSize) {
 XBOOL VxConfig::WriteRawEntry(const char *iKey, const char *iValue, VxConfigValueType iType) {
     if (!(m_CurrentMode & WRITE) || !iKey || !iValue)
         return FALSE;
+    size_t length = strlen(iValue);
+    if (length > XString::MAX_LENGTH) return FALSE;
+    XBOOL encoded = FALSE;
+    if (iType == VXCONFIG_VALUE_STRING) {
+        encoded = length && (iValue[0] == ' ' || iValue[length - 1] == ' ');
+        for (size_t i = 0; i < length && !encoded; ++i) {
+            unsigned char c = static_cast<unsigned char>(iValue[i]);
+            encoded = c < 32 || c == 127;
+        }
+    }
+    // Hex doubles the length, so at most two entries cover the full XString range.
+    size_t first = encoded && length > XString::MAX_LENGTH / 2 ? XString::MAX_LENGTH / 2 : length;
+    XString value = encoded ? VxEncodeRegistryValue(iValue, first) : XString(iValue);
+    XString tail;
+    if (encoded && length > first) tail = VxEncodeRegistryValue(iValue + first, length - first);
     XString file;
     if (!VxGetRegistryFilePathString(file))
         return FALSE;
@@ -1252,15 +1311,12 @@ XBOOL VxConfig::WriteRawEntry(const char *iKey, const char *iValue, VxConfigValu
     if (!VxLoadRegistryFile(config, file.CStr())) return FALSE;
     XString section = VxNormalizeRegistryPath(m_Root, m_BaseSection.CStr(), m_CurrentSectionName.CStr());
     XString key = VxNormalizeRegistryValueName(iKey);
-    XString typeKey = key + ".type";
     VxConfigurationSection *sectionObject = VxGetRegistrySection(config, section.CStr(), TRUE);
     if (!sectionObject) return FALSE;
-    VxConfigurationEntry *existing = VxGetRegistryEntry(sectionObject, key.CStr());
-    if (existing) existing->SetValue(iValue);
-    else sectionObject->AddEntry(key.CStr(), iValue);
-    existing = VxGetRegistryEntry(sectionObject, typeKey.CStr());
-    if (existing) existing->SetValue(VxConfigTypeName(iType));
-    else sectionObject->AddEntry(typeKey.CStr(), VxConfigTypeName(iType));
+    VxConfigurationEntry *entry = VxUpdateRegistryEntry(sectionObject, key.CStr(), value.CStr());
+    XString storedKey(entry->GetName());
+    VxUpdateRegistryEntry(sectionObject, (storedKey + ".type").CStr(), encoded ? "string.hex" : VxConfigTypeName(iType));
+    VxUpdateRegistryEntry(sectionObject, (storedKey + ".tail").CStr(), tail.Empty() ? NULL : tail.CStr());
     return config.SaveToFile(file.CStr());
 }
 
@@ -1283,18 +1339,26 @@ XBOOL VxConfig::ReadRawEntry(const char *iKey, char *oData, size_t iSize, VxConf
     VxConfigurationEntry *entry = VxGetRegistryEntry(sectionObject, key.CStr());
     if (!entry)
         return FALSE;
+    XString storedKey(entry->GetName());
+    VxConfigurationEntry *typeEntry = VxGetRegistryEntry(sectionObject, (storedKey + ".type").CStr());
+    const char *value = entry->GetValue();
+    XString decoded;
+    if (typeEntry && strcmp(typeEntry->GetValue(), "string.hex") == 0) {
+        if (!VxDecodeRegistryValue(value, decoded)) return FALSE;
+        VxConfigurationEntry *tail = VxGetRegistryEntry(sectionObject, (storedKey + ".tail").CStr());
+        if (tail && !VxDecodeRegistryValue(tail->GetValue(), decoded)) return FALSE;
+        value = decoded.CStr();
+    }
     if (oLength) {
-        *oLength = strlen(entry->GetValue()) + 1;
+        *oLength = strlen(value) + 1;
         if (oData && *oLength > iSize)
             return FALSE;
     }
     if (oData) {
-        strncpy(oData, entry->GetValue(), iSize - 1);
+        strncpy(oData, value, iSize - 1);
         oData[iSize - 1] = '\0';
     }
     if (oType) {
-        XString typeKey = key + ".type";
-        VxConfigurationEntry *typeEntry = VxGetRegistryEntry(sectionObject, typeKey.CStr());
         *oType = typeEntry ? VxConfigTypeFromName(typeEntry->GetValue()) : VXCONFIG_VALUE_STRING;
     }
     return TRUE;
