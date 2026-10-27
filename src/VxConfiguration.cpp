@@ -1058,7 +1058,7 @@ void VxConfig::CloseSection(const char *iSection) {
 }
 
 void VxConfig::WriteStringEntry(const char *iKey, const char *iValue) {
-    WriteRawEntry(iKey, iValue ? iValue : "", VXCONFIG_VALUE_STRING);
+    WriteRawEntry(iKey ? iKey : "", iValue ? iValue : "", VXCONFIG_VALUE_STRING);
 }
 
 void VxConfig::WriteIntegerEntry(const char *iKey, int iValue) {
@@ -1078,11 +1078,10 @@ void VxConfig::WriteBooleanEntry(const char *iKey, XBOOL iValue) {
 }
 
 XDWORD VxConfig::ReadStringEntry(const char *iKey, char *oData) {
-    if (!oData)
+    size_t length = 0;
+    if (!ReadRawEntry(iKey ? iKey : "", oData, 256, NULL, &length))
         return static_cast<XDWORD>(-1);
-    if (!ReadStringEntry(iKey, oData, 256))
-        return static_cast<XDWORD>(-1);
-    return static_cast<XDWORD>(strlen(oData) + 1);
+    return static_cast<XDWORD>(length);
 }
 
 XBOOL VxConfig::ReadStringEntry(const char *iKey, char *oData, size_t iSize) {
@@ -1207,8 +1206,8 @@ XBOOL VxConfig::WriteRawEntry(const char *iKey, const char *iValue, VxConfigValu
     return config.SaveToFile(file.CStr());
 }
 
-XBOOL VxConfig::ReadRawEntry(const char *iKey, char *oData, size_t iSize, VxConfigValueType *oType) {
-    if (!iKey || !oData || iSize == 0)
+XBOOL VxConfig::ReadRawEntry(const char *iKey, char *oData, size_t iSize, VxConfigValueType *oType, size_t *oLength) {
+    if (!iKey || (!oData && !oLength) || (oData && iSize == 0))
         return FALSE;
     XString file;
     if (!VxGetRegistryFilePathString(file))
@@ -1226,8 +1225,15 @@ XBOOL VxConfig::ReadRawEntry(const char *iKey, char *oData, size_t iSize, VxConf
     VxConfigurationEntry *entry = sectionObject->GetEntry(key.CStr());
     if (!entry)
         return FALSE;
-    strncpy(oData, entry->GetValue(), iSize - 1);
-    oData[iSize - 1] = '\0';
+    if (oLength) {
+        *oLength = strlen(entry->GetValue()) + 1;
+        if (oData && *oLength > iSize)
+            return FALSE;
+    }
+    if (oData) {
+        strncpy(oData, entry->GetValue(), iSize - 1);
+        oData[iSize - 1] = '\0';
+    }
     if (oType) {
         XString typeKey = key + ".type";
         VxConfigurationEntry *typeEntry = sectionObject->GetEntry(typeKey.CStr());
