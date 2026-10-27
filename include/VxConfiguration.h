@@ -337,9 +337,7 @@ protected:
 /// @brief Removes leading and trailing whitespace from a string.
 char *Shrink(char *str);
 
-/**
- * @brief A simplified configuration class, possibly for interacting with a specific system registry or format.
- */
+/// @brief Logical namespaces within the configuration file.
 typedef enum VxConfigRoot {
     VXCONFIG_ROOT_CURRENT_USER = 0,
     VXCONFIG_ROOT_LOCAL_MACHINE = 1
@@ -352,6 +350,8 @@ typedef enum VxConfigValueType {
     VXCONFIG_VALUE_BOOLEAN = 4
 } VxConfigValueType;
 
+/// @brief File-backed adapter for legacy registry configuration.
+/// @remarks Its extended SDL layout is not binary compatible with the original Win32 class.
 class VxConfig {
 public:
     /// @brief Defines the access mode for opening a configuration section.
@@ -391,6 +391,7 @@ public:
     VX_EXPORT XBOOL DeleteSection(const char *iSection);
     VX_EXPORT XBOOL EntryExists(const char *iKey);
     VX_EXPORT XBOOL GetEntryType(const char *iKey, VxConfigValueType *oType);
+    /// @brief Returns the native configuration file path, including its terminator, if the buffer fits.
     VX_EXPORT static XBOOL GetRegistryFilePath(char *oPath, size_t iSize);
 
 private:
@@ -398,11 +399,11 @@ private:
     XBOOL ReadRawEntry(const char *iKey, char *oData, size_t iSize, VxConfigValueType *oType, size_t *oLength = NULL);
     XBOOL ReadEntryValue(const char *iKey, XString &value, VxConfigValueType *oType);
 
-    void *m_VirtoolsSection; ///< A handle or key to the main "Virtools" section, likely in the system registry.
-    void *m_CurrentSection;  ///< A handle or key to the currently open section.
-    VxConfigRoot m_Root;
-    XString m_BaseSection;
-    XString m_CurrentSectionName;
+    void *m_VirtoolsSection; ///< Reserved legacy slot; always NULL in the file backend.
+    void *m_CurrentSection;  ///< Reserved legacy slot; always NULL in the file backend.
+    VxConfigRoot m_Root; ///< Logical file namespace, not an operating system registry handle.
+    XString m_BaseSection; ///< Owned base path within the selected logical root.
+    XString m_CurrentSectionName; ///< Owned section path; empty also represents an explicitly opened base.
     Mode m_CurrentMode; ///< Access bits; zero means no section is open.
 };
 
