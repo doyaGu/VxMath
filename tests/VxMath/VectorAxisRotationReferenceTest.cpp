@@ -1,4 +1,5 @@
 #include <math.h>
+#include <float.h>
 #include <new>
 #include <string.h>
 #ifndef VX_VECTOR_AXIS_ROTATION_PROBE
@@ -88,6 +89,16 @@ TEST_P(VectorAxisRotationReference, ShortAndLargeAxesAreNormalizedInsteadOfDisca
             ExpectVector(result, example.result);
         }
     }
+    const float extremes[] = {0x1p-149f, FLT_MAX};
+    for (float scale : extremes) {
+        for (int i = 0; i < 6; ++i) {
+            const AxisRotationExample &example = AxisRotationExamples[i];
+            VxVector vector(example.vector), axis(example.axis), result;
+            axis.x *= scale; axis.y *= scale; axis.z *= scale;
+            Function()(&result, &vector, &axis, example.angle);
+            ExpectVector(result, example.result);
+        }
+    }
 }
 
 TEST_P(VectorAxisRotationReference, ReversingTheAxisReversesTheAngle) {
@@ -106,14 +117,18 @@ TEST_P(VectorAxisRotationReference, TinyAnglesAreNotSnappedToZero) {
     EXPECT_FLOAT_EQ(result.z, 0);
 }
 
-TEST_P(VectorAxisRotationReference, ZeroAxisRetainsTheOriginalUndefinedNanResult) {
-    VxVector vector(1, 2, 3), axis(0, 0, 0), result;
-    const float angles[] = {0, AxisHalfPi};
-    for (float angle : angles) {
-        ASSERT_TRUE(CallAxisRotation(Function(), &result, &vector, &axis, angle));
-        EXPECT_TRUE(isnan(result.x));
-        EXPECT_TRUE(isnan(result.y));
-        EXPECT_TRUE(isnan(result.z));
+TEST_P(VectorAxisRotationReference, ZeroAxisKeepsTheInput) {
+    const VxVector vector(1, -2, 3);
+    const float angles[] = {0, AxisHalfPi, -AxisHalfPi};
+    for (unsigned signs = 0; signs < 8; ++signs) {
+        const VxVector axis(signs & 1 ? -0.0f : 0, signs & 2 ? -0.0f : 0, signs & 4 ? -0.0f : 0);
+        for (float angle : angles) {
+            VxVector result;
+            ASSERT_TRUE(CallAxisRotation(Function(), &result, &vector, &axis, angle));
+            EXPECT_EQ(vector.x, result.x);
+            EXPECT_EQ(vector.y, result.y);
+            EXPECT_EQ(vector.z, result.z);
+        }
     }
 }
 

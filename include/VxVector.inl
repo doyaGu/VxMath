@@ -250,6 +250,8 @@ inline const VxVector Reflect(const VxVector &v1, const VxVector &Norm) {
     return result;
 }
 inline const VxVector Rotate(const VxVector &v1, const VxVector &v2, float angle) {
+    if (v2.x == 0.0f && v2.y == 0.0f && v2.z == 0.0f)
+        return v1;
     const VxVector axis = Normalize(v2);
     const float nx = axis.x, ny = axis.y, nz = axis.z;
 
