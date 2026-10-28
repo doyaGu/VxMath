@@ -217,22 +217,23 @@ TEST_F(ConfigurationReferenceTest, EmptySectionNamesAndEmptyEntryKeysRemainValid
     EXPECT_STREQ("value", section->GetEntry("")->GetValue());
 }
 
-TEST_F(ConfigurationReferenceTest, OnlyHashStartsACommentAndValuesKeepInlineMarkers) {
+TEST_F(ConfigurationReferenceTest, HashAndSemicolonStartCommentsAndValuesKeepInlineMarkers) {
     int line = 0; XString error;
-    ASSERT_TRUE(Config.BuildFromMemory("# comment\n;key=value # literal\n", line, error));
-    ASSERT_NE(nullptr, Config.GetEntry(";key", FALSE));
-    EXPECT_STREQ("value # literal", Config.GetEntry(";key", FALSE)->GetValue());
-    EXPECT_FALSE(Config.BuildFromMemory(";not a comment\n", line, error));
-    EXPECT_EQ(0, line);
+    ASSERT_TRUE(Config.BuildFromMemory("# comment\n;key=ignored\n; another comment\nkey=value # literal ; tail\n", line, error));
+    EXPECT_EQ(nullptr, Config.GetEntry(";key", FALSE));
+    ASSERT_NE(nullptr, Config.GetEntry("key", FALSE));
+    EXPECT_STREQ("value # literal ; tail", Config.GetEntry("key", FALSE)->GetValue());
+    EXPECT_EQ(4, line);
 }
 
-TEST_F(ConfigurationReferenceTest, DuplicateEntriesKeepTheFirstValueButRepeatedSectionTagsFail) {
+TEST_F(ConfigurationReferenceTest, DuplicateEntriesKeepTheFirstValueAndRepeatedSectionsMerge) {
     int line = 0; XString error;
     ASSERT_TRUE(Config.BuildFromMemory("key=first\nkey=second\n", line, error));
     EXPECT_STREQ("first", Config.GetEntry("key", FALSE)->GetValue());
-    EXPECT_FALSE(Config.BuildFromMemory("<same>\n</same>\n<same>\n", line, error));
-    EXPECT_EQ(2, line);
+    ASSERT_TRUE(Config.BuildFromMemory("<same>\na=first\n</same>\n<same>\nb=second\n</same>\n", line, error));
     EXPECT_EQ(1u, Config.GetNumberOfSubSections());
+    EXPECT_STREQ("first", Config.GetEntry("same.a", TRUE)->GetValue());
+    EXPECT_STREQ("second", Config.GetEntry("same.b", TRUE)->GetValue());
 }
 
 TEST_F(ConfigurationReferenceTest, ParseFailureReportsTheZeroBasedPhysicalLineAndRetainsTheParsedPrefix) {
@@ -279,18 +280,17 @@ TEST_F(ConfigurationReferenceTest, FileParsingErrorsUseTheSamePhysicalLineAndAlw
     EXPECT_EQ(0, remove(Input));
 }
 
-TEST_F(ConfigurationReferenceTest, DataFileEntrypointsAreUnsupportedAndHaveNoTextFileSideEffects) {
-    WriteInput("loaded=wrong\n");
+TEST_F(ConfigurationReferenceTest, DataFileEntrypointsRetainTextFileCompatibility) {
+    WriteInput("loaded=value\n");
     ASSERT_TRUE(Config.AddEntry(nullptr, "existing", "value"));
     XString error("sentinel");
-    EXPECT_FALSE(Config.BuildFromDataFile(Input, error));
-    EXPECT_STREQ("sentinel", error.CStr());
-    EXPECT_NE(nullptr, Config.GetEntry("existing", FALSE));
-    EXPECT_EQ(nullptr, Config.GetEntry("loaded", FALSE));
-    FILE *file = fopen(Output, "wb"); ASSERT_NE(nullptr, file);
-    EXPECT_EQ(8u, fwrite("sentinel", 1, 8, file)); EXPECT_EQ(0, fclose(file));
-    EXPECT_FALSE(Config.SaveToDataFile(Output));
-    EXPECT_STREQ("sentinel", ReadOutput().CStr());
+    ASSERT_TRUE(Config.BuildFromDataFile(Input, error));
+    EXPECT_STREQ("OK", error.CStr());
+    EXPECT_EQ(nullptr, Config.GetEntry("existing", FALSE));
+    ASSERT_NE(nullptr, Config.GetEntry("loaded", FALSE));
+    EXPECT_STREQ("value", Config.GetEntry("loaded", FALSE)->GetValue());
+    ASSERT_TRUE(Config.SaveToDataFile(Output));
+    EXPECT_STREQ("loaded = value\n", ReadOutput().CStr());
 }
 
 TEST_F(ConfigurationReferenceTest, SavingUsesAccumulatedIndentationWithoutExtraBlankLinesOrDefaults) {

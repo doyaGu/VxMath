@@ -407,7 +407,8 @@ VxConfigurationEntry *VxConfiguration::GetEntry(const char *ename, XBOOL usedot)
 }
 
 XBOOL VxConfiguration::BuildFromDataFile(const char *name, XString &error) {
-    return FALSE;
+    int line = 0;
+    return BuildFromFile(name, line, error);
 }
 
 XBOOL VxConfiguration::BuildFromFile(const char *name, int &cline, XString &error) {
@@ -473,7 +474,7 @@ XBOOL VxConfiguration::BuildFromMemory(const char *buffer, int &cline, XString &
             if (separator == '\r' && *next == '\n') ++next;
         }
         char *trimmed = Shrink(line);
-        if (*trimmed && *trimmed != '#') {
+        if (*trimmed && *trimmed != '#' && *trimmed != ';') {
             XBOOL result = *trimmed == '<'
                 ? ManageSection(trimmed + 1, &currentSection, error)
                 : ManageEntry(trimmed, currentSection, error);
@@ -492,7 +493,7 @@ XBOOL VxConfiguration::BuildFromMemory(const char *buffer, int &cline, XString &
 }
 
 XBOOL VxConfiguration::SaveToDataFile(const char *name) {
-    return FALSE;
+    return SaveToFile(name);
 }
 
 XBOOL VxConfiguration::SaveToFile(const char *name) {
@@ -571,10 +572,12 @@ VxConfigurationSection *VxConfiguration::GetSubSection(VxConfigurationSection *r
 
     // Get the first section
     VxConfigurationSection *section = root->GetSubSection(firstSection);
-    if (!section) return NULL;
-
-    // Process remaining path recursively
-    return GetSubSection(section, &sectionPath[dotPos + 1], TRUE);
+    if (section) {
+        VxConfigurationSection *child = GetSubSection(section, &sectionPath[dotPos + 1], TRUE);
+        if (child) return child;
+    }
+    // Real hierarchy takes precedence over a literal dotted section name.
+    return root->GetSubSection(sname);
 }
 
 XBOOL VxConfiguration::ManageSection(const char *line, VxConfigurationSection **current, XString &error) {
@@ -595,6 +598,13 @@ XBOOL VxConfiguration::ManageSection(const char *line, VxConfigurationSection **
             return FALSE;
         }
         if (strcmp(name, (*current)->GetName()) != 0) {
+            XString path((*current)->GetName());
+            for (VxConfigurationSection *parent = (*current)->GetParent(); parent && parent != m_Root; parent = parent->GetParent())
+                path = XString(parent->GetName()) + "." + path;
+            if (strcmp(name, path.CStr()) == 0) {
+                *current = m_Root;
+                return TRUE;
+            }
             error = "Mismatched closing tag: ";
             error += name;
             error += " (expected ";
@@ -605,7 +615,8 @@ XBOOL VxConfiguration::ManageSection(const char *line, VxConfigurationSection **
         *current = (*current)->GetParent();
         return TRUE;
     }
-    VxConfigurationSection *section = (*current)->CreateSubSection(name);
+    VxConfigurationSection *section = (*current)->GetSubSection(name);
+    if (!section) section = (*current)->CreateSubSection(name);
     if (!section) {
         error = "can't create subsection: ";
         error += name;
