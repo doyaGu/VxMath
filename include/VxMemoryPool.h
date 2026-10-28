@@ -30,7 +30,7 @@ public:
      * @brief Constructs the memory pool and optionally allocates an initial buffer.
      * @param size The initial size of the buffer to allocate, in units of XDWORDs (4 bytes).
      */
-    VxMemoryPool(size_t size = 0) {
+    explicit VxMemoryPool(size_t size = 0) {
         m_Memory = NULL;
         m_Allocated = 0;
         Allocate(size);
@@ -58,6 +58,7 @@ public:
      * @remarks If the requested size is larger than the currently allocated size,
      * the existing buffer is deleted and a new, larger one is allocated.
      * The contents of the old buffer are not preserved.
+     * If allocation fails, the pool is empty and the request can be retried.
      */
     void Allocate(size_t size) {
         if (m_Allocated < size) {
@@ -66,7 +67,7 @@ public:
             }
             VxDeleteAligned(m_Memory);
             m_Memory = (XBYTE *) VxNewAligned(size * sizeof(XDWORD), 16);
-            m_Allocated = size;
+            m_Allocated = m_Memory ? size : 0;
         }
     }
 
