@@ -27,7 +27,7 @@ static char *DuplicateCString(const char *value) {
 static char *DuplicateDirectoryName(const char *dir) {
     char *copy = DuplicateCString(dir);
     size_t len = strlen(copy);
-    if (len > 0 && VxPathEndsWithSeparator(copy)) {
+    if (len > 1 && VxPathEndsWithSeparator(copy)) {
         copy[len - 1] = '\0';
     }
     return copy;
@@ -49,13 +49,11 @@ static char *JoinDirectoryPath(const char *dir, const char *leaf) {
     const char *directory = dir ? dir : "";
     const char *name = leaf ? leaf : "";
 
-    size_t directoryLength = 0;
-    for (const char *p = directory; *p; p = VxNextPathCharacter(p))
-        if (!IsPathSeparator(*p))
-            directoryLength = VxNextPathCharacter(p) - directory;
-
+    const size_t directoryLength = strlen(directory);
     const size_t nameLength = strlen(name);
-    const XBOOL needSeparator = (directoryLength > 0 && nameLength > 0 && !IsPathSeparator(name[0]));
+    const XBOOL endsWithSeparator = directoryLength > 0 && IsPathSeparator(directory[directoryLength - 1]) &&
+                                   VxPathEndsWithSeparator(directory);
+    const XBOOL needSeparator = directoryLength > 0 && nameLength > 0 && !endsWithSeparator && !IsPathSeparator(name[0]);
     const size_t resultLength = directoryLength + (needSeparator ? 1 : 0) + nameLength;
 
     char *result = new char[resultLength + 1];
@@ -321,72 +319,35 @@ const char *CKDirectoryParser::GetNextFile() {
 }
 
 void CKDirectoryParser::Reset(const char *dir, const char *fileMask, XBOOL recurse) {
+    // Copy inputs before releasing buffers that may contain either argument.
+    char *directory = dir ? DuplicateDirectoryName(dir) : NULL;
+    char *mask = NULL;
+    void *findData = NULL;
+    try {
+        if (fileMask)
+            mask = DuplicateCString(fileMask);
 #if defined(_WIN32)
-    // Clean up existing resources
-    Clean();
-
-    // Preserve old values if new ones are NULL
-    char* oldStartDir = m_StartDir;
-    char* oldFileMask = m_FileMask;
-
-    // Always clean up the full filename buffer
-    delete[] m_FullFileName;
-
-    // Allocate new resources
-    m_FindData = new _finddata_t;
-    m_FullFileName = DuplicateCString("");
-
-    // Set directory
-    if (dir) {
-        delete[] oldStartDir; // Clean up old directory
-        m_StartDir = DuplicateDirectoryName(dir);
-    } else {
-        // Keep the old directory if NULL is passed
-        m_StartDir = oldStartDir;
-    }
-
-    // Set file mask
-    if (fileMask) {
-        delete[] oldFileMask; // Clean up old mask
-        m_FileMask = DuplicateCString(fileMask);
-    } else {
-        // Keep the old file mask if NULL is passed
-        m_FileMask = oldFileMask;
-    }
-
-    // Initialize state
-    m_State = recurse ? 1 : 0;
-    m_hFile = -1;
-    m_SubParser = NULL;
-#else
-    Clean();
-
-    char *oldStartDir = m_StartDir;
-    char *oldFileMask = m_FileMask;
-
-    delete[] m_FullFileName;
-
-    m_FullFileName = DuplicateCString("");
-    m_FindData = NULL;
-
-    if (dir) {
-        delete[] oldStartDir;
-        m_StartDir = DuplicateDirectoryName(dir);
-    } else {
-        m_StartDir = oldStartDir;
-    }
-
-    if (fileMask) {
-        delete[] oldFileMask;
-        m_FileMask = DuplicateCString(fileMask);
-    } else {
-        m_FileMask = oldFileMask;
-    }
-
-    m_State = recurse ? 1 : 0;
-    m_hFile = 0;
-    m_SubParser = NULL;
+        findData = new _finddata_t;
 #endif
+    } catch (...) {
+        delete[] directory;
+        delete[] mask;
+        throw;
+    }
+
+    Clean();
+    if (dir) {
+        delete[] m_StartDir;
+        m_StartDir = directory;
+    }
+    if (fileMask) {
+        delete[] m_FileMask;
+        m_FileMask = mask;
+    }
+    delete[] m_FullFileName;
+    m_FullFileName = NULL;
+    m_FindData = findData;
+    m_State = recurse ? 1 : 0;
 }
 
 void CKDirectoryParser::Clean() {

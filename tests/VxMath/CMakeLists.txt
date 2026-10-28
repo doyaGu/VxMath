@@ -721,6 +721,9 @@ vx_copy_runtime_dependencies(PathMakerReferenceTest)
 vx_add_test(FileExtensionReferenceTest SOURCES FileExtensionReferenceTest.cpp)
 vx_copy_runtime_dependencies(FileExtensionReferenceTest)
 
+vx_add_test(DirectoryParserReferenceTest SOURCES DirectoryParserReferenceTest.cpp)
+vx_copy_runtime_dependencies(DirectoryParserReferenceTest)
+
 if (WIN32)
     foreach(_variant B Reject Switch)
         add_library(VxSharedLibraryTest${_variant} SHARED SharedLibraryTestModule.cpp SharedLibraryTestModule.def)
