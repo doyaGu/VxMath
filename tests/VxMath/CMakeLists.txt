@@ -698,6 +698,14 @@ vx_copy_runtime_dependencies(QuaternionPhaseScalarReferenceTest)
 vx_add_test(RawQuaternionNormalizeReferenceTest SOURCES RawQuaternionNormalizeReferenceTest.cpp)
 vx_copy_runtime_dependencies(RawQuaternionNormalizeReferenceTest)
 
+if (VXMATH_TARGET_IS_X86)
+    vx_add_test(QuaternionNormalizeEnvironmentTest SOURCES QuaternionNormalizeEnvironmentTest.cpp)
+    vx_copy_runtime_dependencies(QuaternionNormalizeEnvironmentTest)
+    vx_add_test(QuaternionNormalizeEnvironmentScalarTest SOURCES QuaternionNormalizeEnvironmentTest.cpp)
+    target_compile_definitions(QuaternionNormalizeEnvironmentScalarTest PRIVATE VX_SIMD_NONE=1)
+    vx_copy_runtime_dependencies(QuaternionNormalizeEnvironmentScalarTest)
+endif()
+
 vx_add_test(StridedDataReferenceTest SOURCES StridedDataReferenceTest.cpp)
 vx_copy_runtime_dependencies(StridedDataReferenceTest)
 

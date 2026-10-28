@@ -326,9 +326,14 @@ VX_SIMD_INLINE __m128 VxSIMDReflect3(__m128 incident, __m128 normal) noexcept {
 // ============================================================================
 
 VX_SIMD_INLINE __m128 VxSIMDQuaternionNormalize(__m128 q) noexcept {
-    const __m128 square = VxSIMDDotProduct4(q, q);
-    const float lengthSquared = _mm_cvtss_f32(square);
-    if (lengthSquared >= 0x1p-100f && lengthSquared <= 0x1p100f) {
+    const __m128i bits = _mm_and_si128(_mm_castps_si128(q), _mm_set1_epi32(0x7fffffff));
+    const __m128i zero = _mm_cmpeq_epi32(bits, _mm_setzero_si128());
+    // Nonzero lanes in [2^-63, 2^62) keep squares, sums and normalized
+    // components normal. Check bits first so the check cannot raise FP flags.
+    const __m128i range = _mm_srli_epi32(_mm_sub_epi32(bits, _mm_set1_epi32(0x20000000)), 23);
+    const __m128i outside = _mm_andnot_si128(zero, _mm_cmpgt_epi32(range, _mm_set1_epi32(124)));
+    if (_mm_movemask_epi8(outside) == 0 && _mm_movemask_ps(_mm_castsi128_ps(zero)) != 15) {
+        const __m128 square = VxSIMDDotProduct4(q, q);
         return _mm_div_ps(q, _mm_sqrt_ps(square));
     }
 
