@@ -718,6 +718,23 @@ vx_copy_runtime_dependencies(PathSplitterReferenceTest)
 vx_add_test(PathMakerReferenceTest SOURCES PathMakerReferenceTest.cpp)
 vx_copy_runtime_dependencies(PathMakerReferenceTest)
 
+if (WIN32)
+    foreach(_variant B Reject Switch)
+        add_library(VxSharedLibraryTest${_variant} SHARED SharedLibraryTestModule.cpp SharedLibraryTestModule.def)
+        set_target_properties(VxSharedLibraryTest${_variant} PROPERTIES FOLDER "Tests/Fixtures")
+    endforeach()
+    target_compile_definitions(VxSharedLibraryTestB PRIVATE VX_LIBRARY_TEST_VALUE=29)
+    target_compile_definitions(VxSharedLibraryTestReject PRIVATE VX_LIBRARY_DIRTY_FP=1 VX_LIBRARY_REJECT_LOAD=1)
+    target_compile_definitions(VxSharedLibraryTestSwitch PRIVATE VX_LIBRARY_DIRTY_DETACH=1)
+    vx_add_test(SharedLibraryReloadTest SOURCES SharedLibraryReloadTest.cpp)
+    target_compile_definitions(SharedLibraryReloadTest PRIVATE
+            VX_SHARED_TEST_SWITCH=\"$<TARGET_FILE:VxSharedLibraryTestSwitch>\"
+            VX_SHARED_TEST_B=\"$<TARGET_FILE:VxSharedLibraryTestB>\"
+            VX_SHARED_TEST_REJECT=\"$<TARGET_FILE:VxSharedLibraryTestReject>\")
+    add_dependencies(SharedLibraryReloadTest VxSharedLibraryTestSwitch VxSharedLibraryTestB VxSharedLibraryTestReject)
+    vx_copy_runtime_dependencies(SharedLibraryReloadTest)
+endif()
+
 vx_add_test(ConfigurationEntryReferenceTest SOURCES ConfigurationEntryReferenceTest.cpp)
 vx_copy_runtime_dependencies(ConfigurationEntryReferenceTest)
 

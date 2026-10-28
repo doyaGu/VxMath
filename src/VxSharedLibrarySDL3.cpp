@@ -8,8 +8,10 @@
 
 #include "VxSharedLibrary.h"
 #include "VxPathEncoding.h"
+#include "XP.h"
 
 #include <SDL3/SDL_loadso.h>
+#include <fenv.h>
 
 VxSharedLibrary::VxSharedLibrary() {
     m_LibraryHandle = NULL;
@@ -20,15 +22,23 @@ void VxSharedLibrary::Attach(INSTANCE_HANDLE LibraryHandle) {
 }
 
 INSTANCE_HANDLE VxSharedLibrary::Load(const char *LibraryName) {
+    fenv_t environment;
+    fegetenv(&environment);
+
+    // The name may belong to the module about to be unloaded.
 #ifdef _WIN32
     XArray<char> native;
-    if (!VxPathToUtf8(LibraryName, native)) {
-        m_LibraryHandle = NULL;
-        return NULL;
-    }
-    LibraryName = native.Begin();
+    LibraryName = LibraryName && VxPathToUtf8(LibraryName, native) ? native.Begin() : NULL;
+#else
+    XAP<char> native(LibraryName ? new char[strlen(LibraryName) + 1] : NULL);
+    if (LibraryName)
+        strcpy(native, LibraryName);
+    LibraryName = native;
 #endif
-    m_LibraryHandle = (INSTANCE_HANDLE)SDL_LoadObject(LibraryName);
+    ReleaseLibrary();
+    if (LibraryName)
+        m_LibraryHandle = (INSTANCE_HANDLE)SDL_LoadObject(LibraryName);
+    fesetenv(&environment);
     return m_LibraryHandle;
 }
 
