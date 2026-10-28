@@ -48,7 +48,13 @@ VxMemoryMappedFile::VxMemoryMappedFile(const char *pszFileName) {
         return;
     }
 
-    m_cbFile = (size_t)size;
+    if (static_cast<Uint64>(size) > SIZE_MAX) {
+        SDL_CloseIO(io);
+        m_errCode = VxMMF_MapView;
+        return;
+    }
+
+    m_cbFile = static_cast<size_t>(size);
 
     // Allocate memory and read the entire file
     m_pMemoryMappedFileBase = malloc(m_cbFile);

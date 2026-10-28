@@ -724,6 +724,13 @@ vx_copy_runtime_dependencies(FileExtensionReferenceTest)
 vx_add_test(DirectoryParserReferenceTest SOURCES DirectoryParserReferenceTest.cpp)
 vx_copy_runtime_dependencies(DirectoryParserReferenceTest)
 
+vx_add_test(MemoryMappedFileFailureTest SOURCES MemoryMappedFileFailureTest.cpp)
+target_include_directories(MemoryMappedFileFailureTest PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../../src")
+vx_copy_runtime_dependencies(MemoryMappedFileFailureTest)
+
+vx_add_test(MemoryMappedFileReferenceTest SOURCES MemoryMappedFileReferenceTest.cpp)
+vx_copy_runtime_dependencies(MemoryMappedFileReferenceTest)
+
 if (WIN32)
     foreach(_variant B Reject Switch)
         add_library(VxSharedLibraryTest${_variant} SHARED SharedLibraryTestModule.cpp SharedLibraryTestModule.def)
