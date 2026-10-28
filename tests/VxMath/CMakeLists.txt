@@ -785,6 +785,11 @@ vx_copy_runtime_dependencies(MutexReferenceTest)
 vx_add_test(MutexFailureTest SOURCES MutexFailureTest.cpp)
 vx_copy_runtime_dependencies(MutexFailureTest)
 
+vx_add_test(DataMutexedReferenceTest SOURCES DataMutexedReferenceTest.cpp)
+vx_copy_runtime_dependencies(DataMutexedReferenceTest)
+vx_add_test(DataMutexedLifecycleTest SOURCES DataMutexedLifecycleTest.cpp)
+vx_copy_runtime_dependencies(DataMutexedLifecycleTest)
+
 vx_add_test(ConfigurationEntryReferenceTest SOURCES ConfigurationEntryReferenceTest.cpp)
 vx_copy_runtime_dependencies(ConfigurationEntryReferenceTest)
 
