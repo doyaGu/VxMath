@@ -19,16 +19,18 @@ VxTimeProfiler &VxTimeProfiler::operator=(const VxTimeProfiler &t) {
 
 void VxTimeProfiler::Reset() {
     // Store the SDL performance counter value in Times[0..1]
-    *(Uint64 *)&Times[0] = SDL_GetPerformanceCounter();
+    Uint64 start = SDL_GetPerformanceCounter();
+    memcpy(Times, &start, sizeof(start));
 }
 
 float VxTimeProfiler::Current() {
     Uint64 now = SDL_GetPerformanceCounter();
-    Uint64 start = *(Uint64 *)&Times[0];
+    Uint64 start;
+    memcpy(&start, Times, sizeof(start));
     Uint64 elapsed = now - start;
 
     // Store elapsed in Times[2..3] for compatibility
-    *(Uint64 *)&Times[2] = elapsed;
+    memcpy(Times + 2, &elapsed, sizeof(elapsed));
 
     // Convert to milliseconds using SDL's performance frequency
     Uint64 freq = SDL_GetPerformanceFrequency();

@@ -770,6 +770,9 @@ if (VXMATH_TARGET_IS_X86)
     vx_copy_runtime_dependencies(FPUControlWordReferenceTest)
 endif()
 
+vx_add_test(TimeProfilerReferenceTest SOURCES TimeProfilerReferenceTest.cpp)
+vx_copy_runtime_dependencies(TimeProfilerReferenceTest)
+
 vx_add_test(ConfigurationEntryReferenceTest SOURCES ConfigurationEntryReferenceTest.cpp)
 vx_copy_runtime_dependencies(ConfigurationEntryReferenceTest)
 
