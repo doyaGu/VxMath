@@ -50,7 +50,7 @@ void VxSharedLibrary::ReleaseLibrary() {
 }
 
 void *VxSharedLibrary::GetFunctionPtr(const char *FunctionName) {
-    if (!m_LibraryHandle)
+    if (!m_LibraryHandle || !FunctionName)
         return NULL;
     return (void *)SDL_LoadFunction((SDL_SharedObject *)m_LibraryHandle, FunctionName);
 }

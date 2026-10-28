@@ -43,7 +43,7 @@ public:
      */
     VX_EXPORT INSTANCE_HANDLE Load(const char *LibraryName);
 
-    /// @brief Unloads the shared library if it was loaded by this object.
+    /// @brief Releases the stored library reference and clears the handle.
     VX_EXPORT void ReleaseLibrary();
 
     /**

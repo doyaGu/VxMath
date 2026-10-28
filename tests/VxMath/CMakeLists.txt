@@ -732,13 +732,21 @@ vx_add_test(MemoryMappedFileReferenceTest SOURCES MemoryMappedFileReferenceTest.
 vx_copy_runtime_dependencies(MemoryMappedFileReferenceTest)
 
 if (WIN32)
-    foreach(_variant B Reject Switch)
+    foreach(_variant A B Reject Switch)
         add_library(VxSharedLibraryTest${_variant} SHARED SharedLibraryTestModule.cpp SharedLibraryTestModule.def)
         set_target_properties(VxSharedLibraryTest${_variant} PROPERTIES FOLDER "Tests/Fixtures")
     endforeach()
+    target_compile_definitions(VxSharedLibraryTestA PRIVATE VX_LIBRARY_DIRTY_FP=1)
     target_compile_definitions(VxSharedLibraryTestB PRIVATE VX_LIBRARY_TEST_VALUE=29)
     target_compile_definitions(VxSharedLibraryTestReject PRIVATE VX_LIBRARY_DIRTY_FP=1 VX_LIBRARY_REJECT_LOAD=1)
     target_compile_definitions(VxSharedLibraryTestSwitch PRIVATE VX_LIBRARY_DIRTY_DETACH=1)
+    vx_add_test(SharedLibraryReferenceTest SOURCES SharedLibraryReferenceTest.cpp)
+    target_compile_definitions(SharedLibraryReferenceTest PRIVATE
+            VX_SHARED_TEST_A="$<TARGET_FILE:VxSharedLibraryTestA>"
+            VX_SHARED_TEST_B="$<TARGET_FILE:VxSharedLibraryTestB>"
+            VX_SHARED_TEST_REJECT="$<TARGET_FILE:VxSharedLibraryTestReject>")
+    add_dependencies(SharedLibraryReferenceTest VxSharedLibraryTestA VxSharedLibraryTestB VxSharedLibraryTestReject)
+    vx_copy_runtime_dependencies(SharedLibraryReferenceTest)
     vx_add_test(SharedLibraryReloadTest SOURCES SharedLibraryReloadTest.cpp)
     target_compile_definitions(SharedLibraryReloadTest PRIVATE
             VX_SHARED_TEST_SWITCH=\"$<TARGET_FILE:VxSharedLibraryTestSwitch>\"
