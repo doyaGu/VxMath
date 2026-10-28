@@ -411,7 +411,6 @@ XBOOL VxConfiguration::BuildFromDataFile(const char *name, XString &error) {
 }
 
 XBOOL VxConfiguration::BuildFromFile(const char *name, int &cline, XString &error) {
-    Clear();
     if (!name) {
         error = "Null filename";
         return FALSE;
@@ -455,7 +454,6 @@ XBOOL VxConfiguration::BuildFromFile(const char *name, int &cline, XString &erro
 }
 
 XBOOL VxConfiguration::BuildFromMemory(const char *buffer, int &cline, XString &error) {
-    Clear();
     cline = 0;
     if (!buffer || !m_Root) {
         error = "Null configuration buffer";
@@ -463,6 +461,7 @@ XBOOL VxConfiguration::BuildFromMemory(const char *buffer, int &cline, XString &
     }
     XAP<char> bufferCopy(new char[strlen(buffer) + 1]);
     strcpy(bufferCopy, buffer);
+    Clear();
     VxConfigurationSection *currentSection = m_Root;
     char *next = bufferCopy;
     while (*next) {

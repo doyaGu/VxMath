@@ -255,14 +255,15 @@ TEST_F(ConfigurationReferenceTest, AnUnclosedSectionRemainsAnErrorInsteadOfSilen
     EXPECT_NE(XString::NOTFOUND, error.Find("Missing closing tag"));
 }
 
-TEST_F(ConfigurationReferenceTest, FileOpenFailureClearsMainEntriesAndLeavesDefaultsAndLineOutputIntact) {
+TEST_F(ConfigurationReferenceTest, FileOpenFailurePreservesMainEntriesDefaultsAndLineOutput) {
     ASSERT_TRUE(Config.AddEntry(nullptr, "stale", "old"));
     ASSERT_TRUE(Config.AddDefaultEntry(nullptr, "fallback", "default"));
     int line = 71; XString error;
     remove(Input);
     EXPECT_FALSE(Config.BuildFromFile(Input, line, error));
     EXPECT_EQ(71, line);
-    EXPECT_EQ(nullptr, Config.GetEntry("stale", FALSE));
+    ASSERT_NE(nullptr, Config.GetEntry("stale", FALSE));
+    EXPECT_STREQ("old", Config.GetEntry("stale", FALSE)->GetValue());
     EXPECT_NE(nullptr, Config.GetEntry("fallback", FALSE));
     EXPECT_FALSE(error.Empty());
 }

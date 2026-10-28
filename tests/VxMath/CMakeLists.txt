@@ -743,3 +743,6 @@ vx_copy_runtime_dependencies(ConfigTypeDeleteReferenceTest)
 
 vx_add_test(ConfigLifecycleReferenceTest SOURCES ConfigLifecycleReferenceTest.cpp)
 vx_copy_runtime_dependencies(ConfigLifecycleReferenceTest)
+
+vx_add_test(ConfigurationCompatibilityTest SOURCES ConfigurationCompatibilityTest.cpp)
+vx_copy_runtime_dependencies(ConfigurationCompatibilityTest)
