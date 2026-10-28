@@ -735,6 +735,12 @@ if (WIN32)
     vx_copy_runtime_dependencies(SharedLibraryReloadTest)
 endif()
 
+vx_add_test(QuaternionRangeRegressionTest SOURCES QuaternionRangeRegressionTest.cpp)
+vx_copy_runtime_dependencies(QuaternionRangeRegressionTest)
+vx_add_test(QuaternionRangeScalarRegressionTest SOURCES QuaternionRangeRegressionTest.cpp)
+target_compile_definitions(QuaternionRangeScalarRegressionTest PRIVATE VX_SIMD_NONE=1)
+vx_copy_runtime_dependencies(QuaternionRangeScalarRegressionTest)
+
 vx_add_test(ConfigurationEntryReferenceTest SOURCES ConfigurationEntryReferenceTest.cpp)
 vx_copy_runtime_dependencies(ConfigurationEntryReferenceTest)
 

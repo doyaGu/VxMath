@@ -137,16 +137,17 @@ inline VxQuaternion Vx3DQuaternionConjugate(const VxQuaternion &Quat) {
     return result;
 }
 
-inline VxQuaternion Vx3DQuaternionMultiply(const VxQuaternion &QuatL, const VxQuaternion &QuatR) {
+VX_SIMD_INLINE VxQuaternion Vx3DQuaternionMultiply(const VxQuaternion &QuatL, const VxQuaternion &QuatR) {
     VxQuaternion result;
 #if defined(VX_SIMD_SSE)
     VxSIMDMultiplyQuaternion(&result, &QuatL, &QuatR);
 #else
+    const double x = QuatL.x, y = QuatL.y, z = QuatL.z, w = QuatL.w;
     result = VxQuaternion(
-        QuatL.x * QuatR.w + QuatL.w * QuatR.x + QuatL.y * QuatR.z - QuatL.z * QuatR.y,
-        QuatL.y * QuatR.w + QuatL.w * QuatR.y + QuatL.z * QuatR.x - QuatL.x * QuatR.z,
-        QuatL.z * QuatR.w + QuatL.w * QuatR.z + QuatL.x * QuatR.y - QuatL.y * QuatR.x,
-        QuatL.w * QuatR.w - QuatL.x * QuatR.x - QuatL.y * QuatR.y - QuatL.z * QuatR.z
+        static_cast<float>(x * QuatR.w + w * QuatR.x + y * QuatR.z - z * QuatR.y),
+        static_cast<float>(y * QuatR.w + w * QuatR.y + z * QuatR.x - x * QuatR.z),
+        static_cast<float>(z * QuatR.w + w * QuatR.z + x * QuatR.y - y * QuatR.x),
+        static_cast<float>(w * QuatR.w - x * QuatR.x - y * QuatR.y - z * QuatR.z)
     );
 #endif
     return result;
@@ -332,6 +333,39 @@ VX_SIMD_INLINE void VxSIMDConjugateQuaternion(VxQuaternion *result, const VxQuat
     VxSIMDStoreFloat4(&result->x, conjugate);
 }
 
+VX_SIMD_INLINE bool VxQuaternionNeedsWideProduct(__m128 a, __m128 b) noexcept {
+    const __m128i absolute = _mm_set1_epi32(0x7fffffff);
+    const __m128i low = _mm_set1_epi32(0x21800000); // float bits of 2^-60
+    const __m128i aa = _mm_and_si128(_mm_castps_si128(a), absolute);
+    const __m128i bb = _mm_and_si128(_mm_castps_si128(b), absolute);
+    // [2^-60, 2^61) spans 121 exponent buckets. Smaller values wrap above
+    // that interval; zero is safe. Integer tests also leave FP flags alone.
+    __m128i rangeA = _mm_srli_epi32(_mm_sub_epi32(aa, low), 23);
+    __m128i rangeB = _mm_srli_epi32(_mm_sub_epi32(bb, low), 23);
+    rangeA = _mm_andnot_si128(_mm_cmpeq_epi32(aa, _mm_setzero_si128()), rangeA);
+    rangeB = _mm_andnot_si128(_mm_cmpeq_epi32(bb, _mm_setzero_si128()), rangeB);
+    const __m128i ranges = _mm_packs_epi32(rangeA, rangeB);
+    return _mm_movemask_epi8(_mm_cmpgt_epi16(ranges, _mm_set1_epi16(120))) != 0;
+}
+
+inline __m128 VxQuaternionMultiplyWide(__m128 a, __m128 b) noexcept {
+    const __m128d axy = _mm_cvtps_pd(a), azw = _mm_cvtps_pd(_mm_movehl_ps(a, a));
+    const __m128d bxy = _mm_cvtps_pd(b), bzw = _mm_cvtps_pd(_mm_movehl_ps(b, b));
+    const __m128d aw = _mm_unpackhi_pd(azw, azw), bw = _mm_unpackhi_pd(bzw, bzw);
+    const __m128d ayz = _mm_shuffle_pd(axy, azw, 1);
+    const __m128d bzx = _mm_shuffle_pd(bzw, bxy, 0);
+    __m128d xy = _mm_add_pd(_mm_mul_pd(axy, bw), _mm_mul_pd(bxy, aw));
+    xy = _mm_add_pd(xy, _mm_mul_pd(ayz, bzx));
+    xy = _mm_sub_pd(xy, _mm_mul_pd(_mm_shuffle_pd(azw, axy, 0), _mm_shuffle_pd(bxy, bzw, 1)));
+
+    const __m128d negateW = _mm_set_pd(-0.0, 0.0);
+    __m128d zw = _mm_mul_pd(azw, bw);
+    zw = _mm_add_pd(zw, _mm_xor_pd(negateW, _mm_mul_pd(_mm_shuffle_pd(azw, axy, 1), bzx)));
+    zw = _mm_add_pd(zw, _mm_xor_pd(negateW, _mm_mul_pd(axy, _mm_unpackhi_pd(bxy, bxy))));
+    zw = _mm_sub_pd(zw, _mm_mul_pd(ayz, _mm_shuffle_pd(bxy, bzw, 0)));
+    return _mm_movelh_ps(_mm_cvtpd_ps(xy), _mm_cvtpd_ps(zw));
+}
+
 VX_SIMD_INLINE void VxSIMDDivideQuaternion(VxQuaternion *result, const VxQuaternion *p, const VxQuaternion *q) noexcept {
     const __m128 qp = VxSIMDLoadFloat4(&p->x), qq = VxSIMDLoadFloat4(&q->x);
     const __m128 negateXYZ = _mm_setr_ps(-0.0f, -0.0f, -0.0f, 0.0f);
@@ -362,7 +396,7 @@ VX_SIMD_INLINE void VxSIMDNormalizeQuaternion(VxQuaternion *q) noexcept {
 VX_SIMD_INLINE void VxSIMDMultiplyQuaternion(VxQuaternion *result, const VxQuaternion *a, const VxQuaternion *b) noexcept {
     __m128 qa = _mm_loadu_ps(&a->x);
     __m128 qb = _mm_loadu_ps(&b->x);
-    __m128 r = VxSIMDQuaternionMultiply(qa, qb);
+    __m128 r = VxQuaternionNeedsWideProduct(qa, qb) ? VxQuaternionMultiplyWide(qa, qb) : VxSIMDQuaternionMultiply(qa, qb);
     _mm_storeu_ps(&result->x, r);
 }
 
