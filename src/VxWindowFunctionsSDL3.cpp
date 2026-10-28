@@ -470,49 +470,6 @@ XBOOL VxSetCursor(VXCURSOR_POINTER cursorID) {
 }
 
 // ============================================================================
-// FPU Control Functions
-// ============================================================================
-
-XWORD VxGetFPUControlWord() {
-    XWORD cw = 0;
-#if defined(__GNUC__) || defined(__clang__)
-#   if defined(__i386__) || defined(__x86_64__)
-    __asm__ __volatile__ ("fstcw %0" : "=m" (cw));
-#   else
-    // Non-x86: return default value
-    cw = 0x027F;
-#   endif
-#elif defined(_MSC_VER)
-#   if defined(_M_IX86) || defined(_M_X64)
-    unsigned int msCw = 0;
-    _controlfp_s(&msCw, 0, 0);
-    cw = (XWORD)msCw;
-#   endif
-#endif
-    return cw;
-}
-
-void VxSetFPUControlWord(XWORD Fpu) {
-#if defined(__GNUC__) || defined(__clang__)
-#   if defined(__i386__) || defined(__x86_64__)
-    __asm__ __volatile__ ("fldcw %0" : : "m" (Fpu));
-#   endif
-#elif defined(_MSC_VER)
-#   if defined(_M_IX86) || defined(_M_X64)
-    unsigned int ignored = 0;
-    _controlfp_s(&ignored, (unsigned int)Fpu, 0xFFFFu);
-#   endif
-#endif
-}
-
-void VxSetBaseFPUControlWord() {
-#if defined(_MSC_VER)
-    unsigned int ignored = 0;
-    _controlfp_s(&ignored, _CW_DEFAULT, _MCW_EM | _MCW_DN | _MCW_RC | _MCW_PC);
-#endif
-}
-
-// ============================================================================
 // Environment Variable Functions
 // ============================================================================
 

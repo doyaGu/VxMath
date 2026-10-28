@@ -245,6 +245,10 @@ set(VX_SOURCE_DIR "${VXMATH_SOURCE_DIR}" CACHE INTERNAL "")
 # =============================================================================
 # Subdirectories
 # =============================================================================
+if (CMAKE_CXX_COMPILER_ID STREQUAL "MSVC" AND VXMATH_TARGET_IS_X86 AND CMAKE_SIZEOF_VOID_P EQUAL 8)
+    enable_language(ASM_MASM)
+endif()
+
 add_subdirectory(deps)
 add_subdirectory(src)
 include(cmake/VxFontAssets.cmake)

@@ -149,7 +149,12 @@ set(VXMATH_PLATFORM_SOURCES
         VxTimeProfilerSDL3.cpp
         VxMutexSDL3.cpp
         VxThreadSDL3.cpp
+        VxFPUControlWord.cpp
 )
+
+if (CMAKE_CXX_COMPILER_ID STREQUAL "MSVC" AND VXMATH_TARGET_IS_X86 AND CMAKE_SIZEOF_VOID_P EQUAL 8)
+    list(APPEND VXMATH_PLATFORM_SOURCES VxFPUControlWordWin64.asm)
+endif()
 
 set(VXMATH_SOURCES
         ${VXMATH_COMMON_SOURCES}
@@ -318,7 +323,7 @@ function(vx_apply_simd_flags TARGET_NAME)
 
     # Apply flags (PRIVATE - consumers set their own /arch if they want intrinsics)
     if (MSVC AND _msvc_flag)
-        target_compile_options(${TARGET_NAME} PRIVATE ${_msvc_flag})
+        target_compile_options(${TARGET_NAME} PRIVATE $<$<COMPILE_LANGUAGE:C,CXX>:${_msvc_flag}>)
     elseif (NOT MSVC)
         target_compile_options(${TARGET_NAME} PRIVATE ${_gcc_flags})
     endif ()
@@ -372,8 +377,8 @@ if (VXMATH_BUILD_SHARED)
     # globally defined by a parent project/toolchain.
     target_compile_definitions(VxMath PRIVATE VX_API)
     target_compile_options(VxMath PRIVATE
-            $<$<CXX_COMPILER_ID:MSVC>:/UVX_LIB>
-            $<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-UVX_LIB>
+            $<$<AND:$<COMPILE_LANGUAGE:C,CXX>,$<CXX_COMPILER_ID:MSVC>>:/UVX_LIB>
+            $<$<AND:$<COMPILE_LANGUAGE:C,CXX>,$<NOT:$<CXX_COMPILER_ID:MSVC>>>:-UVX_LIB>
     )
     vx_copy_runtime_dependencies(VxMath)
 

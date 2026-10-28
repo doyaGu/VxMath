@@ -762,6 +762,14 @@ vx_add_test(QuaternionRangeScalarRegressionTest SOURCES QuaternionRangeRegressio
 target_compile_definitions(QuaternionRangeScalarRegressionTest PRIVATE VX_SIMD_NONE=1)
 vx_copy_runtime_dependencies(QuaternionRangeScalarRegressionTest)
 
+if (VXMATH_TARGET_IS_X86)
+    vx_add_test(FPUControlWordReferenceTest SOURCES FPUControlWordReferenceTest.cpp)
+    if (CMAKE_CXX_COMPILER_ID STREQUAL "MSVC" AND CMAKE_SIZEOF_VOID_P EQUAL 8)
+        target_sources(FPUControlWordReferenceTest PRIVATE FPUControlWordTestSupportWin64.asm)
+    endif()
+    vx_copy_runtime_dependencies(FPUControlWordReferenceTest)
+endif()
+
 vx_add_test(ConfigurationEntryReferenceTest SOURCES ConfigurationEntryReferenceTest.cpp)
 vx_copy_runtime_dependencies(ConfigurationEntryReferenceTest)
 
