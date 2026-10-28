@@ -780,6 +780,11 @@ vx_copy_runtime_dependencies(MemoryPoolFailureTest)
 vx_add_test(AlignedMemoryReferenceTest SOURCES AlignedMemoryReferenceTest.cpp)
 vx_copy_runtime_dependencies(AlignedMemoryReferenceTest)
 
+vx_add_test(MutexReferenceTest SOURCES MutexReferenceTest.cpp)
+vx_copy_runtime_dependencies(MutexReferenceTest)
+vx_add_test(MutexFailureTest SOURCES MutexFailureTest.cpp)
+vx_copy_runtime_dependencies(MutexFailureTest)
+
 vx_add_test(ConfigurationEntryReferenceTest SOURCES ConfigurationEntryReferenceTest.cpp)
 vx_copy_runtime_dependencies(ConfigurationEntryReferenceTest)
 
