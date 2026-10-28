@@ -153,18 +153,19 @@ VX_SIMD_INLINE VxQuaternion Vx3DQuaternionMultiply(const VxQuaternion &QuatL, co
     return result;
 }
 
-inline VxQuaternion Vx3DQuaternionDivide(const VxQuaternion &P, const VxQuaternion &Q) {
+VX_SIMD_INLINE VxQuaternion Vx3DQuaternionDivide(const VxQuaternion &P, const VxQuaternion &Q) {
     VxQuaternion result;
 #if defined(VX_SIMD_SSE)
     VxSIMDDivideQuaternion(&result, &P, &Q);
 #else
     // 0x2429D650 has its own accumulation order, including z,y,x,w for
     // the scalar component. Multiplying conjugate(Q) * P reassociates it.
+    const double x = P.x, y = P.y, z = P.z, w = P.w;
     result = VxQuaternion(
-        Q.w*P.x - Q.x*P.w - P.z*Q.y + P.y*Q.z,
-        P.y*Q.w - P.w*Q.y - P.x*Q.z + P.z*Q.x,
-        P.z*Q.w - P.w*Q.z - P.y*Q.x + P.x*Q.y,
-        P.z*Q.z + P.y*Q.y + P.x*Q.x + Q.w*P.w);
+        static_cast<float>(Q.w * x - Q.x * w - z * Q.y + y * Q.z),
+        static_cast<float>(y * Q.w - w * Q.y - x * Q.z + z * Q.x),
+        static_cast<float>(z * Q.w - w * Q.z - y * Q.x + x * Q.y),
+        static_cast<float>(z * Q.z + y * Q.y + x * Q.x + Q.w * w));
 #endif
     return result;
 }
@@ -368,6 +369,11 @@ inline __m128 VxQuaternionMultiplyWide(__m128 a, __m128 b) noexcept {
 
 VX_SIMD_INLINE void VxSIMDDivideQuaternion(VxQuaternion *result, const VxQuaternion *p, const VxQuaternion *q) noexcept {
     const __m128 qp = VxSIMDLoadFloat4(&p->x), qq = VxSIMDLoadFloat4(&q->x);
+    if (VxQuaternionNeedsWideProduct(qp, qq)) {
+        const __m128 conjugate = _mm_xor_ps(qq, _mm_setr_ps(-0.0f, -0.0f, -0.0f, 0.0f));
+        VxSIMDStoreFloat4(&result->x, VxQuaternionMultiplyWide(conjugate, qp));
+        return;
+    }
     const __m128 negateXYZ = _mm_setr_ps(-0.0f, -0.0f, -0.0f, 0.0f);
     const __m128 a = _mm_mul_ps(_mm_shuffle_ps(qp, qp, _MM_SHUFFLE(2, 2, 1, 0)),
                                 _mm_shuffle_ps(qq, qq, _MM_SHUFFLE(2, 3, 3, 3)));
