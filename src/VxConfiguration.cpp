@@ -983,33 +983,6 @@ static XString VxNormalizeRegistryValueName(const char *key) {
     return value;
 }
 
-// Historical SDL spelling is used only to locate values in existing files.
-static XString VxLegacyRegistryPath(VxConfigRoot root, const char *base, const char *section) {
-    XString path(VxRegistryRootName(root));
-    const char *parts[] = {base, section};
-    for (int i = 0; i < 2; ++i) {
-        if (!parts[i]) continue;
-        if (path[path.Length() - 1] != '.') path << '.';
-        for (const char *p = parts[i]; *p; ++p) {
-            if (*p == '\'' || *p == '"') continue;
-            if (*p == '\\' || *p == '/' || *p == '.') {
-                if (path[path.Length() - 1] != '.') path << '.';
-            } else path << *p;
-        }
-    }
-    while (path[path.Length() - 1] == '.') path.PopBack();
-    return path;
-}
-
-static XString VxLegacyRegistryValueName(const char *key) {
-    XString name;
-    if (key) {
-        for (const char *p = key; *p; ++p)
-            name << (strchr("\\/.'\"", *p) ? '_' : *p);
-    }
-    return name;
-}
-
 static XBOOL VxRegistryNamesEqual(const char *left, const char *right) {
     if (strcmp(left, right) == 0) return TRUE;
 #ifdef _WIN32
@@ -1075,50 +1048,12 @@ static XBOOL VxRegistryPathContains(const char *parent, const XString &path) {
     return VxRegistryNamesEqual(parent, prefix.CStr());
 }
 
-static void VxMarkRegistryDeletion(VxConfiguration &config, const XString &path, const char *key) {
-    XString name(key ? ".deleted.entry:" : ".deleted.section:");
-    name << path;
-    if (key) name << '.' << key;
-    VxConfigurationEntry *existing = NULL;
-    config.AddEntry(NULL, name.CStr(), "1", &existing);
-    if (existing) existing->SetValue("1");
-}
-
-static XBOOL VxRegistryFallbackBlocked(VxConfiguration &config, const XString &path, const char *key) {
-    XString entryName(".deleted.entry:");
-    entryName << path;
-    if (key) entryName << '.' << key;
-    ConstEntryIt it = config.BeginEntries();
-    VxConfigurationEntry *entry;
-    while ((entry = config.GetNextEntry(it)) != NULL) {
-        const char *name = entry->GetName();
-        if (key && VxRegistryNamesEqual(name, entryName.CStr())) return TRUE;
-        if (strncmp(name, ".deleted.section:", 17) == 0 && VxRegistryPathContains(name + 17, path)) return TRUE;
-    }
-    return FALSE;
-}
-
 static VxConfigurationEntry *VxFindRegistryEntry(VxConfiguration &config, VxConfigRoot root,
     const char *base, const char *section, const char *key, VxConfigurationSection *&owner) {
-    XString paths[] = {VxNormalizeRegistryPath(root, base, section), VxLegacyRegistryPath(root, base, section)};
-    XString keys[] = {VxNormalizeRegistryValueName(key), VxLegacyRegistryValueName(key)};
-    owner = VxGetRegistrySection(config, paths[0].CStr(), FALSE);
-    VxConfigurationEntry *entry = owner ? VxGetRegistryEntry(owner, keys[0].CStr()) : NULL;
-    if (entry || VxRegistryFallbackBlocked(config, paths[0], keys[0].CStr())) return entry;
-    for (int p = 0; p < 2; ++p) {
-        VxConfigurationSection *candidate = VxGetRegistrySection(config, paths[p].CStr(), FALSE);
-        if (!candidate) continue;
-        for (int k = 0; k < 2; ++k) {
-            if (p == 0 && k == 0) continue;
-            entry = VxGetRegistryEntry(candidate, keys[k].CStr());
-            // Explicit new values belong to their exact name, never a lossy alias.
-            if (entry && !VxGetRegistryEntry(candidate, (XString(entry->GetName()) + ".encoding").CStr())) {
-                owner = candidate;
-                return entry;
-            }
-        }
-    }
-    return NULL;
+    XString path = VxNormalizeRegistryPath(root, base, section);
+    XString name = VxNormalizeRegistryValueName(key);
+    owner = VxGetRegistrySection(config, path.CStr(), FALSE);
+    return owner ? VxGetRegistryEntry(owner, name.CStr()) : NULL;
 }
 
 static XString VxEncodeRegistryValue(const char *value, size_t length) {
@@ -1244,8 +1179,7 @@ void VxConfig::OpenSection(const char *iSection, VxConfig::Mode iOpeningMode) {
     VxConfiguration config;
     if (!VxLoadRegistryFile(config, file.CStr())) return;
     XString path = VxNormalizeRegistryPath(m_Root, m_BaseSection.CStr(), iSection);
-    XString legacy = VxLegacyRegistryPath(m_Root, m_BaseSection.CStr(), iSection);
-    if (!VxGetRegistrySection(config, path.CStr(), FALSE) && !VxGetRegistrySection(config, legacy.CStr(), FALSE)) {
+    if (!VxGetRegistrySection(config, path.CStr(), FALSE)) {
         if (!VxGetRegistrySection(config, path.CStr(), TRUE) || !config.SaveToFile(file.CStr())) return;
     }
     m_CurrentSectionName = iSection;
@@ -1326,7 +1260,6 @@ XBOOL VxConfig::DeleteEntry(const char *iKey) {
         return FALSE;
     VxConfiguration config;
     if (!VxLoadRegistryFile(config, file.CStr())) return FALSE;
-    XString key = VxNormalizeRegistryValueName(iKey);
     VxConfigurationSection *sectionObject = NULL;
     VxConfigurationEntry *entry = VxFindRegistryEntry(config, m_Root, m_BaseSection.CStr(), m_CurrentSectionName.CStr(), iKey, sectionObject);
     if (!entry) return FALSE;
@@ -1334,9 +1267,6 @@ XBOOL VxConfig::DeleteEntry(const char *iKey) {
     XBOOL removed = sectionObject->DeleteEntry(storedKey.CStr());
     VxUpdateRegistryEntry(sectionObject, (storedKey + ".type").CStr(), NULL);
     VxUpdateRegistryEntry(sectionObject, (storedKey + ".tail").CStr(), NULL);
-    VxUpdateRegistryEntry(sectionObject, (storedKey + ".encoding").CStr(), NULL);
-    XString section = VxNormalizeRegistryPath(m_Root, m_BaseSection.CStr(), m_CurrentSectionName.CStr());
-    VxMarkRegistryDeletion(config, section, key.CStr());
     if (removed)
         return config.SaveToFile(file.CStr());
     return FALSE;
@@ -1352,18 +1282,13 @@ XBOOL VxConfig::DeleteSection(const char *iSection) {
     if (!VxLoadRegistryFile(config, file.CStr())) return FALSE;
     XString section = VxNormalizeRegistryPath(m_Root, m_BaseSection.CStr(), sectionName.CStr());
     VxConfigurationSection *target = VxGetRegistrySection(config, section.CStr(), FALSE);
-    if (!target) {
-        if (VxRegistryFallbackBlocked(config, section, NULL)) return FALSE;
-        XString legacy = VxLegacyRegistryPath(m_Root, m_BaseSection.CStr(), sectionName.CStr());
-        if (!VxGetRegistrySection(config, legacy.CStr(), FALSE)) return FALSE;
-    }
+    if (!target) return FALSE;
     XBOOL closesCurrent = FALSE;
     if (m_CurrentMode) {
         XString currentPath = VxNormalizeRegistryPath(m_Root, m_BaseSection.CStr(), m_CurrentSectionName.CStr());
         closesCurrent = VxRegistryPathContains(section.CStr(), currentPath);
     }
-    if (target && !target->GetParent()->DeleteSection(target->GetName())) return FALSE;
-    VxMarkRegistryDeletion(config, section, NULL);
+    if (!target->GetParent()->DeleteSection(target->GetName())) return FALSE;
     if (!config.SaveToFile(file.CStr())) return FALSE;
     if (closesCurrent) CloseSection(NULL);
     return TRUE;
@@ -1428,7 +1353,6 @@ XBOOL VxConfig::WriteRawEntry(const char *iKey, const char *iValue, VxConfigValu
     XString storedKey(entry->GetName());
     VxUpdateRegistryEntry(sectionObject, (storedKey + ".type").CStr(), encoded ? "string.hex" : VxConfigTypeName(iType));
     VxUpdateRegistryEntry(sectionObject, (storedKey + ".tail").CStr(), tail.Empty() ? NULL : tail.CStr());
-    VxUpdateRegistryEntry(sectionObject, (storedKey + ".encoding").CStr(), "2");
     return config.SaveToFile(file.CStr());
 }
 

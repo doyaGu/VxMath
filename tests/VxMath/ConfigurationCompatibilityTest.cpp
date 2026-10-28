@@ -106,17 +106,17 @@ TEST(ConfigurationCompatibilityTest, FullDottedClosingTagClosesTheNestedHierarch
     ExpectEntry(config, "root", "next");
 }
 
-// The old spelling is an independent fixture from the Pass365 legacy DLL output.
-static const char *LegacyRegistry =
+// These ordinary names must not act as aliases for differently encoded names.
+static const char *StoredRegistry =
     "<CurrentUser>\n<RegressionReview>\n<Options>\n<Video>\n"
-    "plain = legacy-section\nplain.type = string\n"
-    "<Child>\nplain = legacy-child\nplain.type = string\n</Child>\n"
+    "plain = nested-section\nplain.type = string\n"
+    "<Child>\nplain = nested-child\nplain.type = string\n</Child>\n"
     "</Video>\n</Options>\n<Simple>\n"
-    "plain = legacy-plain\nplain.type = string\n"
+    "plain = plain-value\nplain.type = string\n"
     "volume_level = 75\nvolume_level.type = integer\n"
     "</Simple>\n</RegressionReview>\n</CurrentUser>\n";
 
-class ConfigCompatibilityTest : public ::testing::Test {
+class ConfigNameMappingTest : public ::testing::Test {
 protected:
     VxConfig Config{VXCONFIG_ROOT_CURRENT_USER, "RegressionReview"};
     XString Home, PreviousHome;
@@ -137,7 +137,7 @@ protected:
         }
         OwnFile = true;
         VxCreateFileTree(File);
-        Store(LegacyRegistry);
+        Store(StoredRegistry);
     }
 
     void TearDown() override {
@@ -193,42 +193,51 @@ protected:
     }
 };
 
-TEST_F(ConfigCompatibilityTest, LegacyValueNamesAndTheirTypesAreRecovered) {
-    Read("Simple", "volume.level", "75");
+TEST_F(ConfigNameMappingTest, DottedValueNamesDoNotReadUnderscoreNames) {
+    Missing("Simple", "volume.level");
     Config.OpenSection("Simple", VxConfig::READ);
-    int value = 0;
-    ASSERT_TRUE(Config.ReadIntegerEntry("volume.level", &value));
-    EXPECT_EQ(75, value);
-    VxConfigValueType type = VXCONFIG_VALUE_STRING;
-    ASSERT_TRUE(Config.GetEntryType("volume.level", &type));
-    EXPECT_EQ(VXCONFIG_VALUE_INTEGER, type);
+    int value = 91;
+    EXPECT_FALSE(Config.ReadIntegerEntry("volume.level", &value));
+    EXPECT_EQ(91, value);
+    VxConfigValueType type = VXCONFIG_VALUE_FLOAT;
+    EXPECT_FALSE(Config.GetEntryType("volume.level", &type));
+    EXPECT_EQ(VXCONFIG_VALUE_FLOAT, type);
+    Read("Simple", "volume_level", "75");
 }
 
-TEST_F(ConfigCompatibilityTest, LegacyDottedSectionsAndDescendantsAreRecovered) {
-    Read("Options.Video", "plain", "legacy-section");
-    Read("Options.Video\\Child", "plain", "legacy-child");
+TEST_F(ConfigNameMappingTest, LiteralPunctuationDoesNotReadNestedSections) {
+    Missing("Options.Video", "plain");
+    Missing("Options/Video", "plain");
+    Missing("Options.Video\\Child", "plain");
+    Read("Options\\Video", "plain", "nested-section");
+    Read("Options\\Video\\Child", "plain", "nested-child");
 }
 
-TEST_F(ConfigCompatibilityTest, ReadOnlyLegacyLookupDoesNotRewriteTheFile) {
+TEST_F(ConfigNameMappingTest, ReadingAnExistingCurrentSectionDoesNotRewriteTheFile) {
     XString before = Contents();
-    Read("Options.Video", "plain", "legacy-section");
-    Read("Simple", "volume.level", "75");
+    Read("Options\\Video", "plain", "nested-section");
+    Read("Simple", "volume_level", "75");
     EXPECT_STREQ(before.CStr(), Contents().CStr());
 }
 
-TEST_F(ConfigCompatibilityTest, ExplicitNewKeyWinsAndUnrelatedLegacyValuesRemain) {
-    Write("Simple", "volume.level", "new");
-    Read("Simple", "volume.level", "new");
-    Read("Simple", "plain", "legacy-plain");
+TEST_F(ConfigNameMappingTest, OpeningALiteralDottedSectionCreatesItsEncodedSection) {
+    Config.OpenSection("Options.Video", VxConfig::READ);
+    VxConfiguration file;
+    int line = 0; XString error;
+    ASSERT_TRUE(file.BuildFromFile(File, line, error));
+    EXPECT_NE(nullptr, file.GetSubSection("CurrentUser.RegressionReview.Options%2EVideo", TRUE));
+    Missing("Options.Video", "plain");
+    Read("Options\\Video", "plain", "nested-section");
 }
 
-TEST_F(ConfigCompatibilityTest, ExplicitNewSectionWinsAndLegacyKeysRemainReadable) {
-    Write("Options.Video", "plain", "new-section");
-    Read("Options.Video", "plain", "new-section");
-    Read("Options.Video\\Child", "plain", "legacy-child");
+TEST_F(ConfigNameMappingTest, CurrentPunctuationNamesRemainIndependentAfterReopen) {
+    const char *sections[] = {"Options.Video", "Options/Video", "Options'Video", "Options\"Video", "Options\\Video"};
+    const char *values[] = {"dot", "slash", "apostrophe", "quote", "nested"};
+    for (int i = 0; i < 5; ++i) Write(sections[i], "value.key", values[i]);
+    for (int i = 0; i < 5; ++i) Read(sections[i], "value.key", values[i]);
 }
 
-TEST_F(ConfigCompatibilityTest, NewKeysDoNotBecomeLossyLegacyAliases) {
+TEST_F(ConfigNameMappingTest, DottedAndUnderscoreKeysRemainIndependent) {
     Write("Simple", "a_b", "underscore");
     Missing("Simple", "a.b");
     Write("Simple", "a.b", "dot");
@@ -236,60 +245,87 @@ TEST_F(ConfigCompatibilityTest, NewKeysDoNotBecomeLossyLegacyAliases) {
     Read("Simple", "a.b", "dot");
 }
 
-TEST_F(ConfigCompatibilityTest, NewSectionsDoNotBecomeLossyLegacyAliases) {
+TEST_F(ConfigNameMappingTest, LiteralAndNestedSectionsRemainIndependent) {
     Write("Options\\Video", "modern", "nested");
     Missing("Options.Video", "modern");
     Read("Options\\Video", "modern", "nested");
 }
 
-TEST_F(ConfigCompatibilityTest, LegacyDeleteDoesNotReappearAfterReopen) {
+TEST_F(ConfigNameMappingTest, DeletingADottedKeyDoesNotDeleteItsUnderscoreName) {
     Config.OpenSection("Simple", VxConfig::WRITE);
-    ASSERT_TRUE(Config.DeleteEntry("volume.level"));
+    XString before = Contents();
+    EXPECT_FALSE(Config.DeleteEntry("volume.level"));
+    EXPECT_STREQ(before.CStr(), Contents().CStr());
     Config.CloseSection(nullptr);
     Missing("Simple", "volume.level");
-    Read("Simple", "plain", "legacy-plain");
+    Read("Simple", "volume_level", "75");
 }
 
-TEST_F(ConfigCompatibilityTest, DeletingNewValueDoesNotExposeAnOlderAlias) {
+TEST_F(ConfigNameMappingTest, DeletedCurrentValuesStayAbsentAndCanBeWrittenAgain) {
     Write("Simple", "volume.level", "new");
     Config.OpenSection("Simple", VxConfig::WRITE);
     ASSERT_TRUE(Config.DeleteEntry("volume.level"));
     Config.CloseSection(nullptr);
     Missing("Simple", "volume.level");
+    Read("Simple", "volume_level", "75");
     Write("Simple", "volume.level", "restored");
     Read("Simple", "volume.level", "restored");
 }
 
-TEST_F(ConfigCompatibilityTest, DeletingLegacySectionBlocksItsOldSubtree) {
-    Config.OpenSection("Options.Video", VxConfig::WRITE);
-    ASSERT_TRUE(Config.DeleteSection(nullptr));
-    Missing("Options.Video", "plain");
-    Missing("Options.Video\\Child", "plain");
-    Read("Simple", "plain", "legacy-plain");
+TEST_F(ConfigNameMappingTest, DeletingAMissingLiteralSectionDoesNotTargetTheNestedSection) {
+    XString before = Contents();
+    EXPECT_FALSE(Config.DeleteSection("Options.Video"));
+    EXPECT_STREQ(before.CStr(), Contents().CStr());
+    Read("Options\\Video\\Child", "plain", "nested-child");
 }
 
-TEST_F(ConfigCompatibilityTest, DeletingNewSectionDoesNotExposeTheOldSection) {
+TEST_F(ConfigNameMappingTest, DeletingALiteralSectionPreservesTheNestedSection) {
     Write("Options.Video", "plain", "new");
     Config.OpenSection("Options.Video", VxConfig::WRITE);
     ASSERT_TRUE(Config.DeleteSection(nullptr));
     Missing("Options.Video", "plain");
     Missing("Options.Video\\Child", "plain");
+    Read("Options\\Video", "plain", "nested-section");
 }
 
-TEST_F(ConfigCompatibilityTest, RestoringOneValueDoesNotRestoreDeletedLegacySiblings) {
+TEST_F(ConfigNameMappingTest, RecreatingADeletedSectionDoesNotBorrowNestedData) {
     Config.OpenSection("Options.Video", VxConfig::WRITE);
+    Config.WriteStringEntry("plain", "removed");
     ASSERT_TRUE(Config.DeleteSection(nullptr));
     Write("Options.Video", "restored", "value");
     Read("Options.Video", "restored", "value");
     Missing("Options.Video", "plain");
     Missing("Options.Video\\Child", "plain");
+    Read("Options\\Video", "plain", "nested-section");
 }
 
-TEST_F(ConfigCompatibilityTest, LegacyBaseNamesAreResolved) {
-    Store("<CurrentUser>\n<Regression>\n<Review>\n<Simple>\nkey=legacy\n</Simple>\n</Review>\n</Regression>\n</CurrentUser>\n");
+TEST_F(ConfigNameMappingTest, BasePunctuationIsNotTreatedAsAPathSeparator) {
+    Store("<CurrentUser>\n<Regression>\n<Review>\n<Simple>\nkey=nested\n</Simple>\n</Review>\n</Regression>\n</CurrentUser>\n");
     VxConfig config(VXCONFIG_ROOT_CURRENT_USER, "Regression.Review");
     config.OpenSection("Simple", VxConfig::READ);
-    char text[128] = {};
+    char text[128] = "unchanged";
+    EXPECT_FALSE(config.ReadStringEntry("key", text, sizeof(text)));
+    EXPECT_STREQ("unchanged", text);
+    config.OpenSection("Simple", VxConfig::WRITE);
+    config.WriteStringEntry("key", "literal");
+    config.OpenSection("Simple", VxConfig::READ);
     ASSERT_TRUE(config.ReadStringEntry("key", text, sizeof(text)));
-    EXPECT_STREQ("legacy", text);
+    EXPECT_STREQ("literal", text);
+}
+
+TEST_F(ConfigNameMappingTest, WritesAndDeletesDoNotGenerateCompatibilityMetadata) {
+    Config.OpenSection("Simple", VxConfig::WRITE);
+    Config.WriteIntegerEntry("volume.level", 17);
+    VxConfiguration file;
+    int line = 0; XString error;
+    ASSERT_TRUE(file.BuildFromFile(File, line, error));
+    VxConfigurationSection *section = file.GetSubSection("CurrentUser.RegressionReview.Simple", TRUE);
+    ASSERT_NE(nullptr, section);
+    ASSERT_NE(nullptr, section->GetEntry("volume%2Elevel.type"));
+    EXPECT_EQ(nullptr, section->GetEntry("volume%2Elevel.encoding"));
+    ASSERT_TRUE(Config.DeleteEntry("volume.level"));
+    ASSERT_TRUE(Config.DeleteSection(nullptr));
+    ASSERT_TRUE(file.BuildFromFile(File, line, error));
+    ConstEntryIt it = file.BeginEntries();
+    EXPECT_EQ(nullptr, file.GetNextEntry(it));
 }
