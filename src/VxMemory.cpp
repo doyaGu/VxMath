@@ -33,6 +33,9 @@ void *VxNewAligned(size_t size, size_t align) {
         effectiveAlign = sizeof(void *);
     }
     if ((effectiveAlign & (effectiveAlign - 1)) != 0) {
+        if (effectiveAlign > SIZE_MAX / 2 + 1) {
+            return nullptr;
+        }
         size_t pow2 = sizeof(void *);
         while (pow2 < effectiveAlign) {
             pow2 <<= 1;
@@ -43,7 +46,11 @@ void *VxNewAligned(size_t size, size_t align) {
 #if defined(_MSC_VER)
     return _aligned_malloc(size, effectiveAlign);
 #else
-    const size_t totalSize = size + effectiveAlign - 1 + sizeof(void *);
+    const size_t overhead = effectiveAlign - 1 + sizeof(void *);
+    if (size > SIZE_MAX - overhead) {
+        return nullptr;
+    }
+    const size_t totalSize = size + overhead;
     void *raw = malloc(totalSize);
     if (!raw) {
         return nullptr;

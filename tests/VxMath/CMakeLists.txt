@@ -773,6 +773,9 @@ endif()
 vx_add_test(TimeProfilerReferenceTest SOURCES TimeProfilerReferenceTest.cpp)
 vx_copy_runtime_dependencies(TimeProfilerReferenceTest)
 
+vx_add_test(AlignedMemoryReferenceTest SOURCES AlignedMemoryReferenceTest.cpp)
+vx_copy_runtime_dependencies(AlignedMemoryReferenceTest)
+
 vx_add_test(ConfigurationEntryReferenceTest SOURCES ConfigurationEntryReferenceTest.cpp)
 vx_copy_runtime_dependencies(ConfigurationEntryReferenceTest)
 
