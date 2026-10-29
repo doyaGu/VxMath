@@ -548,8 +548,10 @@ inline VxCompressedVectorOld &VxCompressedVectorOld::operator=(const VxVector &v
 }
 
 inline void VxCompressedVectorOld::Set(float X, float Y, float Z) {
-    xa = -radToAngle((float) asin(Y));
-    ya = radToAngle((float) atan2(X, Z));
+    // Round the double libm result to float before quantizing. Float overloads
+    // can fall one ULP below a quadrant boundary on some platforms.
+    xa = -radToAngle(static_cast<float>(asin(static_cast<double>(Y))));
+    ya = radToAngle(static_cast<float>(atan2(static_cast<double>(X), static_cast<double>(Z))));
 }
 
 inline VxCompressedVector::VxCompressedVector() { xa = ya = 0; }
@@ -573,8 +575,8 @@ inline VxCompressedVector &VxCompressedVector::operator=(const VxVector &v) {
 }
 
 inline void VxCompressedVector::Set(float X, float Y, float Z) {
-    xa = (short int) -radToAngle((float) asin(Y));
-    ya = (short int) radToAngle((float) atan2(X, Z));
+    xa = (short int) -radToAngle(static_cast<float>(asin(static_cast<double>(Y))));
+    ya = (short int) radToAngle(static_cast<float>(atan2(static_cast<double>(X), static_cast<double>(Z))));
 }
 
 inline VxCompressedVectorOld &VxCompressedVectorOld::operator=(const VxCompressedVector &v) {

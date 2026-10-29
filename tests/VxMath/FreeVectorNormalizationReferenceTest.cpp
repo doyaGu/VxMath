@@ -107,8 +107,10 @@ TEST_P(FreeVectorNormalizationReference,FreeZeroIsNaNAndCheckedRegisterZeroIsPre
 TEST_P(FreeVectorNormalizationReference,NonfinitePolicy) { Check(GetParam()==2?VNNonfinite(Function()):FNNonfinite(Function()),18); }
 TEST_P(FreeVectorNormalizationReference,DerivedSourceDoesNotReadOrChangeW) { Check(VNDerived(Function()),32); }
 TEST_P(FreeVectorNormalizationReference,FourByteAlignedSurroundings) { Check(VNSurroundings(Function()),32); }
+#if defined(_WIN32)
 TEST_P(FreeVectorNormalizationReference,ExactInPlaceTwelveByteBoundary) { Check(VNFootprint(Function()),40); }
 TEST_P(FreeVectorNormalizationReference,ReadOnlySourceAndSeparateDestinationExactBoundaries) { Check(FNReadOnly(ReturnedFunction()),32); }
+#endif
 #if defined(VX_SIMD_SSE)
 INSTANTIATE_TEST_SUITE_P(ReferencePointerRegister,FreeVectorNormalizationReference,testing::Values(0,1,2));
 TEST(FreeNormalizeRegister,XYZLengthIgnoresWButScalesAllFourLanes) {

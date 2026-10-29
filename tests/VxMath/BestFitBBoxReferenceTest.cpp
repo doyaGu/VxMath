@@ -174,7 +174,13 @@ protected:
     void TearDown()override{EXPECT_TRUE(VxSetSIMDOverride(previous));}
     void Check(BFResult r,int count){EXPECT_EQ(r.calls,count);EXPECT_EQ(r.errors+r.faults,0);}
 };
-TEST_P(BestFitBBoxReference, LeaveOutputUntouchedForEmptyInput){Check(BFEmpty(VxComputeBestFitBBox),21);}
+TEST_P(BestFitBBoxReference, LeaveOutputUntouchedForEmptyInput){
+#if defined(_WIN32)
+    Check(BFEmpty(VxComputeBestFitBBox),21); // Includes 13 PAGE_NOACCESS cases.
+#else
+    Check(BFEmpty(VxComputeBestFitBBox),8);
+#endif
+}
 TEST_P(BestFitBBoxReference, FitAnalyticOrientedCuboidsAndSignedBorder){Check(BFAnalytic(VxComputeBestFitBBox),27);}
 TEST_P(BestFitBBoxReference, MatchIndependentCovarianceEigenResidualAndContainment){Check(BFGeneral(VxComputeBestFitBBox),64);}
 TEST_P(BestFitBBoxReference, FitPointLinePlaneAndRepeatedPoints){Check(BFDegenerate(VxComputeBestFitBBox),12);}

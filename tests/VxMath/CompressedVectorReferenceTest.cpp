@@ -166,6 +166,22 @@ TEST(CompressedVectorReferenceTest, ConstructorsSetAndVectorAssignmentUsePolarAn
     EXPECT_EQ(0, CompressedEncoding<VxCompressedVector>().errors);
     EXPECT_EQ(0, CompressedEncoding<VxCompressedVectorOld>().errors);
 }
+TEST(CompressedVectorReferenceTest, RuntimeCardinalInputsQuantizeToExactQuarterTurns) {
+    // Keep libm calls at runtime: float asin/atan2 can differ from the rounded
+    // double result by one ULP at a pole or the negative Z axis on macOS.
+    volatile float input[][3] = {{0,1,0}, {0,-1,0}, {0,0,-1}, {-0.0f,0,-1}};
+    const int angles[][2] = {{-4096,0}, {4096,0}, {0,8192}, {0,-8192}};
+    for (int i = 0; i < 4; ++i) {
+        SCOPED_TRACE(i);
+        const float x = input[i][0], y = input[i][1], z = input[i][2];
+        VxCompressedVector packed(x,y,z);
+        VxCompressedVectorOld old(x,y,z);
+        EXPECT_EQ(angles[i][0], packed.xa);
+        EXPECT_EQ(angles[i][1], packed.ya);
+        EXPECT_EQ(angles[i][0], old.xa);
+        EXPECT_EQ(angles[i][1], old.ya);
+    }
+}
 TEST(CompressedVectorReferenceTest, CrossFormatAssignmentPreservesStoredAngleBits) {
     EXPECT_EQ(0, CompressedConversion().errors);
 }
