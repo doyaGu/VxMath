@@ -663,8 +663,8 @@ typedef enum VXSTENCILOP {
  * @brief Fog calculation modes.
  *
  * @remarks Used by CKRenderContext::SetFogMode to specify the type of fog to apply to the scene.
- * Also used as a value for the VXRENDERSTATE_FOGMODE render state.
- * @see CKRenderContext::SetFogMode, VXRENDERSTATE_FOGMODE, CKRenderContext::SetState
+ * Also used as a value for the VXRENDERSTATE_FOGPIXELMODE and VXRENDERSTATE_FOGVERTEXMODE render states.
+ * @see CKRenderContext::SetFogMode, VXRENDERSTATE_FOGPIXELMODE, VXRENDERSTATE_FOGVERTEXMODE, CKRenderContext::SetState
  */
 typedef enum VXFOG_MODE {
     VXFOG_NONE   = 0UL, ///< No fog (Default).
@@ -913,6 +913,7 @@ typedef enum VXRENDERSTATETYPE {
 
     VXRENDERSTATE_CLIPPLANEENABLE   = 152, ///< Enable user-defined clipping planes (DWORD mask)
     VXRENDERSTATE_INDEXVBLENDENABLE = 167, ///< Enable indexed vertex blending (TRUE/FALSE)
+    VXRENDERSTATE_COLORWRITEENABLE  = 168, ///< Color channel write mask (R=1, G=2, B=4, A=8)
     VXRENDERSTATE_TWEENFACTOR       = 170, ///< Vertex tween factor stored as float bits.
     VXRENDERSTATE_BLENDOP           = 171, ///< Set blending operation (VXBLENDOP)
 
