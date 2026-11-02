@@ -29,6 +29,13 @@ if (VXMATH_ENABLE_SIMD AND
         NOT VXMATH_EFFECTIVE_SIMD_LEVEL STREQUAL "NONE" AND
         VXMATH_EFFECTIVE_SIMD_PROVIDER STREQUAL "SIMDE")
     add_subdirectory(simde EXCLUDE_FROM_ALL)
+    if(VXMATH_INSTALL)
+        # The simde subdirectory is EXCLUDE_FROM_ALL, so its own install rules
+        # do not run when installing the SDK from a parent project.
+        install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/simde/simde"
+                DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}" COMPONENT Development
+                FILES_MATCHING PATTERN "*.h")
+    endif()
     list(APPEND VXMATH_DEP_EXPORTED_TARGETS simde)
     set(VXMATH_SIMDE_ENABLED ON)
     set(VXMATH_SIMDE_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/simde")
