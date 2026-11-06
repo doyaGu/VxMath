@@ -5,13 +5,13 @@
  * Part 1: Scalar inline bodies (moved from VxBbox.h).
  * Part 2: SIMD-accelerated bounding-box operations.
  *
- * This file uses the same VXBBOX_IMPL include guard as the original
- * VxBbox.h layout to prevent double-definition.
+ * The VXBBOX_INL include guard prevents duplicate definitions.
  *
  * Included automatically at the bottom of VxBbox.h - do not include directly.
  */
 
-#pragma once
+#ifndef VXBBOX_INL
+#define VXBBOX_INL
 
 // =============================================================================
 // Part 1 - Scalar Inline Implementations
@@ -496,3 +496,5 @@ VX_SIMD_INLINE void VxSIMDBboxTransformFrom(VxBbox *dest, const VxBbox *src, con
 }
 
 #endif // VX_SIMD_SSE
+
+#endif // VXBBOX_INL

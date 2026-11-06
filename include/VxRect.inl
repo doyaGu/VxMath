@@ -8,7 +8,8 @@
  * Included automatically at the bottom of VxRect.h - do not include directly.
  */
 
-#pragma once
+#ifndef VXRECT_INL
+#define VXRECT_INL
 
 #if defined(VX_SIMD_SSE)
 VX_SIMD_INLINE void VxSIMDRectTransform(VxRect *rect, const VxRect *destScreen, const VxRect *srcScreen) noexcept;
@@ -500,3 +501,5 @@ VX_SIMD_INLINE void VxSIMDRectTransformFromHomogeneous(VxRect *rect, const VxRec
 }
 
 #endif // VX_SIMD_SSE
+
+#endif // VXRECT_INL

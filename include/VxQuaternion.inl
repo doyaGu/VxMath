@@ -8,7 +8,8 @@
  * Included automatically at the bottom of VxQuaternion.h - do not include directly.
  */
 
-#pragma once
+#ifndef VXQUATERNION_INL
+#define VXQUATERNION_INL
 
 #include "VxSIMD.h"
 
@@ -411,3 +412,5 @@ VX_SIMD_INLINE void VxSIMDSlerpQuaternion(VxQuaternion *result, float t, const V
 }
 
 #endif // VX_SIMD_SSE
+
+#endif // VXQUATERNION_INL

@@ -2,6 +2,7 @@
 #define VXWINDOWFUNCTION_H
 
 #include "VxMathDefines.h"
+#include "VxFPUControlWord.h"
 #include "XString.h"
 
 struct VxImageDescEx;
@@ -70,12 +71,6 @@ VX_EXPORT int VxShowCursor(XBOOL show);
  */
 VX_EXPORT XBOOL VxSetCursor(VXCURSOR_POINTER cursorID);
 
-/// @brief Gets the current Floating-Point Unit (FPU) control word.
-VX_EXPORT XWORD VxGetFPUControlWord();
-/// @brief Sets the Floating-Point Unit (FPU) control word.
-VX_EXPORT void VxSetFPUControlWord(XWORD Fpu);
-/// @brief Sets the FPU control word to a default state (disables exceptions, rounds to nearest, single precision).
-VX_EXPORT void VxSetBaseFPUControlWord();
 
 //-------Library Function
 

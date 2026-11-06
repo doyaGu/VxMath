@@ -8,7 +8,8 @@
  * Included automatically at the bottom of VxRay.h - do not include directly.
  */
 
-#pragma once
+#ifndef VXRAY_INL
+#define VXRAY_INL
 
 #if defined(VX_SIMD_SSE)
 
@@ -172,3 +173,5 @@ VX_SIMD_INLINE float VxSIMDRaySquareDistance(const VxRay *ray, const VxVector *p
 }
 
 #endif // VX_SIMD_SSE
+
+#endif // VXRAY_INL

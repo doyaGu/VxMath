@@ -13,7 +13,8 @@
  * high-level type wrappers.
  */
 
-#pragma once
+#ifndef VXSIMD_INL
+#define VXSIMD_INL
 
 #include <string.h>
 
@@ -1020,3 +1021,5 @@ VX_SIMD_INLINE XBOOL VxSIMDPtInRect(const CKRECT *rect, const CKPOINT *pt) noexc
 }
 
 #endif // VX_SIMD_SSE
+
+#endif // VXSIMD_INL

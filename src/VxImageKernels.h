@@ -1,4 +1,5 @@
-#pragma once
+#ifndef VXIMAGEKERNELS_H
+#define VXIMAGEKERNELS_H
 
 #include "VxMath.h"
 
@@ -11,3 +12,5 @@ XBOOL VxGenerateMipMap16Rgb565SSE2(const VxImageDescEx &src_desc, XBYTE *Buffer)
 XBOOL VxGenerateMipMap24Rgb888SSSE3(const VxImageDescEx &src_desc, XBYTE *Buffer);
 XBOOL VxFillLuminance32SSE2(const XBYTE *row, int width, int *luminance);
 XBOOL VxFillLuminance24SSSE3(const XBYTE *row, int width, int *luminance);
+
+#endif // VXIMAGEKERNELS_H

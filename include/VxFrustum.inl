@@ -10,7 +10,8 @@
  * Included automatically at the bottom of VxFrustum.h - do not include directly.
  */
 
-#pragma once
+#ifndef VXFRUSTUM_INL
+#define VXFRUSTUM_INL
 
 #include "VxSIMD.h"
 #include "VxRect.h"
@@ -600,3 +601,5 @@ VX_SIMD_INLINE void VxSIMDProjectBoxZExtents(const VxMatrix *worldProjection, co
 }
 
 #endif // VX_SIMD_SSE
+
+#endif // VXFRUSTUM_INL

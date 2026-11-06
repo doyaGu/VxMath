@@ -8,7 +8,8 @@
  * Included automatically at the bottom of VxPlane.h - do not include directly.
  */
 
-#pragma once
+#ifndef VXPLANE_INL
+#define VXPLANE_INL
 
 #if defined(VX_SIMD_SSE)
 VX_SIMD_INLINE void VxSIMDPlaneCreateFromPoint(VxPlane *plane, const VxVector *normal, const VxVector *point) noexcept;
@@ -371,3 +372,5 @@ VX_SIMD_INLINE float VxSIMDPlaneXClassify(const VxPlane *plane, const VxVector b
 }
 
 #endif // VX_SIMD_SSE
+
+#endif // VXPLANE_INL
