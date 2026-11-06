@@ -1,4 +1,4 @@
-#include "VxWindowFunctions.h"
+#include "VxFPUControlWord.h"
 
 #if defined(_MSC_VER) && defined(_M_X64) && !defined(__clang__)
 // MSVC x64 uses the matching leaf procedures in VxFPUControlWordWin64.asm.
@@ -8,6 +8,9 @@
 #pragma comment(linker, "/EXPORT:?VxSetBaseFPUControlWord@@YAXXZ")
 #endif
 #else
+#if !defined(__i386__) && !defined(__x86_64__) && !(defined(_MSC_VER) && defined(_M_IX86))
+static thread_local XWORD vxSoftwareControlWord = 0x037F;
+#endif
 XWORD VxGetFPUControlWord() {
 #if defined(__i386__) || defined(__x86_64__)
     XWORD controlWord;
@@ -18,7 +21,7 @@ XWORD VxGetFPUControlWord() {
     __asm fstcw controlWord
     return controlWord;
 #else
-    return 0x027F;
+    return vxSoftwareControlWord;
 #endif
 }
 
@@ -28,7 +31,7 @@ void VxSetFPUControlWord(XWORD Fpu) {
 #elif defined(_MSC_VER) && defined(_M_IX86)
     __asm fldcw Fpu
 #else
-    (void)Fpu;
+    vxSoftwareControlWord = Fpu;
 #endif
 }
 

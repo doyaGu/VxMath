@@ -41,6 +41,11 @@ if (VXMATH_ENABLE_SIMD AND
     set(VXMATH_SIMDE_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/simde")
 endif ()
 
+if (VXMATH_ENABLE_X87_EMULATION)
+    add_subdirectory(softfloat)
+    list(APPEND VXMATH_DEP_EXPORTED_TARGETS vx_softfloat)
+endif ()
+
 # Export dep targets to parent scope so the top-level CMakeLists.txt can include
 # them in the export set.
 set(VXMATH_DEP_EXPORTED_TARGETS ${VXMATH_DEP_EXPORTED_TARGETS} PARENT_SCOPE)

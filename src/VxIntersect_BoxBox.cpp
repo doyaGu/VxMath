@@ -11,6 +11,9 @@
 #include "VxSIMD.h"
 #include "VxSIMDDispatchInternal.h"
 #include "VxIntersectDispatchStateInternal.h"
+#if VXMATH_ENABLE_X87_EMULATION
+#include "VxOBBOverlap.h"
+#endif
 
 constexpr float kHugeT = 1.0e30f;
 constexpr float kSegmentMaxT = 1.0f + EPSILON;
@@ -1296,6 +1299,9 @@ namespace {
 
 template <bool kUseSIMD>
 static XBOOL OBBOBBCore(const VxOBB &box1, const VxOBB &box2) {
+#if VXMATH_ENABLE_X87_EMULATION
+    return VxOBBOverlap(box1, box2);
+#else
 #if defined(VX_SIMD_SSE) && !defined(VX_SIMD_SSE2)
     float Tx = 0.0f;
     float Ty = 0.0f;
@@ -1545,6 +1551,7 @@ static XBOOL OBBOBBCore(const VxOBB &box1, const VxOBB &box2) {
         if (fabs(projection) > radius[0] + radius[1]) return FALSE;
     }
     return TRUE;
+#endif
 #endif
 }
 

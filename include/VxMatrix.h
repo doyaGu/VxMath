@@ -1,4 +1,4 @@
-﻿#ifndef VXMATRIX_H
+#ifndef VXMATRIX_H
 #define VXMATRIX_H
 
 #include "VxQuaternion.h"
@@ -25,7 +25,11 @@ inline void Vx3DMatrixIdentity(VxMatrix &Mat);
  * @param Vector Pointer to the input vector to transform.
  * @remarks Ignores the matrix's fourth column, writes only XYZ, and supports ResultVector == Vector.
  */
+#if VXMATH_ENABLE_X87_EMULATION
+VX_EXPORT void Vx3DMultiplyMatrixVector(VxVector *ResultVector, const VxMatrix &Mat, const VxVector *Vector);
+#else
 inline void Vx3DMultiplyMatrixVector(VxVector *ResultVector, const VxMatrix &Mat, const VxVector *Vector);
+#endif
 
 /**
  * @brief Transforms an array of 3D vectors by a matrix.
@@ -68,7 +72,11 @@ inline void Vx3DMultiplyMatrixVector4(VxVector4 *ResultVector, const VxMatrix &M
  * @param Vector Pointer to the input vector to rotate.
  * @remarks Ignores translation and the fourth column, without normalizing. Writes only XYZ and supports in-place use.
  */
+#if VXMATH_ENABLE_X87_EMULATION
+VX_EXPORT void Vx3DRotateVector(VxVector *ResultVector, const VxMatrix &Mat, const VxVector *Vector);
+#else
 inline void Vx3DRotateVector(VxVector *ResultVector, const VxMatrix &Mat, const VxVector *Vector);
+#endif
 
 /**
  * @brief Rotates an array of 3D vectors by a matrix.
@@ -93,7 +101,11 @@ inline void Vx3DRotateVectorMany(VxVector *ResultVector, const VxMatrix &Mat, co
  * @remarks Applies MatB then MatA using their 3x3 blocks and translations; the last column is [0,0,0,1].
  * Use `Vx3DMultiplyMatrix4()` when projective terms must be preserved.
  */
+#if VXMATH_ENABLE_X87_EMULATION
+VX_EXPORT void Vx3DMultiplyMatrix(VxMatrix &ResultMat, const VxMatrix &MatA, const VxMatrix &MatB);
+#else
 inline void Vx3DMultiplyMatrix(VxMatrix &ResultMat, const VxMatrix &MatA, const VxMatrix &MatB);
+#endif
 
 /**
  * @brief Multiplies two full 4x4 matrices.
@@ -110,7 +122,11 @@ inline void Vx3DMultiplyMatrix4(VxMatrix &ResultMat, const VxMatrix &MatA, const
  * @param Mat The matrix to invert; its fourth column is ignored.
  * @remarks An exactly singular linear transform leaves InverseMat unchanged. InverseMat may alias Mat.
  */
+#if VXMATH_ENABLE_X87_EMULATION
+VX_EXPORT void Vx3DInverseMatrix(VxMatrix &InverseMat, const VxMatrix &Mat);
+#else
 inline void Vx3DInverseMatrix(VxMatrix &InverseMat, const VxMatrix &Mat);
+#endif
 
 /**
  * @brief Computes the determinant of the upper-left 3x3 linear transform.

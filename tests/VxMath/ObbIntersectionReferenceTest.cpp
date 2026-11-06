@@ -1,3 +1,4 @@
+#include "VxFPUControlWord.h"
 #ifndef VX_OBB_OBB_NATIVE_PROBE
 #ifndef VX_LIB
 #define VX_LIB 1
@@ -167,6 +168,51 @@ static AOResults OOFootprint(OOFunction fn) {
 }
 #endif
 #ifndef VX_OBB_OBB_NATIVE_PROBE
+#if VXMATH_ENABLE_X87_EMULATION
+// Snapshots from the specified original DLL, including finite overflow and
+// contact rounding; the vertex oracle intentionally has different boundaries.
+static void OOCheckOriginal(OOFunction function)
+{
+    const XWORD saved = VxGetFPUControlWord();
+    const XWORD words[] = {0x007f, 0x027f, 0x037f};
+    for (int mode = 0; mode < 3; ++mode) {
+        VxSetFPUControlWord(words[mode]);
+        const AOResults grid = OOGrid(function);
+        EXPECT_EQ(51450, grid.samples);
+        EXPECT_EQ(mode == 0 ? 49 : 112, grid.errors);
+        EXPECT_EQ(mode == 0 ? 735904768u : 3784622691u, grid.digest);
+        const AOResults results[] = {OOScales(function), OOWide(function), OOContacts(function), OOReparam(function), OOCross(function)};
+        const int samples[] = {450, 12, 50, 480, 9};
+        const unsigned digests[] = {425239363u, 2279203325u, 2536671137u, 72054565u, 3370484223u};
+        for (int i = 0; i < 5; ++i) {
+            EXPECT_EQ(samples[i], results[i].samples);
+            EXPECT_EQ(i == 1 ? 6 : 0, results[i].errors);
+            EXPECT_EQ(digests[i], results[i].digest);
+        }
+    }
+    VxSetFPUControlWord(saved);
+}
+TEST(ObbIntersectionReference, ScalarMatchesOriginalSnapshots) { OOCheckOriginal(OBBOBBCore<false>); }
+#if defined(VX_SIMD_SSE)
+TEST(ObbIntersectionReference, SimdMatchesOriginalSnapshots) { OOCheckOriginal(OBBOBBCore<true>); }
+#endif
+TEST(ObbIntersectionReference, PublicForwarderMatchesOriginalSnapshots) { OOCheckOriginal(VxIntersect::OBBOBB); }
+#if defined(_WIN32)
+TEST(ObbIntersectionReference, ReadonlyExactFootprints) { EXPECT_EQ(0, OOFootprint(VxIntersect::OBBOBB).errors); }
+TEST(ObbIntersectionReference, ActualCurrentDllExport) {
+    HMODULE dll = LoadLibraryA("VxMath.dll"); ASSERT_NE(nullptr, dll);
+#if defined(_WIN64)
+    const char *symbol = "?OBBOBB@VxIntersect@@SAHAEBVVxOBB@@0@Z";
+#else
+    const char *symbol = "?OBBOBB@VxIntersect@@SAHABVVxOBB@@0@Z";
+#endif
+    OOFunction function = reinterpret_cast<OOFunction>(GetProcAddress(dll, symbol));
+    ASSERT_NE(nullptr, function);
+    OOCheckOriginal(function);
+    EXPECT_NE(0, FreeLibrary(dll));
+}
+#endif
+#else
 static void OOCheck(AOResults r) { EXPECT_EQ(r.errors,0); ::testing::Test::RecordProperty("samples",r.samples); ::testing::Test::RecordProperty("digest",std::to_string(r.digest)); }
 TEST(ObbIntersectionReference, ScalarVertexProjectionAndSymmetry) { OOCheck(OOGrid(OBBOBBCore<false>)); }
 TEST(ObbIntersectionReference, ScalarEquivalentScales) { OOCheck(OOScales(OBBOBBCore<false>)); }
@@ -211,4 +257,5 @@ TEST(ObbIntersectionReference, ActualCurrentDllExport) {
     EXPECT_NE(FreeLibrary(dll),0);
 }
 #endif
+#endif // VXMATH_ENABLE_X87_EMULATION
 #endif

@@ -8,7 +8,8 @@
  * Included automatically at the bottom of VxMatrix.h - do not include directly.
  */
 
-#pragma once
+#ifndef VXMATRIX_INL
+#define VXMATRIX_INL
 
 #include "VxSIMD.h"
 
@@ -241,6 +242,7 @@ inline void Vx3DMultiplyMatrixVector4(VxVector4 *ResultVector, const VxMatrix &M
 #endif
 }
 
+#if !VXMATH_ENABLE_X87_EMULATION
 inline void Vx3DRotateVector(VxVector *ResultVector, const VxMatrix &Mat, const VxVector *Vector) {
 #if defined(VX_SIMD_SSE)
     VxSIMDRotateVectorM(ResultVector, &Mat, Vector);
@@ -254,7 +256,9 @@ inline void Vx3DRotateVector(VxVector *ResultVector, const VxMatrix &Mat, const 
     *ResultVector = temp;
 #endif
 }
+#endif
 
+#if !VXMATH_ENABLE_X87_EMULATION
 inline void Vx3DMultiplyMatrixVector(VxVector *ResultVector, const VxMatrix &Mat, const VxVector *Vector) {
 #if defined(VX_SIMD_SSE)
     VxSIMDMultiplyMatrixVector(ResultVector, &Mat, Vector);
@@ -268,7 +272,9 @@ inline void Vx3DMultiplyMatrixVector(VxVector *ResultVector, const VxMatrix &Mat
     *ResultVector = temp;
 #endif
 }
+#endif
 
+#if !VXMATH_ENABLE_X87_EMULATION
 inline void Vx3DMultiplyMatrix(VxMatrix &ResultMat, const VxMatrix &MatA, const VxMatrix &MatB) {
 #if defined(VX_SIMD_SSE)
     VxSIMDMultiplyMatrixM(&ResultMat, &MatA, &MatB);
@@ -284,6 +290,7 @@ inline void Vx3DMultiplyMatrix(VxMatrix &ResultMat, const VxMatrix &MatA, const 
     ResultMat = temp;
 #endif
 }
+#endif
 
 inline void Vx3DMultiplyMatrix4(VxMatrix &ResultMat, const VxMatrix &MatA, const VxMatrix &MatB) {
 #if defined(VX_SIMD_SSE)
@@ -320,6 +327,7 @@ inline float Vx3DMatrixDeterminant(const VxMatrix &Mat) {
 #endif
 }
 
+#if !VXMATH_ENABLE_X87_EMULATION
 inline void Vx3DInverseMatrix(VxMatrix &InverseMat, const VxMatrix &Mat) {
 #if defined(VX_SIMD_SSE)
     VxSIMDInverseAffineMatrix(&InverseMat, &Mat);
@@ -351,6 +359,7 @@ inline void Vx3DInverseMatrix(VxMatrix &InverseMat, const VxMatrix &Mat) {
     InverseMat = temp;
 #endif
 }
+#endif
 
 inline void Vx3DTransposeMatrix(VxMatrix &Result, const VxMatrix &A) {
 #if defined(VX_SIMD_SSE)
@@ -1505,3 +1514,5 @@ VX_SIMD_INLINE void VxSIMDRotateVectorStrided(VxStridedData *dest, const VxStrid
 }
 
 #endif // VX_SIMD_SSE
+
+#endif // VXMATRIX_INL

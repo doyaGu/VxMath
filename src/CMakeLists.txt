@@ -5,6 +5,8 @@ set(VXMATH_PUBLIC_HEADERS
         ${VX_INCLUDE_DIR}/FixedSizeAllocator.h
         ${VX_INCLUDE_DIR}/VxMemory.h
         ${VX_INCLUDE_DIR}/VxMathDefines.h
+        ${VX_INCLUDE_DIR}/VxFloat80.h
+        ${VX_INCLUDE_DIR}/VxFPUControlWord.h
         ${VX_INCLUDE_DIR}/VxMath.h
         ${VX_INCLUDE_DIR}/VxDefines.h
         ${VX_INCLUDE_DIR}/XUtil.h
@@ -156,6 +158,10 @@ if (CMAKE_CXX_COMPILER_ID STREQUAL "MSVC" AND VXMATH_TARGET_IS_X86 AND CMAKE_SIZ
     list(APPEND VXMATH_PLATFORM_SOURCES VxFPUControlWordWin64.asm)
 endif()
 
+if (VXMATH_ENABLE_X87_EMULATION)
+    list(APPEND VXMATH_COMMON_SOURCES VxFloat80.cpp VxFloat80Math.cpp)
+endif ()
+
 set(VXMATH_SOURCES
         ${VXMATH_COMMON_SOURCES}
         ${VXMATH_RUNTIME_DISPATCH_SOURCES}
@@ -175,6 +181,16 @@ function(vx_add_font_search TARGET_NAME)
 endfunction()
 
 function(vx_configure_target TARGET_NAME)
+    target_compile_definitions(${TARGET_NAME} PUBLIC VXMATH_ENABLE_X87_EMULATION=$<BOOL:${VXMATH_ENABLE_X87_EMULATION}>)
+    if (VXMATH_ENABLE_X87_EMULATION)
+        target_link_libraries(${TARGET_NAME} PRIVATE vx_softfloat)
+        vx_enable_float80_ipo(${TARGET_NAME})
+        if (MSVC)
+            target_compile_options(${TARGET_NAME} PUBLIC /fp:precise)
+        else ()
+            target_compile_options(${TARGET_NAME} PUBLIC -ffp-contract=off)
+        endif ()
+    endif ()
     if (NOT WIN32)
         vx_add_font_search(${TARGET_NAME})
     endif ()
@@ -422,4 +438,12 @@ if (VXMATH_INSTALL)
 
     # Install headers to include root
     install(FILES ${VXMATH_PUBLIC_HEADERS} DESTINATION include COMPONENT Development)
+    if (VXMATH_ENABLE_X87_EMULATION)
+        install(FILES
+                "${PROJECT_SOURCE_DIR}/deps/softfloat/BOCHS-COPYING"
+                "${PROJECT_SOURCE_DIR}/deps/softfloat/BOCHS-LICENSE"
+                "${PROJECT_SOURCE_DIR}/deps/softfloat/cpu/softfloat3e/COPYING.txt"
+                "${PROJECT_SOURCE_DIR}/deps/softfloat/UPSTREAM.json"
+                DESTINATION share/licenses/VxMath/softfloat COMPONENT Development)
+    endif ()
 endif ()

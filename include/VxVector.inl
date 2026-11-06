@@ -8,7 +8,8 @@
  * Included automatically at the bottom of VxVector.h - do not include directly.
  */
 
-#pragma once
+#ifndef VXVECTOR_INL
+#define VXVECTOR_INL
 
 #include "VxSIMD.h"
 #include <string.h>
@@ -171,7 +172,11 @@ inline int operator==(const VxVector &v1, const VxVector &v2) {
 }
 inline int operator!=(const VxVector &v1, const VxVector &v2) { return !(v1 == v2); }
 inline float SquareMagnitude(const VxVector &v) { return v.SquareMagnitude(); }
-inline float Magnitude(const VxVector &v) { return v.Magnitude(); }
+#if !VXMATH_ENABLE_X87_EMULATION
+inline float Magnitude(const VxVector &v) {
+    return v.Magnitude();
+}
+#endif
 inline float InvSquareMagnitude(const VxVector &v) {
 #if defined(VX_SIMD_SSE)
     const __m128 inputXY = _mm_castsi128_ps(_mm_loadl_epi64(reinterpret_cast<const __m128i *>(&v.x)));
@@ -200,6 +205,7 @@ inline float InvMagnitude(const VxVector &v) {
     return static_cast<float>(1.0 / sqrt((x * x + y * y) + z * z));
 #endif
 }
+#if !VXMATH_ENABLE_X87_EMULATION
 inline const VxVector Normalize(const VxVector &v) {
 #if defined(VX_SIMD_SSE)
     const __m128 value = VxSIMDLoadFloat3(&v.x);
@@ -218,6 +224,7 @@ inline const VxVector Normalize(const VxVector &v) {
     return VxVector(static_cast<float>(x / length), static_cast<float>(y / length), static_cast<float>(z / length));
 #endif
 }
+#endif
 inline const VxVector Normalize(const VxVector *vect) { return Normalize(*vect); }
 inline float DotProduct(const VxVector &v1, const VxVector &v2) {
 #if defined(VX_SIMD_SSE)
@@ -880,3 +887,5 @@ VX_SIMD_INLINE void VxSIMDInterpolateVectorArray(void *result, const void *a, co
 }
 
 #endif // VX_SIMD_SSE
+
+#endif // VXVECTOR_INL

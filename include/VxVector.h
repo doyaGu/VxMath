@@ -1,4 +1,4 @@
-﻿#ifndef VXVECTOR_H
+#ifndef VXVECTOR_H
 #define VXVECTOR_H
 
 #include "VxMathDefines.h"
@@ -251,10 +251,15 @@ inline float SquareMagnitude(const VxVector &v);
  * @brief Returns the magnitude (length) of a vector.
  * @param v The vector.
  * @return The length of the vector (sqrt(x*x + y*y + z*z)).
- * @remarks A zero vector has length +0; intermediate squares do not limit the length's range.
+ * @remarks With extended emulation, the squared length is stored as binary32
+ * before the square root, matching the original storage boundary.
  * @see SquareMagnitude()
  */
+#if VXMATH_ENABLE_X87_EMULATION
+VX_EXPORT float Magnitude(const VxVector &v);
+#else
 inline float Magnitude(const VxVector &v);
+#endif
 
 /**
  * @brief Returns the inverse of the squared magnitude of a vector.
@@ -279,10 +284,15 @@ inline float InvMagnitude(const VxVector &v);
  * @param v The vector to normalize.
  * @return A new unit vector pointing in the same direction as v.
  * @warning Returns a vector with NaN components for a null input vector (0,0,0).
- * @remarks Normalizes finite nonzero XYZ across the float range without changing v.
+ * @remarks Extended emulation preserves the original stored binary32 square
+ * and reciprocal. Without emulation, finite nonzero XYZ use wider intermediates.
  * @see VxVector::Normalize(), Magnitude()
  */
+#if VXMATH_ENABLE_X87_EMULATION
+VX_EXPORT const VxVector Normalize(const VxVector &v);
+#else
 inline const VxVector Normalize(const VxVector &v);
+#endif
 inline const VxVector Normalize(const VxVector *vect);
 
 /**

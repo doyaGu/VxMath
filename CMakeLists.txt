@@ -52,6 +52,8 @@ endif ()
 # =============================================================================
 # Project options
 # =============================================================================
+option(VXMATH_ENABLE_X87_EMULATION "Emulate original extended arithmetic on every platform" ON)
+
 option(VXMATH_BUILD_TESTS "Build the test suite" OFF)
 option(VXMATH_BUILD_PERF "Build VxMath performance tools" OFF)
 option(VXMATH_ENABLE_PERF_GATES "Enable VxMath performance gate tests" OFF)
