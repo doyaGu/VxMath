@@ -282,10 +282,12 @@ if (VXMATH_INSTALL)
     include(CMakePackageConfigHelpers)
 
     export(TARGETS ${VXMATH_EXPORTED_TARGETS}
+            NAMESPACE VxMath::
             FILE "${CMAKE_CURRENT_BINARY_DIR}/VxMathTargets.cmake"
     )
 
     install(EXPORT VxMathTargets
+            NAMESPACE VxMath::
             FILE VxMathTargets.cmake
             DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/VxMath
             COMPONENT Development

@@ -2,6 +2,9 @@
 
 # VxMath Package Configuration File
 
+include(CMakeFindDependencyMacro)
+find_dependency(SDL3 CONFIG REQUIRED)
+
 # Include targets
 if(NOT TARGET VxMath::VxMath AND NOT TARGET VxMath::VxMathStatic)
     include("${CMAKE_CURRENT_LIST_DIR}/VxMathTargets.cmake")
