@@ -93,7 +93,7 @@ void Vx3DMultiplyMatrix(VxMatrix &result, const VxMatrix &a, const VxMatrix &b) 
             const __m128 y = _mm_mul_ps(a1, _mm_set1_ps(b[r][1]));
             const __m128 z = _mm_mul_ps(a2, _mm_set1_ps(b[r][2]));
             const __m128 xy = _mm_add_ps(x, y);
-            _mm_storeu_ps(out[r], r == 3 ? _mm_add_ps(_mm_add_ps(z, a3), xy) : _mm_add_ps(xy, z));
+            _mm_storeu_ps(&out[r].x, r == 3 ? _mm_add_ps(_mm_add_ps(z, a3), xy) : _mm_add_ps(xy, z));
         }
 #else
         for (int r = 0; r < 4; ++r)
