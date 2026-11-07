@@ -1,4 +1,5 @@
 #include "gtest/gtest.h"
+#include "VxAtomic.h"
 #include "VxMath.h"
 #include <string> // Used for comparison
 

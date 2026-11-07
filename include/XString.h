@@ -165,7 +165,7 @@ public:
 #if VX_HAS_CXX11
     /** @brief Constructs from a standard string, preserving embedded NULs. */
     XString(const std::string &iSrc) : XBaseString() {
-        const size_t length = std::min(iSrc.size(), (size_t) MAX_LENGTH);
+        const size_t length = (std::min)(iSrc.size(), (size_t) MAX_LENGTH);
         Assign(iSrc.data(), (int) length);
     }
 
@@ -280,7 +280,7 @@ public:
 
     /** @brief Assigns a standard string, preserving embedded NULs. */
     XString &operator=(const std::string &iSrc) {
-        const size_t length = std::min(iSrc.size(), (size_t) MAX_LENGTH);
+        const size_t length = (std::min)(iSrc.size(), (size_t) MAX_LENGTH);
         Assign(iSrc.data(), (int) length);
         return *this;
     }
@@ -293,7 +293,7 @@ public:
     /** @brief Appends a standard string, preserving embedded NULs. */
     XString &operator<<(const std::string &iSrc) {
         const int remaining = GetRemainingLength();
-        const size_t length = std::min(iSrc.size(), (size_t) remaining);
+        const size_t length = (std::min)(iSrc.size(), (size_t) remaining);
         if (length == 0)
             return *this;
         CheckSize(m_Length + (int) length);
@@ -1187,14 +1187,14 @@ protected:
      * @brief Ensures the internal buffer has enough space for a given length.
      * @param iLength The required length, excluding the null terminator.
      */
-    void CheckSize(int iLength);
+    VX_EXPORT void CheckSize(int iLength);
 
     /**
      * @brief Assigns a new value to the string from a buffer and length.
      * @param iBuffer The source buffer to copy from.
      * @param iLength The number of characters to copy.
      */
-    void Assign(const char *iBuffer, int iLength);
+    VX_EXPORT void Assign(const char *iBuffer, int iLength);
 
     /**
      * @brief Clamps a requested length to the valid XString range.
@@ -1209,7 +1209,7 @@ protected:
     /**
      * @brief Returns how many characters can still be appended.
      */
-    int GetRemainingLength() const;
+    VX_EXPORT int GetRemainingLength() const;
 
     /**
      * @brief Checks whether a pointer points into the current internal buffer.
