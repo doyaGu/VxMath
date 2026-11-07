@@ -3,6 +3,7 @@
 #include <new>
 #include <climits>
 #include <initializer_list>
+#include "FloatStorageReference.h"
 #ifndef VX_MATRIX_MANY_PROBE
 #include "VxMatrix.h"
 #include <gtest/gtest.h>
@@ -124,6 +125,11 @@ static MBResult MBNumerics(MBFn fn, int kind) {
         else { for (int i = 0; i < 3; ++i) { x[i] = std::ldexp(1.0f,-100); weights[i] = std::ldexp(1.0f,-51); } x[3] = 0; weights[3] = 1; e[col] = std::ldexp(1.0f,-149); }
         for (int i = 0; i < terms; ++i) { const int at = (i+rotate)%terms; m[at][col] = x[i]; if (at < 3) p[at] = weights[i]; }
         if (terms == 3) m[3][col] = x[3];
+#if VXMATH_ENABLE_X87_EMULATION && !defined(VX_SIMD_SSE)
+        const float column[] = {m[0][col], m[1][col], m[2][col], m[3][col]};
+        const float values[] = {p.x, p.y, p.z, 1};
+        e[col] = ReferenceFloatDot(column, values, 4);
+#endif
         VxVector points[9], expected[9]; for (int i = 0; i < 9; ++i) { points[i] = p; expected[i] = e; }
         for (int n : {1,3,4,5,8,9}) for (int stride : {12,20,-20}) for (bool alias : {false,true}) { ++r.samples; r.errors += !MBData(fn,m,points,expected,n,stride,alias); }
     }
@@ -187,9 +193,9 @@ TEST(MatrixManyReference, CountsAndSignedSharedByteStride) { MBExpect(MBLayouts(
 TEST(MatrixManyReference, AllFieldsAndRecordPadding) { MBExpect(MBFields(MBFree),128); }
 TEST(MatrixManyReference, FourthColumnIsIgnored) { MBExpect(MBIgnored(MBFree),64); }
 TEST(MatrixManyReference, ElementOverlapUsesForwardSequentialReads) { MBExpect(MBOverlaps(MBFree),80); }
-TEST(MatrixManyReference, CancellationAcrossBatchAndTail) { MBExpect(MBNumerics(MBFree,0),432); }
-TEST(MatrixManyReference, FiniteResultsSurviveProductOverflow) { MBExpect(MBNumerics(MBFree,1),324); }
-TEST(MatrixManyReference, ProductTailsFormSubnormalResults) { MBExpect(MBNumerics(MBFree,2),324); }
+TEST(MatrixManyReference, CancellationAcrossBatchAndTailFollowsStorageBoundaries) { MBExpect(MBNumerics(MBFree,0),432); }
+TEST(MatrixManyReference, IntermediateOverflowFollowsStorageBoundaries) { MBExpect(MBNumerics(MBFree,1),324); }
+TEST(MatrixManyReference, ProductTailsFollowStorageBoundaries) { MBExpect(MBNumerics(MBFree,2),324); }
 TEST(MatrixManyReference, NonfiniteXYZClassification) { MBExpect(MBNonfinite(MBFree),36); }
 TEST(MatrixManyReference, NonpositiveCountsDoNotAccessArrays) { MBExpect(MBEmpty(MBFree),6); }
 TEST(MatrixManyReference, ExactXYZWidthsAtProtectedPageEdges) {

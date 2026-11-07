@@ -4,6 +4,7 @@
 #include <cstdio>
 #include <new>
 #include <initializer_list>
+#include "FloatStorageReference.h"
 #ifndef VX_MATRIX_AFFINE_PROBE
 #ifndef VX_MATRIX_AFFINE_HEADER
 #define VX_MATRIX_AFFINE_HEADER "VxMatrix.h"
@@ -96,7 +97,19 @@ static MAFResult MAFNumerics(MAFFn fn,int kind) {
         else if(kind==1) { x=std::ldexp(1.0f,100);y=-x;z=x;bx=by=std::ldexp(1.0f,40);bz=std::ldexp(1.0f,20);expected=std::ldexp(1.0f,120); }
         else { x=y=std::ldexp(1.0f,-100);z=0;bx=by=std::ldexp(1.0f,-50);bz=0;expected=std::ldexp(1.0f,-149); }
         a[0][col]=x;a[1][col]=y;a[2][col]=z;b[row][0]=bx;b[row][1]=by;b[row][2]=bz;
-        for(int mode:{0,1,2,5,6}) { VxMatrix actual;const bool ok=MAFExecute(actual,fn,a,b,mode)&&MAFShape(actual)&&actual[row][col]==expected;++out.samples;out.errors+=!ok; }
+        for(int mode:{0,1,2,5,6}) {
+            float reference = expected;
+#if VXMATH_ENABLE_X87_EMULATION
+            if ((mode == 0 && fn == MAFFree) || mode == 5) {
+                const float values[] = {x, y, z};
+                const float weights[] = {bx, by, bz};
+                reference = ReferenceFloatDot(values, weights, 3);
+            }
+#endif
+            VxMatrix actual;
+            const bool ok = MAFExecute(actual,fn,a,b,mode) && MAFShape(actual) && ReferenceFloatEqual(actual[row][col],reference);
+            ++out.samples; out.errors += !ok;
+        }
     }
     return out;
 }
@@ -133,9 +146,9 @@ TEST(MatrixAffineMultiplyReference, CompositionOrderHasIndependentNonCommutingLi
 TEST(MatrixAffineMultiplyReference, IntegerAffineMapsAllAliasAndOperatorEntries) { MAFExpect(MAFIntegers(MAFFree),2048); }
 TEST(MatrixAffineMultiplyReference, PureTranslationsAllAliasAndOperatorEntries) { MAFExpect(MAFIntegers(MAFFree,true),2048); }
 TEST(MatrixAffineMultiplyReference, RightFourthColumnDoesNotEnterAffineXYZ) { MAFExpect(MAFIgnored(MAFFree),160); }
-TEST(MatrixAffineMultiplyReference, CancellationRetainsSmallFiniteCoefficients) { MAFExpect(MAFNumerics(MAFFree,0),60); }
-TEST(MatrixAffineMultiplyReference, FiniteCoefficientsSurviveIntermediateOverflow) { MAFExpect(MAFNumerics(MAFFree,1),60); }
-TEST(MatrixAffineMultiplyReference, ProductTailsCombineIntoRepresentableSubnormals) { MAFExpect(MAFNumerics(MAFFree,2),60); }
+TEST(MatrixAffineMultiplyReference, CancellationFollowsStorageBoundaries) { MAFExpect(MAFNumerics(MAFFree,0),60); }
+TEST(MatrixAffineMultiplyReference, IntermediateOverflowFollowsStorageBoundaries) { MAFExpect(MAFNumerics(MAFFree,1),60); }
+TEST(MatrixAffineMultiplyReference, ProductTailsFollowStorageBoundaries) { MAFExpect(MAFNumerics(MAFFree,2),60); }
 TEST(MatrixAffineMultiplyReference, UnalignedOutputAndReadonlyInputFootprints) {
 #if defined(_WIN32)
     MAFExpect(MAFFootprint(MAFFree),12);

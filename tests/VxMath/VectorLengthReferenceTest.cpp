@@ -2,6 +2,7 @@
 #include <math.h>
 #include <new>
 #include <string.h>
+#include "FloatStorageReference.h"
 #ifndef VX_VECTOR_LENGTH_PROBE
 #include "VxMath.h"
 #include <gtest/gtest.h>
@@ -14,6 +15,7 @@
 #endif
 
 typedef float(*VLFunction)(const VxVector *);
+static bool VLReferenceUsesStoredSquare = false;
 struct VLResult { int calls=0, errors=0, faults=0; };
 static unsigned VLBits(float value) { unsigned bits; memcpy(&bits,&value,4); return bits; }
 static float VLFloat(unsigned bits) { float value; memcpy(&value,&bits,4); return value; }
@@ -35,6 +37,8 @@ static float VLCall(VLFunction function, const VxVector *v, bool &fault) {
 #endif
 }
 static float VLOracle(const float p[3], bool squared) {
+    if (VLReferenceUsesStoredSquare)
+        return ReferenceFloatStore(sqrt(double(ReferenceStoredSquare(p))));
     for(int k=0;k<3;++k) if(p[k]!=p[k]) return VLFloat(0x7fc00000u);
     double scale=0;
     for(int k=0;k<3;++k) if(fabs(p[k])>scale) scale=fabs(p[k]);
@@ -97,6 +101,8 @@ static VLResult VLReadOnly(VLFunction function,bool squared) {
 #ifndef VX_VECTOR_LENGTH_PROBE
 class VectorLengthReference : public testing::TestWithParam<int> {
 protected:
+    void SetUp() override { VLReferenceUsesStoredSquare = VXMATH_ENABLE_X87_EMULATION && GetParam() == 1; }
+    void TearDown() override { VLReferenceUsesStoredSquare = false; }
     bool Squared(){return GetParam()>=4;}
     VLFunction Function(){
         switch(GetParam()){

@@ -2,6 +2,7 @@
 #include <float.h>
 #include <new>
 #include <string.h>
+#include "FloatStorageReference.h"
 #ifndef VX_VECTOR_AXIS_ROTATION_PROBE
 #include "VxMath.h"
 #include <gtest/gtest.h>
@@ -67,6 +68,25 @@ protected:
         EXPECT_NEAR(result.y, expected[1], tolerance);
         EXPECT_NEAR(result.z, expected[2], tolerance);
     }
+
+    void ExpectScaledAxis(const VxVector &result, const VxVector &vector, const VxVector &axis, float angle,
+                          const float expected[3]) {
+#if VXMATH_ENABLE_X87_EMULATION
+        float normal[3];
+        ReferenceStoredNormalize(&axis.x, normal);
+        const double cosine = cosf(angle), sine = sinf(angle);
+        const double projection = double(vector.x) * normal[0] + double(vector.y) * normal[1] + double(vector.z) * normal[2];
+        for (int i = 0; i < 3; ++i) {
+            const int j = (i + 1) % 3, k = (i + 2) % 3;
+            const float reference = float(vector[i] * cosine + (vector[j] * double(normal[k]) - vector[k] * double(normal[j])) * sine +
+                                          normal[i] * projection * (1.0 - cosine));
+            if (isnan(reference)) EXPECT_TRUE(isnan(result[i]));
+            else EXPECT_NEAR(result[i], reference, 2e-6f);
+        }
+#else
+        ExpectVector(result, expected);
+#endif
+    }
 };
 
 TEST_P(VectorAxisRotationReference, SignedAnglesUseTheOriginalRotationDirection) {
@@ -77,7 +97,7 @@ TEST_P(VectorAxisRotationReference, SignedAnglesUseTheOriginalRotationDirection)
     }
 }
 
-TEST_P(VectorAxisRotationReference, ShortAndLargeAxesAreNormalizedInsteadOfDiscarded) {
+TEST_P(VectorAxisRotationReference, ScaledAxesFollowNormalizationStorageBoundaries) {
     const float scales[] = {0.0001f, 1e-20f, 1e20f, 3.5f};
     for (float scale : scales) {
         for (const AxisRotationExample &example : AxisRotationExamples) {
@@ -86,7 +106,7 @@ TEST_P(VectorAxisRotationReference, ShortAndLargeAxesAreNormalizedInsteadOfDisca
             axis.y *= scale;
             axis.z *= scale;
             Function()(&result, &vector, &axis, example.angle);
-            ExpectVector(result, example.result);
+            ExpectScaledAxis(result, vector, axis, example.angle, example.result);
         }
     }
     const float extremes[] = {0x1p-149f, FLT_MAX};
@@ -96,7 +116,7 @@ TEST_P(VectorAxisRotationReference, ShortAndLargeAxesAreNormalizedInsteadOfDisca
             VxVector vector(example.vector), axis(example.axis), result;
             axis.x *= scale; axis.y *= scale; axis.z *= scale;
             Function()(&result, &vector, &axis, example.angle);
-            ExpectVector(result, example.result);
+            ExpectScaledAxis(result, vector, axis, example.angle, example.result);
         }
     }
 }

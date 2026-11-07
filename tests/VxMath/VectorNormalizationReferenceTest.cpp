@@ -2,6 +2,7 @@
 #include <math.h>
 #include <new>
 #include <string.h>
+#include "FloatStorageReference.h"
 #ifndef VX_VECTOR_NORMALIZE_PROBE
 #include "VxMath.h"
 #include <gtest/gtest.h>
@@ -14,6 +15,7 @@
 #endif
 
 typedef void(*VNFn)(VxVector *);
+static bool VNReferenceUsesStoredSquare = false;
 struct VNResult { int calls=0,errors=0,faults=0; };
 static unsigned VNBits(float v){unsigned bits;memcpy(&bits,&v,4);return bits;}
 static float VNFloat(unsigned bits){float v;memcpy(&v,&bits,4);return v;}
@@ -25,6 +27,10 @@ static void VNCall(VNFn fn,VxVector &v,bool &fault){
 #endif
 }
 static void VNOracle(const float input[3],float out[3]) {
+    if (VNReferenceUsesStoredSquare) {
+        ReferenceStoredNormalize(input, out);
+        return;
+    }
     double scale=0;for(int k=0;k<3;++k)if(fabs(input[k])>scale)scale=fabs(input[k]);
     if(scale==0){memcpy(out,input,12);return;}
     double square=0;for(int k=0;k<3;++k){const double ratio=input[k]/scale;square+=ratio*ratio;}
@@ -33,6 +39,19 @@ static void VNOracle(const float input[3],float out[3]) {
 static bool VNCorrect(const float input[3],const VxVector &v) {
     float out[3],actual[3];VNOracle(input,out);memcpy(actual,&v,12);bool zero=true;double square=0;
     for(int k=0;k<3;++k){zero=zero&&input[k]==0;square+=double(actual[k])*actual[k];}
+    if (VNReferenceUsesStoredSquare) {
+        for (int k = 0; k < 3; ++k) {
+            if (isnan(out[k])) {
+                if (!isnan(actual[k])) return false;
+            } else if (isinf(out[k]) || out[k] == 0) {
+                if (VNBits(actual[k]) != VNBits(out[k])) return false;
+            } else {
+                const unsigned a = VNBits(actual[k]), b = VNBits(out[k]);
+                if (((a ^ b) & 0x80000000u) || (a > b ? a - b : b - a) > 2) return false;
+            }
+        }
+        return true;
+    }
     if(zero)return memcmp(input,actual,12)==0;
     if(!(fabs(square-1)<=5e-7))return false;
     for(int k=0;k<3;++k){

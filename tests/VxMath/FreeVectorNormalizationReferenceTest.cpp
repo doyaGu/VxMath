@@ -84,7 +84,11 @@ static VNResult FNReadOnly(FNFunction function) {
 #ifndef VX_FREE_NORMALIZE_PROBE
 class FreeVectorNormalizationReference : public testing::TestWithParam<int> {
 protected:
-    void SetUp() override { FNInputErrors = 0; }
+    void SetUp() override {
+        FNInputErrors = 0;
+        VNReferenceUsesStoredSquare = VXMATH_ENABLE_X87_EMULATION && GetParam() < 2;
+    }
+    void TearDown() override { VNReferenceUsesStoredSquare = false; }
     VNFn Function() {
 #if defined(VX_SIMD_SSE)
         if (GetParam() == 2) return FNRegisterInPlace;

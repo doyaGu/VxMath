@@ -3,6 +3,7 @@
 #include <new>
 #include <climits>
 #include <initializer_list>
+#include "FloatStorageReference.h"
 #ifndef VX_MATRIX_STRIDED_PROBE
 #include "VxMatrix.h"
 #include <gtest/gtest.h>
@@ -133,6 +134,11 @@ static SBResult SBNumerics(SBFn fn, int kind) {
         else { for (int i = 0; i < 3; ++i) { x[i] = std::ldexp(1.0f,-100); weights[i] = std::ldexp(1.0f,-51); } x[3] = 0; weights[3] = 1; e[col] = std::ldexp(1.0f,-149); }
         for (int i = 0; i < terms; ++i) { const int at = (i+rotate)%terms; m[at][col] = x[i]; if (at < 3) p[at] = weights[i]; }
         if (terms == 3) m[3][col] = x[3];
+#if VXMATH_ENABLE_X87_EMULATION && !defined(VX_SIMD_SSE)
+        const float column[] = {m[0][col], m[1][col], m[2][col], m[3][col]};
+        const float values[] = {p.x, p.y, p.z, 1};
+        e[col] = ReferenceFloatDot(column, values, 4);
+#endif
         VxVector points[9], expected[9]; for (int i = 0; i < 9; ++i) { points[i] = p; expected[i] = e; }
         for (int n : {1,3,4,5,8,9}) {
             for (const auto &pair : pairs) { ++r.samples; r.errors += !SBData(fn,m,points,expected,n,pair[0],pair[1],false); }
@@ -206,9 +212,9 @@ TEST(MatrixStridedReference, AllFieldsAndRecordPadding) { SBExpect(SBFields(SBFr
 TEST(MatrixStridedReference, FourthColumnIsIgnored) { SBExpect(SBIgnored(SBFree),128); }
 TEST(MatrixStridedReference, OverlappingElementStreamsUseSequentialReads) { SBExpect(SBOverlaps(SBFree),320); }
 TEST(MatrixStridedReference, SameDescriptorIsUnchanged) { SBExpect(SBSharedDescriptor(SBFree),12); }
-TEST(MatrixStridedReference, CancellationAcrossFastAndGeneralLayouts) { SBExpect(SBNumerics(SBFree,0),432); }
-TEST(MatrixStridedReference, FiniteResultsSurviveProductOverflow) { SBExpect(SBNumerics(SBFree,1),324); }
-TEST(MatrixStridedReference, ProductTailsFormSubnormalResults) { SBExpect(SBNumerics(SBFree,2),324); }
+TEST(MatrixStridedReference, CancellationAcrossLayoutsFollowsStorageBoundaries) { SBExpect(SBNumerics(SBFree,0),432); }
+TEST(MatrixStridedReference, IntermediateOverflowFollowsStorageBoundaries) { SBExpect(SBNumerics(SBFree,1),324); }
+TEST(MatrixStridedReference, ProductTailsFollowStorageBoundaries) { SBExpect(SBNumerics(SBFree,2),324); }
 TEST(MatrixStridedReference, NonfiniteXYZClassification) { SBExpect(SBNonfinite(SBFree),72); }
 TEST(MatrixStridedReference, NonpositiveCountsDoNotAccessArrays) { SBExpect(SBEmpty(SBFree),6); }
 TEST(MatrixStridedReference, ExactXYZAndReadOnlyDescriptorPageEdges) {

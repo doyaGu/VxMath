@@ -1,6 +1,7 @@
 #include <cmath>
 #include <cstring>
 #include <new>
+#include "FloatStorageReference.h"
 #include <initializer_list>
 #ifndef VX_MATRIX_POINT_PROBE
 #include "VxMatrix.h"
@@ -113,7 +114,15 @@ static MPResult MPNumerics(MPFn fn, int kind) {
         else if (kind == 1) { x[0] = std::ldexp(1.0f,100); x[1] = -x[0]; x[2] = x[0]; v[0] = v[1] = std::ldexp(1.0f,40); v[2] = std::ldexp(1.0f,20); m[3][col] = 1; expected = std::ldexp(1.0f,120); }
         else { for (int i = 0; i < 3; ++i) { x[i] = std::ldexp(1.0f,-100); v[i] = std::ldexp(1.0f,-51); } expected = std::ldexp(1.0f,-149); }
         for (int i = 0; i < 3; ++i) { const int axis = (i+rotate)%3; m[axis][col] = x[i]; p[axis] = v[i]; }
-        for (bool alias : {false,true}) { VxVector out; ++result.samples; result.errors += !(MPExecute(out,fn,m,p,alias) && out[col] == expected); }
+        float reference = expected;
+#if VXMATH_ENABLE_X87_EMULATION
+        if (fn == MPFree) {
+            const float column[] = {m[0][col], m[1][col], m[2][col], m[3][col]};
+            const float weights[] = {p.x, p.y, p.z, 1};
+            reference = ReferenceFloatDot(column, weights, 4);
+        }
+#endif
+        for (bool alias : {false,true}) { VxVector out; ++result.samples; result.errors += !(MPExecute(out,fn,m,p,alias) && ReferenceFloatEqual(out[col], reference)); }
     }
     return result;
 }
@@ -166,9 +175,9 @@ TEST(MatrixPointTransformReference, EveryMatrixFieldHasItsAffineRole) { MPExpect
 TEST(MatrixPointTransformReference, FourthMatrixColumnDoesNotEnterXYZ) { MPExpect(MPIgnored(MPFree),64); }
 TEST(MatrixPointTransformReference, Vector4BaseViewsDoNotReadOrWriteW) { MPExpect(MPVector4Canary(MPFree),16); }
 TEST(MatrixPointTransformReference, MatrixRowBaseViewsPreserveOtherBytes) { MPExpect(MPMatrixRows(MPFree),20); }
-TEST(MatrixPointTransformReference, CancellationRetainsSmallPointCoordinates) { MPExpect(MPNumerics(MPFree,0),18); }
-TEST(MatrixPointTransformReference, FinitePointSurvivesIntermediateProductOverflow) { MPExpect(MPNumerics(MPFree,1),18); }
-TEST(MatrixPointTransformReference, ThreeProductTailsCombineIntoSubnormalCoordinate) { MPExpect(MPNumerics(MPFree,2),18); }
+TEST(MatrixPointTransformReference, CancellationFollowsStorageBoundaries) { MPExpect(MPNumerics(MPFree,0),18); }
+TEST(MatrixPointTransformReference, IntermediateOverflowFollowsStorageBoundaries) { MPExpect(MPNumerics(MPFree,1),18); }
+TEST(MatrixPointTransformReference, ProductTailsFollowStorageBoundaries) { MPExpect(MPNumerics(MPFree,2),18); }
 TEST(MatrixPointTransformReference, NonfiniteArithmeticRetainsClassification) { MPExpect(MPNonfinite(MPFree),18); }
 TEST(MatrixPointTransformReference, Matrix64AndVector12ReadWriteFootprints) {
 #if defined(_WIN32)

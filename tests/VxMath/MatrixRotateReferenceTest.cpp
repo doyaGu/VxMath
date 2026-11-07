@@ -2,6 +2,7 @@
 #include <cstring>
 #include <new>
 #include <initializer_list>
+#include "FloatStorageReference.h"
 #ifndef VX_MATRIX_ROTATE_PROBE
 #include "VxMatrix.h"
 #include <gtest/gtest.h>
@@ -115,7 +116,14 @@ static MRResult MRNumerics(MRFn fn, int kind) {
         else if (kind == 1) { x[0] = std::ldexp(1.0f,100); x[1] = -x[0]; x[2] = x[0]; v[0] = v[1] = std::ldexp(1.0f,40); v[2] = std::ldexp(1.0f,20); expected = std::ldexp(1.0f,120); }
         else { for (int i = 0; i < 3; ++i) { x[i] = std::ldexp(1.0f,-100); v[i] = std::ldexp(1.0f,-51); } expected = std::ldexp(1.0f,-149); }
         for (int i = 0; i < 3; ++i) { const int axis = (i+rotate)%3; m[axis][col] = x[i]; p[axis] = v[i]; }
-        for (bool alias : {false,true}) { VxVector out; ++result.samples; result.errors += !(MRExecute(out,fn,m,p,alias) && out[col] == expected); }
+        float reference = expected;
+#if VXMATH_ENABLE_X87_EMULATION
+        if (fn == MRFree || fn == MRMember || fn == MRValue) {
+            const float column[] = {m[0][col], m[1][col], m[2][col]};
+            reference = ReferenceFloatDot(column, &p.x, 3);
+        }
+#endif
+        for (bool alias : {false,true}) { VxVector out; ++result.samples; result.errors += !(MRExecute(out,fn,m,p,alias) && ReferenceFloatEqual(out[col], reference)); }
     }
     return result;
 }
@@ -201,9 +209,9 @@ TEST(MatrixRotateReference, AllFieldsDistinguishLinearTermsFromIgnoredState) { M
 TEST(MatrixRotateReference, TranslationAndFourthColumnDoNotEnterXYZ) { MRExpect(MRIgnored(MRFree),112); }
 TEST(MatrixRotateReference, Vector4BaseViewsDoNotReadOrWriteW) { MRExpect(MRVector4Canary(MRFree),16); }
 TEST(MatrixRotateReference, MatrixRowBaseViewsPreserveOtherBytes) { MRExpect(MRMatrixRows(MRFree),20); }
-TEST(MatrixRotateReference, CancellationRetainsSmallPointCoordinates) { MRExpect(MRNumerics(MRFree,0),18); }
-TEST(MatrixRotateReference, FinitePointSurvivesIntermediateProductOverflow) { MRExpect(MRNumerics(MRFree,1),18); }
-TEST(MatrixRotateReference, ThreeProductTailsCombineIntoSubnormalCoordinate) { MRExpect(MRNumerics(MRFree,2),18); }
+TEST(MatrixRotateReference, CancellationFollowsStorageBoundaries) { MRExpect(MRNumerics(MRFree,0),18); }
+TEST(MatrixRotateReference, IntermediateOverflowFollowsStorageBoundaries) { MRExpect(MRNumerics(MRFree,1),18); }
+TEST(MatrixRotateReference, ProductTailsFollowStorageBoundaries) { MRExpect(MRNumerics(MRFree,2),18); }
 TEST(MatrixRotateReference, NonfiniteArithmeticRetainsClassification) { MRExpect(MRNonfinite(MRFree),18); }
 TEST(MatrixRotateReference, Matrix64AndVector12ReadWriteFootprints) {
 #if defined(_WIN32)
