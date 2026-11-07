@@ -131,16 +131,21 @@ if (VXMATH_ENABLE_SIMD AND NOT VXMATH_EFFECTIVE_SIMD_LEVEL STREQUAL "NONE")
     endif ()
 
     # VxBlitEngineSSSE3.cpp uses SSSE3 intrinsics directly.
-    # Add -mssse3 only when:
+    # Enable SSSE3 only when:
     #  1) target architecture is x86-family, and
-    #  2) the compiler front-end actually accepts -mssse3.
+    #  2) the compiler front-end accepts the instruction-set option.
     # Use APPEND so we don't clobber other per-file compile options.
-    if (VXMATH_EFFECTIVE_SIMD_PROVIDER STREQUAL "NATIVE" AND NOT MSVC AND VXMATH_TARGET_IS_X86)
-        check_cxx_compiler_flag("-mssse3" VXMATH_HAS_MSSSE3_FLAG)
+    if (VXMATH_EFFECTIVE_SIMD_PROVIDER STREQUAL "NATIVE" AND
+            NOT CMAKE_CXX_COMPILER_ID STREQUAL "MSVC" AND VXMATH_TARGET_IS_X86)
+        set(_vx_ssse3_flag "-mssse3")
+        if (MSVC)
+            set(_vx_ssse3_flag "/clang:-mssse3")
+        endif ()
+        check_cxx_compiler_flag("${_vx_ssse3_flag}" VXMATH_HAS_MSSSE3_FLAG)
         if (VXMATH_HAS_MSSSE3_FLAG)
             set_property(
                     SOURCE VxBlitEngineSSSE3.cpp VxImageKernelsSSE2.cpp
-                    APPEND PROPERTY COMPILE_OPTIONS "-mssse3"
+                    APPEND PROPERTY COMPILE_OPTIONS "${_vx_ssse3_flag}"
             )
         endif ()
     endif ()
@@ -332,7 +337,11 @@ function(vx_apply_simd_flags TARGET_NAME)
     endif ()
 
     # Apply flags (PRIVATE - consumers set their own /arch if they want intrinsics)
-    if (MSVC AND _msvc_flag)
+    if (MSVC AND CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+        foreach (_flag IN LISTS _gcc_flags)
+            target_compile_options(${TARGET_NAME} PRIVATE "/clang:${_flag}")
+        endforeach ()
+    elseif (MSVC AND _msvc_flag)
         target_compile_options(${TARGET_NAME} PRIVATE $<$<COMPILE_LANGUAGE:C,CXX>:${_msvc_flag}>)
     elseif (NOT MSVC)
         target_compile_options(${TARGET_NAME} PRIVATE ${_gcc_flags})
