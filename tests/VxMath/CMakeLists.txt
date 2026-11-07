@@ -826,3 +826,9 @@ vx_copy_runtime_dependencies(ConfigLifecycleReferenceTest)
 
 vx_add_test(ConfigurationCompatibilityTest SOURCES ConfigurationCompatibilityTest.cpp)
 vx_copy_runtime_dependencies(ConfigurationCompatibilityTest)
+
+if (NOT TEST_TARGET STREQUAL "VxMath_GroundTruth")
+    vx_add_test(ArithmeticPolicyTest SOURCES
+            ../numerics/ArithmeticPolicyTest.cpp
+            ../numerics/ScalarPackedConsumerTest.cpp)
+endif ()
