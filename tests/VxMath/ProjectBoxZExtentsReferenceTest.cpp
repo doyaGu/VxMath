@@ -1,5 +1,6 @@
 #include <float.h>
 #include <math.h>
+#include <stdio.h>
 #include <string.h>
 #include <new>
 #ifndef VX_PROJECT_Z_PROBE
@@ -149,7 +150,11 @@ static PZResult PZLiteral(PZFn fn) {
         ++r.calls;
         const bool ok=PZCall(fn,m,b,lo,hi);
         r.faults+=!ok;
-        r.errors+=!ok || PZBits(lo)!=PZBits(expectedLo) || PZBits(hi)!=PZBits(expectedHi);
+        const bool different = !ok || PZBits(lo)!=PZBits(expectedLo) || PZBits(hi)!=PZBits(expectedHi);
+        r.errors += different;
+        if (different)
+            fprintf(stderr, "Project Z literal case %d: got %08x/%08x, expected %08x/%08x\n",
+                    kind, PZBits(lo), PZBits(hi), PZBits(expectedLo), PZBits(expectedHi));
     }
     return r;
 }

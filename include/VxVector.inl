@@ -599,7 +599,7 @@ VX_SIMD_INLINE void VxSIMDNormalizeVector(VxVector *v) noexcept {
         const __m128d length = _mm_sqrt_sd(square, square);
         const __m128d inverse = _mm_div_sd(_mm_set_sd(1), length);
         const __m128 resultXY = _mm_cvtpd_ps(_mm_mul_pd(xy, _mm_unpacklo_pd(inverse, inverse)));
-        const __m128 resultZ = _mm_cvtsd_ss(_mm_setzero_ps(), _mm_mul_sd(z, inverse));
+        const __m128 resultZ = VxSIMDConvertScalarDoubleToFloat(_mm_setzero_ps(), _mm_mul_sd(z, inverse));
         VxSIMDStoreFloat3(&v->x, _mm_movelh_ps(resultXY, resultZ));
     }
 }

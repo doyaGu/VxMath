@@ -420,10 +420,10 @@ VX_SIMD_INLINE void VxSIMDFrustumTransform(VxFrustum *frustum, const VxMatrix *i
         const __m128d squareXY = _mm_mul_pd(xy, xy);
         const __m128d sum = _mm_add_sd(_mm_add_sd(squareXY, _mm_unpackhi_pd(squareXY, squareXY)), _mm_mul_sd(z, z));
         const __m128d length = _mm_sqrt_sd(sum, sum);
-        lengths[i] = _mm_cvtss_f32(_mm_cvtsd_ss(_mm_setzero_ps(), length));
+        lengths[i] = _mm_cvtss_f32(VxSIMDConvertScalarDoubleToFloat(_mm_setzero_ps(), length));
         if (_mm_comigt_sd(length, _mm_setzero_pd())) {
             const __m128 normalizedXY = _mm_cvtpd_ps(_mm_div_pd(xy, _mm_unpacklo_pd(length, length)));
-            const __m128 normalizedZ = _mm_cvtsd_ss(_mm_setzero_ps(), _mm_div_sd(z, length));
+            const __m128 normalizedZ = VxSIMDConvertScalarDoubleToFloat(_mm_setzero_ps(), _mm_div_sd(z, length));
             VxSIMDStoreFloat3(&axes[i]->x, _mm_movelh_ps(normalizedXY, normalizedZ));
         } else {
             *axes[i] = VxVector::axis0();
@@ -577,7 +577,7 @@ VX_SIMD_INLINE void VxSIMDProjectBoxZExtents(const VxMatrix *worldProjection, co
         }
         const __m128d a = points[0], b = points[1];
         const __m128d z = _mm_unpacklo_pd(a,b), w = _mm_unpackhi_pd(a,b);
-        const __m128d front = _mm_cmpnlt_pd(w,zero);
+        const __m128d front = VxSIMDCompareNotLessDouble(w,zero);
         const __m128d denominator = _mm_or_pd(_mm_and_pd(front,w),_mm_andnot_pd(front,one));
         const __m128 value = _mm_cvtpd_ps(_mm_div_pd(_mm_and_pd(front,z),denominator));
         _mm_storel_epi64(reinterpret_cast<__m128i *>(projected+i),_mm_castps_si128(value));

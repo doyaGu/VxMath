@@ -232,7 +232,7 @@ static XBOOL FacePlaneIntersectionCore(const VxRay &ray, const VxVector &pt0, co
         const __m128d parameter = _mm_set1_pd(t);
         const __m128d pXY = _mm_add_pd(oXY, _mm_mul_pd(dXY, parameter));
         const __m128d pZ = _mm_add_sd(oZ, _mm_mul_sd(dZ, parameter));
-        VxSIMDStoreFloat3(&res.x, _mm_movelh_ps(_mm_cvtpd_ps(pXY), _mm_cvtsd_ss(_mm_setzero_ps(), pZ)));
+        VxSIMDStoreFloat3(&res.x, _mm_movelh_ps(_mm_cvtpd_ps(pXY), VxSIMDConvertScalarDoubleToFloat(_mm_setzero_ps(), pZ)));
         return TRUE;
     }
 #endif

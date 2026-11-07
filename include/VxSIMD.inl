@@ -20,6 +20,26 @@
 
 #if defined(VX_SIMD_SSE)
 
+#if defined(VX_SIMD_SSE2)
+VX_SIMD_INLINE __m128 VxSIMDConvertScalarDoubleToFloat(__m128 unchanged, __m128d value) noexcept {
+#if defined(VX_SIMD_USE_SIMDE) && defined(SIMDE_ARM_NEON_A64V8_NATIVE)
+    // FCVTXN rounds to odd; geometry storage requires the normal float conversion.
+    return _mm_move_ss(unchanged, _mm_set_ss(static_cast<float>(_mm_cvtsd_f64(value))));
+#else
+    return _mm_cvtsd_ss(unchanged, value);
+#endif
+}
+
+VX_SIMD_INLINE __m128d VxSIMDCompareNotLessDouble(__m128d a, __m128d b) noexcept {
+#if defined(VX_SIMD_USE_SIMDE) && defined(SIMDE_ARM_NEON_A64V8_NATIVE)
+    // Not-less includes unordered lanes, unlike an ordered greater-or-equal test.
+    return _mm_xor_pd(_mm_cmplt_pd(a, b), _mm_castsi128_pd(_mm_set1_epi32(-1)));
+#else
+    return _mm_cmpnlt_pd(a, b);
+#endif
+}
+#endif
+
 // ============================================================================
 // Vector Load / Store
 // ============================================================================

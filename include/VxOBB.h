@@ -78,10 +78,10 @@ public:
             const __m128d squared = _mm_add_sd(_mm_add_sd(squaredXY, _mm_unpackhi_pd(squaredXY, squaredXY)), _mm_mul_sd(z, z));
             const __m128d length = _mm_sqrt_sd(squared, squared);
             const __m128 normalizedXY = _mm_cvtpd_ps(_mm_div_pd(xy, _mm_unpacklo_pd(length, length)));
-            const __m128 normalizedZ = _mm_cvtsd_ss(_mm_setzero_ps(), _mm_div_sd(z, length));
+            const __m128 normalizedZ = VxSIMDConvertScalarDoubleToFloat(_mm_setzero_ps(), _mm_div_sd(z, length));
             VxSIMDStoreFloat3(&m_Axis[i].x, _mm_movelh_ps(normalizedXY, normalizedZ));
             const double halfsize = (double(box.Max[i]) - box.Min[i]) * 0.5;
-            m_Extents[i] = _mm_cvtss_f32(_mm_cvtsd_ss(_mm_setzero_ps(), _mm_mul_sd(length, _mm_set_sd(halfsize))));
+            m_Extents[i] = _mm_cvtss_f32(VxSIMDConvertScalarDoubleToFloat(_mm_setzero_ps(), _mm_mul_sd(length, _mm_set_sd(halfsize))));
         }
 #elif defined(VX_SIMD_SSE)
         m_Axis[0] = *(VxVector *) &mat[0][0];
@@ -127,11 +127,11 @@ public:
                 const __m128d products = _mm_mul_pd(xy, _mm_cvtps_pd(axis));
                 const __m128d dot = _mm_add_sd(_mm_add_sd(products, _mm_unpackhi_pd(products, products)),
                     _mm_mul_sd(z, _mm_cvtps_pd(_mm_movehl_ps(axis, axis))));
-                const float projection = _mm_cvtss_f32(_mm_cvtsd_ss(_mm_setzero_ps(), dot));
+                const float projection = _mm_cvtss_f32(VxSIMDConvertScalarDoubleToFloat(_mm_setzero_ps(), dot));
                 if (XAbs(projection) > m_Extents[i]) return FALSE;
             }
         } else {
-            const __m128 d = _mm_movelh_ps(_mm_cvtpd_ps(xy), _mm_cvtsd_ss(_mm_setzero_ps(), z));
+            const __m128 d = _mm_movelh_ps(_mm_cvtpd_ps(xy), VxSIMDConvertScalarDoubleToFloat(_mm_setzero_ps(), z));
             for (int i = 0; i < 3; ++i) {
                 if (XAbs(_mm_cvtss_f32(VxSIMDDotProduct3(d, VxSIMDLoadFloat3(&m_Axis[i].x)))) > m_Extents[i]) return FALSE;
             }

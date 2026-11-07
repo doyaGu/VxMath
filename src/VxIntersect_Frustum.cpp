@@ -331,10 +331,10 @@ static XBOOL FrustumOBBSIMDCore(const VxFrustum &frustum, const VxBbox &box, con
         const __m128d length = _mm_sqrt_sd(square, _mm_add_sd(_mm_add_sd(square, _mm_unpackhi_pd(square, square)), _mm_mul_sd(z, z)));
         if (_mm_comineq_sd(length, _mm_setzero_pd())) {
             const __m128 nXY = _mm_cvtpd_ps(_mm_div_pd(xy, _mm_unpacklo_pd(length, length)));
-            const __m128 nZ = _mm_cvtsd_ss(_mm_setzero_ps(), _mm_div_sd(z, length));
+            const __m128 nZ = VxSIMDConvertScalarDoubleToFloat(_mm_setzero_ps(), _mm_div_sd(z, length));
             VxSIMDStoreFloat3(&axes[i]->x, _mm_movelh_ps(nXY, nZ));
         }
-        halfSize[i] = _mm_cvtss_f32(_mm_cvtsd_ss(_mm_setzero_ps(), _mm_mul_sd(_mm_set_sd(halfSize[i]), length)));
+        halfSize[i] = _mm_cvtss_f32(VxSIMDConvertScalarDoubleToFloat(_mm_setzero_ps(), _mm_mul_sd(_mm_set_sd(halfSize[i]), length)));
     }
 #else
     const float len0 = sqrtf(VxSIMDDot3Scalar(axis0V, axis0V));

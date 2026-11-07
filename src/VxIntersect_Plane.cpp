@@ -284,7 +284,7 @@ static XBOOL RayPlaneSIMDCore(const VxRay &ray, const VxPlane &plane, VxVector &
     const __m128d parameter = _mm_set1_pd(t);
     const __m128d pointXY = _mm_add_pd(originXY, _mm_mul_pd(directionXY, parameter));
     const __m128d pointZ = _mm_add_sd(originZ, _mm_mul_sd(directionZ, parameter));
-    VxSIMDStoreFloat3(&point.x, _mm_movelh_ps(_mm_cvtpd_ps(pointXY), _mm_cvtsd_ss(_mm_setzero_ps(), pointZ)));
+    VxSIMDStoreFloat3(&point.x, _mm_movelh_ps(_mm_cvtpd_ps(pointXY), VxSIMDConvertScalarDoubleToFloat(_mm_setzero_ps(), pointZ)));
 #else
     point = VxSIMDPointOnRay(ray, t);
 #endif
@@ -325,7 +325,7 @@ static XBOOL RayPlaneCulledSIMDCore(const VxRay &ray, const VxPlane &plane, VxVe
     const __m128d parameter = _mm_set1_pd(t);
     const __m128d pointXY = _mm_add_pd(originXY, _mm_mul_pd(directionXY, parameter));
     const __m128d pointZ = _mm_add_sd(originZ, _mm_mul_sd(directionZ, parameter));
-    VxSIMDStoreFloat3(&point.x, _mm_movelh_ps(_mm_cvtpd_ps(pointXY), _mm_cvtsd_ss(_mm_setzero_ps(), pointZ)));
+    VxSIMDStoreFloat3(&point.x, _mm_movelh_ps(_mm_cvtpd_ps(pointXY), VxSIMDConvertScalarDoubleToFloat(_mm_setzero_ps(), pointZ)));
 #else
     point = VxSIMDPointOnRay(ray, t);
 #endif
@@ -368,7 +368,7 @@ static XBOOL SegmentPlaneSIMDCore(const VxRay &ray, const VxPlane &plane, VxVect
     const __m128d parameter = _mm_set1_pd(t);
     const __m128d pointXY = _mm_add_pd(originXY, _mm_mul_pd(directionXY, parameter));
     const __m128d pointZ = _mm_add_sd(originZ, _mm_mul_sd(directionZ, parameter));
-    VxSIMDStoreFloat3(&point.x, _mm_movelh_ps(_mm_cvtpd_ps(pointXY), _mm_cvtsd_ss(_mm_setzero_ps(), pointZ)));
+    VxSIMDStoreFloat3(&point.x, _mm_movelh_ps(_mm_cvtpd_ps(pointXY), VxSIMDConvertScalarDoubleToFloat(_mm_setzero_ps(), pointZ)));
 #else
     point = VxSIMDPointOnRay(ray, t);
 #endif
@@ -411,7 +411,7 @@ static XBOOL SegmentPlaneCulledSIMDCore(const VxRay &ray, const VxPlane &plane, 
     const __m128d parameter = _mm_set1_pd(t);
     const __m128d pointXY = _mm_add_pd(originXY, _mm_mul_pd(directionXY, parameter));
     const __m128d pointZ = _mm_add_sd(originZ, _mm_mul_sd(directionZ, parameter));
-    VxSIMDStoreFloat3(&point.x, _mm_movelh_ps(_mm_cvtpd_ps(pointXY), _mm_cvtsd_ss(_mm_setzero_ps(), pointZ)));
+    VxSIMDStoreFloat3(&point.x, _mm_movelh_ps(_mm_cvtpd_ps(pointXY), VxSIMDConvertScalarDoubleToFloat(_mm_setzero_ps(), pointZ)));
 #else
     point = VxSIMDPointOnRay(ray, t);
 #endif
@@ -450,7 +450,7 @@ static XBOOL LinePlaneSIMDCore(const VxRay &ray, const VxPlane &plane, VxVector 
     const __m128d parameter = _mm_set1_pd(t);
     const __m128d pointXY = _mm_add_pd(originXY, _mm_mul_pd(directionXY, parameter));
     const __m128d pointZ = _mm_add_sd(originZ, _mm_mul_sd(directionZ, parameter));
-    VxSIMDStoreFloat3(&point.x, _mm_movelh_ps(_mm_cvtpd_ps(pointXY), _mm_cvtsd_ss(_mm_setzero_ps(), pointZ)));
+    VxSIMDStoreFloat3(&point.x, _mm_movelh_ps(_mm_cvtpd_ps(pointXY), VxSIMDConvertScalarDoubleToFloat(_mm_setzero_ps(), pointZ)));
 #else
     point = VxSIMDPointOnRay(ray, t);
 #endif
@@ -553,7 +553,7 @@ static XBOOL PlanesSIMDCore(const VxPlane &plane1, const VxPlane &plane2, const 
         numeratorZ = _mm_add_sd(numeratorZ, _mm_mul_sd(crossZ[i], _mm_set_sd(-double(planes[i]->m_D))));
     }
     const __m128 xy = _mm_cvtpd_ps(_mm_div_pd(numeratorXY, _mm_set1_pd(determinant)));
-    const __m128 z = _mm_cvtsd_ss(_mm_setzero_ps(), _mm_div_sd(numeratorZ, _mm_set_sd(determinant)));
+    const __m128 z = VxSIMDConvertScalarDoubleToFloat(_mm_setzero_ps(), _mm_div_sd(numeratorZ, _mm_set_sd(determinant)));
     VxSIMDStoreFloat3(&p.x, _mm_movelh_ps(xy, z));
     return TRUE;
 #else

@@ -205,9 +205,17 @@ TEST_F(SIMDAlignedMemoryTest, VxNewAligned_ZeroSize) {
 }
 
 TEST_F(SIMDAlignedMemoryTest, VxDeleteAligned_HandleNull) {
-    // Should not crash on null
+    void *before = VxNewAligned(32, 16);
+    ASSERT_NE(before, nullptr);
+    memset(before, 0x5a, 32);
     VxDeleteAligned(nullptr);
-    SUCCEED() << "VxDeleteAligned(nullptr) did not crash";
+    for (int i = 0; i < 32; ++i)
+        EXPECT_EQ(static_cast<unsigned char *>(before)[i], 0x5a);
+    VxDeleteAligned(before);
+    void *after = VxNewAligned(32, 16);
+    ASSERT_NE(after, nullptr);
+    EXPECT_EQ(reinterpret_cast<uintptr_t>(after) % 16, 0);
+    VxDeleteAligned(after);
 }
 
 TEST_F(SIMDAlignedMemoryTest, VxNewAligned_MemoryIsWritable) {
@@ -316,3 +324,24 @@ TEST(SIMDInlineFunctions, Vector4OperationsWork) {
 }
 
 #endif // VX_SIMD_SSE
+
+#if defined(VX_SIMD_SSE2)
+TEST(SIMDConversions, DoubleNarrowingUsesNearestRoundingAndPreservesOtherLanes) {
+    const struct { double input; uint32_t expected; } samples[] = {
+        {1e300, 0x7f800000u}, {-1e300, 0xff800000u}, {1e-300, 0u}, {-1e-300, 0x80000000u},
+        {0x1.000001p0, 0x3f800000u}, {0x1.000003p0, 0x3f800002u}
+    };
+    const uint32_t original[] = {0x3f800000u, 0x7fc12345u, 0x80000000u, 0x7f800000u};
+    float lanes[4];
+    memcpy(lanes, original, sizeof(lanes));
+    for (const auto &sample : samples) {
+        const __m128 result = VxSIMDConvertScalarDoubleToFloat(_mm_loadu_ps(lanes), _mm_set_sd(sample.input));
+        float values[4];
+        _mm_storeu_ps(values, result);
+        uint32_t bits[4];
+        memcpy(bits, values, sizeof(bits));
+        EXPECT_EQ(bits[0], sample.expected);
+        for (int i = 1; i < 4; ++i) EXPECT_EQ(bits[i], original[i]);
+    }
+}
+#endif

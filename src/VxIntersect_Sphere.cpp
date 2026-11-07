@@ -326,7 +326,7 @@ static int RaySphereSIMDCore(const VxRay &iRay, const VxSphere &iSphere, VxVecto
     const __m128d closestZ = _mm_add_sd(originZ, _mm_mul_sd(directionZ, closestT));
     const __m128d offsetXY = _mm_mul_pd(directionXY, _mm_unpacklo_pd(offsetT, offsetT));
     const __m128d offsetZ = _mm_mul_sd(directionZ, offsetT);
-    const __m128 first = _mm_movelh_ps(_mm_cvtpd_ps(_mm_sub_pd(closestXY, offsetXY)), _mm_cvtsd_ss(_mm_setzero_ps(), _mm_sub_sd(closestZ, offsetZ)));
+    const __m128 first = _mm_movelh_ps(_mm_cvtpd_ps(_mm_sub_pd(closestXY, offsetXY)), VxSIMDConvertScalarDoubleToFloat(_mm_setzero_ps(), _mm_sub_sd(closestZ, offsetZ)));
     if (disc == 0) {
         if (oInter1) VxSIMDStoreFloat3(&oInter1->x, first);
         else if (oInter2) VxSIMDStoreFloat3(&oInter2->x, first);
@@ -334,7 +334,7 @@ static int RaySphereSIMDCore(const VxRay &iRay, const VxSphere &iSphere, VxVecto
     }
     if (oInter1) VxSIMDStoreFloat3(&oInter1->x, first);
     if (oInter2) {
-        const __m128 second = _mm_movelh_ps(_mm_cvtpd_ps(_mm_add_pd(closestXY, offsetXY)), _mm_cvtsd_ss(_mm_setzero_ps(), _mm_add_sd(closestZ, offsetZ)));
+        const __m128 second = _mm_movelh_ps(_mm_cvtpd_ps(_mm_add_pd(closestXY, offsetXY)), VxSIMDConvertScalarDoubleToFloat(_mm_setzero_ps(), _mm_add_sd(closestZ, offsetZ)));
         VxSIMDStoreFloat3(&oInter2->x, second);
     }
     return 2;

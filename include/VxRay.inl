@@ -79,7 +79,7 @@ inline float VxRay::SquareDistance(const VxVector &p) const {
 
 inline float VxRay::Distance(const VxVector &p) const {
 #if defined(VX_SIMD_SSE2)
-    return _mm_cvtss_f32(_mm_cvtsd_ss(_mm_setzero_ps(),
+    return _mm_cvtss_f32(VxSIMDConvertScalarDoubleToFloat(_mm_setzero_ps(),
         _mm_sqrt_sd(_mm_setzero_pd(), VxSIMDRaySquareDistanceDouble(this, &p))));
 #elif defined(VX_SIMD_SSE)
     return sqrtf(VxSIMDRaySquareDistance(this, &p));
@@ -157,7 +157,7 @@ VX_SIMD_INLINE __m128d VxSIMDRaySquareDistanceDouble(const VxRay *ray, const VxV
 
 VX_SIMD_INLINE float VxSIMDRaySquareDistance(const VxRay *ray, const VxVector *point) noexcept {
 #if defined(VX_SIMD_SSE2)
-    return _mm_cvtss_f32(_mm_cvtsd_ss(_mm_setzero_ps(), VxSIMDRaySquareDistanceDouble(ray, point)));
+    return _mm_cvtss_f32(VxSIMDConvertScalarDoubleToFloat(_mm_setzero_ps(), VxSIMDRaySquareDistanceDouble(ray, point)));
 #else
     const __m128 p = VxSIMDLoadFloat3(&point->x);
     const __m128 o = VxSIMDLoadFloat3(&ray->m_Origin.x);

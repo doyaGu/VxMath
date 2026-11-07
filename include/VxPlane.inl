@@ -224,7 +224,7 @@ VX_SIMD_INLINE float VxSIMDPlaneNegativeDot3(__m128 normal, __m128 point) noexce
                                 _mm_cvtps_pd(_mm_movehl_ps(point, point)));
     const __m128d dot = _mm_add_sd(_mm_add_sd(xy, _mm_unpackhi_pd(xy, xy)), z);
     const __m128d negative = _mm_xor_pd(dot, _mm_set_sd(-0.0));
-    return _mm_cvtss_f32(_mm_cvtsd_ss(_mm_setzero_ps(), negative));
+    return _mm_cvtss_f32(VxSIMDConvertScalarDoubleToFloat(_mm_setzero_ps(), negative));
 }
 #endif
 
@@ -264,7 +264,7 @@ VX_SIMD_INLINE void VxSIMDPlaneCreateFromTriangle(VxPlane *plane, const VxVector
     if (_mm_cvtsd_f64(lengthSquared) != 0.0) {
         const __m128d inverse = _mm_div_sd(_mm_set_sd(1.0), _mm_sqrt_sd(lengthSquared, lengthSquared));
         const __m128 xy = _mm_cvtpd_ps(_mm_mul_pd(nxy, _mm_unpacklo_pd(inverse, inverse)));
-        const __m128 z = _mm_cvtsd_ss(_mm_setzero_ps(), _mm_mul_sd(nz, inverse));
+        const __m128 z = VxSIMDConvertScalarDoubleToFloat(_mm_setzero_ps(), _mm_mul_sd(nz, inverse));
         normal = _mm_movelh_ps(xy, z);
     } else {
         normal = _mm_setr_ps(0.0f, 0.0f, 1.0f, 0.0f);

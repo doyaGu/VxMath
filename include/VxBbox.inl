@@ -63,7 +63,7 @@ inline VxVector VxBbox::GetHalfSize() const {
     const __m128 low = VxSIMDLoadFloat3(&Min.x), high = VxSIMDLoadFloat3(&Max.x);
     const __m128 xy = _mm_cvtpd_ps(_mm_mul_pd(_mm_sub_pd(_mm_cvtps_pd(high), _mm_cvtps_pd(low)), _mm_set1_pd(0.5)));
     const __m128d z = _mm_sub_sd(_mm_cvtps_pd(_mm_movehl_ps(high, high)), _mm_cvtps_pd(_mm_movehl_ps(low, low)));
-    const __m128 value = _mm_movelh_ps(xy, _mm_cvtsd_ss(_mm_setzero_ps(), _mm_mul_sd(z, _mm_set_sd(0.5))));
+    const __m128 value = _mm_movelh_ps(xy, VxSIMDConvertScalarDoubleToFloat(_mm_setzero_ps(), _mm_mul_sd(z, _mm_set_sd(0.5))));
     VxVector result; VxSIMDStoreFloat3(&result.x, value); return result;
 #elif defined(VX_SIMD_SSE)
     return (Max - Min) * 0.5f;
@@ -79,7 +79,7 @@ inline VxVector VxBbox::GetCenter() const {
     const __m128 low = VxSIMDLoadFloat3(&Min.x), high = VxSIMDLoadFloat3(&Max.x);
     const __m128 xy = _mm_cvtpd_ps(_mm_mul_pd(_mm_add_pd(_mm_cvtps_pd(high), _mm_cvtps_pd(low)), _mm_set1_pd(0.5)));
     const __m128d z = _mm_add_sd(_mm_cvtps_pd(_mm_movehl_ps(high, high)), _mm_cvtps_pd(_mm_movehl_ps(low, low)));
-    const __m128 value = _mm_movelh_ps(xy, _mm_cvtsd_ss(_mm_setzero_ps(), _mm_mul_sd(z, _mm_set_sd(0.5))));
+    const __m128 value = _mm_movelh_ps(xy, VxSIMDConvertScalarDoubleToFloat(_mm_setzero_ps(), _mm_mul_sd(z, _mm_set_sd(0.5))));
     VxVector result; VxSIMDStoreFloat3(&result.x, value); return result;
 #elif defined(VX_SIMD_SSE)
     return (Max + Min) * 0.5f;

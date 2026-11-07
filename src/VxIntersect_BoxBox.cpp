@@ -366,12 +366,12 @@ static int RayBoxDetailedCore(const VxRay &ray, const VxBbox &box, VxVector &inp
         if (nearT > farT || farT < EPSILON) return 0;
         const __m128d actualXY = _mm_cvtps_pd(direction), actualZ = _mm_cvtps_pd(_mm_movehl_ps(direction, direction));
         const __m128 entryXY = _mm_cvtpd_ps(_mm_add_pd(originXY, _mm_mul_pd(actualXY, _mm_set1_pd(nearT))));
-        const __m128 entryZ = _mm_cvtsd_ss(_mm_setzero_ps(), _mm_add_sd(originZ, _mm_mul_sd(actualZ, _mm_set_sd(nearT))));
+        const __m128 entryZ = VxSIMDConvertScalarDoubleToFloat(_mm_setzero_ps(), _mm_add_sd(originZ, _mm_mul_sd(actualZ, _mm_set_sd(nearT))));
         VxSIMDStoreFloat3(&inpoint.x, _mm_movelh_ps(entryXY, entryZ));
         inpoint[nearAxis] = ray.m_Direction[nearAxis] > 0.0f ? box.Min[nearAxis] : box.Max[nearAxis];
         if (outpoint) {
             const __m128 exitXY = _mm_cvtpd_ps(_mm_add_pd(originXY, _mm_mul_pd(actualXY, _mm_set1_pd(farT))));
-            const __m128 exitZ = _mm_cvtsd_ss(_mm_setzero_ps(), _mm_add_sd(originZ, _mm_mul_sd(actualZ, _mm_set_sd(farT))));
+            const __m128 exitZ = VxSIMDConvertScalarDoubleToFloat(_mm_setzero_ps(), _mm_add_sd(originZ, _mm_mul_sd(actualZ, _mm_set_sd(farT))));
             VxSIMDStoreFloat3(&outpoint->x, _mm_movelh_ps(exitXY, exitZ));
             (*outpoint)[farAxis] = ray.m_Direction[farAxis] > 0.0f ? box.Max[farAxis] : box.Min[farAxis];
         }
@@ -647,12 +647,12 @@ static int SegmentBoxDetailedCore(const VxRay &segment, const VxBbox &box, VxVec
         if (nearT > kSegmentMaxT || (nearT < EPSILON && farT > kSegmentMaxT)) return 0;
         const __m128d actualXY = _mm_cvtps_pd(direction), actualZ = _mm_cvtps_pd(_mm_movehl_ps(direction, direction));
         const __m128 entryXY = _mm_cvtpd_ps(_mm_add_pd(originXY, _mm_mul_pd(actualXY, _mm_set1_pd(nearT))));
-        const __m128 entryZ = _mm_cvtsd_ss(_mm_setzero_ps(), _mm_add_sd(originZ, _mm_mul_sd(actualZ, _mm_set_sd(nearT))));
+        const __m128 entryZ = VxSIMDConvertScalarDoubleToFloat(_mm_setzero_ps(), _mm_add_sd(originZ, _mm_mul_sd(actualZ, _mm_set_sd(nearT))));
         VxSIMDStoreFloat3(&inpoint.x, _mm_movelh_ps(entryXY, entryZ));
         inpoint[nearAxis] = segment.m_Direction[nearAxis] > 0.0f ? box.Min[nearAxis] : box.Max[nearAxis];
         if (outpoint) {
             const __m128 exitXY = _mm_cvtpd_ps(_mm_add_pd(originXY, _mm_mul_pd(actualXY, _mm_set1_pd(farT))));
-            const __m128 exitZ = _mm_cvtsd_ss(_mm_setzero_ps(), _mm_add_sd(originZ, _mm_mul_sd(actualZ, _mm_set_sd(farT))));
+            const __m128 exitZ = VxSIMDConvertScalarDoubleToFloat(_mm_setzero_ps(), _mm_add_sd(originZ, _mm_mul_sd(actualZ, _mm_set_sd(farT))));
             VxSIMDStoreFloat3(&outpoint->x, _mm_movelh_ps(exitXY, exitZ));
             (*outpoint)[farAxis] = segment.m_Direction[farAxis] > 0.0f ? box.Max[farAxis] : box.Min[farAxis];
         }
@@ -905,12 +905,12 @@ static int LineBoxDetailedCore(const VxRay &line, const VxBbox &box, VxVector &i
         }
         const __m128d actualXY = _mm_cvtps_pd(direction), actualZ = _mm_cvtps_pd(_mm_movehl_ps(direction, direction));
         const __m128 entryXY = _mm_cvtpd_ps(_mm_add_pd(originXY, _mm_mul_pd(actualXY, _mm_set1_pd(nearT))));
-        const __m128 entryZ = _mm_cvtsd_ss(_mm_setzero_ps(), _mm_add_sd(originZ, _mm_mul_sd(actualZ, _mm_set_sd(nearT))));
+        const __m128 entryZ = VxSIMDConvertScalarDoubleToFloat(_mm_setzero_ps(), _mm_add_sd(originZ, _mm_mul_sd(actualZ, _mm_set_sd(nearT))));
         VxSIMDStoreFloat3(&inpoint.x, _mm_movelh_ps(entryXY, entryZ));
         inpoint[nearAxis] = nearMax ? box.Max[nearAxis] : box.Min[nearAxis];
         if (outpoint) {
             const __m128 exitXY = _mm_cvtpd_ps(_mm_add_pd(originXY, _mm_mul_pd(actualXY, _mm_set1_pd(farT))));
-            const __m128 exitZ = _mm_cvtsd_ss(_mm_setzero_ps(), _mm_add_sd(originZ, _mm_mul_sd(actualZ, _mm_set_sd(farT))));
+            const __m128 exitZ = VxSIMDConvertScalarDoubleToFloat(_mm_setzero_ps(), _mm_add_sd(originZ, _mm_mul_sd(actualZ, _mm_set_sd(farT))));
             VxSIMDStoreFloat3(&outpoint->x, _mm_movelh_ps(exitXY, exitZ));
             (*outpoint)[farAxis] = farMax ? box.Max[farAxis] : box.Min[farAxis];
         }
