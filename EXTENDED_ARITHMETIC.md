@@ -157,3 +157,7 @@ snapshots, and original OBB query outputs at all three precisions.
 These measure numerical work; whole-game performance is checked separately.
 `ScalarNativeTest` links neither VxMath nor the numerical backend, so an
 accidental dependency from the disabled scalar interface fails at link time.
+
+`tests/scalar` exercises the scalar-only provider without SDL or GoogleTest.
+Configure the same build directory with `VXMATH_ENABLE_X87_EMULATION` set to
+`ON`, `OFF`, then `ON` again to verify consumer rebuilding and backend removal.
