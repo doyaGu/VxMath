@@ -6,6 +6,8 @@ set(VXMATH_PUBLIC_HEADERS
         ${VX_INCLUDE_DIR}/VxMemory.h
         ${VX_INCLUDE_DIR}/VxMathDefines.h
         ${VX_INCLUDE_DIR}/VxFloat80.h
+        ${VX_INCLUDE_DIR}/VxScalar.h
+        ${VX_INCLUDE_DIR}/VxScalar.inl
         ${VX_INCLUDE_DIR}/VxFPUControlWord.h
         ${VX_INCLUDE_DIR}/VxMath.h
         ${VX_INCLUDE_DIR}/VxDefines.h
@@ -160,7 +162,7 @@ if (CMAKE_CXX_COMPILER_ID STREQUAL "MSVC" AND VXMATH_TARGET_IS_X86 AND CMAKE_SIZ
 endif()
 
 if (VXMATH_ENABLE_X87_EMULATION)
-    list(APPEND VXMATH_COMMON_SOURCES VxFloat80.cpp VxFloat80Math.cpp)
+    list(APPEND VXMATH_COMMON_SOURCES VxFloat80Math.cpp)
 endif ()
 
 set(VXMATH_SOURCES
@@ -182,16 +184,7 @@ function(vx_add_font_search TARGET_NAME)
 endfunction()
 
 function(vx_configure_target TARGET_NAME)
-    target_compile_definitions(${TARGET_NAME} PUBLIC VXMATH_ENABLE_X87_EMULATION=$<BOOL:${VXMATH_ENABLE_X87_EMULATION}>)
-    if (VXMATH_ENABLE_X87_EMULATION)
-        target_link_libraries(${TARGET_NAME} PRIVATE vx_softfloat)
-        vx_enable_float80_ipo(${TARGET_NAME})
-        if (MSVC)
-            target_compile_options(${TARGET_NAME} PUBLIC /fp:precise)
-        else ()
-            target_compile_options(${TARGET_NAME} PUBLIC -ffp-contract=off)
-        endif ()
-    endif ()
+    vx_configure_scalar_arithmetic(${TARGET_NAME})
     if (NOT WIN32)
         vx_add_font_search(${TARGET_NAME})
     endif ()

@@ -1,0 +1,48 @@
+include_guard(GLOBAL)
+
+option(VXMATH_ENABLE_X87_EMULATION "Emulate original extended arithmetic on every platform" ON)
+include("${CMAKE_CURRENT_LIST_DIR}/VxFloat80.cmake")
+
+function(vx_configure_scalar_arithmetic target)
+    get_filename_component(scalar_root "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/.." ABSOLUTE)
+    target_include_directories(${target} PUBLIC
+            $<BUILD_INTERFACE:${scalar_root}/include>
+            $<INSTALL_INTERFACE:include>)
+    target_compile_definitions(${target} PUBLIC
+            VXMATH_ENABLE_X87_EMULATION=$<BOOL:${VXMATH_ENABLE_X87_EMULATION}>)
+    if (VXMATH_ENABLE_X87_EMULATION)
+        if (NOT TARGET vx_softfloat)
+            add_subdirectory("${scalar_root}/deps/softfloat" "${CMAKE_CURRENT_BINARY_DIR}/vx-softfloat")
+        endif ()
+        target_sources(${target} PRIVATE "${scalar_root}/src/VxFloat80.cpp")
+        target_link_libraries(${target} PRIVATE vx_softfloat)
+    endif ()
+    if (MSVC)
+        target_compile_options(${target} PUBLIC /fp:precise)
+    else ()
+        target_compile_options(${target} PUBLIC -ffp-contract=off)
+    endif ()
+    vx_enable_float80_ipo(${target})
+endfunction()
+
+# A scalar-only provider for hosts that supply their own vector/matrix ABI.
+# Its interface and numerical implementation are shared with full VxMath.
+function(vx_add_scalar_arithmetic target)
+    get_filename_component(scalar_root "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/.." ABSOLUTE)
+    if (VXMATH_ENABLE_X87_EMULATION)
+        add_library(${target} STATIC)
+        target_compile_features(${target} PUBLIC cxx_std_11)
+        target_compile_definitions(${target} PRIVATE VX_LIB PUBLIC VXMATH_SCALAR_STATIC)
+        set_target_properties(${target} PROPERTIES POSITION_INDEPENDENT_CODE ON)
+        vx_configure_scalar_arithmetic(${target})
+    else ()
+        add_library(${target} INTERFACE)
+        target_include_directories(${target} INTERFACE "${scalar_root}/include")
+        target_compile_definitions(${target} INTERFACE VXMATH_ENABLE_X87_EMULATION=0)
+        if (MSVC)
+            target_compile_options(${target} INTERFACE /fp:precise)
+        else ()
+            target_compile_options(${target} INTERFACE -ffp-contract=off)
+        endif ()
+    endif ()
+endfunction()

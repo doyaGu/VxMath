@@ -8,4 +8,8 @@ VX_EXPORT XWORD VxGetFPUControlWord();
 VX_EXPORT void VxSetFPUControlWord(XWORD Fpu);
 VX_EXPORT void VxSetBaseFPUControlWord();
 
+// Initialize the current thread's default arithmetic environment before
+// constructing runtime objects and after initializing external render drivers.
+VX_EXPORT void VxInitializeMathEnvironment();
+
 #endif

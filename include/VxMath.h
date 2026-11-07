@@ -2,9 +2,7 @@
 #define VXMATH_H
 
 #include "VxMathDefines.h"
-#if VXMATH_ENABLE_X87_EMULATION
-#include "VxFloat80.h"
-#endif
+#include "VxScalar.h"
 
 // Containers
 #include "XP.h"

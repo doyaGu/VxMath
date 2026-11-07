@@ -52,7 +52,7 @@ endif ()
 # =============================================================================
 # Project options
 # =============================================================================
-option(VXMATH_ENABLE_X87_EMULATION "Emulate original extended arithmetic on every platform" ON)
+include(cmake/VxScalar.cmake)
 
 option(VXMATH_BUILD_TESTS "Build the test suite" OFF)
 option(VXMATH_BUILD_PERF "Build VxMath performance tools" OFF)

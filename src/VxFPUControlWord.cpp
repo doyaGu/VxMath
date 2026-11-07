@@ -7,6 +7,7 @@
 #pragma comment(linker, "/EXPORT:?VxSetFPUControlWord@@YAXG@Z")
 #pragma comment(linker, "/EXPORT:?VxSetBaseFPUControlWord@@YAXXZ")
 #endif
+
 #else
 #if !defined(__i386__) && !defined(__x86_64__) && !(defined(_MSC_VER) && defined(_M_IX86))
 static thread_local XWORD vxSoftwareControlWord = 0x037F;
@@ -18,7 +19,9 @@ XWORD VxGetFPUControlWord() {
     return controlWord;
 #elif defined(_MSC_VER) && defined(_M_IX86)
     XWORD controlWord;
-    __asm fstcw controlWord
+    __asm {
+        fstcw controlWord
+    }
     return controlWord;
 #else
     return vxSoftwareControlWord;
@@ -29,7 +32,9 @@ void VxSetFPUControlWord(XWORD Fpu) {
 #if defined(__i386__) || defined(__x86_64__)
     __asm__ __volatile__("fldcw %0" : : "m"(Fpu));
 #elif defined(_MSC_VER) && defined(_M_IX86)
-    __asm fldcw Fpu
+    __asm {
+        fldcw Fpu
+    }
 #else
     vxSoftwareControlWord = Fpu;
 #endif
@@ -42,3 +47,7 @@ void VxSetBaseFPUControlWord() {
         VxSetFPUControlWord(base);
 }
 #endif
+
+void VxInitializeMathEnvironment() {
+    VxSetBaseFPUControlWord();
+}

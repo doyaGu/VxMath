@@ -16,7 +16,41 @@ must be enabled for the original physics replay checks.
 
 ## Interface and state
 
-`VxFloat80.h` provides plain data structures and functions. `VxFloat80` holds
+Consumers compose scalar expressions through `VxScalar.h`: initialize a
+`VxScalarContext`, load float, double or integer inputs, apply scalar operations,
+and store at the required write boundaries. The value and context are plain
+data. Callers do not inspect their representation, select a backend or test
+the emulation build option. With emulation disabled the same interface uses
+native double intermediates and does not link the numerical backend.
+`VxScalarStore` and `VxScalarStoreDouble` provide explicit binary32/binary64
+write boundaries in either mode.
+
+```cpp
+#include "VxScalar.h"
+
+VxScalarContext arithmetic;
+VxScalarInitContext(arithmetic);
+const VxScalar product = VxScalarMultiply(arithmetic,
+    VxScalarLoad(arithmetic, first), VxScalarLoad(arithmetic, second));
+const float result = VxScalarStore(arithmetic,
+    VxScalarAdd(arithmetic, product, VxScalarLoad(arithmetic, offset)));
+```
+
+Keep domain algorithms in their owning module. The scalar interface supplies
+arithmetic primitives and explicit storage; it does not implement behaviors,
+simulation steps or application formulas.
+
+`Normalize(vector, signedLength)` owns the evaluation policy for vector length
+changes. Free normalization and magnitude functions remain library entry points
+in both modes, so a caller's instruction set cannot select another implementation.
+Supported Release builds retain interprocedural optimization in both modes.
+`VxInitializeMathEnvironment` initializes the current thread before
+runtime object construction and after external driver initialization. Hosts
+call these ordinary interfaces without configuring precision registers.
+
+`VxFloat80.h` is the fixed-format backend interface for numerical implementation
+and verification. It is available in emulation builds and provides plain data
+structures and functions. `VxFloat80` holds
 the significand and combined sign/exponent field. `VxFloatContext` holds precision, rounding
 and accumulated exception flags. Neither structure owns resources or allocates
 memory. Initialize a context before using it:
@@ -70,8 +104,15 @@ integer backend. Floating-point contraction is disabled, and supported Release
 builds enable interprocedural optimization across the numerical sources.
 
 The CMake target exports the selected mode to consumers. Rebuild all consumers
-when changing it: emulated matrix and free-vector functions are library entry
-points; disabling emulation retains their existing inline implementations.
+when changing it: scalar representations and the matrix implementation depend
+on that selection. Free magnitude and normalization functions always remain
+library entry points.
+
+`cmake/VxScalar.cmake` also provides `vx_add_scalar_arithmetic(target)` for
+hosts that supply a separate vector/matrix ABI. This target shares the same
+headers and backend source as full VxMath; it does not replace the host's other
+math symbols. Its backend declarations use `VXMATH_SCALAR_STATIC` independently
+of the host's existing DLL imports.
 
 VxMath headers and inline files use matching `#ifndef` / `#define` include
 guards. New interfaces follow the existing global function naming style.
