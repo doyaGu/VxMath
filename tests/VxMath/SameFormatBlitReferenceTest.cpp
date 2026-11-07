@@ -9,6 +9,7 @@
 #endif
 #include "VxMath.h"
 #include "VxSIMDMode.h"
+#include "SIMDModeReference.h"
 
 struct SameFormatLayout {
     int format, bytes, detected;
@@ -97,7 +98,7 @@ protected:
     void SetUp() override {
         previous=VxGetSIMDOverride();
         ASSERT_TRUE(VxSetSIMDOverride(SameModes[GetParam()]));
-        ASSERT_EQ(VxGetSIMDEffectiveBackend(),SameModes[GetParam()]);
+        ASSERT_EQ(VxGetSIMDEffectiveBackend(), ReferenceSIMDMode(SameModes[GetParam()]));
     }
     void TearDown() override {EXPECT_TRUE(VxSetSIMDOverride(previous));}
 };
@@ -199,7 +200,7 @@ static void SameProtectedRows(int mode) {
 #if defined(_WIN32)
     SetErrorMode(SEM_FAILCRITICALERRORS|SEM_NOGPFAULTERRORBOX);
 #endif
-    if(!VxSetSIMDOverride(mode) || VxGetSIMDEffectiveBackend()!=mode)std::_Exit(4);
+    if(!VxSetSIMDOverride(mode) || VxGetSIMDEffectiveBackend()!=ReferenceSIMDMode(mode))std::_Exit(4);
     size_t sourcePage,targetPage;
     XBYTE *source=SameProtectedStorage(sourcePage),*target=SameProtectedStorage(targetPage);
     for(int f=0;f<22;++f)for(int w=0;w<17;++w) {

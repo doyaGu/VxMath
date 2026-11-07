@@ -9,6 +9,7 @@
 #endif
 #include "VxMath.h"
 #include "VxSIMDMode.h"
+#include "SIMDModeReference.h"
 
 static const int PaletteModes[] = {VX_SIMD_MODE_NONE,VX_SIMD_MODE_SSE2,VX_SIMD_MODE_AVX2};
 static const XDWORD PaletteTargetMasks[6][4] = {
@@ -82,7 +83,7 @@ protected:
     int previous;
     void SetUp() override {
         previous=VxGetSIMDOverride();int mode=PaletteModes[GetParam()/6];
-        ASSERT_TRUE(VxSetSIMDOverride(mode));ASSERT_EQ(VxGetSIMDEffectiveBackend(),mode);
+        ASSERT_TRUE(VxSetSIMDOverride(mode));ASSERT_EQ(VxGetSIMDEffectiveBackend(), ReferenceSIMDMode(mode));
     }
     void TearDown() override {EXPECT_TRUE(VxSetSIMDOverride(previous));}
 };
@@ -102,7 +103,7 @@ INSTANTIATE_TEST_SUITE_P(ScalarSSE2AVX2,PaletteNativeLayoutsTest,testing::Range(
 class Paletted32ReferenceTest:public testing::TestWithParam<int> {
 protected:
     int previous;
-    void SetUp() override {previous=VxGetSIMDOverride();ASSERT_TRUE(VxSetSIMDOverride(GetParam()));ASSERT_EQ(VxGetSIMDEffectiveBackend(),GetParam());}
+    void SetUp() override {previous=VxGetSIMDOverride();ASSERT_TRUE(VxSetSIMDOverride(GetParam()));ASSERT_EQ(VxGetSIMDEffectiveBackend(), ReferenceSIMDMode(GetParam()));}
     void TearDown() override {EXPECT_TRUE(VxSetSIMDOverride(previous));}
 };
 
@@ -120,7 +121,7 @@ static void DecodePaletteAtProtectedBoundary(int mode,int bytes) {
     if(mprotect(storage+page,page,PROT_NONE))std::_Exit(4);
 #endif
     XBYTE *palette=storage+page-bytes;palette[0]=3;palette[1]=5;palette[2]=7;if(bytes==4)palette[3]=128;
-    if(!VxSetSIMDOverride(mode)||VxGetSIMDEffectiveBackend()!=mode)std::_Exit(5);
+    if(!VxSetSIMDOverride(mode)||VxGetSIMDEffectiveBackend()!=ReferenceSIMDMode(mode))std::_Exit(5);
     PaletteReferenceImage image(0,bytes,1,9);image.src.ColorMap=palette;
     VxDoBlit(image.src,image.dst);
     bool valid=true;for(int y=0;y<2;++y)for(int x=0;x<9;++x)valid=valid&&image.Pixel(x,y)==PaletteReferencePixel(0,0,bytes);

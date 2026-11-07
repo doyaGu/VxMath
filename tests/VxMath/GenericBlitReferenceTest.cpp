@@ -9,6 +9,7 @@
 #endif
 #include "VxMath.h"
 #include "VxSIMDMode.h"
+#include "SIMDModeReference.h"
 
 static const int GenericModes[] = {VX_SIMD_MODE_NONE, VX_SIMD_MODE_SSE2, VX_SIMD_MODE_AVX2};
 static const XDWORD GenericSourceMasks[4][4] = {
@@ -135,7 +136,7 @@ protected:
         previous = VxGetSIMDOverride();
         int mode = GenericModes[GetParam() / 16];
         ASSERT_TRUE(VxSetSIMDOverride(mode));
-        ASSERT_EQ(VxGetSIMDEffectiveBackend(), mode);
+        ASSERT_EQ(VxGetSIMDEffectiveBackend(), ReferenceSIMDMode(mode));
     }
     void TearDown() override { EXPECT_TRUE(VxSetSIMDOverride(previous)); }
 };
@@ -160,7 +161,7 @@ protected:
     void SetUp() override {
         previous = VxGetSIMDOverride();
         ASSERT_TRUE(VxSetSIMDOverride(GetParam()));
-        ASSERT_EQ(VxGetSIMDEffectiveBackend(), GetParam());
+        ASSERT_EQ(VxGetSIMDEffectiveBackend(), ReferenceSIMDMode(GetParam()));
     }
     void TearDown() override { EXPECT_TRUE(VxSetSIMDOverride(previous)); }
 };
@@ -325,7 +326,7 @@ static void GenericGuardedRows(int mode) {
 #if defined(_WIN32)
     SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOGPFAULTERRORBOX);
 #endif
-    if (!VxSetSIMDOverride(mode) || VxGetSIMDEffectiveBackend() != mode) std::_Exit(4);
+    if (!VxSetSIMDOverride(mode) || VxGetSIMDEffectiveBackend() != ReferenceSIMDMode(mode)) std::_Exit(4);
     size_t sourcePage, targetPage;
     XBYTE *source = GenericProtectedStorage(sourcePage);
     XBYTE *target = GenericProtectedStorage(targetPage);

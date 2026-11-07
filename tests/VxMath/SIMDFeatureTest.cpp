@@ -14,6 +14,7 @@
 #include <cstring>
 
 #include "VxSIMD.h"
+#include "VxAtomic.h"
 #include "SIMDTestCommon.h"
 
 //=============================================================================
@@ -67,16 +68,10 @@ TEST(SIMDFeatureDetection, VxGetSIMDFeatures_ReturnsCachedValue) {
     EXPECT_EQ(ref1.FMA, ref2.FMA);
 }
 
-TEST(SIMDProvider, SIMDeProviderKeepsHardwareFeaturesSeparateFromExecutableModes) {
-#if defined(VX_SIMD_USE_SIMDE)
-#if defined(VX_SIMD_SSE2)
-    SUCCEED() << "SIMDe provider exposes the portable SSE2 intrinsic API";
-#else
-    ADD_FAILURE() << "SIMDe provider must expose the portable SSE2 intrinsic API";
-#endif
-
-#if !defined(VX_SIMD_X86)
+TEST(SIMDProvider, HardwareFeaturesStayIndependentOfExecutableModes) {
+    const int saved = VxGetSIMDOverride();
     const VxSIMDFeatures features = VxDetectSIMDFeatures();
+#if !defined(VX_SIMD_X86)
     EXPECT_FALSE(features.SSE);
     EXPECT_FALSE(features.SSE2);
     EXPECT_FALSE(features.SSSE3);
@@ -84,12 +79,55 @@ TEST(SIMDProvider, SIMDeProviderKeepsHardwareFeaturesSeparateFromExecutableModes
     EXPECT_FALSE(features.AVX);
     EXPECT_FALSE(features.AVX2);
 #endif
-
-    EXPECT_NE(VX_SIMD_MODE_NONE, VxGetSIMDEffectiveBackend())
-        << "SIMDe provider should dispatch to a compiled portable SIMD mode";
-#else
-    GTEST_SKIP() << "SIMDe provider is not enabled for this build";
+    const int modes[] = {VX_SIMD_MODE_NONE, VX_SIMD_MODE_SSE2, VX_SIMD_MODE_SSSE3,
+                         VX_SIMD_MODE_SSE4_1, VX_SIMD_MODE_AVX, VX_SIMD_MODE_AVX2, VX_SIMD_MODE_AUTO};
+    const bool VxSIMDFeatures::*fields[] = {&VxSIMDFeatures::SSE, &VxSIMDFeatures::SSE2,
+        &VxSIMDFeatures::SSE3, &VxSIMDFeatures::SSSE3, &VxSIMDFeatures::SSE4_1, &VxSIMDFeatures::SSE4_2,
+        &VxSIMDFeatures::AVX, &VxSIMDFeatures::AVX2, &VxSIMDFeatures::FMA, &VxSIMDFeatures::AVX512F,
+        &VxSIMDFeatures::XSAVE, &VxSIMDFeatures::OSXSAVE};
+    for (int mode : modes) {
+        EXPECT_TRUE(VxSetSIMDOverride(mode));
+        EXPECT_EQ(VxGetSIMDOverride(), mode);
+        const VxSIMDFeatures actual = VxDetectSIMDFeatures();
+        for (const auto field : fields)
+            EXPECT_EQ(actual.*field, features.*field) << mode;
+        const int effective = VxGetSIMDEffectiveBackend();
+        if (mode == VX_SIMD_MODE_NONE) {
+            EXPECT_EQ(effective, VX_SIMD_MODE_NONE);
+        } else {
+#if defined(VX_SIMD_USE_SIMDE) && defined(VX_SIMD_SSE2)
+            EXPECT_NE(effective, VX_SIMD_MODE_NONE);
+            // Portable modes come from the compiled API, not CPUID.
+            switch (effective) {
+                case VX_SIMD_MODE_SSE2: break;
+#if defined(VX_SIMD_SSSE3)
+                case VX_SIMD_MODE_SSSE3: break;
 #endif
+#if defined(VX_SIMD_SSE4_1)
+                case VX_SIMD_MODE_SSE4_1: break;
+#endif
+#if defined(VX_SIMD_AVX)
+                case VX_SIMD_MODE_AVX: break;
+#endif
+#if defined(VX_SIMD_AVX2)
+                case VX_SIMD_MODE_AVX2: break;
+#endif
+                default: ADD_FAILURE() << "Uncompiled portable mode " << effective;
+            }
+#else
+            switch (effective) {
+                case VX_SIMD_MODE_NONE: break;
+                case VX_SIMD_MODE_SSE2: EXPECT_TRUE(features.SSE2); break;
+                case VX_SIMD_MODE_SSSE3: EXPECT_TRUE(features.SSSE3); break;
+                case VX_SIMD_MODE_SSE4_1: EXPECT_TRUE(features.SSE4_1); break;
+                case VX_SIMD_MODE_AVX: EXPECT_TRUE(features.AVX); break;
+                case VX_SIMD_MODE_AVX2: EXPECT_TRUE(features.AVX2); break;
+                default: ADD_FAILURE() << "Invalid native mode " << effective;
+            }
+#endif
+        }
+    }
+    EXPECT_TRUE(VxSetSIMDOverride(saved));
 }
 
 //=============================================================================

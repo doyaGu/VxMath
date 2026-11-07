@@ -9,6 +9,7 @@
 #endif
 #include "VxMath.h"
 #include "VxSIMDMode.h"
+#include "SIMDModeReference.h"
 
 static const int PackedPaletteModes[] = {VX_SIMD_MODE_NONE, VX_SIMD_MODE_SSE2, VX_SIMD_MODE_AVX2};
 static const XDWORD PackedTargetMasks[6][4] = {
@@ -119,7 +120,7 @@ protected:
         previous = VxGetSIMDOverride();
         int mode = PackedPaletteModes[GetParam() / 2];
         ASSERT_TRUE(VxSetSIMDOverride(mode));
-        ASSERT_EQ(VxGetSIMDEffectiveBackend(), mode);
+        ASSERT_EQ(VxGetSIMDEffectiveBackend(), ReferenceSIMDMode(mode));
     }
     void TearDown() override { EXPECT_TRUE(VxSetSIMDOverride(previous)); }
 };
@@ -239,7 +240,7 @@ static void PackedGuardedDecode(int mode, int bits) {
 #if defined(_WIN32)
     SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOGPFAULTERRORBOX);
 #endif
-    if (!VxSetSIMDOverride(mode) || VxGetSIMDEffectiveBackend() != mode) std::_Exit(4);
+    if (!VxSetSIMDOverride(mode) || VxGetSIMDEffectiveBackend() != ReferenceSIMDMode(mode)) std::_Exit(4);
     size_t sourcePage, palettePage;
     XBYTE *sourceStorage = PackedGuardedStorage(sourcePage);
     XBYTE *paletteStorage = PackedGuardedStorage(palettePage);

@@ -9,6 +9,7 @@
 #endif
 #include "VxMath.h"
 #include "VxSIMDMode.h"
+#include "SIMDModeReference.h"
 
 static const int DXTModes[]={VX_SIMD_MODE_NONE,VX_SIMD_MODE_SSE2,VX_SIMD_MODE_SSSE3,VX_SIMD_MODE_AVX2};
 
@@ -42,7 +43,7 @@ struct DXTPayloadImage {
 class DXTPayloadReferenceTest:public testing::TestWithParam<int> {
 protected:
     int previous;
-    void SetUp() override {previous=VxGetSIMDOverride();ASSERT_TRUE(VxSetSIMDOverride(DXTModes[GetParam()]));ASSERT_EQ(VxGetSIMDEffectiveBackend(),DXTModes[GetParam()]);}
+    void SetUp() override {previous=VxGetSIMDOverride();ASSERT_TRUE(VxSetSIMDOverride(DXTModes[GetParam()]));ASSERT_EQ(VxGetSIMDEffectiveBackend(), ReferenceSIMDMode(DXTModes[GetParam()]));}
     void TearDown() override {EXPECT_TRUE(VxSetSIMDOverride(previous));}
 };
 
@@ -133,7 +134,7 @@ static void DXTProtectedPayloads(int mode) {
 #if defined(_WIN32)
     SetErrorMode(SEM_FAILCRITICALERRORS|SEM_NOGPFAULTERRORBOX);
 #endif
-    if(!VxSetSIMDOverride(mode)||VxGetSIMDEffectiveBackend()!=mode)std::_Exit(4);
+    if(!VxSetSIMDOverride(mode)||VxGetSIMDEffectiveBackend()!=ReferenceSIMDMode(mode))std::_Exit(4);
     size_t sp,dp;XBYTE *source=DXTProtectedStorage(sp),*target=DXTProtectedStorage(dp);
     const int sizes[]={1,3,7,8,9,15,16,17,31,32,33,63,64,65,127};
     for(int format=_DXT1;format<=_DXT5;++format)for(int n=0;n<15;++n)for(int flip=0;flip<2;++flip) {

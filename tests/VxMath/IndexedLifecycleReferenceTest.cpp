@@ -11,6 +11,7 @@
 #endif
 #include "VxMath.h"
 #include "VxSIMDMode.h"
+#include "SIMDModeReference.h"
 
 static const int IndexedModes[]={VX_SIMD_MODE_NONE,VX_SIMD_MODE_SSE2,VX_SIMD_MODE_SSSE3,VX_SIMD_MODE_AVX2};
 
@@ -112,7 +113,7 @@ protected:
     int previous,factor;
     void SetUp() override {
         previous=VxGetSIMDOverride();factor=GetQuantizationSamplingFactor();SetQuantizationSamplingFactor(15);
-        ASSERT_TRUE(VxSetSIMDOverride(IndexedModes[GetParam()]));ASSERT_EQ(VxGetSIMDEffectiveBackend(),IndexedModes[GetParam()]);
+        ASSERT_TRUE(VxSetSIMDOverride(IndexedModes[GetParam()]));ASSERT_EQ(VxGetSIMDEffectiveBackend(), ReferenceSIMDMode(IndexedModes[GetParam()]));
     }
     void TearDown() override {SetQuantizationSamplingFactor(factor);EXPECT_TRUE(VxSetSIMDOverride(previous));}
 };
@@ -189,7 +190,7 @@ static void IndexedProtectedLifecycle(int mode) {
 #if defined(_WIN32)
     SetErrorMode(SEM_FAILCRITICALERRORS|SEM_NOGPFAULTERRORBOX);
 #endif
-    if(!VxSetSIMDOverride(mode)||VxGetSIMDEffectiveBackend()!=mode)std::_Exit(4);
+    if(!VxSetSIMDOverride(mode)||VxGetSIMDEffectiveBackend()!=ReferenceSIMDMode(mode))std::_Exit(4);
     SetQuantizationSamplingFactor(15);size_t sp,dp,pp;
     XBYTE *source=IndexedProtectedStorage(sp),*target=IndexedProtectedStorage(dp),*palette=IndexedProtectedStorage(pp);
     for(int entry=3;entry<=4;++entry)for(int signs=0;signs<4;++signs)for(int flip=0;flip<2;++flip) {

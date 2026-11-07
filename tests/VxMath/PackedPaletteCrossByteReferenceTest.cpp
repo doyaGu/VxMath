@@ -9,6 +9,7 @@
 #endif
 #include "VxMath.h"
 #include "VxSIMDMode.h"
+#include "SIMDModeReference.h"
 
 static const int CrossByteModes[]={VX_SIMD_MODE_NONE,VX_SIMD_MODE_SSE2,VX_SIMD_MODE_SSSE3,VX_SIMD_MODE_AVX2};
 static const XDWORD CrossByteMasks[][4]={
@@ -89,7 +90,7 @@ struct CrossBytePaletteImage {
 class PackedPaletteCrossByteReferenceTest:public testing::TestWithParam<int> {
 protected:
     int previous;
-    void SetUp() override {previous=VxGetSIMDOverride();ASSERT_TRUE(VxSetSIMDOverride(CrossByteModes[GetParam()]));ASSERT_EQ(VxGetSIMDEffectiveBackend(),CrossByteModes[GetParam()]);}
+    void SetUp() override {previous=VxGetSIMDOverride();ASSERT_TRUE(VxSetSIMDOverride(CrossByteModes[GetParam()]));ASSERT_EQ(VxGetSIMDEffectiveBackend(), ReferenceSIMDMode(CrossByteModes[GetParam()]));}
     void TearDown() override {EXPECT_TRUE(VxSetSIMDOverride(previous));}
 };
 
@@ -199,7 +200,7 @@ static void CrossByteProtectedRows(int mode) {
 #if defined(_WIN32)
     SetErrorMode(SEM_FAILCRITICALERRORS|SEM_NOGPFAULTERRORBOX);
 #endif
-    if(!VxSetSIMDOverride(mode)||VxGetSIMDEffectiveBackend()!=mode)std::_Exit(4);
+    if(!VxSetSIMDOverride(mode)||VxGetSIMDEffectiveBackend()!=ReferenceSIMDMode(mode))std::_Exit(4);
     size_t sp,dp,pp;XBYTE *source=CrossByteProtectedStorage(sp),*target=CrossByteProtectedStorage(dp),*palette=CrossByteProtectedStorage(pp);
     const int depths[]={3,5,6,7};
     for(int b=0;b<4;++b)for(int bytes=3;bytes<=4;++bytes)for(int shortMap=0;shortMap<2;++shortMap)

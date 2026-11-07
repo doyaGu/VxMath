@@ -9,6 +9,7 @@
 #endif
 #include "VxMath.h"
 #include "VxSIMDMode.h"
+#include "SIMDModeReference.h"
 
 struct ByteLayoutFormat {
     VX_PIXELFORMAT format;
@@ -111,7 +112,7 @@ protected:
     void SetUp() override {
         previous = VxGetSIMDOverride();
         ASSERT_TRUE(VxSetSIMDOverride(Mode()));
-        ASSERT_EQ(VxGetSIMDEffectiveBackend(), Mode());
+        ASSERT_EQ(VxGetSIMDEffectiveBackend(), ReferenceSIMDMode(Mode()));
     }
     void TearDown() override { EXPECT_TRUE(VxSetSIMDOverride(previous)); }
 };
@@ -192,7 +193,7 @@ static void ByteProtectedRows(int conversion, int mode) {
 #if defined(_WIN32)
     SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOGPFAULTERRORBOX);
 #endif
-    if (!VxSetSIMDOverride(mode) || VxGetSIMDEffectiveBackend() != mode) std::_Exit(4);
+    if (!VxSetSIMDOverride(mode) || VxGetSIMDEffectiveBackend() != ReferenceSIMDMode(mode)) std::_Exit(4);
     size_t sourcePage, targetPage;
     XBYTE *source = ByteProtectedStorage(sourcePage);
     XBYTE *target = ByteProtectedStorage(targetPage);

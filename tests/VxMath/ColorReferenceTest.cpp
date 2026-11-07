@@ -7,6 +7,7 @@
 #include <climits>
 #include "VxMath.h"
 #include "VxSIMDMode.h"
+#include "SIMDModeReference.h"
 #include <SDL3/SDL_thread.h>
 
 static void ExpectColor(const VxColor &c, float r, float g, float b, float a) {
@@ -192,7 +193,7 @@ protected:
     void SetUp() override {
         const int modes[] = {VX_SIMD_MODE_NONE, VX_SIMD_MODE_SSE2, VX_SIMD_MODE_SSSE3, VX_SIMD_MODE_AVX2};
         previous = VxGetSIMDOverride(); ASSERT_TRUE(VxSetSIMDOverride(modes[GetParam()]));
-        ASSERT_EQ(VxGetSIMDEffectiveBackend(), modes[GetParam()]);
+        ASSERT_EQ(VxGetSIMDEffectiveBackend(), ReferenceSIMDMode(modes[GetParam()]));
     }
     void TearDown() override { EXPECT_TRUE(VxSetSIMDOverride(previous)); }
 };

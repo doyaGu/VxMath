@@ -9,6 +9,7 @@
 #endif
 #include "VxMath.h"
 #include "VxSIMDMode.h"
+#include "SIMDModeReference.h"
 
 static const int DispatchModes[]={VX_SIMD_MODE_NONE,VX_SIMD_MODE_SSE2,VX_SIMD_MODE_SSSE3,VX_SIMD_MODE_AVX2};
 static const XDWORD DispatchMasks[][4]={
@@ -83,7 +84,7 @@ struct DispatchPaletteImage {
 class PaletteDispatchReferenceTest:public testing::TestWithParam<int> {
 protected:
     int previous;
-    void SetUp() override {previous=VxGetSIMDOverride();ASSERT_TRUE(VxSetSIMDOverride(DispatchModes[GetParam()]));ASSERT_EQ(VxGetSIMDEffectiveBackend(),DispatchModes[GetParam()]);}
+    void SetUp() override {previous=VxGetSIMDOverride();ASSERT_TRUE(VxSetSIMDOverride(DispatchModes[GetParam()]));ASSERT_EQ(VxGetSIMDEffectiveBackend(), ReferenceSIMDMode(DispatchModes[GetParam()]));}
     void TearDown() override {EXPECT_TRUE(VxSetSIMDOverride(previous));}
 };
 
@@ -184,7 +185,7 @@ static void DispatchProtectedRows(int mode) {
 #if defined(_WIN32)
     SetErrorMode(SEM_FAILCRITICALERRORS|SEM_NOGPFAULTERRORBOX);
 #endif
-    if(!VxSetSIMDOverride(mode)||VxGetSIMDEffectiveBackend()!=mode)std::_Exit(4);
+    if(!VxSetSIMDOverride(mode)||VxGetSIMDEffectiveBackend()!=ReferenceSIMDMode(mode))std::_Exit(4);
     size_t sp,dp,pp;XBYTE *source=DispatchProtectedStorage(sp),*target=DispatchProtectedStorage(dp),*palette=DispatchProtectedStorage(pp);
     const int widths[]={1,3,4,5,17,257};
     for(int bytes=3;bytes<=4;++bytes)for(int count=1;count<=4;count*=4)for(int w=0;w<6;++w) {
