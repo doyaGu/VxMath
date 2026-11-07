@@ -492,29 +492,6 @@ XBOOL VxSetCursor(VXCURSOR_POINTER cursorID) {
     return TRUE;
 }
 
-XWORD VxGetFPUControlWord() {
-    XWORD cw = 0;
-#if defined(__GNUC__) || defined(__clang__)
-    __asm__ __volatile__("fstcw %0" : "=m"(cw));
-#endif
-    return cw;
-}
-
-void VxSetFPUControlWord(XWORD Fpu) {
-#if defined(__GNUC__) || defined(__clang__)
-    __asm__ __volatile__("fldcw %0" : : "m"(Fpu));
-#else
-    (void) Fpu;
-#endif
-}
-
-void VxSetBaseFPUControlWord() {
-#if defined(__GNUC__) || defined(__clang__)
-    const XWORD defaultFpu = 0x037F;
-    VxSetFPUControlWord(defaultFpu);
-#endif
-}
-
 void VxAddLibrarySearchPath(const char *path) {
     if (!path || !*path) {
         return;

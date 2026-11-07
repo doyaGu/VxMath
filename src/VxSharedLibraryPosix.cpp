@@ -1,8 +1,8 @@
 #include "VxSharedLibrary.h"
+#include "VxFPUControlWord.h"
 
 #include <dlfcn.h>
-
-#include "VxWindowFunctions.h"
+#include <fenv.h>
 
 VxSharedLibrary::VxSharedLibrary() {
     m_LibraryHandle = NULL;
@@ -13,17 +13,20 @@ void VxSharedLibrary::Attach(INSTANCE_HANDLE LibraryHandle) {
 }
 
 INSTANCE_HANDLE VxSharedLibrary::Load(const char *LibraryName) {
+    fenv_t environment;
+    fegetenv(&environment);
+    const XWORD controlWord = VxGetFPUControlWord();
     if (m_LibraryHandle) {
         ReleaseLibrary();
     }
 
-    XWORD fpuCtrlWord = VxGetFPUControlWord();
     if (LibraryName) {
         m_LibraryHandle = dlopen(LibraryName, RTLD_NOW | RTLD_LOCAL);
     } else {
         m_LibraryHandle = dlopen(NULL, RTLD_NOW | RTLD_LOCAL);
     }
-    VxSetFPUControlWord(fpuCtrlWord);
+    fesetenv(&environment);
+    VxSetFPUControlWord(controlWord);
 
     return m_LibraryHandle;
 }

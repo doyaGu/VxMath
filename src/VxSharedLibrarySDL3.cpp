@@ -7,6 +7,7 @@
  */
 
 #include "VxSharedLibrary.h"
+#include "VxFPUControlWord.h"
 #include "VxPathEncoding.h"
 #include "XP.h"
 
@@ -24,6 +25,7 @@ void VxSharedLibrary::Attach(INSTANCE_HANDLE LibraryHandle) {
 INSTANCE_HANDLE VxSharedLibrary::Load(const char *LibraryName) {
     fenv_t environment;
     fegetenv(&environment);
+    const XWORD controlWord = VxGetFPUControlWord();
 
     // The name may belong to the module about to be unloaded.
 #ifdef _WIN32
@@ -39,6 +41,7 @@ INSTANCE_HANDLE VxSharedLibrary::Load(const char *LibraryName) {
     if (LibraryName)
         m_LibraryHandle = (INSTANCE_HANDLE)SDL_LoadObject(LibraryName);
     fesetenv(&environment);
+    VxSetFPUControlWord(controlWord);
     return m_LibraryHandle;
 }
 
