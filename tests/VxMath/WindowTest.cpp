@@ -1,5 +1,6 @@
 #include "gtest/gtest.h"
 #include "VxMath.h"
+#include "TemporaryDirectory.h"
 
 #include <filesystem>
 #include <fstream>
@@ -13,17 +14,8 @@ class VxWindowFunctionsTest : public ::testing::Test {
 protected:
     void SetUp() override {
         m_originalDir = VxGetCurrentDirectory();
-        const auto root = std::filesystem::temp_directory_path();
-        for (unsigned int candidate = 0; candidate < 1024; ++candidate) {
-            XString name;
-            name.Format("VxMath_Test_Temp_%u", candidate);
-            const auto path = root / name.CStr();
-            if (std::filesystem::create_directory(path)) {
-                m_tempDir = path;
-                break;
-            }
-        }
-        ASSERT_FALSE(m_tempDir.empty());
+        ASSERT_TRUE(m_directory.IsValid());
+        m_tempDir = m_directory.Path();
     }
 
     void TearDown() override {
@@ -44,6 +36,7 @@ protected:
         return filePath.string();
     }
 
+    TemporaryDirectory m_directory;
     std::filesystem::path m_tempDir;
     XString m_originalDir;
 };

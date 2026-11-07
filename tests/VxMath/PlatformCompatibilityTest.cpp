@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 
 #include "VxMath.h"
+#include "TemporaryDirectory.h"
 
 #include <algorithm>
 #include <cstdio>
@@ -40,6 +41,23 @@ static std::string ToRuntimePath(const std::filesystem::path &path) {
     return path.string();
 #endif
 }
+
+class VxPlatformDirectoryTest : public testing::Test {
+protected:
+    void SetUp() override {
+        ASSERT_TRUE(m_directory.IsValid());
+        m_root = m_directory.Path();
+    }
+
+    void TearDown() override {
+        std::error_code error;
+        if (!m_root.empty())
+            std::filesystem::remove_all(ToLongFilesystemPath(m_root), error);
+    }
+
+    TemporaryDirectory m_directory;
+    std::filesystem::path m_root;
+};
 
 static std::filesystem::path BuildLongDirectory(const std::filesystem::path &root, const char *leafName) {
     std::filesystem::path dir = root;
@@ -210,10 +228,8 @@ TEST(VxPlatformFunctionsTest, CurrentDirectoryAndApplicationBasePathAreSeparate)
     EXPECT_TRUE(std::filesystem::exists(base.data()));
 }
 
-TEST(VxPlatformFunctionsTest, FileDirectoryCopyDeleteAndList) {
-    const std::filesystem::path root = std::filesystem::temp_directory_path() / "VxPlatformFunctionsTest";
-    std::filesystem::remove_all(root);
-    std::filesystem::create_directories(root);
+TEST_F(VxPlatformDirectoryTest, FileDirectoryCopyDeleteAndList) {
+    const auto &root = m_root;
 
     const std::filesystem::path src = root / "source.txt";
     const std::filesystem::path dst = root / "copy.txt";
@@ -233,17 +249,14 @@ TEST(VxPlatformFunctionsTest, FileDirectoryCopyDeleteAndList) {
 
     EXPECT_TRUE(VxDeleteFile(dst.string().c_str()));
     EXPECT_FALSE(VxFileExists(dst.string().c_str()));
-    std::filesystem::remove_all(root);
 }
 
-TEST(VxPlatformFunctionsTest, ListDirectoryHandlesLongDirectoryPath) {
-    const std::filesystem::path root = std::filesystem::temp_directory_path() / "VxPlatformFunctionsLongList";
+TEST_F(VxPlatformDirectoryTest, ListDirectoryHandlesLongDirectoryPath) {
+    const auto &root = m_root;
     const std::filesystem::path longDir = BuildLongDirectory(root, "listed.txt");
     std::error_code error;
-    std::filesystem::remove_all(ToLongFilesystemPath(root), error);
     std::filesystem::create_directories(ToLongFilesystemPath(longDir), error);
-    if (error)
-        GTEST_SKIP() << "Long directory path is not supported by this filesystem: " << error.message();
+    ASSERT_FALSE(error) << "Failed to create long test directory: " << error.message();
 
     const std::filesystem::path file = longDir / "listed.txt";
     {
@@ -255,8 +268,6 @@ TEST(VxPlatformFunctionsTest, ListDirectoryHandlesLongDirectoryPath) {
     VxDirectoryTestContext context;
     ASSERT_TRUE(VxListDirectory(ToRuntimePath(longDir).c_str(), "*.txt", FALSE, CollectEntry, &context));
     EXPECT_NE(std::find(context.names.begin(), context.names.end(), "listed.txt"), context.names.end());
-
-    std::filesystem::remove_all(ToLongFilesystemPath(root), error);
 }
 
 TEST(VxPlatformFunctionsTest, MemoryStatusAvailable) {

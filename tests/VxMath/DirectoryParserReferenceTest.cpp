@@ -11,6 +11,8 @@
 #include <unistd.h>
 #endif
 
+#include "TemporaryDirectory.h"
+
 #ifndef VX_DIRECTORY_PARSER_PROBE
 #include "CKDirectoryParser.h"
 #include <gtest/gtest.h>
@@ -81,28 +83,13 @@ static bool DirectoryTestCwd(char *path, unsigned size) {
 }
 
 struct DirectoryFixture {
+    TemporaryDirectory Temporary;
     char Root[512] = {};
     char Previous[512] = {};
-#if defined(_WIN32)
-    char Reservation[512] = {};
-#endif
     bool Ready = false;
     DirectoryFixture() {
-        if (!DirectoryTestCwd(Previous, sizeof(Previous))) return;
-#if defined(_WIN32)
-        char temp[512];
-        DWORD length = GetTempPathA(sizeof(temp), temp);
-        if (!length || length >= sizeof(temp) || !GetTempFileNameA(temp, "vxd", 0, Reservation)) return;
-        // Keep the reserved name occupied for the fixture's entire lifetime.
-        // Deleting it before mkdir lets another test reserve the same name.
-        char directory[sizeof(Root)];
-        const int size = snprintf(directory, sizeof(directory), "%s.dir", Reservation);
-        if (size < 0 || size >= int(sizeof(directory)) || !DirectoryTestMkdir(directory)) return;
-        strcpy(Root, directory);
-#else
-        strcpy(Root, "/tmp/vx-directory-XXXXXX");
-        if (!mkdtemp(Root)) return;
-#endif
+        if (!Temporary.IsValid() || !DirectoryTestCwd(Previous, sizeof(Previous))) return;
+        strcpy(Root, Temporary.Path());
         char path[640];
         DirectoryTestPath(path, Root, "child"); if (!DirectoryTestMkdir(path)) return;
         DirectoryTestPath(path, Root, "empty"); if (!DirectoryTestMkdir(path)) return;
@@ -118,21 +105,12 @@ struct DirectoryFixture {
     }
     ~DirectoryFixture() {
         if (*Previous) DirectoryTestChdir(Previous);
-        if (!*Root) {
-#if defined(_WIN32)
-            if (*Reservation) DeleteFileA(Reservation);
-#endif
-            return;
-        }
+        if (!*Root) return;
         char path[640];
         const char *files[] = {"a.txt", "b.LOG", "bare", "child/c.txt", "child/deep/d.txt", "root_probe.tmp"};
         for (const char *file : files) { DirectoryTestPath(path, Root, file); remove(path); }
         const char *dirs[] = {"child/deep", "child", "empty"};
         for (const char *dir : dirs) { DirectoryTestPath(path, Root, dir); DirectoryTestRmdir(path); }
-        DirectoryTestRmdir(Root);
-#if defined(_WIN32)
-        if (*Reservation) DeleteFileA(Reservation);
-#endif
     }
 };
 

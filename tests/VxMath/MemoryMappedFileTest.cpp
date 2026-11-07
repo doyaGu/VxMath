@@ -11,6 +11,7 @@
 //
 
 #include "VxMath.h"
+#include "TemporaryDirectory.h"
 #include <gtest/gtest.h>
 #include <filesystem>
 #include <fstream>
@@ -40,21 +41,15 @@ class VxMemoryMappedFileTest : public ::testing::Test {
 protected:
     // This function is called before each test is run
     void SetUp() override {
-        const auto *info = ::testing::UnitTest::GetInstance()->current_test_info();
-        const std::string uniqueName =
-            std::string("VxMMF_TestDir_") + info->test_suite_name() + "_" + info->name();
-        temp_dir = (std::filesystem::temp_directory_path() / uniqueName).string();
-
-        std::error_code ec;
-        std::filesystem::remove_all(temp_dir, ec);
-        std::filesystem::create_directories(temp_dir, ec);
-        ASSERT_FALSE(ec) << "Failed to create temp directory: " << temp_dir;
+        ASSERT_TRUE(m_directory.IsValid());
+        temp_dir = m_directory.Path();
     }
 
     // This function is called after each test is run
     void TearDown() override {
         std::error_code ec;
-        std::filesystem::remove_all(temp_dir, ec);
+        if (!temp_dir.empty())
+            std::filesystem::remove_all(temp_dir, ec);
     }
 
     // Helper to get the full path for a file in our temp directory
@@ -63,6 +58,7 @@ protected:
     }
 
 protected:
+    TemporaryDirectory m_directory;
     std::string temp_dir;
 };
 

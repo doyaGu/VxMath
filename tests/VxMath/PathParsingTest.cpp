@@ -1,5 +1,6 @@
 #include "gtest/gtest.h"
 #include "VxMath.h"
+#include "TemporaryDirectory.h"
 #include <string>
 #include <vector>
 #include <set>
@@ -59,22 +60,8 @@ protected:
         //     subfile.txt
         //     another.log
         //   empty_sub/
-        // Use a unique temp directory per test to avoid cross-test coupling
-        // if Windows keeps a handle open briefly.
-        const auto *info = ::testing::UnitTest::GetInstance()->current_test_info();
-        const std::string uniqueName =
-            std::string("temp_dir_parser_test_") + info->test_suite_name() + "_" + info->name();
-        const auto tempRoot = std::filesystem::temp_directory_path();
-        for (unsigned int candidate = 0; candidate < 1024; ++candidate) {
-            XString name;
-            name.Format("%s_%u", uniqueName.c_str(), candidate);
-            const auto path = tempRoot / name.CStr();
-            if (std::filesystem::create_directory(path)) {
-                m_rootDir = path;
-                break;
-            }
-        }
-        ASSERT_FALSE(m_rootDir.empty());
+        ASSERT_TRUE(m_directory.IsValid());
+        m_rootDir = m_directory.Path();
 
         m_subDir = m_rootDir / "sub";
         std::filesystem::create_directory(m_subDir);
@@ -112,6 +99,7 @@ protected:
         return foundFiles;
     }
 
+    TemporaryDirectory m_directory;
     std::filesystem::path m_rootDir;
     std::filesystem::path m_subDir;
     std::filesystem::path m_emptySubDir;
