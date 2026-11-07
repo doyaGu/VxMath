@@ -191,11 +191,17 @@ void Vx3DInverseMatrix(VxMatrix &result, const VxMatrix &source) {
         for (int c = 0; c < 3; ++c) {
             const int i = (c + 1) % 3, j = (c + 2) % 3;
             const int k = (r + 1) % 3, l = (r + 2) % 3;
-            const VxFloat80 cofactor =
-                r == 0 && c == 0
-                    ? VxFloat80Subtract(math, VxFloat80Load(math, firstSaved), VxFloat80Load(math, lastSaved))
-                    : VxFloat80Subtract(math, VxFloat80Product(math, m[i][k], m[j][l]),
-                                        VxFloat80Product(math, m[i][l], m[j][k]));
+            VxFloat80 cofactor;
+            if (r == 0 && c == 0) {
+                cofactor = VxFloat80Subtract(math, VxFloat80Load(math, firstSaved), VxFloat80Load(math, lastSaved));
+            } else {
+                const VxFloat80 first = VxFloat80Product(math, m[i][k], m[j][l]);
+                const VxFloat80 second = VxFloat80Product(math, m[i][l], m[j][k]);
+                // Preserve the original subtraction followed by negation,
+                // including signed zero and directed rounding.
+                cofactor = (r + c) & 1 ? VxFloat80Negate(math, VxFloat80Subtract(math, second, first))
+                                       : VxFloat80Subtract(math, first, second);
+            }
             out[r][c] = VxFloat80StoreFloat(math, VxFloat80Multiply(math, cofactor, reciprocal));
         }
     for (int c = 0; c < 3; ++c) {

@@ -100,6 +100,25 @@ TEST(Float80Arithmetic, OriginalParentInverseWorksAtEveryPrecision) {
     }
 }
 
+TEST(Float80Arithmetic, InverseCofactorNegationPreservesSignedZerosAtEveryRounding) {
+    RestoreControl restore;
+    const XWORD roundingModes[] = {0x0000, 0x0400, 0x0800, 0x0c00};
+    for (XWORD rounding : roundingModes) {
+        VxSetFPUControlWord(static_cast<XWORD>(0x037f | rounding));
+        VxMatrix input = VxMatrix::Identity(), output;
+        Vx3DInverseMatrix(output, input);
+        for (int row = 0; row < 3; ++row) {
+            for (int column = 0; column < 3; ++column) {
+                if (row == column) continue;
+                uint32_t bits;
+                memcpy(&bits, &output[row][column], sizeof(bits));
+                const bool negative = ((row + column) & 1) != (rounding == 0x0400);
+                EXPECT_EQ(negative ? 0x80000000u : 0u, bits) << rounding << ',' << row << ',' << column;
+            }
+        }
+    }
+}
+
 TEST(Float80Arithmetic, SavedFanBoxKeepsTheOriginalExitBoundary) {
     const float data[2][15] = {{355.334045f, 30.1296177f, -140.790283f, -0.134276867f, 0.791785657f, -0.595856667f,
                                 0.937362313f, -0.0935582221f, -0.335557401f, -0.321436852f, -0.603591204f,
