@@ -507,7 +507,7 @@ TEST_F(BlitEngineDimensionMismatchTest, SmallerDst_ClipsToDestination) {
     EXPECT_TRUE(anyNonZero) << "Dimension mismatch blit wrote nothing to destination";
 }
 
-TEST_F(BlitEngineDimensionMismatchTest, LargerDst_BlitsToSmallerRegion) {
+TEST_F(BlitEngineDimensionMismatchTest, LargerDst_ResizesToDestination) {
     const int srcW = 16, srcH = 16;
     const int dstW = 32, dstH = 32;
 
@@ -522,9 +522,9 @@ TEST_F(BlitEngineDimensionMismatchTest, LargerDst_BlitsToSmallerRegion) {
 
     blitter.DoBlit(srcDesc, dstDesc);
 
-    // Should blit src-sized region; remaining dst area behavior is impl-defined
-    // At minimum, should not crash
-    SUCCEED() << "Larger dst blit completed without crash";
+    const XDWORD *pixels = reinterpret_cast<const XDWORD *>(dstBuf.Data());
+    for (int i = 0; i < dstW * dstH; ++i)
+        EXPECT_EQ(pixels[i], 0xffff0000u) << "Resized pixel " << i;
 }
 
 //==============================================================================

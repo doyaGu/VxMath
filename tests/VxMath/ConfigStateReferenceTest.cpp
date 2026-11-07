@@ -1,5 +1,7 @@
 #include "VxConfiguration.h"
 #include "VxWindowFunctions.h"
+#include "NativeTextReference.h"
+#include "TemporaryDirectory.h"
 #include <gtest/gtest.h>
 #include <stdio.h>
 #include <string.h>
@@ -12,13 +14,15 @@ static const VxConfig::Mode ConfigReadWrite = static_cast<VxConfig::Mode>(VxConf
 class ConfigStateReferenceTest : public ::testing::Test {
 protected:
     VxConfig Config;
+    TemporaryDirectory Directory;
     XString Home, PreviousHome;
     char File[2048] = {};
     bool HadHome = false, ChangedHome = false, OwnFile = false;
 
     void SetUp() override {
         HadHome = VxGetEnvironmentVariable("BALLANCE_USER_CONFIG_HOME", PreviousHome) != FALSE;
-        Home = VxGetCurrentDirectory();
+        ASSERT_TRUE(Directory.IsValid());
+        Home = Directory.Path();
         Home += "/config-state-reference-home";
         ASSERT_TRUE(VxSetEnvironmentVariable("BALLANCE_USER_CONFIG_HOME", Home.CStr()));
         ChangedHome = true;
@@ -256,35 +260,26 @@ TEST_F(ConfigStateReferenceTest, ChangingRootClosesTheCurrentSelection) {
 }
 
 #ifdef _WIN32
-TEST_F(ConfigStateReferenceTest, DbcsTrailBackslashIsPartOfTheCharacterNotAPathSeparator) {
-    char name[3] = {};
-    for (int lead = 0x81; lead <= 0xfe && !name[0]; ++lead) {
-        char bytes[2] = {static_cast<char>(lead), '\\'};
-        wchar_t wide, other;
-        char underscore[2] = {static_cast<char>(lead), '_'};
-        if (IsDBCSLeadByteEx(GetACP(), lead) && MultiByteToWideChar(GetACP(), MB_ERR_INVALID_CHARS, bytes, 2, &wide, 1) == 1 &&
-            MultiByteToWideChar(GetACP(), MB_ERR_INVALID_CHARS, underscore, 2, &other, 1) == 1 && wide != other) {
-            name[0] = bytes[0]; name[1] = bytes[1];
-        }
-    }
-    if (!name[0]) { SUCCEED() << "The active ANSI code page has no DBCS trail backslash"; return; }
+TEST_F(ConfigStateReferenceTest, NativeCharacterBoundariesRemainDistinctFromPathSeparators) {
+    char name[16] = {};
+    ASSERT_TRUE(NativeTextCharacter(name, sizeof(name), true));
     XString section = XString(name) + "\\child";
-    Store(section.CStr(), name, "dbcs");
-    char other[] = {name[0], '_', 0};
+    Store(section.CStr(), name, "native");
+    char other[32] = {};
+    if (strlen(name) == 2 && name[1] == '\\') {
+        other[0] = name[0]; other[1] = '_';
+    } else {
+        snprintf(other, sizeof(other), "%s_", name);
+    }
     Store(section.CStr(), other, "different character");
     Config.OpenSection(section.CStr(), VxConfig::READ);
-    ExpectValue(name, "dbcs");
+    ExpectValue(name, "native");
     ExpectValue(other, "different character");
 }
 
-TEST_F(ConfigStateReferenceTest, UnicodeNamesUseOrdinalCaseInsensitiveComparisonOnWindows) {
+TEST_F(ConfigStateReferenceTest, RepresentableNamesUseOrdinalCaseInsensitiveComparisonOnWindows) {
     char upper[16] = {}, lower[16] = {};
-    BOOL substituted = FALSE;
-    DWORD flags = GetACP() == CP_UTF8 ? WC_ERR_INVALID_CHARS : WC_NO_BEST_FIT_CHARS;
-    BOOL *used = GetACP() == CP_UTF8 ? nullptr : &substituted;
-    int a = WideCharToMultiByte(GetACP(), flags, L"\u0410", -1, upper, sizeof(upper), nullptr, used);
-    int b = WideCharToMultiByte(GetACP(), flags, L"\u0430", -1, lower, sizeof(lower), nullptr, used);
-    if (!a || !b || substituted) { SUCCEED() << "Cyrillic pair is not representable in the active ANSI code page"; return; }
+    ASSERT_TRUE(NativeTextCasePair(upper, lower, sizeof(upper)));
     Store(upper, upper, "unicode");
     Config.OpenSection(lower, VxConfig::READ); ExpectValue(lower, "unicode");
 }

@@ -846,6 +846,14 @@ vx_copy_runtime_dependencies(ConfigTypeDeleteReferenceTest)
 vx_add_test(ConfigLifecycleReferenceTest SOURCES ConfigLifecycleReferenceTest.cpp)
 vx_copy_runtime_dependencies(ConfigLifecycleReferenceTest)
 
+if (WIN32 AND MSVC)
+    foreach (_native_test URLTest ConfigStateReferenceTest ConfigValueReferenceTest ConfigLifecycleReferenceTest)
+        vx_add_test(${_native_test}Utf8 SOURCES
+                ${_native_test}.cpp NativeUtf8ProcessTest.cpp NativeUtf8.manifest)
+        vx_copy_runtime_dependencies(${_native_test}Utf8)
+    endforeach ()
+endif ()
+
 vx_add_test(ConfigurationCompatibilityTest SOURCES ConfigurationCompatibilityTest.cpp)
 vx_copy_runtime_dependencies(ConfigurationCompatibilityTest)
 

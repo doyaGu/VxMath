@@ -1,4 +1,6 @@
 #include "XHashTable.h"
+#include "NativeTextReference.h"
+#include "TemporaryDirectory.h"
 // Inspect the real layout without adding runtime accessors or changing its API.
 #define private public
 #include "VxConfiguration.h"
@@ -19,13 +21,15 @@ static const VxConfig::Mode LifecycleReadWrite = static_cast<VxConfig::Mode>(VxC
 class ConfigLifecycleReferenceTest : public ::testing::Test {
 protected:
     VxConfig Config;
+    TemporaryDirectory Directory;
     XString Home, PreviousHome;
     XArray<XString> Homes;
     bool HadHome = false, ChangedHome = false;
 
     void SetUp() override {
         HadHome = VxGetEnvironmentVariable("BALLANCE_USER_CONFIG_HOME", PreviousHome) != FALSE;
-        Home = VxGetCurrentDirectory(); Home += "/config-lifecycle-home";
+        ASSERT_TRUE(Directory.IsValid());
+        Home = Directory.Path(); Home += "/config-lifecycle-home";
         ASSERT_FALSE(VxDirectoryExists(Home.CStr())); ASSERT_FALSE(VxFileExists(Home.CStr()));
         SetHome(Home);
     }
@@ -243,10 +247,9 @@ TEST_F(ConfigLifecycleReferenceTest, ANativeTrailingSeparatorStillReturnsAUsable
 }
 
 TEST_F(ConfigLifecycleReferenceTest, RegistryPathReturnsNativeAnsiBytesForRepresentableUnicode) {
-    char native[16] = {}; BOOL substituted = FALSE;
-    int length = WideCharToMultiByte(GetACP(), GetACP() == CP_UTF8 ? WC_ERR_INVALID_CHARS : WC_NO_BEST_FIT_CHARS,
-        L"\u4E2D", -1, native, sizeof(native), nullptr, GetACP() == CP_UTF8 ? nullptr : &substituted);
-    if (!length || substituted) { SUCCEED() << "Character is unavailable in the active ANSI code page"; return; }
+    char native[16] = {};
+    ASSERT_TRUE(NativeTextCharacter(native, sizeof(native), false));
+    const int length = int(strlen(native)) + 1;
     XString extra = Home + "/" + native; SetHome(extra);
     char path[2048] = {}; ASSERT_TRUE(VxConfig::GetRegistryFilePath(path, sizeof(path)));
     XString expected = extra + "/Ballance/registry.ini"; EXPECT_STREQ(expected.CStr(), path);

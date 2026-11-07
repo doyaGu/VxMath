@@ -178,11 +178,14 @@ TEST_F(VxMemoryMappedFileTest, DestructorHandlesInvalidStateSafely) {
     // its destructor can still run without causing a crash (e.g., by trying
     // to close null handles).
 
+    const auto filename = GetFullPath("missing.txt");
     {
-        VxMemoryMappedFile mmf(const_cast<char*>("non_existent_file.txt"));
+        VxMemoryMappedFile mmf(const_cast<char*>(filename.c_str()));
         ASSERT_FALSE(mmf.IsValid());
     } // Destructor runs here
-
-    // The test passes if it completes without crashing.
-    SUCCEED();
+    CreateFileWithContent(filename, "available after failed mapping");
+    VxMemoryMappedFile next(const_cast<char*>(filename.c_str()));
+    ASSERT_TRUE(next.IsValid());
+    EXPECT_EQ(next.GetFileSize(), strlen("available after failed mapping"));
+    EXPECT_EQ(memcmp(next.GetBase(), "available after failed mapping", next.GetFileSize()), 0);
 }

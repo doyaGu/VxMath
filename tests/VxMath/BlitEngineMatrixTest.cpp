@@ -120,9 +120,8 @@ TEST_P(BlitEngine32To32MatrixTest, ConversionWorks) {
         if (f.name == dstName) dstFormat = f;
     }
 
-    if (srcFormat.bytesPerPixel != 4 || dstFormat.bytesPerPixel != 4) {
-        GTEST_SKIP() << "Not a 32-to-32 conversion";
-    }
+    ASSERT_EQ(srcFormat.bytesPerPixel, 4);
+    ASSERT_EQ(dstFormat.bytesPerPixel, 4);
 
     ImageBuffer srcBuf(width * height * 4);
     ImageBuffer dstBuf(width * height * 4);
@@ -172,9 +171,8 @@ TEST_P(BlitEngine32To16MatrixTest, ConversionWorks) {
         if (f.name == dstName) dstFormat = f;
     }
 
-    if (srcFormat.bytesPerPixel != 4 || dstFormat.bytesPerPixel != 2) {
-        GTEST_SKIP() << "Not a 32-to-16 conversion";
-    }
+    ASSERT_EQ(srcFormat.bytesPerPixel, 4);
+    ASSERT_EQ(dstFormat.bytesPerPixel, 2);
 
     ImageBuffer srcBuf(width * height * 4);
     ImageBuffer dstBuf(width * height * 2);
@@ -224,9 +222,8 @@ TEST_P(BlitEngine16To32MatrixTest, ConversionWorks) {
         if (f.name == dstName) dstFormat = f;
     }
 
-    if (srcFormat.bytesPerPixel != 2 || dstFormat.bytesPerPixel != 4) {
-        GTEST_SKIP() << "Not a 16-to-32 conversion";
-    }
+    ASSERT_EQ(srcFormat.bytesPerPixel, 2);
+    ASSERT_EQ(dstFormat.bytesPerPixel, 4);
 
     ImageBuffer srcBuf(width * height * 2);
     ImageBuffer dstBuf(width * height * 4);
@@ -324,9 +321,8 @@ TEST_P(BlitEngine16To16MatrixTest, ConversionWorks) {
         if (f.name == dstName) dstFormat = f;
     }
 
-    if (srcFormat.bytesPerPixel != 2 || dstFormat.bytesPerPixel != 2) {
-        GTEST_SKIP() << "Not a 16-to-16 conversion";
-    }
+    ASSERT_EQ(srcFormat.bytesPerPixel, 2);
+    ASSERT_EQ(dstFormat.bytesPerPixel, 2);
 
     ImageBuffer srcBuf(width * height * 2);
     ImageBuffer dstBuf(width * height * 2);
@@ -378,9 +374,7 @@ TEST_P(BlitEnginePalettedMatrixTest, PalettedTo32BitWorks) {
         if (f.name == dstName) dstFormat = f;
     }
 
-    if (dstFormat.bytesPerPixel != 4) {
-        GTEST_SKIP() << "Not paletted-to-32 conversion";
-    }
+    ASSERT_EQ(dstFormat.bytesPerPixel, 4);
 
     ImageBuffer srcBuf(width * height);
     ImageBuffer dstBuf(width * height * 4);

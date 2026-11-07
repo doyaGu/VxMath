@@ -1,6 +1,8 @@
 #include "VxConfiguration.h"
 #include "VxWindowFunctions.h"
 #include "XP.h"
+#include "NativeTextReference.h"
+#include "TemporaryDirectory.h"
 #include <gtest/gtest.h>
 #include <stdio.h>
 #include <string.h>
@@ -13,13 +15,15 @@ static const VxConfig::Mode ConfigValueReadWrite = static_cast<VxConfig::Mode>(V
 class ConfigValueReferenceTest : public ::testing::Test {
 protected:
     VxConfig Config;
+    TemporaryDirectory Directory;
     XString Home, PreviousHome;
     char File[2048] = {};
     bool HadHome = false, ChangedHome = false, OwnFile = false;
 
     void SetUp() override {
         HadHome = VxGetEnvironmentVariable("BALLANCE_USER_CONFIG_HOME", PreviousHome) != FALSE;
-        Home = VxGetCurrentDirectory(); Home += "/config-value-reference-home";
+        ASSERT_TRUE(Directory.IsValid());
+        Home = Directory.Path(); Home += "/config-value-reference-home";
         ASSERT_TRUE(VxSetEnvironmentVariable("BALLANCE_USER_CONFIG_HOME", Home.CStr()));
         ChangedHome = true;
         ASSERT_TRUE(VxConfig::GetRegistryFilePath(File, sizeof(File)));
@@ -244,10 +248,9 @@ TEST_F(ConfigValueReferenceTest, CStringInputStopsAtItsFirstTerminator) {
 
 #ifdef _WIN32
 TEST_F(ConfigValueReferenceTest, AnsiCharactersSurviveWhitespaceAndAContinuationBoundary) {
-    char native[16] = {}; BOOL substituted = FALSE;
-    int length = WideCharToMultiByte(GetACP(), GetACP() == CP_UTF8 ? WC_ERR_INVALID_CHARS : WC_NO_BEST_FIT_CHARS,
-        L"\u4E2D", -1, native, sizeof(native), nullptr, GetACP() == CP_UTF8 ? nullptr : &substituted);
-    if (!length || substituted) { SUCCEED() << "Character is not representable in the active ANSI code page"; return; }
+    char native[16] = {};
+    ASSERT_TRUE(NativeTextCharacter(native, sizeof(native), false));
+    const int length = int(strlen(native)) + 1;
     XString shortValue = XString(" \t") + native + "\r\n ";
     StoreAndCheck(shortValue.CStr());
     const int size = 32767 + length;

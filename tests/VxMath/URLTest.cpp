@@ -1,5 +1,6 @@
 #include "VxWindowFunctions.h"
 #include "XP.h"
+#include "NativeTextReference.h"
 #include <gtest/gtest.h>
 #include <string.h>
 #ifdef _WIN32
@@ -284,11 +285,10 @@ TEST(URLTest, EscapeAndDecodeRetainDataAndNormalizeNativeSeparators) {
 }
 
 #ifdef _WIN32
-TEST(URLTest, DbcsTrailBackslashIsPartOfTheNativeCharacter) {
-    char native[16] = {}; BOOL substituted = FALSE;
-    int length = WideCharToMultiByte(GetACP(), GetACP() == CP_UTF8 ? WC_ERR_INVALID_CHARS : WC_NO_BEST_FIT_CHARS,
-        L"\u4E57", -1, native, sizeof(native), nullptr, GetACP() == CP_UTF8 ? nullptr : &substituted);
-    if (!length || substituted) { SUCCEED() << "Character is unavailable in this ANSI code page"; return; }
+TEST(URLTest, NativeCharactersRemainIntactWhenEscapingSeparators) {
+    char native[16] = {};
+    ASSERT_TRUE(NativeTextCharacter(native, sizeof(native), true));
+    const int length = int(strlen(native)) + 1;
     XString prefixed = XString("file://") + native;
     ExpectEscaped(native, prefixed.CStr());
     ExpectEscaped(prefixed.CStr(), prefixed.CStr());

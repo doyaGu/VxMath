@@ -14,11 +14,10 @@ protected:
 };
 
 // Test the default constructor.
-// While it does nothing, this ensures it can be instantiated.
 TEST_F(VxRayTest, DefaultConstructor) {
     VxRay ray;
-    // The members are uninitialized, so we just check for successful creation.
-    SUCCEED();
+    EXPECT_EQ(ray.GetOrigin(), zero_origin);
+    EXPECT_EQ(ray.GetDirection(), zero_origin);
 }
 
 // Test the constructor that takes a start and end point.
