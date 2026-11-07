@@ -62,7 +62,14 @@ and verification. It is available in emulation builds and provides plain data
 structures and functions. `VxFloat80` holds
 the significand and combined sign/exponent field. `VxFloatContext` holds precision, rounding
 and accumulated exception flags. Neither structure owns resources or allocates
-memory. Initialize a context before using it:
+memory.
+
+Value and context alignment remain the same when these headers are included
+under a host packing directive. The context keeps its native four-byte
+alignment; the value keeps its eight-byte alignment. Header inclusion does
+not change the host's packing setting.
+
+Initialize a context before using it:
 
 ```cpp
 #include "VxFloat80.h"

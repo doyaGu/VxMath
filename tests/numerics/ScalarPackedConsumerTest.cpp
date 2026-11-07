@@ -2,11 +2,20 @@
 
 #pragma pack(push, 1)
 #include "VxScalar.h"
+struct ScalarPackedFollowing {
+    char Prefix;
+    uint32_t Value;
+};
 #pragma pack(pop)
 
 #include "VxFPUControlWord.h"
 
 TEST(ScalarPackedConsumerTest, PackedHostHeadersPreserveTheLibraryValueContract) {
+    EXPECT_EQ(5u, sizeof(ScalarPackedFollowing));
+#if VXMATH_ENABLE_X87_EMULATION
+    ASSERT_EQ(8u, alignof(VxScalar));
+    ASSERT_EQ(alignof(unsigned), alignof(VxScalarContext));
+#endif
     const XWORD saved = VxGetFPUControlWord();
     VxSetFPUControlWord(static_cast<XWORD>((saved & ~0x0f00) | 0x0300 | 0x003f));
     VxScalarContext arithmetic;

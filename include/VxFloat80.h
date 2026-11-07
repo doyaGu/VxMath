@@ -32,7 +32,7 @@ enum VxFloatException {
 
 // Arithmetic state is plain data, independent of the numerical backend.
 // Operations accumulate masked exceptions; initialize before first use.
-struct VxFloatContext {
+struct alignas(4) VxFloatContext {
     VxFloatPrecision Precision;
     VxFloatRounding Rounding;
     unsigned ExceptionFlags;
