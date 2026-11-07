@@ -1290,23 +1290,6 @@ XBOOL VxTestDiskSpace(const char *dir, size_t size) {
 #endif
 }
 
-int VxMessageBox(WIN_HANDLE hWnd, const char *lpText, const char *lpCaption, XDWORD uType) {
-    (void)hWnd;
-    (void)uType;
-    
-    // Use SDL's simple message box
-    SDL_MessageBoxFlags flags = SDL_MESSAGEBOX_INFORMATION;
-    
-    // Map Windows MB_* flags to SDL flags (basic mapping)
-    if (uType & 0x10) // MB_ICONERROR
-        flags = SDL_MESSAGEBOX_ERROR;
-    else if (uType & 0x30) // MB_ICONWARNING
-        flags = SDL_MESSAGEBOX_WARNING;
-    
-    SDL_ShowSimpleMessageBox(flags, lpCaption ? lpCaption : "Message", lpText ? lpText : "", NULL);
-    return 0;
-}
-
 // ============================================================================
 // Module Functions
 // ============================================================================

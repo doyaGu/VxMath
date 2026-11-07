@@ -289,6 +289,18 @@ set_target_properties(BitmapOwnershipTest PROPERTIES
 vx_copy_runtime_dependencies(BitmapOwnershipTest)
 add_test(NAME BitmapOwnershipTest COMMAND BitmapOwnershipTest)
 
+# Compile the real SDL message-box adapter against a deterministic SDL boundary.
+# Only the third-party modal UI is replaced; production has no test hooks.
+add_executable(MessageBoxTest MessageBoxTest.cpp "${PROJECT_SOURCE_DIR}/src/VxMessageBoxSDL3.cpp")
+target_include_directories(MessageBoxTest PRIVATE "${PROJECT_SOURCE_DIR}/include")
+target_compile_definitions(MessageBoxTest PRIVATE VX_LIB)
+target_link_libraries(MessageBoxTest PRIVATE gtest_main SDL3::Headers)
+set_target_properties(MessageBoxTest PROPERTIES
+        FOLDER "Tests"
+        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
+add_test(NAME MessageBoxTest COMMAND MessageBoxTest)
+set_tests_properties(MessageBoxTest PROPERTIES TIMEOUT 15)
+
 vx_add_test(FontTest SOURCES FontTest.cpp)
 vx_copy_runtime_dependencies(FontTest)
 if (NOT WIN32)

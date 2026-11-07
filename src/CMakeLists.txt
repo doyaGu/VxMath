@@ -31,6 +31,7 @@ set(VXMATH_PUBLIC_HEADERS
         ${VX_INCLUDE_DIR}/CKPathSplitter.h
         ${VX_INCLUDE_DIR}/CKDirectoryParser.h
         ${VX_INCLUDE_DIR}/VxWindowFunctions.h
+        ${VX_INCLUDE_DIR}/VxMessageBox.h
         ${VX_INCLUDE_DIR}/VxVector.h
         ${VX_INCLUDE_DIR}/Vx2dVector.h
         ${VX_INCLUDE_DIR}/VxMatrix.h
@@ -155,6 +156,7 @@ set(VXMATH_PLATFORM_SOURCES
         VxSharedLibrarySDL3.cpp
         VxMemoryMappedFileSDL3.cpp
         VxWindowFunctionsSDL3.cpp
+        VxMessageBoxSDL3.cpp
         VxFontFunctions.cpp
         VxTimeProfilerSDL3.cpp
         VxMutexSDL3.cpp

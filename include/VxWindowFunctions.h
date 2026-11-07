@@ -2,6 +2,7 @@
 #define VXWINDOWFUNCTION_H
 
 #include "VxMathDefines.h"
+#include "VxMessageBox.h"
 #include "VxFPUControlWord.h"
 #include "XString.h"
 
@@ -145,9 +146,6 @@ VX_EXPORT XBOOL VxMakePath(char *fullpath, size_t fullpathSize, const char *path
 VX_EXPORT XBOOL VxMakePath(XString &fullpath, const char *path, const char *file);
 /// @brief Checks if a specified amount of disk space is available in a directory.
 VX_EXPORT XBOOL VxTestDiskSpace(const char *dir, size_t size);
-
-/// @brief Displays a standard message box.
-VX_EXPORT int VxMessageBox(WIN_HANDLE hWnd, const char *lpText, const char *lpCaption, XDWORD uType);
 
 //------ Process access {secret}
 /// @brief Retrieves the full path of the file for the specified module.

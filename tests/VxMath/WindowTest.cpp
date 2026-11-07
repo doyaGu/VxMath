@@ -367,13 +367,3 @@ TEST_F(VxWindowFunctionsTest, DrawBitmapTextWritesPixelsBackToImage) {
     VxDeleteBitmap(bitmap);
 }
 #endif
-
-// --- Tests for functions that are not easily automated ---
-
-// A message box test will block execution, so it's disabled by default.
-// To run it, rename the test to remove the "DISABLED_" prefix.
-TEST_F(VxWindowFunctionsTest, DISABLED_MessageBox) {
-    // This test just ensures the function can be called.
-    // It will pop up a message box during the test run.
-    VxMessageBox(NULL, (char *) "Test Message", (char *) "VxMath Test", 0);
-}
