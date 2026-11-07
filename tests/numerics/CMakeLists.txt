@@ -3,6 +3,13 @@ project(VxMathNumericalTests LANGUAGES CXX)
 enable_testing()
 
 get_filename_component(vx_root "${CMAKE_CURRENT_LIST_DIR}/../.." ABSOLUTE)
+
+add_executable(ScalarNativeTest ScalarNativeTest.cpp)
+target_include_directories(ScalarNativeTest PRIVATE "${vx_root}/include")
+target_compile_features(ScalarNativeTest PRIVATE cxx_std_11)
+target_compile_definitions(ScalarNativeTest PRIVATE VX_LIB VXMATH_ENABLE_X87_EMULATION=0)
+add_test(NAME ScalarNativeTest COMMAND ScalarNativeTest)
+
 add_subdirectory("${vx_root}/deps/softfloat" softfloat)
 
 set(vx_environment_sources "${vx_root}/src/VxFPUControlWord.cpp")

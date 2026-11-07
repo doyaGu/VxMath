@@ -20,7 +20,8 @@ enum VxScalarRelation { VXSCALAR_LESS = -1, VXSCALAR_EQUAL, VXSCALAR_GREATER, VX
 // Scalar expressions follow VxMath's selected arithmetic policy. Initialize
 // one context per expression sequence and store at the required float/double
 // boundary. Values are plain data; their representation is not a serialization
-// format.
+// format. The native policy uses double intermediates; this interface does not
+// replace the usual C++ float/double promotion rules in arbitrary expressions.
 inline void VxScalarInitContext(VxScalarContext &context);
 
 inline VxScalar VxScalarLoad(VxScalarContext &context, float value);

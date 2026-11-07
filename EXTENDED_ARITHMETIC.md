@@ -1,7 +1,7 @@
 # Extended arithmetic
 
 `VXMATH_ENABLE_X87_EMULATION` enables the original evaluation and storage rules
-with a portable integer numerical backend. It defaults to `ON`. The backend
+for the covered routines, using a portable integer numerical backend. It defaults to `ON`. The backend
 does not use the host's `long double` format or native x87 arithmetic.
 
 ```sh
@@ -14,6 +14,13 @@ licenses retained alongside the sources. VxMath owns its dependency and builds
 independently of IVP. The IVP and VxMath build options remain separate; both
 must be enabled for the original physics replay checks.
 
+Coverage is intentionally limited to the scalar interface, the selected matrix
+operations, free vector magnitude/normalization and OBB intersection routines
+described below. Enabling the option does not rewrite ordinary floating-point
+expressions, vector members or every other mathematical routine. Third-party
+implementations are outside this coverage. IVP owns its independent arithmetic
+and option; neither library selects the other's mode.
+
 ## Interface and state
 
 Consumers compose scalar expressions through `VxScalar.h`: initialize a
@@ -22,6 +29,8 @@ and store at the required write boundaries. The value and context are plain
 data. Callers do not inspect their representation, select a backend or test
 the emulation build option. With emulation disabled the same interface uses
 native double intermediates and does not link the numerical backend.
+This is the policy of this explicit interface, not a replacement for the usual
+C++ rules for arbitrary mixed float/double expressions.
 `VxScalarStore` and `VxScalarStoreDouble` provide explicit binary32/binary64
 write boundaries in either mode.
 
@@ -72,6 +81,10 @@ Alternatively, initialize with an explicit `VxFloatPrecision` and
 with nearest-even, downward, upward and toward-zero rounding. Operations
 accumulate the six masked arithmetic exception flags; they do not deliver
 hardware exception traps. `VxFloatClearExceptionFlags` clears only those flags.
+Each context snapshots its precision and rounding when initialized. Later
+thread-control changes affect newly initialized contexts; existing sequences
+retain their own settings and exception flags. Flags are local to the context,
+not a replacement for the thread's hardware status register.
 
 Loads from binary32, binary64 and signed 32-bit integers are separate from
 rounded stores to binary32 and binary64. Register-width values remain
@@ -88,6 +101,9 @@ The existing `VxGetFPUControlWord`, `VxSetFPUControlWord` and
 `VxSetBaseFPUControlWord` API owns thread control. On processors without x87,
 the same API maintains a software control word. Native-host IVP uses this API
 as well, so precision changes remain consistent across the engine and physics.
+These legacy control functions retain their native contract in both build
+modes. Disabling emulation removes its numerical objects and dependency; it
+does not remove the native environment API or Win32 floating-point ABI transfers.
 
 ## Integration and performance
 
@@ -132,3 +148,5 @@ rounding, exception state, register encoding, original matrix and vector
 snapshots, and original OBB query outputs at all three precisions.
 `Float80Benchmark` and `Float80ScalarBenchmark` report throughput and checksums.
 These measure numerical work; whole-game performance is checked separately.
+`ScalarNativeTest` links neither VxMath nor the numerical backend, so an
+accidental dependency from the disabled scalar interface fails at link time.

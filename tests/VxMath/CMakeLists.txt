@@ -831,4 +831,9 @@ if (NOT TEST_TARGET STREQUAL "VxMath_GroundTruth")
     vx_add_test(ArithmeticPolicyTest SOURCES
             ../numerics/ArithmeticPolicyTest.cpp
             ../numerics/ScalarPackedConsumerTest.cpp)
+    add_executable(ScalarNativeTest ../numerics/ScalarNativeTest.cpp)
+    target_include_directories(ScalarNativeTest PRIVATE "${VXMATH_INCLUDE_DIR}")
+    target_compile_features(ScalarNativeTest PRIVATE cxx_std_11)
+    target_compile_definitions(ScalarNativeTest PRIVATE VX_LIB VXMATH_ENABLE_X87_EMULATION=0)
+    add_test(NAME ScalarNativeTest COMMAND ScalarNativeTest)
 endif ()

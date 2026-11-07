@@ -79,6 +79,23 @@ TEST_F(ArithmeticPolicyTest, ScalarLoadsPreserveIntegerAndDoubleValuesUntilStora
     }
 }
 
+#if VXMATH_ENABLE_X87_EMULATION
+TEST_F(ArithmeticPolicyTest, ScalarSequenceKeepsItsInitialPrecisionWhenTheThreadEnvironmentChanges) {
+    VxSetFPUControlWord(0x007f);
+    VxScalarContext arithmetic;
+    VxScalarInitContext(arithmetic);
+    VxSetFPUControlWord(0x037f);
+    const VxScalar base = VxScalarLoad(arithmetic, 16777216);
+    const VxScalar sum = VxScalarAdd(arithmetic, base, VxScalarLoad(arithmetic, 1));
+    EXPECT_EQ(0, VxScalarStore(arithmetic, VxScalarSubtract(arithmetic, sum, base)));
+
+    VxScalarContext next;
+    VxScalarInitContext(next);
+    const VxScalar wide = VxScalarAdd(next, base, VxScalarLoad(next, 1));
+    EXPECT_EQ(1, VxScalarStore(next, VxScalarSubtract(next, wide, base)));
+}
+#endif
+
 TEST_F(ArithmeticPolicyTest, ScalarStoreOwnsTheIntermediateRoundingBoundary) {
     const XWORD precisions[] = {0x0200, 0x0300};
     for (XWORD precision : precisions) {
