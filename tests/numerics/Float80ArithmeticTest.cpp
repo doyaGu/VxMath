@@ -65,9 +65,15 @@ TEST(Float80Arithmetic, OriginalVectorStoresDetermineScaleAndHingeAxes) {
         VxSetFPUControlWord(static_cast<XWORD>(0x007f | precision));
         const VxVector rotated(.9848077297f, .1736481637f, 0);
         EXPECT_EQ(.9999999403953552f, Magnitude(rotated));
-        VxVector hinge(-.963630438f, 0, .267238319f);
-        const VxVector normalized = Normalize(hinge);
-        EXPECT_EQ(0, memcmp(&hinge, &normalized, sizeof(hinge)));
+        const float hinges[3][4] = {{-.963630438f, .267238319f, -.963630438f, .267238319f},
+                                    {.968147635f, .250380158f, .968147576f, .250380129f},
+                                    {-.965925813f, .258819014f, -.965925813f, .258819014f}};
+        for (int hinge = 0; hinge < 3; ++hinge) {
+            const VxVector normalized = Normalize(VxVector(hinges[hinge][0], 0, hinges[hinge][1]));
+            EXPECT_EQ(hinges[hinge][2], normalized.x);
+            EXPECT_EQ(0, normalized.y);
+            EXPECT_EQ(hinges[hinge][3], normalized.z);
+        }
         const VxVector axis(-12, 9, 0);
         EXPECT_EQ(-24.000001907348633f, (Normalize(axis) * 30).x);
     }

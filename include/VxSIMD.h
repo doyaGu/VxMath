@@ -31,6 +31,14 @@
 #define VX_SIMD_FORCE_DISABLED 1
 #endif
 
+// A consumer may target a narrower instruction set than the library itself.
+// Select scalar inline operations when that target does not provide SSE2.
+#if defined(_MSC_VER) && defined(_M_IX86) && (!defined(_M_IX86_FP) || _M_IX86_FP < 2)
+#define VX_SIMD_FORCE_DISABLED 1
+#elif defined(__i386__) && !defined(__SSE2__) && !defined(VX_SIMD_USE_SIMDE)
+#define VX_SIMD_FORCE_DISABLED 1
+#endif
+
 // Platform detection
 #if defined(_MSC_VER)
 #define VX_SIMD_MSVC 1

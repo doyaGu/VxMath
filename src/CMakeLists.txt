@@ -86,6 +86,7 @@ set(VXMATH_COMMON_SOURCES
         CKPathSplitter.cpp
         CKDirectoryParser.cpp
         VxVector.cpp
+        VxVectorMath.cpp
         VxConfiguration.cpp
         VxQuaternion.cpp
         VxIntersect_BoxBox.cpp

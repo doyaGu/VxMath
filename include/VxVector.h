@@ -255,11 +255,7 @@ inline float SquareMagnitude(const VxVector &v);
  * before the square root, matching the original storage boundary.
  * @see SquareMagnitude()
  */
-#if VXMATH_ENABLE_X87_EMULATION
 VX_EXPORT float Magnitude(const VxVector &v);
-#else
-inline float Magnitude(const VxVector &v);
-#endif
 
 /**
  * @brief Returns the inverse of the squared magnitude of a vector.
@@ -288,12 +284,15 @@ inline float InvMagnitude(const VxVector &v);
  * and reciprocal. Without emulation, finite nonzero XYZ use wider intermediates.
  * @see VxVector::Normalize(), Magnitude()
  */
-#if VXMATH_ENABLE_X87_EMULATION
 VX_EXPORT const VxVector Normalize(const VxVector &v);
-#else
-inline const VxVector Normalize(const VxVector &v);
-#endif
 inline const VxVector Normalize(const VxVector *vect);
+
+/**
+ * @brief Returns a vector with the requested signed length.
+ * @remarks A negative length reverses its direction. Evaluation and stores
+ * follow the library's arithmetic policy. The input is not modified.
+ */
+VX_EXPORT const VxVector Normalize(const VxVector &v, float length);
 
 /**
  * @brief Calculates the dot product of two vectors.
