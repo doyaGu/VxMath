@@ -283,14 +283,10 @@ TEST_F(DirectoryParserTest, NonRecursive_LongPathIsNotTruncated) {
 
     std::error_code ec;
     std::filesystem::create_directories(ToLongFilesystemPath(longDir), ec);
-    if (ec) {
-        GTEST_SKIP() << "Long path directory creation is not supported: " << ec.message();
-    }
+    ASSERT_FALSE(ec) << "Failed to prepare long directory: " << ec.message();
 
     std::ofstream outfile(ToLongFilesystemPath(longFile));
-    if (!outfile) {
-        GTEST_SKIP() << "Long path file creation is not supported";
-    }
+    ASSERT_TRUE(outfile) << "Failed to prepare long file";
     outfile.close();
 
     const std::string parserDir = ToParserPath(longDir);
@@ -324,14 +320,10 @@ TEST_F(DirectoryParserTest, Recursive_LongPathIsNotTruncated) {
 
     std::error_code ec;
     std::filesystem::create_directories(ToLongFilesystemPath(longDir), ec);
-    if (ec) {
-        GTEST_SKIP() << "Long path directory creation is not supported: " << ec.message();
-    }
+    ASSERT_FALSE(ec) << "Failed to prepare long directory: " << ec.message();
 
     std::ofstream outfile(ToLongFilesystemPath(longFile));
-    if (!outfile) {
-        GTEST_SKIP() << "Long path file creation is not supported";
-    }
+    ASSERT_TRUE(outfile) << "Failed to prepare long file";
     outfile.close();
 
     const std::string parserRoot = ToParserPath(root);

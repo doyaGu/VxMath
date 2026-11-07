@@ -1198,7 +1198,8 @@ XBOOL VxSetCurrentDirectory(const char *path) {
     if (!path)
         return FALSE;
 #ifdef _WIN32
-    return SetCurrentDirectoryA(path);
+    XArray<wchar_t> wide;
+    return VxPathToWide(path, GetACP(), wide) && SetCurrentDirectoryW(wide.Begin());
 #else
     size_t len = strlen(path);
     char *normalized = new char[len + 1];
