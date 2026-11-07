@@ -156,13 +156,18 @@ set(VXMATH_PLATFORM_SOURCES
         VxSharedLibrarySDL3.cpp
         VxMemoryMappedFileSDL3.cpp
         VxWindowFunctionsSDL3.cpp
-        VxMessageBoxSDL3.cpp
         VxFontFunctions.cpp
         VxTimeProfilerSDL3.cpp
         VxMutexSDL3.cpp
         VxThreadSDL3.cpp
         VxFPUControlWord.cpp
 )
+
+if (WIN32)
+    list(APPEND VXMATH_PLATFORM_SOURCES VxMessageBoxWin32.cpp)
+else ()
+    list(APPEND VXMATH_PLATFORM_SOURCES VxMessageBoxSDL3.cpp)
+endif ()
 
 if (CMAKE_CXX_COMPILER_ID STREQUAL "MSVC" AND VXMATH_TARGET_IS_X86 AND CMAKE_SIZEOF_VOID_P EQUAL 8)
     list(APPEND VXMATH_PLATFORM_SOURCES VxFPUControlWordWin64.asm)
@@ -240,6 +245,9 @@ function(vx_configure_target TARGET_NAME)
         target_link_libraries(${TARGET_NAME} PRIVATE ${CMAKE_DL_LIBS} pthread)
     endif ()
     target_link_libraries(${TARGET_NAME} PUBLIC SDL3::SDL3)
+    if (WIN32)
+        target_link_libraries(${TARGET_NAME} PRIVATE user32)
+    endif ()
     target_compile_definitions(${TARGET_NAME} PUBLIC VX_BACKEND_SDL3=1)
 
     set_target_properties(${TARGET_NAME} PROPERTIES

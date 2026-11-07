@@ -301,6 +301,16 @@ set_target_properties(MessageBoxTest PROPERTIES
 add_test(NAME MessageBoxTest COMMAND MessageBoxTest)
 set_tests_properties(MessageBoxTest PROPERTIES TIMEOUT 15)
 
+if (WIN32)
+    add_executable(MessageBoxWin32Test MessageBoxWin32Test.cpp)
+    target_include_directories(MessageBoxWin32Test PRIVATE "${PROJECT_SOURCE_DIR}/include")
+    target_compile_definitions(MessageBoxWin32Test PRIVATE VX_LIB)
+    target_link_libraries(MessageBoxWin32Test PRIVATE gtest_main SDL3::Headers)
+    set_target_properties(MessageBoxWin32Test PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
+    add_test(NAME MessageBoxWin32Test COMMAND MessageBoxWin32Test)
+    set_tests_properties(MessageBoxWin32Test PROPERTIES TIMEOUT 15)
+endif ()
+
 vx_add_test(FontTest SOURCES FontTest.cpp)
 vx_copy_runtime_dependencies(FontTest)
 if (NOT WIN32)
