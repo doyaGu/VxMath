@@ -64,11 +64,17 @@ protected:
         const auto *info = ::testing::UnitTest::GetInstance()->current_test_info();
         const std::string uniqueName =
             std::string("temp_dir_parser_test_") + info->test_suite_name() + "_" + info->name();
-        m_rootDir = std::filesystem::temp_directory_path() / uniqueName;
-
-        std::error_code ec;
-        std::filesystem::remove_all(m_rootDir, ec);
-        std::filesystem::create_directories(m_rootDir);
+        const auto tempRoot = std::filesystem::temp_directory_path();
+        for (unsigned int candidate = 0; candidate < 1024; ++candidate) {
+            XString name;
+            name.Format("%s_%u", uniqueName.c_str(), candidate);
+            const auto path = tempRoot / name.CStr();
+            if (std::filesystem::create_directory(path)) {
+                m_rootDir = path;
+                break;
+            }
+        }
+        ASSERT_FALSE(m_rootDir.empty());
 
         m_subDir = m_rootDir / "sub";
         std::filesystem::create_directory(m_subDir);
@@ -89,7 +95,8 @@ protected:
 
     void TearDown() override {
         std::error_code ec;
-        std::filesystem::remove_all(ToLongFilesystemPath(m_rootDir), ec);
+        if (!m_rootDir.empty())
+            std::filesystem::remove_all(ToLongFilesystemPath(m_rootDir), ec);
     }
 
     // Helper to collect all files found by the parser
@@ -263,9 +270,8 @@ TEST(FileExtensionTest, Comparison) {
 
 // --- CKDirectoryParser Tests ---
 
-// DISABLED: Segfaults on some systems - needs investigation
-TEST_F(DirectoryParserTest, DISABLED_NonRecursive_AllFiles) {
-    CKDirectoryParser parser((char *) m_rootDir.string().c_str(), "*.*", FALSE);
+TEST_F(DirectoryParserTest, NonRecursive_AllFiles) {
+    CKDirectoryParser parser(m_rootDirStr.c_str(), "*.*", FALSE);
     auto files = CollectFiles(parser);
 
     ASSERT_EQ(files.size(), 3);

@@ -26,7 +26,13 @@ struct DirectoryApi {
 struct DirectoryChecks {
     int checks = 0;
     int errors = 0;
-    void Expect(bool condition) { ++checks; if (!condition) ++errors; }
+    void Expect(bool condition, const char *message = nullptr) {
+        ++checks;
+        if (!condition) {
+            ++errors;
+            if (message) fprintf(stderr, "Directory check failed: %s\n", message);
+        }
+    }
 };
 
 static char DirectorySeparator() {
@@ -77,14 +83,22 @@ static bool DirectoryTestCwd(char *path, unsigned size) {
 struct DirectoryFixture {
     char Root[512] = {};
     char Previous[512] = {};
+#if defined(_WIN32)
+    char Reservation[512] = {};
+#endif
     bool Ready = false;
     DirectoryFixture() {
         if (!DirectoryTestCwd(Previous, sizeof(Previous))) return;
 #if defined(_WIN32)
         char temp[512];
         DWORD length = GetTempPathA(sizeof(temp), temp);
-        if (!length || length >= sizeof(temp) || !GetTempFileNameA(temp, "vxd", 0, Root)) return;
-        if (!DeleteFileA(Root) || !DirectoryTestMkdir(Root)) return;
+        if (!length || length >= sizeof(temp) || !GetTempFileNameA(temp, "vxd", 0, Reservation)) return;
+        // Keep the reserved name occupied for the fixture's entire lifetime.
+        // Deleting it before mkdir lets another test reserve the same name.
+        char directory[sizeof(Root)];
+        const int size = snprintf(directory, sizeof(directory), "%s.dir", Reservation);
+        if (size < 0 || size >= int(sizeof(directory)) || !DirectoryTestMkdir(directory)) return;
+        strcpy(Root, directory);
 #else
         strcpy(Root, "/tmp/vx-directory-XXXXXX");
         if (!mkdtemp(Root)) return;
@@ -104,13 +118,21 @@ struct DirectoryFixture {
     }
     ~DirectoryFixture() {
         if (*Previous) DirectoryTestChdir(Previous);
-        if (!*Root) return;
+        if (!*Root) {
+#if defined(_WIN32)
+            if (*Reservation) DeleteFileA(Reservation);
+#endif
+            return;
+        }
         char path[640];
         const char *files[] = {"a.txt", "b.LOG", "bare", "child/c.txt", "child/deep/d.txt", "root_probe.tmp"};
         for (const char *file : files) { DirectoryTestPath(path, Root, file); remove(path); }
         const char *dirs[] = {"child/deep", "child", "empty"};
         for (const char *dir : dirs) { DirectoryTestPath(path, Root, dir); DirectoryTestRmdir(path); }
         DirectoryTestRmdir(Root);
+#if defined(_WIN32)
+        if (*Reservation) DeleteFileA(Reservation);
+#endif
     }
 };
 
@@ -234,8 +256,8 @@ static DirectoryChecks DirectoryRepeatedEnd(const DirectoryApi &api) {
 
 static DirectoryChecks DirectoryRootSearch(const DirectoryApi &api) {
     DirectoryChecks result;
-    DirectoryFixture fixture; result.Expect(fixture.Ready); if (!fixture.Ready) return result;
-    result.Expect(DirectoryTestChdir(fixture.Root));
+    DirectoryFixture fixture; result.Expect(fixture.Ready, "create root fixture"); if (!fixture.Ready) return result;
+    result.Expect(DirectoryTestChdir(fixture.Root), "enter root fixture");
     char mask[128];
 #if defined(_WIN32)
     sprintf(mask, "vx_root_%lu_%lu.tmp", GetCurrentProcessId(), GetTickCount());
@@ -243,24 +265,24 @@ static DirectoryChecks DirectoryRootSearch(const DirectoryApi &api) {
     sprintf(mask, "vx_root_%lu.tmp", static_cast<unsigned long>(getpid()));
 #endif
     FILE *stream = fopen(mask, "wb");
-    result.Expect(stream != nullptr); if (stream) fclose(stream);
+    result.Expect(stream != nullptr, "create current-directory marker"); if (stream) fclose(stream);
     char absolute[160]; sprintf(absolute, "/%s", mask);
     FILE *rootFile = fopen(absolute, "rb");
-    result.Expect(rootFile == nullptr);
+    result.Expect(rootFile == nullptr, "marker must not exist at the drive root");
     if (rootFile) fclose(rootFile);
     char root[] = "/";
     {
         DirectoryScan scan(api, root, mask, 0);
-        result.Expect(api.Next(scan.Parser) == nullptr);
+        result.Expect(api.Next(scan.Parser) == nullptr, "slash root must not enumerate the current directory");
     }
 #if defined(_WIN32)
     char backslash[] = "\\";
     {
         DirectoryScan scan(api, backslash, mask, 0);
-        result.Expect(api.Next(scan.Parser) == nullptr);
+        result.Expect(api.Next(scan.Parser) == nullptr, "backslash root must not enumerate the current directory");
     }
 #endif
-    result.Expect(remove(mask) == 0);
+    result.Expect(remove(mask) == 0, "remove current-directory marker");
     return result;
 }
 
