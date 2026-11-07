@@ -3,6 +3,9 @@
 #include <cstdio>
 #include <cfenv>
 #include <cstddef>
+#if defined(__clang__)
+#pragma STDC FENV_ACCESS ON
+#endif
 #ifndef VX_RECT_NATIVE_PROBE
 #include "VxMath.h"
 #include <gtest/gtest.h>

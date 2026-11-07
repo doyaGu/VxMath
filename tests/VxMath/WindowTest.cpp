@@ -13,17 +13,25 @@ class VxWindowFunctionsTest : public ::testing::Test {
 protected:
     void SetUp() override {
         m_originalDir = VxGetCurrentDirectory();
-        // Create a temporary directory for filesystem tests
-        m_tempDir = std::filesystem::temp_directory_path() / "VxMath_Test_Temp";
-        std::filesystem::create_directories(m_tempDir);
-
+        const auto root = std::filesystem::temp_directory_path();
+        for (unsigned int candidate = 0; candidate < 1024; ++candidate) {
+            XString name;
+            name.Format("VxMath_Test_Temp_%u", candidate);
+            const auto path = root / name.CStr();
+            if (std::filesystem::create_directory(path)) {
+                m_tempDir = path;
+                break;
+            }
+        }
+        ASSERT_FALSE(m_tempDir.empty());
     }
 
     void TearDown() override {
         if (!m_originalDir.IsEmpty())
             VxSetCurrentDirectory(m_originalDir.CStr());
         // Clean up the temporary directory
-        std::filesystem::remove_all(m_tempDir);
+        if (!m_tempDir.empty())
+            std::filesystem::remove_all(m_tempDir);
 
     }
 
