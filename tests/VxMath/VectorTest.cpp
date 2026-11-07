@@ -1013,18 +1013,40 @@ TEST_F(VxBboxAdvancedTest, ClassifyVertices) {
 
     unit_box.ClassifyVertices(vcount, reinterpret_cast<XBYTE*>(vertices), sizeof(VxVector), flags);
 
-    // Ground-truth DLL may use different flag values
-    // Just verify that inside vertex has different flags than outside vertices
-    EXPECT_EQ(flags[0], 0u); // Inside should have no flags
-    // Outside vertices should have some flags set (exact values depend on implementation)
-    // Note: Ground-truth may have different clipping flag definitions
+    EXPECT_EQ(flags[0], 0u);
+    EXPECT_EQ(flags[1], XDWORD(VXCLIP_BOXLEFT));
+    EXPECT_EQ(flags[2], XDWORD(VXCLIP_BOXBOTTOM));
+    EXPECT_EQ(flags[3], XDWORD(VXCLIP_BOXRIGHT | VXCLIP_BOXTOP | VXCLIP_BOXFRONT));
 }
 
 TEST_F(VxBboxAdvancedTest, ClassifyVerticesOneAxis) {
-    // Note: ClassifyVerticesOneAxis may have specific calling conventions
-    // in the ground-truth DLL that differ from our implementation.
-    // Skip this test for ground-truth compatibility.
-    GTEST_SKIP() << "ClassifyVerticesOneAxis has platform-specific behavior in ground-truth DLL";
+    struct Vertex {
+        VxVector position;
+        XDWORD padding;
+    };
+    Vertex vertices[] = {
+        {VxVector(0, 0, 0), 0x12345678u},
+        {VxVector(-2, 0, 2), 0x12345678u},
+        {VxVector(2, -2, 0), 0x12345678u},
+        {VxVector(0, 2, -2), 0x12345678u},
+        {VxVector(-1, 1, -1), 0x12345678u},
+        {VxVector(1, -1, 1), 0x12345678u}
+    };
+    const XDWORD expected[3][6] = {{0, 1, 2, 0, 0, 0}, {0, 0, 1, 2, 0, 0}, {0, 2, 0, 1, 0, 0}};
+    XDWORD flags[8];
+    for (int axis = -1; axis <= 3; ++axis) {
+        for (int i = 0; i < 8; ++i) flags[i] = 0xabcdef01u;
+        unit_box.ClassifyVerticesOneAxis(6, reinterpret_cast<XBYTE *>(vertices), sizeof(Vertex), axis, flags + 1);
+        EXPECT_EQ(flags[0], 0xabcdef01u);
+        EXPECT_EQ(flags[7], 0xabcdef01u);
+        for (int i = 0; i < 6; ++i) {
+            EXPECT_EQ(flags[i + 1], axis >= 0 && axis < 3 ? expected[axis][i] : 0u) << axis << ',' << i;
+            EXPECT_EQ(vertices[i].padding, 0x12345678u);
+        }
+    }
+    flags[0] = 0xabcdef01u;
+    unit_box.ClassifyVerticesOneAxis(0, reinterpret_cast<XBYTE *>(vertices), sizeof(Vertex), 0, flags);
+    EXPECT_EQ(flags[0], 0xabcdef01u);
 }
 
 TEST_F(VxBboxAdvancedTest, TransformTo) {
