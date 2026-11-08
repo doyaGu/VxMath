@@ -144,13 +144,14 @@ TEST(FrustumFaceReference, PublicSimdSlotAndRepeatedTransitionsMatchGeometry) {
 #endif
 #if defined(_WIN32)
 TEST(FrustumFaceReference, CurrentDllPublicEntryMatchesTheSameIndependentOracle) {
-    HMODULE dll=GetModuleHandleA("VxMath.dll");ASSERT_NE(dll,nullptr);
+    HMODULE dll=LoadLibraryA("VxMath.dll");ASSERT_NE(dll,nullptr);
 #if defined(_WIN64)
     const char *symbol="?FrustumFace@VxIntersect@@SAHAEBVVxFrustum@@AEBUVxVector@@11@Z";
 #else
     const char *symbol="?FrustumFace@VxIntersect@@SAHABVVxFrustum@@ABUVxVector@@11@Z";
 #endif
     FFaceFn fn=reinterpret_cast<FFaceFn>(GetProcAddress(dll,symbol));ASSERT_NE(fn,nullptr);FFaceCheck(FFaceGeometryDataset(fn));
+    EXPECT_NE(FreeLibrary(dll),0);
 }
 TEST(FrustumFaceReference, ExactReadOnlyFootprintsAtGuardPages) {
     SYSTEM_INFO info;GetSystemInfo(&info);const std::size_t page=info.dwPageSize;unsigned char *regions[4]={};

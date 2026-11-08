@@ -202,7 +202,7 @@ TEST(FrustumBoxReference, PublicSimdDispatchMatchesOriginalFrustumBoxQueries) {
 #endif
 #if defined(_WIN32)
 TEST(FrustumBoxReference, ActualCurrentDllObbAndLegacyMatchTheirOracles) {
-    HMODULE dll=GetModuleHandleA("VxMath.dll");ASSERT_NE(dll,nullptr);
+    HMODULE dll=LoadLibraryA("VxMath.dll");ASSERT_NE(dll,nullptr);
 #if defined(_WIN64)
     const char *obbName="?FrustumOBB@VxIntersect@@SAHAEBVVxFrustum@@AEBUVxBbox@@AEBVVxMatrix@@@Z",*boxName="?FrustumBox@VxIntersect@@SAHAEBVVxFrustum@@AEBUVxBbox@@AEBVVxMatrix@@@Z";
 #else
@@ -210,6 +210,7 @@ TEST(FrustumBoxReference, ActualCurrentDllObbAndLegacyMatchTheirOracles) {
 #endif
     const FBFn obb=reinterpret_cast<FBFn>(GetProcAddress(dll,obbName)),box=reinterpret_cast<FBFn>(GetProcAddress(dll,boxName));ASSERT_NE(obb,nullptr);ASSERT_NE(box,nullptr);
     EXPECT_EQ(FBGeometry(obb,false).errors,0);FBCheck(FBGeometry(box,true));EXPECT_EQ(FBScales(obb,false).errors,0);EXPECT_EQ(FBWide(obb,false).errors,0);EXPECT_EQ(FBWide(box,true).errors,0);
+    EXPECT_NE(FreeLibrary(dll),0);
 }
 TEST(FrustumBoxReference, ExactReadonlyFrustumBoxAndMatrixFootprints) {
     SYSTEM_INFO info;GetSystemInfo(&info);const std::size_t page=info.dwPageSize;unsigned char *regions[3]={};

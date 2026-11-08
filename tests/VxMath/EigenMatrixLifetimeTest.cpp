@@ -149,8 +149,9 @@ TEST(EigenMatrixLifetime,GuardedConstructCopyAssignAndDestroyRespectExactStorage
 }
 TEST(EigenMatrixLifetime,PrivateAdapterDoesNotClaimOriginalEigenEntryPointABI) {
     const int previous=VxGetSIMDOverride();(void)previous;
-    HMODULE module=GetModuleHandleW(L"VxMath.dll");ASSERT_NE(module,nullptr);
+    HMODULE module=LoadLibraryW(L"VxMath.dll");ASSERT_NE(module,nullptr);
     const char *names[]={"?Covariance@VxEigenMatrix@@QAEXPBEKH@Z","?Tridiagonal@VxEigenMatrix@@QAEXQAM0@Z","?QLAlgorithm@VxEigenMatrix@@QAE_NQAM0@Z","?EigenStuff3@VxEigenMatrix@@QAEXXZ","??0VxEigenMatrix@@QAE@XZ","??1VxEigenMatrix@@QAE@XZ"};
     for(const char *name:names)EXPECT_EQ(GetProcAddress(module,name),nullptr)<<name;
+    EXPECT_NE(FreeLibrary(module),0);
 }
 #endif

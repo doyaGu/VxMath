@@ -387,16 +387,16 @@ function(vx_configure_version_resource OUT_VAR TARGET_NAME FILE_DESCRIPTION ORIG
     set(${OUT_VAR} "${_vx_version_resource}" PARENT_SCOPE)
 endfunction()
 
-if (VXMATH_BUILD_SHARED)
-    add_library(VxMath SHARED)
-    vx_configure_target(VxMath)
+function(vx_configure_shared_target TARGET_NAME)
+    vx_configure_target(${TARGET_NAME})
     if (DEFINED VXMATH_VERSION_OVERRIDE)
-        vx_configure_version_resource(_vxmath_version_resource VxMath "VxMath Runtime Library" "VxMath.dll")
-        target_sources(VxMath PRIVATE "${_vxmath_version_resource}")
+        vx_configure_version_resource(_vxmath_version_resource ${TARGET_NAME} "VxMath Runtime Library" "VxMath.dll")
+        target_sources(${TARGET_NAME} PRIVATE "${_vxmath_version_resource}")
     endif ()
 
     # Shared library specific settings
-    set_target_properties(VxMath PROPERTIES
+    set_target_properties(${TARGET_NAME} PROPERTIES
+            OUTPUT_NAME VxMath
             RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
             ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib"
             LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib"
@@ -404,12 +404,17 @@ if (VXMATH_BUILD_SHARED)
 
     # Ensure the DLL build is not treated as a static build even if VX_LIB is
     # globally defined by a parent project/toolchain.
-    target_compile_definitions(VxMath PRIVATE VX_API)
-    target_compile_options(VxMath PRIVATE
+    target_compile_definitions(${TARGET_NAME} PRIVATE VX_API)
+    target_compile_options(${TARGET_NAME} PRIVATE
             $<$<AND:$<COMPILE_LANGUAGE:C,CXX>,$<CXX_COMPILER_ID:MSVC>>:/UVX_LIB>
             $<$<AND:$<COMPILE_LANGUAGE:C,CXX>,$<NOT:$<CXX_COMPILER_ID:MSVC>>>:-UVX_LIB>
     )
-    vx_copy_runtime_dependencies(VxMath)
+    vx_copy_runtime_dependencies(${TARGET_NAME})
+endfunction()
+
+if (VXMATH_BUILD_SHARED)
+    add_library(VxMath SHARED)
+    vx_configure_shared_target(VxMath)
 
     list(APPEND VXMATH_TARGETS VxMath)
 endif ()
@@ -432,6 +437,13 @@ if (VXMATH_BUILD_STATIC)
     if (NOT TARGET VxMath)
         add_library(VxMath ALIAS VxMathStatic)
     endif ()
+endif ()
+
+if (WIN32 AND VXMATH_BUILD_TESTS AND NOT VXMATH_BUILD_SHARED)
+    # Export-entry tests load this build's DLL even when consumers link static.
+    # Keep it out of the runtime target selection and installed libraries.
+    add_library(VxMathTestDll SHARED EXCLUDE_FROM_ALL)
+    vx_configure_shared_target(VxMathTestDll)
 endif ()
 
 # Build the exported-targets list locally *and* propagate to the parent scope.
