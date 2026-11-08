@@ -1402,6 +1402,18 @@ TEST(SIMDDispatchTest, RaySquareDistanceSIMDMatchesScalarReference) {
     EXPECT_FLOAT_EQ(VxSIMDRaySquareDistance(&zeroDirRay, &p), ScalarRaySquareDistance(zeroDirRay, p));
 }
 
+TEST(SIMDDispatchTest, RaySIMDInterpolateRoundsProductBeforeAddingOrigin) {
+    int dummy = 0;
+    const VxRay ray(VxVector(-128.0f, 0.0f, 0.0f),
+                    VxVector(128.0000152587890625f, 0.0f, 0.0f), &dummy);
+    const float t = 0.99999994039535522461f;
+    VxVector point;
+    VxSIMDRayInterpolate(&point, &ray, t);
+    EXPECT_EQ(point.x, 0.0f);
+    EXPECT_EQ(point.y, 0.0f);
+    EXPECT_EQ(point.z, 0.0f);
+}
+
 TEST(SIMDDispatchTest, RaySIMDTransformInterpolateDistanceMatchScalarReference) {
     std::mt19937 rng(555u);
 

@@ -123,7 +123,9 @@ VX_SIMD_INLINE void VxSIMDRayInterpolate(VxVector *point, const VxRay *ray, floa
     __m128 origin = VxSIMDLoadFloat3(&ray->m_Origin.x);
     __m128 dir = VxSIMDLoadFloat3(&ray->m_Direction.x);
     __m128 tv = _mm_set1_ps(t);
-    __m128 out = VX_FMADD_PS(dir, tv, origin);
+    // Match the scalar vector operations: round the product before adding
+    // the origin, including builds that provide fused multiply-add.
+    __m128 out = _mm_add_ps(_mm_mul_ps(dir, tv), origin);
     VxSIMDStoreFloat3(&point->x, out);
 }
 
