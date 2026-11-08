@@ -6,7 +6,7 @@
 
 #include <string.h>
 
-class ArithmeticPolicyTest : public ::testing::Test {
+class ScalarArithmeticTest : public ::testing::Test {
   protected:
     XWORD SavedWord = 0;
 
@@ -18,7 +18,7 @@ class ArithmeticPolicyTest : public ::testing::Test {
     void TearDown() override { VxSetFPUControlWord(SavedWord); }
 };
 
-TEST_F(ArithmeticPolicyTest, EnvironmentInitializationIsIdempotentAndPreservesUnrelatedControlBits) {
+TEST_F(ScalarArithmeticTest, EnvironmentInitializationIsIdempotentAndPreservesUnrelatedControlBits) {
     VxSetFPUControlWord(static_cast<XWORD>(VxGetFPUControlWord() | 0x0f00));
     const XWORD selected = VxGetFPUControlWord();
     const XWORD expected = static_cast<XWORD>((selected & 0xf0ff) | 0x003f);
@@ -28,7 +28,7 @@ TEST_F(ArithmeticPolicyTest, EnvironmentInitializationIsIdempotentAndPreservesUn
     EXPECT_EQ(expected, VxGetFPUControlWord());
 }
 
-TEST_F(ArithmeticPolicyTest, ScalarOperationsComposeWithoutKnowingTheirRepresentation) {
+TEST_F(ScalarArithmeticTest, ScalarOperationsComposeWithoutKnowingTheirRepresentation) {
     const XWORD precisions[] = {0, 0x0200, 0x0300};
     for (XWORD precision : precisions) {
         VxSetFPUControlWord(static_cast<XWORD>((VxGetFPUControlWord() & ~0x0300) | precision));
@@ -51,7 +51,7 @@ TEST_F(ArithmeticPolicyTest, ScalarOperationsComposeWithoutKnowingTheirRepresent
     }
 }
 
-TEST_F(ArithmeticPolicyTest, ScalarValuesPreserveSignedZeroAndUnorderedComparisons) {
+TEST_F(ScalarArithmeticTest, ScalarValuesPreserveSignedZeroAndUnorderedComparisons) {
     VxScalarContext arithmetic;
     VxScalarInitContext(arithmetic);
     const VxScalar zero = VxScalarLoad(arithmetic, 0);
@@ -63,7 +63,7 @@ TEST_F(ArithmeticPolicyTest, ScalarValuesPreserveSignedZeroAndUnorderedCompariso
     EXPECT_EQ(VXSCALAR_UNORDERED, VxScalarCompare(arithmetic, unordered, zero));
 }
 
-TEST_F(ArithmeticPolicyTest, ScalarLoadsPreserveIntegerAndDoubleValuesUntilStorage) {
+TEST_F(ScalarArithmeticTest, ScalarLoadsPreserveIntegerAndDoubleValuesUntilStorage) {
     const XWORD precisions[] = {0, 0x0200, 0x0300};
     for (XWORD precision : precisions) {
         VxSetFPUControlWord(static_cast<XWORD>((VxGetFPUControlWord() & ~0x0300) | precision));
@@ -80,7 +80,7 @@ TEST_F(ArithmeticPolicyTest, ScalarLoadsPreserveIntegerAndDoubleValuesUntilStora
 }
 
 #if VXMATH_ENABLE_X87_EMULATION
-TEST_F(ArithmeticPolicyTest, ScalarSequenceKeepsItsInitialPrecisionWhenTheThreadEnvironmentChanges) {
+TEST_F(ScalarArithmeticTest, ScalarSequenceKeepsItsInitialPrecisionWhenTheThreadEnvironmentChanges) {
     VxSetFPUControlWord(0x007f);
     VxScalarContext arithmetic;
     VxScalarInitContext(arithmetic);
@@ -96,7 +96,7 @@ TEST_F(ArithmeticPolicyTest, ScalarSequenceKeepsItsInitialPrecisionWhenTheThread
 }
 #endif
 
-TEST_F(ArithmeticPolicyTest, ScalarStoreOwnsTheIntermediateRoundingBoundary) {
+TEST_F(ScalarArithmeticTest, ScalarStoreRoundsIntermediateResultsToFloat) {
     const XWORD precisions[] = {0x0200, 0x0300};
     for (XWORD precision : precisions) {
         VxSetFPUControlWord(static_cast<XWORD>((VxGetFPUControlWord() & ~0x0300) | precision));
@@ -121,7 +121,7 @@ TEST_F(ArithmeticPolicyTest, ScalarStoreOwnsTheIntermediateRoundingBoundary) {
     }
 }
 
-TEST_F(ArithmeticPolicyTest, NormalizationAppliesTheRequestedSignedLength) {
+TEST_F(ScalarArithmeticTest, NormalizationAppliesTheRequestedSignedLength) {
     const VxVector direction(6, 8, 0);
     const VxVector result = Normalize(direction, -5);
     EXPECT_EQ(-3, result.x);
@@ -138,7 +138,7 @@ TEST_F(ArithmeticPolicyTest, NormalizationAppliesTheRequestedSignedLength) {
     EXPECT_EQ(18, rounded.y);
 }
 
-TEST_F(ArithmeticPolicyTest, NormalizationOwnsDegenerateAndIntermediateRangeRules) {
+TEST_F(ScalarArithmeticTest, NormalizationPreservesZeroOverflowAndUnderflowResults) {
     const VxVector zero = Normalize(VxVector(0, 0, 0), 4);
     const VxVector huge = Normalize(VxVector(0, 1e20f, 0), 2);
     const VxVector tiny = Normalize(VxVector(-1e-30f, 0, 0), 3);

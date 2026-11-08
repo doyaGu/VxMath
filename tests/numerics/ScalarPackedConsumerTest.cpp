@@ -10,7 +10,7 @@ struct ScalarPackedFollowing {
 
 #include "VxFPUControlWord.h"
 
-TEST(ScalarPackedConsumerTest, PackedHostHeadersPreserveTheLibraryValueContract) {
+TEST(ScalarPackedConsumerTest, PackedHostHeadersPreserveScalarSizeAndAlignment) {
     EXPECT_EQ(5u, sizeof(ScalarPackedFollowing));
 #if VXMATH_ENABLE_X87_EMULATION
     ASSERT_EQ(8u, alignof(VxScalar));

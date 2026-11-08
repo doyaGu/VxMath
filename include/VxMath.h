@@ -93,7 +93,7 @@ VX_EXPORT void InterpolateVectorArray(void *Res, void *Inarray1, void *Inarray2,
  * @param OrClipFlags Output parameter for the combined (ORed) clip flags of the box's vertices.
  * @param AndClipFlags Output parameter for the common (ANDed) clip flags of the box's vertices.
  * @return TRUE if the box is at least partially visible, FALSE otherwise.
- * @remarks Uses the original SSE contract across current backends: strict
+ * @remarks Uses original SSE box projection on every backend: strict
  * homogeneous clipping, four corners only for zero Z thickness, and projection
  * through abs(W). With both rectangles supplied, culled results write +/-1e10
  * defaults before near-plane side clamping. ScreenSize may equal Extents;

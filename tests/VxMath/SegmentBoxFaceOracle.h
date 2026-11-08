@@ -5,7 +5,7 @@
 typedef RayBoxFaceResult SegmentBoxFaceResult;
 
 // The independent six-face line candidates are shared with the ray tests.
-// Apply the separately verified segment contract, without a production call.
+// Compute segment-box entry and exit parameters without a production call.
 static SegmentBoxFaceResult SegmentBoxFaceOracle(const VxRay &segment, const VxBbox &box, bool detailed) {
     SegmentBoxFaceResult r = RayBoxFaceOracle(segment, box, detailed);
     if (!r.code) return r;

@@ -14,7 +14,7 @@ template<class A, class B> struct DataSameType { enum { Value = 0 }; };
 template<class A> struct DataSameType<A, A> { enum { Value = 1 }; };
 struct alignas(16) DataAlignedValue { int Words[4]; };
 
-TEST(DataMutexedReferenceTest, AccessTypesAndPrivateSpecialMembersKeepTheirContracts) {
+TEST(DataMutexedReferenceTest, AccessTypesAndPrivateCopyMembersMatchDeclarations) {
     typedef VxDataMutexed<int> Data;
     typedef Data::Accessor Write;
     typedef Data::ConstAccessor Read;

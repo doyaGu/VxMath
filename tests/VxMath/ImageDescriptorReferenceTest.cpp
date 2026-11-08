@@ -104,7 +104,7 @@ TEST(ImageDescriptorReferenceTest, ComparisonUsesElevenScalarPropertiesAndIgnore
     EXPECT_TRUE(a == b); EXPECT_FALSE(a != b); EXPECT_TRUE(b == a); EXPECT_FALSE(b != a);
 }
 
-TEST(ImageDescriptorReferenceTest, AlphaQueryRetainsTheOriginalFlagThresholdContract) {
+TEST(ImageDescriptorReferenceTest, AlphaQueryUsesOriginalFlagAndBitDepthThreshold) {
     const XDWORD flags[] = {0, 1, 18, 19, 20, 21, 22, 23, 24, 27, 0xffffffff};
     const bool expected[] = {false, false, false, true, true, true, true, true, true, true, true};
     VxImageDescEx d;

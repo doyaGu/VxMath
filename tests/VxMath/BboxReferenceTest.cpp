@@ -227,7 +227,7 @@ TEST(BboxReferenceTest, TransformFromMatchesIndependentEightCornerBounds) { Reco
 TEST(BboxReferenceTest, InPlaceTransformFromUsesAllSourceBoundsBeforeWriting) { RecordBbox(BboxTransformDataset(true)); }
 #if defined(VX_SIMD_SSE)
 static void BboxDirectBatch(const VxBbox &box,int n,XBYTE *v,XDWORD stride,XDWORD *flags) { VxSIMDBboxClassifyVertices(&box,n,v,stride,flags); }
-TEST(BboxReferenceTest, DirectSimdBatchPreservesTheCompactMaskContract) { RecordBbox(BboxBatchDataset(BboxDirectBatch)); }
+TEST(BboxReferenceTest, DirectSimdBatchPreservesCompactVisibilityMask) { RecordBbox(BboxBatchDataset(BboxDirectBatch)); }
 TEST(BboxReferenceTest, DirectSimdTransformsRetainCornerOrderAndSupportInPlaceBounds) {
     const VxBbox source(VxVector(-1,-2,-3),VxVector(4,5,6));VxMatrix m;BboxTestMatrix(m,3);VxVector points[8],expected[8];
     source.TransformTo(expected,m);VxSIMDBboxTransformTo(&source,points,&m);for (int n=0;n<8;++n) EXPECT_EQ(points[n],expected[n]);

@@ -150,7 +150,7 @@ TEST_P(BlitClosureReferenceTest, AllNineOriginalResizeDirectionsPreserveChannels
     }
 }
 
-TEST_P(BlitClosureReferenceTest, ObjectResizeAndBlitUseSameOriginalDirectionContracts) {
+TEST_P(BlitClosureReferenceTest, ObjectResizeAndBlitMatchOriginalResampledPixels) {
     VxBlitEngine engine;
     const int sizes[] = {2, 4, 8};
     for (int w = 0; w < 3; ++w) for (int h = 0; h < 3; ++h) {

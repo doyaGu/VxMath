@@ -173,7 +173,7 @@ TEST(MatrixVector4Reference, ActualWAndFullOutputLiteral) { HVExpect(HVLiteral(H
 TEST(MatrixVector4Reference, ImplicitOneAndFullOutputLiteral) { HVExpect(HVLiteral(HVPoint,true),2); }
 TEST(MatrixVector4Reference, IntegerHomogeneousMapsAndAliases) { HVExpect(HVIntegers(HVFull,false),1024); HVExpect(HVIntegers(HVPoint,true),1024); }
 TEST(MatrixVector4Reference, AllSixteenFieldsInfluenceXYZW) { HVExpect(HVFields(HVFull,false),32); HVExpect(HVFields(HVPoint,true),32); }
-TEST(MatrixVector4Reference, ActualAndImplicitWeightsHaveDistinctContracts) { HVExpect(HVWeights(HVFull,false),10); HVExpect(HVWeights(HVPoint,true),10); HVExpect(HVIgnoredInputW(HVPoint),16); }
+TEST(MatrixVector4Reference, VectorWAndPointUnitWeightProduceDistinctTransforms) { HVExpect(HVWeights(HVFull,false),10); HVExpect(HVWeights(HVPoint,true),10); HVExpect(HVIgnoredInputW(HVPoint),16); }
 TEST(MatrixVector4Reference, MatrixRowViewsAndWideningBaseAlias) { HVExpect(HVMatrixRows(HVFull,false),20); HVExpect(HVMatrixRows(HVPoint,true),20); }
 TEST(MatrixVector4Reference, FourTermCancellationIncludesOutputW) { HVExpect(HVNumerics(HVFull,false,0),32); HVExpect(HVNumerics(HVPoint,true,0),32); }
 TEST(MatrixVector4Reference, FiniteXYZWSurviveProductOverflow) { HVExpect(HVNumerics(HVFull,false,1),32); HVExpect(HVNumerics(HVPoint,true,1),24); }

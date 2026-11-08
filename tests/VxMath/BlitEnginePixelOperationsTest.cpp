@@ -1,6 +1,6 @@
 /**
- * @file BlitEngineContractTest.cpp
- * @brief Contract and negative tests for VxBlitEngine.
+ * @file BlitEnginePixelOperationsTest.cpp
+ * @brief Pixel conversion, resampling, alpha and invalid-input tests for VxBlitEngine.
  *
  * Tests documented preconditions, unsupported format behavior, and error paths.
  * Ensures the engine behaves predictably with invalid/edge inputs.
@@ -96,9 +96,9 @@ TEST_F(BlitEngineUnsupportedFormatTest, PixelFormat_Unknown_ReturnsUnknown) {
 // Quantize Precondition Tests
 //==============================================================================
 
-class BlitEngineQuantizeContractTest : public BlitEngineTestBase {};
+class BlitEngineQuantizationInputTest : public BlitEngineTestBase {};
 
-TEST_F(BlitEngineQuantizeContractTest, Quantize_32BitSource_Succeeds) {
+TEST_F(BlitEngineQuantizationInputTest, Quantize_32BitSource_Succeeds) {
     const int width = 32, height = 32;
 
     ImageBuffer srcBuf(width * height * 4);
@@ -115,7 +115,7 @@ TEST_F(BlitEngineQuantizeContractTest, Quantize_32BitSource_Succeeds) {
     EXPECT_TRUE(result) << "Quantize from 32-bit should succeed";
 }
 
-TEST_F(BlitEngineQuantizeContractTest, Quantize_24BitSource_Succeeds) {
+TEST_F(BlitEngineQuantizationInputTest, Quantize_24BitSource_Succeeds) {
     const int width = 32, height = 32;
 
     ImageBuffer srcBuf(width * height * 3);
@@ -132,7 +132,7 @@ TEST_F(BlitEngineQuantizeContractTest, Quantize_24BitSource_Succeeds) {
     EXPECT_TRUE(result) << "Quantize from 24-bit should succeed";
 }
 
-TEST_F(BlitEngineQuantizeContractTest, Quantize_16BitSource_MayFail) {
+TEST_F(BlitEngineQuantizationInputTest, Quantize_16BitSource_MayFail) {
     const int width = 16, height = 16;
 
     ImageBuffer srcBuf(width * height * 2);
@@ -148,7 +148,7 @@ TEST_F(BlitEngineQuantizeContractTest, Quantize_16BitSource_MayFail) {
     EXPECT_NO_THROW(blitter.QuantizeImage(srcDesc, dstDesc));
 }
 
-TEST_F(BlitEngineQuantizeContractTest, Quantize_NullPalette_HandlesGracefully) {
+TEST_F(BlitEngineQuantizationInputTest, Quantize_NullPalette_HandlesGracefully) {
     const int width = 16, height = 16;
 
     ImageBuffer srcBuf(width * height * 4);
@@ -164,7 +164,7 @@ TEST_F(BlitEngineQuantizeContractTest, Quantize_NullPalette_HandlesGracefully) {
     // Should either fail gracefully or succeed with some behavior
     EXPECT_NO_THROW(blitter.QuantizeImage(srcDesc, dstDesc));
 }
-TEST_F(BlitEngineQuantizeContractTest, Quantize_PaletteEntryTooSmall_Fails) {
+TEST_F(BlitEngineQuantizationInputTest, Quantize_PaletteEntryTooSmall_Fails) {
     const int width = 16, height = 16;
 
     ImageBuffer srcBuf(width * height * 4);
@@ -185,9 +185,9 @@ TEST_F(BlitEngineQuantizeContractTest, Quantize_PaletteEntryTooSmall_Fails) {
 // Resize Precondition Tests
 //==============================================================================
 
-class BlitEngineResizeContractTest : public BlitEngineTestBase {};
+class BlitEngineResamplingInputTest : public BlitEngineTestBase {};
 
-TEST_F(BlitEngineResizeContractTest, Resize_32BitSource_Succeeds) {
+TEST_F(BlitEngineResamplingInputTest, Resize_32BitSource_Succeeds) {
     const int srcW = 64, srcH = 64;
     const int dstW = 32, dstH = 32;
 
@@ -202,7 +202,7 @@ TEST_F(BlitEngineResizeContractTest, Resize_32BitSource_Succeeds) {
     EXPECT_NO_THROW(blitter.ResizeImage(srcDesc, dstDesc));
 }
 
-TEST_F(BlitEngineResizeContractTest, Resize_24BitSource_MayConvertFirst) {
+TEST_F(BlitEngineResamplingInputTest, Resize_24BitSource_MayConvertFirst) {
     const int srcW = 32, srcH = 32;
     const int dstW = 16, dstH = 16;
 
@@ -218,7 +218,7 @@ TEST_F(BlitEngineResizeContractTest, Resize_24BitSource_MayConvertFirst) {
     EXPECT_NO_THROW(blitter.ResizeImage(srcDesc, dstDesc));
 }
 
-TEST_F(BlitEngineResizeContractTest, Resize_16BitSource_UsesNearestPath) {
+TEST_F(BlitEngineResamplingInputTest, Resize_16BitSource_UsesNearestPath) {
     const int srcW = 32, srcH = 32;
     const int dstW = 16, dstH = 16;
 
@@ -232,7 +232,7 @@ TEST_F(BlitEngineResizeContractTest, Resize_16BitSource_UsesNearestPath) {
     EXPECT_NO_THROW(blitter.ResizeImage(srcDesc, dstDesc));
 }
 
-TEST_F(BlitEngineResizeContractTest, Resize_ZeroDimensions_NoOp) {
+TEST_F(BlitEngineResamplingInputTest, Resize_ZeroDimensions_NoOp) {
     ImageBuffer srcBuf(16);
     ImageBuffer dstBuf(16);
 
@@ -299,9 +299,9 @@ TEST_F(BlitEngineBytesPerLineTest, BytesPerLine_Negative_HandlesGracefully) {
 // Alpha Operation Preconditions
 //==============================================================================
 
-class BlitEngineAlphaContractTest : public BlitEngineTestBase {};
+class BlitEngineAlphaInputTest : public BlitEngineTestBase {};
 
-TEST_F(BlitEngineAlphaContractTest, DoAlphaBlit_NoAlphaMask_HandlesGracefully) {
+TEST_F(BlitEngineAlphaInputTest, DoAlphaBlit_NoAlphaMask_HandlesGracefully) {
     const int width = 16, height = 16;
     ImageBuffer buffer(width * height * 4);
 
@@ -312,7 +312,7 @@ TEST_F(BlitEngineAlphaContractTest, DoAlphaBlit_NoAlphaMask_HandlesGracefully) {
     EXPECT_NO_THROW(blitter.DoAlphaBlit(desc, static_cast<XBYTE>(128)));
 }
 
-TEST_F(BlitEngineAlphaContractTest, DoAlphaBlit_16BitNoAlpha_HandlesGracefully) {
+TEST_F(BlitEngineAlphaInputTest, DoAlphaBlit_16BitNoAlpha_HandlesGracefully) {
     const int width = 16, height = 16;
     ImageBuffer buffer(width * height * 2);
 
@@ -322,7 +322,7 @@ TEST_F(BlitEngineAlphaContractTest, DoAlphaBlit_16BitNoAlpha_HandlesGracefully) 
     EXPECT_NO_THROW(blitter.DoAlphaBlit(desc, static_cast<XBYTE>(200)));
 }
 
-TEST_F(BlitEngineAlphaContractTest, DoAlphaBlit_24Bit_HandlesGracefully) {
+TEST_F(BlitEngineAlphaInputTest, DoAlphaBlit_24Bit_HandlesGracefully) {
     const int width = 16, height = 16;
     ImageBuffer buffer(width * height * 3);
 
@@ -331,7 +331,7 @@ TEST_F(BlitEngineAlphaContractTest, DoAlphaBlit_24Bit_HandlesGracefully) {
     EXPECT_NO_THROW(blitter.DoAlphaBlit(desc, static_cast<XBYTE>(255)));
 }
 
-TEST_F(BlitEngineAlphaContractTest, CopyAlpha_NullArray_NoOp) {
+TEST_F(BlitEngineAlphaInputTest, CopyAlpha_NullArray_NoOp) {
     const int width = 8, height = 8;
     ImageBuffer buffer(width * height * 4);
     buffer.Fill(0xAB);
@@ -351,9 +351,9 @@ TEST_F(BlitEngineAlphaContractTest, CopyAlpha_NullArray_NoOp) {
 // Paletted Image Preconditions
 //==============================================================================
 
-class BlitEnginePalettedContractTest : public BlitEngineTestBase {};
+class BlitEnginePaletteInputTest : public BlitEngineTestBase {};
 
-TEST_F(BlitEnginePalettedContractTest, Paletted_NullColorMap_HandlesGracefully) {
+TEST_F(BlitEnginePaletteInputTest, Paletted_NullColorMap_HandlesGracefully) {
     const int width = 16, height = 16;
     ImageBuffer srcBuf(width * height);
     ImageBuffer dstBuf(width * height * 4);
@@ -371,7 +371,7 @@ TEST_F(BlitEnginePalettedContractTest, Paletted_NullColorMap_HandlesGracefully) 
     EXPECT_NO_THROW(blitter.DoBlit(srcDesc, dstDesc));
 }
 
-TEST_F(BlitEnginePalettedContractTest, Paletted_ZeroColorMapEntries_HandlesGracefully) {
+TEST_F(BlitEnginePaletteInputTest, Paletted_ZeroColorMapEntries_HandlesGracefully) {
     const int width = 8, height = 8;
     ImageBuffer srcBuf(width * height);
     ImageBuffer dstBuf(width * height * 4);
@@ -385,7 +385,7 @@ TEST_F(BlitEnginePalettedContractTest, Paletted_ZeroColorMapEntries_HandlesGrace
 
     EXPECT_NO_THROW(blitter.DoBlit(srcDesc, dstDesc));
 }
-TEST_F(BlitEnginePalettedContractTest, Paletted_BytesPerEntryTooSmall_HandlesGracefully) {
+TEST_F(BlitEnginePaletteInputTest, Paletted_BytesPerEntryTooSmall_HandlesGracefully) {
     const int width = 8, height = 8;
     ImageBuffer srcBuf(width * height);
     ImageBuffer dstBuf(width * height * 4);
@@ -401,7 +401,7 @@ TEST_F(BlitEnginePalettedContractTest, Paletted_BytesPerEntryTooSmall_HandlesGra
     EXPECT_EQ(0xAB, dstBuf[0]) << "Invalid palette entry size should not modify destination";
 }
 
-TEST_F(BlitEnginePalettedContractTest, Paletted_IndexOutOfRange_HandlesGracefully) {
+TEST_F(BlitEnginePaletteInputTest, Paletted_IndexOutOfRange_HandlesGracefully) {
     const int width = 4, height = 4;
     ImageBuffer srcBuf(width * height);
     ImageBuffer dstBuf(width * height * 4);
@@ -431,9 +431,9 @@ TEST_F(BlitEnginePalettedContractTest, Paletted_IndexOutOfRange_HandlesGracefull
 // Image Operations Preconditions
 //==============================================================================
 
-class BlitEngineImageOpsContractTest : public BlitEngineTestBase {};
+class BlitEngineColorChannelInputTest : public BlitEngineTestBase {};
 
-TEST_F(BlitEngineImageOpsContractTest, PremultiplyAlpha_NonARGB_HandlesGracefully) {
+TEST_F(BlitEngineColorChannelInputTest, PremultiplyAlpha_NonARGB_HandlesGracefully) {
     const int width = 8, height = 8;
     ImageBuffer buffer(width * height * 3);
 
@@ -443,7 +443,7 @@ TEST_F(BlitEngineImageOpsContractTest, PremultiplyAlpha_NonARGB_HandlesGracefull
     EXPECT_NO_THROW(blitter.PremultiplyAlpha(desc));
 }
 
-TEST_F(BlitEngineImageOpsContractTest, SwapRedBlue_16Bit_HandlesGracefully) {
+TEST_F(BlitEngineColorChannelInputTest, SwapRedBlue_16Bit_HandlesGracefully) {
     const int width = 8, height = 8;
     ImageBuffer buffer(width * height * 2);
 
@@ -453,7 +453,7 @@ TEST_F(BlitEngineImageOpsContractTest, SwapRedBlue_16Bit_HandlesGracefully) {
     EXPECT_NO_THROW(blitter.SwapRedBlue(desc));
 }
 
-TEST_F(BlitEngineImageOpsContractTest, Grayscale_NonRGB_HandlesGracefully) {
+TEST_F(BlitEngineColorChannelInputTest, Grayscale_NonRGB_HandlesGracefully) {
     const int width = 4, height = 4;
     ImageBuffer buffer(width * height);
     PaletteBuffer palette(4);
@@ -464,7 +464,7 @@ TEST_F(BlitEngineImageOpsContractTest, Grayscale_NonRGB_HandlesGracefully) {
     EXPECT_NO_THROW(blitter.ConvertToGrayscale(desc));
 }
 
-TEST_F(BlitEngineImageOpsContractTest, MultiplyBlend_DimensionMismatch_HandlesGracefully) {
+TEST_F(BlitEngineColorChannelInputTest, MultiplyBlend_DimensionMismatch_HandlesGracefully) {
     ImageBuffer srcBuf(32 * 32 * 4);
     ImageBuffer dstBuf(16 * 16 * 4);
 
@@ -479,12 +479,12 @@ TEST_F(BlitEngineImageOpsContractTest, MultiplyBlend_DimensionMismatch_HandlesGr
 }
 
 //==============================================================================
-// Pixel Format Conversion Contract
+// Pixel Format Conversion
 //==============================================================================
 
-class BlitEnginePixelFormatContractTest : public BlitEngineTestBase {};
+class BlitEnginePixelFormatEnumerationTest : public BlitEngineTestBase {};
 
-TEST_F(BlitEnginePixelFormatContractTest, ConvertPixelFormat_AllKnownFormats) {
+TEST_F(BlitEnginePixelFormatEnumerationTest, ConvertPixelFormat_AllKnownFormats) {
     // Test that all known formats can be converted without crashing
     VX_PIXELFORMAT formats[] = {
         _32_ARGB8888, _32_RGB888, _24_RGB888,
@@ -499,7 +499,7 @@ TEST_F(BlitEnginePixelFormatContractTest, ConvertPixelFormat_AllKnownFormats) {
     }
 }
 
-TEST_F(BlitEnginePixelFormatContractTest, PixelFormat2String_AllFormats) {
+TEST_F(BlitEnginePixelFormatEnumerationTest, PixelFormat2String_AllFormats) {
     VX_PIXELFORMAT formats[] = {
         UNKNOWN_PF, _32_ARGB8888, _32_RGB888, _24_RGB888,
         _16_RGB565, _16_RGB555, _16_ARGB1555, _16_ARGB4444

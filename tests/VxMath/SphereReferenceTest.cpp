@@ -134,7 +134,7 @@ TEST(SphereReferenceTest, ZeroRadiusContainsOnlyItsCenterAndNoBox) {
     EXPECT_FALSE(sphere.IsBoxTotallyInside(VxBbox(sphere.Center(),sphere.Center())));
 }
 
-TEST(SphereReferenceTest, NegativeRadiusPreservesTheOriginalSquaredMagnitudeContract) {
+TEST(SphereReferenceTest, NegativeRadiusUsesOriginalSquaredMagnitude) {
     VxSphere positive(VxVector(0,0,0),5),negative(VxVector(0,0,0),-5);
     const VxVector point(3,4,0);const VxBbox box(VxVector(-1,-2,-2),VxVector(1,2,2));
     EXPECT_TRUE(negative.IsPointInside(point));EXPECT_TRUE(negative.IsPointOnSurface(point));EXPECT_TRUE(negative.IsBoxTotallyInside(box));

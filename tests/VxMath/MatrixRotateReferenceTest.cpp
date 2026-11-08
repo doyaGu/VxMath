@@ -221,7 +221,7 @@ TEST(MatrixRotateReference, Matrix64AndVector12ReadWriteFootprints) {
 #endif
 }
 TEST(MatrixRotateReference, TranslationRowCanBeInaccessible) { MRExpect(MROnlyLinearRows(MRFree),1); }
-TEST(MatrixRotateReference, MemberEntryUsesLinearContract) {
+TEST(MatrixRotateReference, MemberRotateUsesLinearMatrixRows) {
 #if defined(_WIN32)
     MRExpect(MRAll(MRMember),2315);
 #else
@@ -229,7 +229,7 @@ TEST(MatrixRotateReference, MemberEntryUsesLinearContract) {
 #endif
     MRExpect(MRMemberRows(),4);
 }
-TEST(MatrixRotateReference, ValueEntryUsesLinearContract) {
+TEST(MatrixRotateReference, ValueRotateUsesLinearMatrixRows) {
 #if defined(_WIN32)
     MRExpect(MRAll(MRValue),2315);
 #else

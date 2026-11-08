@@ -127,7 +127,7 @@ set(VXMATH_TEST_SOURCES
         StringTest.cpp
         ConfigurationTest.cpp
         PlatformCompatibilityTest.cpp
-        AnsiPathBoundaryTest.cpp
+        AnsiPathEncodingTest.cpp
         PathParsingTest.cpp
         URLTest.cpp
         MemoryMappedFileTest.cpp
@@ -240,7 +240,7 @@ set(VXMATH_TEST_SOURCES
         BlitEnginePixelFormatTest.cpp
         # BlitEngine Full Coverage Tests
         BlitEngineEdgeCaseTest.cpp
-        BlitEngineContractTest.cpp
+        BlitEnginePixelOperationsTest.cpp
         BlitEngineMatrixTest.cpp
 )
 
@@ -271,7 +271,7 @@ foreach (TEST_SOURCE ${VXMATH_TEST_SOURCES})
     vx_copy_runtime_dependencies(${TEST_NAME})
 endforeach ()
 
-target_compile_definitions(AnsiPathBoundaryTest PRIVATE
+target_compile_definitions(AnsiPathEncodingTest PRIVATE
         VX_PATH_TEST_LIBRARY="$<TARGET_FILE:SDL3::SDL3>")
 
 # Static linkage lets the allocation-failure test intercept the pixel copy's
@@ -858,8 +858,8 @@ vx_add_test(ConfigurationCompatibilityTest SOURCES ConfigurationCompatibilityTes
 vx_copy_runtime_dependencies(ConfigurationCompatibilityTest)
 
 if (NOT TEST_TARGET STREQUAL "VxMath_GroundTruth")
-    vx_add_test(ArithmeticPolicyTest SOURCES
-            ../numerics/ArithmeticPolicyTest.cpp
+    vx_add_test(ScalarArithmeticTest SOURCES
+            ../numerics/ScalarArithmeticTest.cpp
             ../numerics/ScalarPackedConsumerTest.cpp)
     add_executable(ScalarNativeTest ../numerics/ScalarNativeTest.cpp)
     target_include_directories(ScalarNativeTest PRIVATE "${VXMATH_INCLUDE_DIR}")

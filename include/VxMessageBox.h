@@ -4,7 +4,7 @@
 #include "VxMathDefines.h"
 
 /// @brief Displays a message box using MB_* fields and ID* button values.
-/// Windows preserves the original MessageBoxA contract and accepts native or SDL owners.
+/// Windows forwards MessageBoxA text and flags unchanged and accepts native or SDL owner windows.
 /// @return The selected ID* button value, or zero on failure/no selection.
 VX_EXPORT int VxMessageBox(WIN_HANDLE hWnd, const char *lpText, const char *lpCaption, XDWORD uType);
 

@@ -183,7 +183,7 @@ TEST(FrustumReference, AffineBoxClassifyUsesSignedCenterWhenSeparated) { Frustum
 TEST(FrustumReference, TransformMapsAllEightCornersThroughKnownAffineMaps) { FrustumCheck(FrustumTransformDataset()); }
 TEST(FrustumReference, UpdateKeepsUnitSidePlanesAcrossBinaryScales) { FrustumCheck(FrustumScaleDataset(false)); }
 TEST(FrustumReference, TransformKeepsNonzeroAxesAndBoundsAcrossBinaryScales) { FrustumCheck(FrustumScaleDataset(true)); }
-TEST(FrustumReference, DefaultConstructorAndHorizontalFovContract) {
+TEST(FrustumReference, DefaultConstructorInitializesCameraAndHorizontalFov) {
     const VxFrustum f; EXPECT_EQ(f.GetOrigin(), VxVector(0,0,0)); EXPECT_EQ(f.GetRight(), VxVector(1,0,0));
     EXPECT_EQ(f.GetUp(), VxVector(0,1,0)); EXPECT_EQ(f.GetDir(), VxVector(0,0,1));
     EXPECT_FLOAT_EQ(f.GetRBound(),1); EXPECT_FLOAT_EQ(f.GetUBound(),1); EXPECT_FLOAT_EQ(f.GetDMin(),1); EXPECT_FLOAT_EQ(f.GetDMax(),2);
@@ -235,7 +235,7 @@ TEST(FrustumReference, ClosedPointBoundariesAndLaterPlaneRejection) {
     EXPECT_LT(f.Classify(VxBbox(VxVector(-0.5f,-0.5f,4),VxVector(0.5f,0.5f,5))),0);
 }
 #if defined(VX_SIMD_SSE)
-TEST(FrustumReference, DirectSimdEntriesUseTheSameOriginalCameraContract) {
+TEST(FrustumReference, DirectSimdEntriesMatchOriginalCameraPlanes) {
     VxFrustum f = FrustumMake(); f.GetDMax() = 12; VxSIMDFrustumUpdate(&f); EXPECT_FLOAT_EQ(f.GetDRatio(),6);
     VxVector vertices[8]; VxSIMDFrustumComputeVertices(&f,vertices); EXPECT_EQ(vertices[7],VxVector(12,-6,12));
     VxMatrix m; m.SetIdentity(); m[3] = VxVector(4,8,16); VxSIMDFrustumTransform(&f,&m); EXPECT_EQ(f.GetOrigin(),VxVector(4,8,16));

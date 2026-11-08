@@ -6,7 +6,7 @@
 VxVector VxTestLibraryNormalize(const VxVector &value);
 float VxTestLibraryMagnitude(const VxVector &value);
 
-TEST(ScalarConsumerTest, NarrowCallerUsesTheLibraryVectorContract) {
+TEST(ScalarConsumerTest, Ia32CallerUsesLibraryVectorEvaluation) {
     struct RestoreControl {
         XWORD Word = VxGetFPUControlWord();
         ~RestoreControl() { VxSetFPUControlWord(Word); }

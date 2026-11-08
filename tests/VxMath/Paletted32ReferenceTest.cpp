@@ -157,7 +157,7 @@ TEST_P(Paletted32ReferenceTest, PaletteMutationAtSameAddressIsVisible) {
     for(int y=0;y<2;++y)for(int x=0;x<image.dst.Width;++x)EXPECT_EQ(image.Pixel(x,y),0x664d5863u);
 }
 
-TEST_P(Paletted32ReferenceTest, ZeroSourceMasksKeepExistingBgrPaletteContract) {
+TEST_P(Paletted32ReferenceTest, ZeroSourceMasksUseBgrPaletteEntries) {
     for(int layout=0;layout<6;++layout){SCOPED_TRACE(layout);PaletteReferenceImage image(layout,4,16,19,false,false,false);image.Run();}
 }
 

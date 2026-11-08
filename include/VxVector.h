@@ -290,7 +290,7 @@ inline const VxVector Normalize(const VxVector *vect);
 /**
  * @brief Returns a vector with the requested signed length.
  * @remarks A negative length reverses its direction. Evaluation and stores
- * follow the library's arithmetic policy. The input is not modified.
+ * use VxMath's selected floating-point evaluation. The input is not modified.
  */
 VX_EXPORT const VxVector Normalize(const VxVector &v, float length);
 

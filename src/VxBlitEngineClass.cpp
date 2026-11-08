@@ -285,7 +285,7 @@ void VxBlitEngine::ApplyAVX2Overrides() {
         return;
     }
 
-    // Hybrid fastest policy (measured): keep AVX2 only where it wins while
+    // Select AVX2 pixel conversions only where measured throughput improves,
     // preserving bit-exact output against lower SIMD tiers.
     //
     // Leave these from earlier tiers:
@@ -1378,7 +1378,7 @@ void VxBlitEngine::ResizeImage(const VxImageDescEx &src_desc, const VxImageDescE
     if (src_desc.Width <= 0 || src_desc.Height <= 0) return;
     if (dst_desc.Width <= 0 || dst_desc.Height <= 0) return;
 
-    // Hybrid resize policy:
+    // Resampling filters and pixel-format conversion:
     // - area reduction / bilinear enlargement for 32-bit, bilinear for 24-bit
     // - nearest-neighbor for same-format low-bpp (8/16) for performance
     // - 32-bit conversion path for mixed-format resize

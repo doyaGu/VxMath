@@ -149,7 +149,7 @@ PF_CASES(Scalar,PointInFaceScalarCore)
 #if defined(VX_SIMD_SSE)
 PF_CASES(Simd,PointInFaceSIMDCore)
 #endif
-TEST(PointInFaceReference,ProjectionHelperContract){
+TEST(PointInFaceReference,ProjectionHelperSelectsAxesAndWritesAliasedOutputsInOrder){
     for(const auto &n:PFNormals){const VxVector normal(n[0],n[1],n[2]);const auto expected=PointInFaceOracle(normal,normal,normal,normal,normal);int first=71,second=83;SelectFaceProjectionAxes(normal,first,second);EXPECT_EQ(first,expected.first);EXPECT_EQ(second,expected.second);int alias=71;SelectFaceProjectionAxes(normal,alias,alias);EXPECT_EQ(alias,expected.second);}
 }
 TEST(PointInFaceReference,PublicForwardersUseFaceDispatch){const auto *saved=GetVxIntersectFaceDispatchTable();for(int i=0;i<4;++i){const auto *table=&kVxIntersectFaceDispatchScalar;

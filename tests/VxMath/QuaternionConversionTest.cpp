@@ -242,7 +242,7 @@ TEST_P(QuaternionConversionTest, PreservesConversionsAndEquivalentScaleTransform
         for (int component = 0; component < 20; ++component) {
             if (mathematicalRotation && component<12) continue;
             // MatIsUnit on an arbitrary extreme matrix is outside the rotation
-            // contract; still check its input-preservation side effect below.
+            // inputs; still check that the input matrix remains unchanged below.
             if ((sample.operation==4 || (sample.operation==3 && sample.unit)) &&
                 !boundedMatrix && component<4) continue;
             if (sample.operation==10 && boundedMatrix && component>=12 && component<15) continue;

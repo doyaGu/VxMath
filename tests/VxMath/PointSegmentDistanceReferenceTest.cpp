@@ -174,7 +174,7 @@ TEST(PointSegmentDistanceReference,PublicForwarderUsesDistanceDispatch){const au
     if(i&1)table=&kVxDistanceDispatchSIMD;
 #endif
     g_VxDistanceDispatch.store(table,std::memory_order_release);PSCheck(PSDirectionScales(VxDistance::PointSegmentSquareDistance));}g_VxDistanceDispatch.store(saved,std::memory_order_release);}
-TEST(PointSegmentDistanceReference,PublicDistanceWrapperKeepsSquaredFloatContract){PSCheck(PSGrid(VxDistance::PointSegmentDistance,true));float t;
+TEST(PointSegmentDistanceReference,PublicDistanceWrapperReturnsSquaredFloatDistance){PSCheck(PSGrid(VxDistance::PointSegmentDistance,true));float t;
     VxRay line;line.m_Origin=VxVector(0,0,0);line.m_Direction=VxVector(1,0,0);
     const VxVector p(2,std::ldexp(1.0f,100),0);EXPECT_EQ(VxDistance::PointSegmentDistance(p,line,&t),INFINITY);EXPECT_EQ(t,1);
 }

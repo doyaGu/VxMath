@@ -160,8 +160,9 @@ public:
      * @param src_desc Source image descriptor.
      * @param dst_desc Destination image descriptor.
      *
-     * Current policy:
-     * - 32bpp -> 32bpp and 24bpp -> 24bpp use bilinear filtering.
+     * Resampling filters by pixel format:
+     * - 32bpp -> 32bpp uses area reduction or bilinear enlargement.
+     * - 24bpp -> 24bpp uses bilinear filtering.
      * - Same-format low-bpp paths (8/16bpp) use nearest-neighbor for speed.
      * - Mixed-format resize falls back to 32bpp conversion + bilinear + conversion.
      */

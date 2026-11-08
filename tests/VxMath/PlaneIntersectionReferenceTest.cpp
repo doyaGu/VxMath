@@ -63,7 +63,7 @@ static void PIObserve(PIResults &r, PIFn fn, int mode, const VxRay &ray, const V
         ++r.errors;
     }
     r.digest = (r.digest ^ unsigned(actual)) * 16777619u;
-    // Include the output-mutation contract while avoiding irrelevant last-bit
+    // Check writes to intersection outputs while avoiding irrelevant last-bit
     // differences in geometric coordinates between x87 and SSE2.
     r.digest = (r.digest ^ unsigned(distance != 509)) * 16777619u;
     r.digest = (r.digest ^ unsigned(point.x != 101 || point.y != -203 || point.z != 307)) * 16777619u;
@@ -146,7 +146,7 @@ static void PICheck(PIResults r) {
 TEST(PlaneIntersectionReference, ScalarOrdinaryGeometryAndOutputMutation) { PICheck(PIOrdinary(piScalar)); }
 TEST(PlaneIntersectionReference, ScalarThresholdsAndUnroundedParameter) { PICheck(PIBoundaries(piScalar)); }
 TEST(PlaneIntersectionReference, ScalarFiniteProductsAndCancellation) { PICheck(PIWide(piScalar)); }
-TEST(PlaneIntersectionReference, PublicScalarTableMatchesContract) {
+TEST(PlaneIntersectionReference, PublicScalarDispatchMatchesOriginalPlaneIntersections) {
     VxIntersectPlaneDispatchRebuild(false);
     PICheck(PIOrdinary(piPublic));
     EXPECT_EQ(PIBoundaries(piPublic).errors, 0);

@@ -234,7 +234,7 @@ TEST_P(GraphicImageReferenceTest, MipmapTerminalPixelLeavesOutputUntouched) {
     VxGenerateMipMap(s, output + 4);
     Guard(output, 0, 16);
 }
-TEST_P(GraphicImageReferenceTest, Mipmap24And565KeepTheirExistingFormatContracts) {
+TEST_P(GraphicImageReferenceTest, Mipmap24And565PreservePixelFormats) {
     XBYTE source24[32];
     std::memset(source24, 0xee, sizeof(source24));
     for (int y = 0; y < 4; ++y)

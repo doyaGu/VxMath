@@ -165,7 +165,7 @@ TEST(IntegerRegionReferenceTest, RectangleLayoutHasFourSigned32BitFieldsAndTrivi
     int raw[4];std::memcpy(raw,&original,sizeof(raw));EXPECT_EQ(raw[0],INT_MIN);EXPECT_EQ(raw[1],-16777217);EXPECT_EQ(raw[2],16777217);EXPECT_EQ(raw[3],INT_MAX);
 }
 
-TEST(IntegerRegionReferenceTest, OverrideTransitionsKeepTheSameIntegerPointContract) {
+TEST(IntegerRegionReferenceTest, SimdOverridesPreserveIntegerPointContainment) {
     const int previous=VxGetSIMDOverride();unsigned effective=0;
     for (int n=0;n<18;++n) {
         EXPECT_TRUE(VxSetSIMDOverride(1+n%6));EXPECT_EQ(VxGetSIMDOverride(),1+n%6);

@@ -365,7 +365,7 @@ struct TestObject {
 };
 
 static_assert(std::is_trivially_copyable<TestObject>::value,
-              "XArray test values must satisfy the container's storage contract");
+              "XArray test values must support bytewise copying and trivial destruction");
 
 class XArrayObjectTest : public ::testing::Test {};
 

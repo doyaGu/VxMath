@@ -120,7 +120,7 @@ TEST(PointLineDistanceReference,prefix##NonzeroDirectionAcrossFloatRange){PLChec
 TEST(PointLineDistanceReference,prefix##FiniteGeometryScales){PLCheck(PLGeometryScales(fn));} \
 TEST(PointLineDistanceReference,prefix##PerpendicularDistanceSurvivesCancellation){PLCheck(PLCancellation(fn));} \
 TEST(PointLineDistanceReference,prefix##OutputMayAliasInputComponents){PLCheck(PLAliases(fn));} \
-TEST(PointLineDistanceReference,prefix##ZeroDirectionRetainsNonfiniteContract){PLCheck(PLZero(fn));} \
+TEST(PointLineDistanceReference,prefix##ZeroDirectionProducesOriginalNonfiniteValues){PLCheck(PLZero(fn));} \
 TEST(PointLineDistanceReference,prefix##IndependentGramOracle){PLCheck(PLRandom(fn));}
 PL_TESTS(Scalar,PointLineSquareDistanceScalarImpl)
 #if defined(VX_SIMD_SSE)
@@ -137,7 +137,7 @@ TEST(PointLineDistanceReference,PublicForwarderUsesDistanceDispatch){const auto 
     if(i&1)table=&kVxDistanceDispatchSIMD;
 #endif
     g_VxDistanceDispatch.store(table,std::memory_order_release);PLCheck(PLDirectionScales(VxDistance::PointLineSquareDistance));}g_VxDistanceDispatch.store(saved,std::memory_order_release);}
-TEST(PointLineDistanceReference,PublicDistanceWrapperKeepsSquaredFloatContract){PLCheck(PLGrid(VxDistance::PointLineDistance,true));float t;
+TEST(PointLineDistanceReference,PublicDistanceWrapperReturnsSquaredFloatDistance){PLCheck(PLGrid(VxDistance::PointLineDistance,true));float t;
     VxRay line;line.m_Origin=VxVector(0,0,0);line.m_Direction=VxVector(1,0,0);
     const VxVector p(2,std::ldexp(1.0f,100),0);EXPECT_EQ(VxDistance::PointLineDistance(p,line,&t),INFINITY);EXPECT_EQ(t,2);
 }

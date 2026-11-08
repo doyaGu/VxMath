@@ -92,7 +92,7 @@ static void RemoveNativeTestDirectory(const char *directory) {
     SDL_RemovePath(directory);
 }
 
-class AnsiPathBoundaryTest : public ::testing::Test {
+class AnsiPathEncodingTest : public ::testing::Test {
 protected:
     XString Root, NativeDirectory, Directory;
     void SetUp() override {
@@ -133,7 +133,7 @@ protected:
     }
 };
 
-TEST_F(AnsiPathBoundaryTest, ChineseDirectoryIsCreatedAtTheNativeLocation) {
+TEST_F(AnsiPathEncodingTest, ChineseDirectoryIsCreatedAtTheNativeLocation) {
     if (!PrepareDirectory()) return;
     XString native = NativeDirectory;
     native << u8"/\u65B0\u5EFA";
@@ -148,7 +148,7 @@ TEST_F(AnsiPathBoundaryTest, ChineseDirectoryIsCreatedAtTheNativeLocation) {
     EXPECT_FALSE(SDL_GetPathInfo(native.CStr(), &info));
 }
 
-TEST_F(AnsiPathBoundaryTest, ChineseFileMappingKeepsBytesAndReleasesTheSource) {
+TEST_F(AnsiPathEncodingTest, ChineseFileMappingKeepsBytesAndReleasesTheSource) {
     if (!PrepareDirectory()) return;
     XString native = NativeDirectory;
     native << u8"/\u6570\u636E.bin";
@@ -175,7 +175,7 @@ static XBOOL CollectAnsiEntry(const VxDirectoryEntry *entry, void *data) {
     return TRUE;
 }
 
-TEST_F(AnsiPathBoundaryTest, CopyListAndDeleteUseTheSameAnsiNames) {
+TEST_F(AnsiPathEncodingTest, CopyListAndDeleteUseTheSameAnsiNames) {
     if (!PrepareDirectory()) return;
     XString source = NativeDirectory, target = NativeDirectory;
     source << u8"/\u6E90.bin";
@@ -199,7 +199,7 @@ TEST_F(AnsiPathBoundaryTest, CopyListAndDeleteUseTheSameAnsiNames) {
     EXPECT_FALSE(SDL_GetPathInfo(NativeDirectory.CStr(), &info));
 }
 
-TEST_F(AnsiPathBoundaryTest, ChineseTempPathCanBeJoinedReadAndCleaned) {
+TEST_F(AnsiPathEncodingTest, ChineseTempPathCanBeJoinedReadAndCleaned) {
     XBOOL representable = PrepareDirectory();
     PathTestEnvironment tmp("TMP", NativeDirectory.CStr());
     PathTestEnvironment temp("TEMP", NativeDirectory.CStr());
@@ -221,7 +221,7 @@ TEST_F(AnsiPathBoundaryTest, ChineseTempPathCanBeJoinedReadAndCleaned) {
     EXPECT_FALSE(SDL_GetPathInfo(native.CStr(), &info));
 }
 
-TEST_F(AnsiPathBoundaryTest, TempPathKeepsPlatformBytes) {
+TEST_F(AnsiPathEncodingTest, TempPathKeepsPlatformBytes) {
     XString native = Root;
     native << u8"\U0001F642";
     ASSERT_TRUE(SDL_CreateDirectory(native.CStr()));
@@ -241,7 +241,7 @@ TEST_F(AnsiPathBoundaryTest, TempPathKeepsPlatformBytes) {
 #endif
 }
 
-TEST_F(AnsiPathBoundaryTest, ConfigurationDirectoryKeepsAnAnsiReturnValue) {
+TEST_F(AnsiPathEncodingTest, ConfigurationDirectoryKeepsAnAnsiReturnValue) {
     if (!PrepareDirectory()) return;
     PathTestEnvironment overridePath("BALLANCE_USER_CONFIG_HOME", NativeDirectory.CStr());
     XString name, path;
@@ -259,7 +259,7 @@ TEST_F(AnsiPathBoundaryTest, ConfigurationDirectoryKeepsAnAnsiReturnValue) {
     EXPECT_EQ(expected, path);
 }
 
-TEST_F(AnsiPathBoundaryTest, DbcsTrailByteIsNotAPathSeparator) {
+TEST_F(AnsiPathEncodingTest, DbcsTrailByteIsNotAPathSeparator) {
     if (!PrepareDirectory()) return;
     // CP936 encodes U+4E57 as 0x81 0x5C; 0x5C is part of the character.
     XString native = NativeDirectory;
@@ -281,7 +281,7 @@ TEST_F(AnsiPathBoundaryTest, DbcsTrailByteIsNotAPathSeparator) {
     EXPECT_STREQ(".bin", split.GetExtension());
 }
 
-TEST_F(AnsiPathBoundaryTest, ChineseTempConfigurationRoundTripPreservesValueBytes) {
+TEST_F(AnsiPathEncodingTest, ChineseTempConfigurationRoundTripPreservesValueBytes) {
     if (!PrepareDirectory()) return;
     PathTestEnvironment tmp("TMP", NativeDirectory.CStr());
     PathTestEnvironment temp("TEMP", NativeDirectory.CStr());
@@ -318,7 +318,7 @@ private:
     XString Previous;
 };
 
-TEST_F(AnsiPathBoundaryTest, CurrentDirectoryReturnsAnsiWithoutAnExtraSeparator) {
+TEST_F(AnsiPathEncodingTest, CurrentDirectoryReturnsAnsiWithoutAnExtraSeparator) {
     if (!PrepareDirectory()) return;
     XString previous = VxGetCurrentDirectory();
     ASSERT_FALSE(previous.Empty());
@@ -346,7 +346,7 @@ TEST_F(AnsiPathBoundaryTest, CurrentDirectoryReturnsAnsiWithoutAnExtraSeparator)
     EXPECT_EQ(5, mapped.GetFileSize());
 }
 
-TEST_F(AnsiPathBoundaryTest, ApplicationAndModulePathsReturnAnsiBytes) {
+TEST_F(AnsiPathEncodingTest, ApplicationAndModulePathsReturnAnsiBytes) {
     XString expected;
     ASSERT_TRUE(EncodeTestPath(SDL_GetBasePath(), expected));
     char path[2048] = {};
@@ -354,14 +354,14 @@ TEST_F(AnsiPathBoundaryTest, ApplicationAndModulePathsReturnAnsiBytes) {
     EXPECT_STREQ(expected.CStr(), path);
     EXPECT_TRUE(VxDirectoryExists(path));
 #ifdef _WIN32
-    expected << "AnsiPathBoundaryTest.exe";
+    expected << "AnsiPathEncodingTest.exe";
 #endif
     EXPECT_EQ(expected, VxGetModuleFileName(NULL));
     EXPECT_EQ(expected.Length(), VxGetModuleFileName(NULL, path, sizeof(path)));
     EXPECT_STREQ(expected.CStr(), path);
 }
 
-TEST_F(AnsiPathBoundaryTest, SharedLibraryLoadsFromTheChineseDirectory) {
+TEST_F(AnsiPathEncodingTest, SharedLibraryLoadsFromTheChineseDirectory) {
     if (!PrepareDirectory()) return;
     XString native = NativeDirectory;
     native << u8"/\u52A8\u6001\u5E93.bin";
@@ -381,7 +381,7 @@ TEST_F(AnsiPathBoundaryTest, SharedLibraryLoadsFromTheChineseDirectory) {
 }
 
 #ifdef _WIN32
-TEST_F(AnsiPathBoundaryTest, InvalidAnsiCannotCreateOrOpenAPath) {
+TEST_F(AnsiPathEncodingTest, InvalidAnsiCannotCreateOrOpenAPath) {
     if (!IsDBCSLeadByteEx(GetACP(), 0x81)) return;
     if (!PrepareDirectory()) return;
     XString invalid = Directory;
@@ -396,7 +396,7 @@ TEST_F(AnsiPathBoundaryTest, InvalidAnsiCannotCreateOrOpenAPath) {
 }
 #endif
 
-TEST_F(AnsiPathBoundaryTest, RecursiveDirectoryParserReturnsReusableAnsiPaths) {
+TEST_F(AnsiPathEncodingTest, RecursiveDirectoryParserReturnsReusableAnsiPaths) {
     if (!PrepareDirectory()) return;
     XString native = NativeDirectory;
     native << u8"/\u4E57";
@@ -430,7 +430,7 @@ TEST_F(AnsiPathBoundaryTest, RecursiveDirectoryParserReturnsReusableAnsiPaths) {
     EXPECT_STREQ(expected.CStr(), file);
 }
 
-TEST_F(AnsiPathBoundaryTest, AsciiConfigurationPreservesExtendedValueBytes) {
+TEST_F(AnsiPathEncodingTest, AsciiConfigurationPreservesExtendedValueBytes) {
     XString native = Root; native << "legacy.cfg";
     XString filename; ASSERT_TRUE(EncodeTestPath(native.CStr(), filename));
     const char western[] = "caf\xE9-\xE7";
@@ -454,7 +454,7 @@ TEST_F(AnsiPathBoundaryTest, AsciiConfigurationPreservesExtendedValueBytes) {
     EXPECT_STREQ(chinese, reopened.GetEntry("Chinese", FALSE)->GetValue());
 }
 
-TEST_F(AnsiPathBoundaryTest, LibrarySearchPathPreservesTheExistingNativeValue) {
+TEST_F(AnsiPathEncodingTest, LibrarySearchPathPreservesTheExistingNativeValue) {
 #ifdef _WIN32
     const char *name = "PATH";
     const char separator = ';';
@@ -479,7 +479,7 @@ TEST_F(AnsiPathBoundaryTest, LibrarySearchPathPreservesTheExistingNativeValue) {
 }
 
 #ifndef _WIN32
-TEST_F(AnsiPathBoundaryTest, NativeFileOperationsKeepUtf8Names) {
+TEST_F(AnsiPathEncodingTest, NativeFileOperationsKeepUtf8Names) {
     const char *names[] = {u8"Fran\u00E7ois", u8"caf\u00E9", u8"\u4E2D\u6587", u8"\U0001F642"};
     for (int i = 0; i < 4; ++i) {
         XString directory = Root; directory << names[i];
@@ -509,7 +509,7 @@ TEST_F(AnsiPathBoundaryTest, NativeFileOperationsKeepUtf8Names) {
     }
 }
 
-TEST_F(AnsiPathBoundaryTest, DirectoryEnumerationKeepsEveryNativeName) {
+TEST_F(AnsiPathEncodingTest, DirectoryEnumerationKeepsEveryNativeName) {
     const char *names[] = {"ascii.bin", u8"Fran\u00E7ois.bin", u8"caf\u00E9.bin", u8"\U0001F642.bin"};
     for (int i = 0; i < 4; ++i) {
         XString path = Root; path << names[i]; WriteNative(path.CStr());
@@ -530,7 +530,7 @@ TEST_F(AnsiPathBoundaryTest, DirectoryEnumerationKeepsEveryNativeName) {
     for (int i = 0; i < 4; ++i) EXPECT_NE(entries.Names.End(), entries.Names.Find(XString(names[i])));
 }
 
-TEST_F(AnsiPathBoundaryTest, NativeTempAndConfigurationPathsKeepUtf8Bytes) {
+TEST_F(AnsiPathEncodingTest, NativeTempAndConfigurationPathsKeepUtf8Bytes) {
     XString native = Root; native << u8"Fran\u00E7ois";
     ASSERT_TRUE(SDL_CreateDirectory(native.CStr()));
     PathTestEnvironment tmp("TMP", native.CStr()), temp("TEMP", native.CStr()), tmpdir("TMPDIR", native.CStr());

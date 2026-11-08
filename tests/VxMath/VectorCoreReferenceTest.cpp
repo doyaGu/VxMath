@@ -129,7 +129,7 @@ static void ExpectCore(VectorCoreChecks checks) {
 
 TEST(VectorCoreReference, LayoutConstructionIndexingAndImplicitSpecialMembers) { ExpectCore(CoreLifecycle()); }
 TEST(VectorCoreReference, ArithmeticUsesComponentsAndReturnsTheModifiedObject) { ExpectCore(CoreArithmeticCases()); }
-TEST(VectorCoreReference, DominanceAndNumericEqualityFollowTheOriginalContract) { ExpectCore(CoreComparisons()); }
+TEST(VectorCoreReference, ComponentComparisonsUseDominanceAndNumericEquality) { ExpectCore(CoreComparisons()); }
 
 TEST(VectorCoreReference, StaticAxesHaveStableReferencesAndExpectedValues) {
     const VxVector *axes[] = {&VxVector::axisX(), &VxVector::axisY(), &VxVector::axisZ(), &VxVector::axis0(), &VxVector::axis1()};

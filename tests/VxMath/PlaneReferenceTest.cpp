@@ -168,7 +168,7 @@ TEST(PlaneReferenceTest, UnitNormalDistanceAndProjectionHaveTheirGeometricMeanin
     EXPECT_NEAR(diagonal.Distance(VxVector(3,4,7)),5,1e-6f);
     EXPECT_NEAR(projected.x,0,1e-6f); EXPECT_NEAR(projected.y,0,1e-6f); EXPECT_FLOAT_EQ(projected.z,7);
 }
-TEST(PlaneReferenceTest, NonUnitPlaneRetainsOriginalRawCoefficientContract) {
+TEST(PlaneReferenceTest, NonUnitPlaneUsesOriginalRawCoefficients) {
     const VxPlane plane(0,0,2,-10); const VxVector point(3,4,8);
     EXPECT_FLOAT_EQ(plane.Classify(point),6); EXPECT_FLOAT_EQ(plane.Distance(point),6); EXPECT_EQ(plane.NearestPoint(point),VxVector(3,4,-4));
 }
@@ -202,7 +202,7 @@ static float PlaneDirectAxes(const VxPlane &plane, const VxBbox &box, const VxMa
     const float registers = VxSIMDPlaneXClassify(&plane,VxSIMDLoadFloat3(&axes[0].x),VxSIMDLoadFloat3(&axes[1].x),VxSIMDLoadFloat3(&axes[2].x),VxSIMDLoadFloat3(&axes[3].x));
     EXPECT_FLOAT_EQ(array,registers); return registers;
 }
-TEST(PlaneReferenceTest, DirectSimdPointDistanceAndProjectionRetainTheEquationContract) {
+TEST(PlaneReferenceTest, DirectSimdDistanceAndProjectionUseRawPlaneEquation) {
     const VxPlane plane(0,0,2,-10); const VxVector point(3,4,8); VxVector projected;
     EXPECT_FLOAT_EQ(VxSIMDPlaneClassifyPoint(&plane,&point),6); EXPECT_FLOAT_EQ(VxSIMDPlaneDistance(&plane,&point),6);
     VxSIMDPlaneNearestPoint(&projected,&plane,&point); EXPECT_EQ(projected,VxVector(3,4,-4));

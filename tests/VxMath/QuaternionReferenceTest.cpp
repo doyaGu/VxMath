@@ -8,7 +8,7 @@ static VxQuaternion Quaternion(const float (&v)[4]) {
 }
 
 static void ExpectReference(const VxQuaternion &actual, const float (&expected)[4], float tolerance) {
-    // Captures with zero tolerance measured x87 rounding, not an API contract.
+    // Zero-tolerance captures measure x87 rounding of quaternion components.
     // A short float operation chain is allowed a small accumulated error.
     if (tolerance == 0.0f) tolerance = 16.0f * FLT_EPSILON;
     for (int i = 0; i < 4; ++i) {

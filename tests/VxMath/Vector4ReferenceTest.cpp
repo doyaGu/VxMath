@@ -230,7 +230,7 @@ static Vector4Checks Vector4InaccessibleW() {
 #ifndef VX_VECTOR4_PROBE
 static void ExpectVector4(Vector4Checks checks) { EXPECT_GT(checks.calls, 0); EXPECT_EQ(checks.errors, 0); }
 TEST(Vector4Reference, ConstructorsAreExplicitAndLayoutHasFourFloats) { ExpectVector4(Vector4Construction()); }
-TEST(Vector4Reference, AccessorsSettersAndBaseAssignmentPreserveTheirContracts) { ExpectVector4(Vector4Access()); }
+TEST(Vector4Reference, AccessorsSettersAndBaseAssignmentPreserveComponents) { ExpectVector4(Vector4Access()); }
 TEST(Vector4Reference, FourComponentArithmeticAndReturnedReferences) { ExpectVector4(Vector4ArithmeticCases()); }
 TEST(Vector4Reference, MixedArithmeticPreservesEveryWBit) { ExpectVector4(Vector4MixedCases()); }
 TEST(Vector4Reference, DotIgnoresWWhileEqualityIncludesW) { ExpectVector4(Vector4DotAndEquality()); }

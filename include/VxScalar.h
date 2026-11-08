@@ -17,10 +17,10 @@ struct VxScalarContext {};
 
 enum VxScalarRelation { VXSCALAR_LESS = -1, VXSCALAR_EQUAL, VXSCALAR_GREATER, VXSCALAR_UNORDERED };
 
-// Scalar expressions follow VxMath's selected arithmetic policy. Initialize
+// Scalar expressions use VxMath's selected floating-point evaluation. Initialize
 // one context per expression sequence and store at the required float/double
 // boundary. Values are plain data; their representation is not a serialization
-// format. The native policy uses double intermediates; this interface does not
+// format. Native scalar operations use double intermediates; this interface does not
 // replace the usual C++ float/double promotion rules in arbitrary expressions.
 inline void VxScalarInitContext(VxScalarContext &context);
 

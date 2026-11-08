@@ -187,7 +187,7 @@ static void StridedTransform4SIMD(VxStridedData *d, VxStridedData *s, const VxMa
 static void StridedRotateSIMD(VxStridedData *d, VxStridedData *s, const VxMatrix &m, int n) {
     VxSIMDRotateVectorStrided(d, s, &m, n);
 }
-TEST(StridedDataReferenceTest, SIMDConsumersRespectDescriptorContract) {
+TEST(StridedDataReferenceTest, SimdConsumersUseDescriptorStrideAndCount) {
     const StridedTransform functions[] = {StridedTransformSIMD, StridedTransform4SIMD, StridedRotateSIMD};
     EXPECT_EQ(StridedTransformConsumers(functions).errors, 0);
     EXPECT_EQ(StridedCopyConsumer(VxSIMDIndexedCopy).errors, 0);

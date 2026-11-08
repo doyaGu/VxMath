@@ -60,7 +60,7 @@ static bool FBIntervalsOverlap(const double a[8][3],const double b[8][3],const V
 static bool FBObbOracle(const VxFrustum &f,const VxBbox &b,const VxMatrix &m) {
     double box[8][3],frustum[8][3];FBBoxVertices(b,m,box);FBFrustumVertices(f,frustum);
     // Project all corners, rather than copying the production center/radius
-    // formula. The original contract tests eight candidate directions only.
+    // formula. The original frustum-box query tests eight candidate directions only.
     const VxVector axes[]={VxVector(m[0].x,m[0].y,m[0].z),VxVector(m[1].x,m[1].y,m[1].z),VxVector(m[2].x,m[2].y,m[2].z),f.GetFarPlane().m_Normal,f.GetBottomPlane().m_Normal,f.GetUpPlane().m_Normal,f.GetLeftPlane().m_Normal,f.GetRightPlane().m_Normal};
     for (const VxVector &axis:axes) if (!FBIntervalsOverlap(box,frustum,axis)) return false;return true;
 }
@@ -196,7 +196,7 @@ TEST(FrustumBoxReference, SimdLegacyHandlesRepresentableWideHalfsizeAndPointCent
 TEST(FrustumBoxReference, SimdAxisAndDotHelpersUseThreeComponents) {
     FBCheck(FBAxisCases(true));EXPECT_FLOAT_EQ(VxSIMDDot3Scalar(_mm_setr_ps(1,2,3,1000),_mm_setr_ps(4,-5,6,-500)),12);
 }
-TEST(FrustumBoxReference, PublicSimdSlotsMatchBothOriginalContracts) {
+TEST(FrustumBoxReference, PublicSimdDispatchMatchesOriginalFrustumBoxQueries) {
     VxIntersectFrustumDispatchRebuild(true);FBCheck(FBGeometry(VxIntersect::FrustumBox,true));EXPECT_EQ(FBGeometry(VxIntersect::FrustumOBB,false).errors,0);VxIntersectFrustumDispatchRebuild(false);
 }
 #endif

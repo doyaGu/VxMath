@@ -193,7 +193,7 @@ TEST_P(PackedPaletteReferenceTest, PaletteChangesAtSameAddressAreVisible) {
         for (int x = 0; x < image.dst.Width; ++x) EXPECT_EQ(image.Pixel(x, y), 0xc16b3d1du);
 }
 
-TEST_P(PackedPaletteReferenceTest, ZeroSourceMasksPreserveBgrPaletteContract) {
+TEST_P(PackedPaletteReferenceTest, ZeroSourceMasksUseBgrPaletteEntries) {
     for (int layout = 0; layout < 6; ++layout) {
         PackedPaletteImage image(Bits(), 4, 0, layout);
         image.src.RedMask = image.src.GreenMask = image.src.BlueMask = image.src.AlphaMask = 0;

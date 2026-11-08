@@ -29,8 +29,8 @@ and store at the required write boundaries. The value and context are plain
 data. Callers do not inspect their representation, select a backend or test
 the emulation build option. With emulation disabled the same interface uses
 native double intermediates and does not link the numerical backend.
-This is the policy of this explicit interface, not a replacement for the usual
-C++ rules for arbitrary mixed float/double expressions.
+These evaluation rules apply to explicit scalar operations. Ordinary mixed
+float/double expressions continue to use C++ promotion rules.
 `VxScalarStore` and `VxScalarStoreDouble` provide explicit binary32/binary64
 write boundaries in either mode.
 
@@ -49,8 +49,8 @@ Keep domain algorithms in their owning module. The scalar interface supplies
 arithmetic primitives and explicit storage; it does not implement behaviors,
 simulation steps or application formulas.
 
-`Normalize(vector, signedLength)` owns the evaluation policy for vector length
-changes. Free normalization and magnitude functions remain library entry points
+`Normalize(vector, signedLength)` computes and stores each scaled vector component.
+Free normalization and magnitude functions remain library entry points
 in both modes, so a caller's instruction set cannot select another implementation.
 Supported Release builds retain interprocedural optimization in both modes.
 `VxInitializeMathEnvironment` initializes the current thread before
@@ -108,9 +108,10 @@ The existing `VxGetFPUControlWord`, `VxSetFPUControlWord` and
 `VxSetBaseFPUControlWord` API owns thread control. On processors without x87,
 the same API maintains a software control word. Native-host IVP uses this API
 as well, so precision changes remain consistent across the engine and physics.
-These legacy control functions retain their native contract in both build
-modes. Disabling emulation removes its numerical objects and dependency; it
-does not remove the native environment API or Win32 floating-point ABI transfers.
+These control functions preserve thread-local precision, rounding and exception
+settings in both build modes. Disabling emulation removes its numerical objects
+and dependency; it does not remove the native environment API or Win32
+floating-point ABI transfers.
 
 ## Integration and performance
 

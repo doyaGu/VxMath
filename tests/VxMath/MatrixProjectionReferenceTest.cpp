@@ -172,7 +172,7 @@ TEST(MatrixProjectionReference, PerspectiveRetainsFiniteVerticalScaleWhenHorizon
 TEST(MatrixProjectionReference, OrthographicRetainsFiniteDepthTranslationWhenScaleOverflows) { MPExpect(MPExtreme(MPBuild, 1), 22); }
 TEST(MatrixProjectionReference, PerspectiveRectAvoidsIntermediateOverflowInSmallAndLargeFrusta) { MPExpect(MPExtreme(MPBuild, 2), 24); }
 TEST(MatrixProjectionReference, OrthographicRectAvoidsIntermediateBoundsOverflow) { MPExpect(MPExtreme(MPBuild, 3), 2); }
-TEST(MatrixProjectionReference, OriginalDegenerateAndReversedDepthContracts) { MPExpect(MPDegenerate(MPBuild), 10); }
+TEST(MatrixProjectionReference, DegenerateAndReversedDepthMatchOriginalProjection) { MPExpect(MPDegenerate(MPBuild), 10); }
 TEST(MatrixProjectionReference, OutputWriteFootprint) {
 #if defined(_WIN32)
     MPExpect(MPFootprint(MPBuild), 24);
