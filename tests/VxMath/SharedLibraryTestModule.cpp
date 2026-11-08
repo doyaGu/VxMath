@@ -1,7 +1,8 @@
 #include <fenv.h>
 #include <float.h>
-#include <xmmintrin.h>
 #include <windows.h>
+
+#include "SharedLibraryFloatingControl.h"
 
 #ifndef VX_LIBRARY_TEST_VALUE
 #define VX_LIBRARY_TEST_VALUE 17
@@ -23,7 +24,7 @@ BOOL WINAPI DllMain(HINSTANCE, DWORD reason, LPVOID) {
         unsigned ignored;
         __control87_2(_PC_24, _MCW_PC, &ignored, nullptr);
 #endif
-        _mm_setcsr(_mm_getcsr() ^ 0x8000u);
+        SharedLibrarySetFloatingControl(SharedLibraryGetFloatingControl() ^ SharedLibraryFlushToZero);
     }
 #endif
     if (reason == DLL_PROCESS_ATTACH) {
@@ -33,7 +34,7 @@ BOOL WINAPI DllMain(HINSTANCE, DWORD reason, LPVOID) {
         unsigned ignored;
         __control87_2(_PC_24, _MCW_PC, &ignored, nullptr);
 #endif
-        _mm_setcsr(_mm_getcsr() & ~0x8000u);
+        SharedLibrarySetFloatingControl(SharedLibraryGetFloatingControl() & ~SharedLibraryFlushToZero);
 #endif
 #if defined(VX_LIBRARY_REJECT_LOAD)
         return FALSE;

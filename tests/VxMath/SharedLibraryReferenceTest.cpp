@@ -2,8 +2,9 @@
 #include <float.h>
 #include <stdio.h>
 #include <string.h>
-#include <xmmintrin.h>
 #include <windows.h>
+
+#include "SharedLibraryFloatingControl.h"
 #ifndef VX_SHARED_LIBRARY_PROBE
 #include "VxSharedLibrary.h"
 #include <gtest/gtest.h>
@@ -165,7 +166,7 @@ static SharedChecks SharedLoadSurvivesWrapperScope(const SharedTestApi &api) {
     return result;
 }
 
-static SharedChecks SharedFloatingEnvironment(const SharedTestApi &api, bool requireSSE) {
+static SharedChecks SharedFloatingEnvironment(const SharedTestApi &api, bool requireNativeControl) {
     SharedFixture fixture;
     SharedChecks result;
     SharedObject library(api);
@@ -175,16 +176,17 @@ static SharedChecks SharedFloatingEnvironment(const SharedTestApi &api, bool req
         unsigned beforeX87 = 0, afterX87 = 0;
         __control87_2(_PC_53 | _RC_UP, _MCW_PC | _MCW_RC, &beforeX87, nullptr);
 #endif
-        const unsigned beforeSSE = (_mm_getcsr() & ~0x6000u) | 0x2000u | 0x8000u;
-        _mm_setcsr(beforeSSE);
+        const uint64_t beforeControl = (SharedLibraryGetFloatingControl() & ~SharedLibraryRoundingMask) |
+                                       SharedLibraryRoundDown | SharedLibraryFlushToZero;
+        SharedLibrarySetFloatingControl(beforeControl);
         void *handle = api.Load(library.Object, paths[k]);
-        const unsigned afterSSE = _mm_getcsr();
+        const uint64_t afterControl = SharedLibraryGetFloatingControl();
 #if defined(_M_IX86)
         __control87_2(0, 0, &afterX87, nullptr);
         result.Expect(beforeX87 == afterX87);
 #endif
         result.Expect((handle != nullptr) == (k == 0));
-        if (requireSSE) result.Expect(afterSSE == beforeSSE);
+        if (requireNativeControl) result.Expect(afterControl == beforeControl);
         if (handle) api.Release(library.Object);
     }
     return result;

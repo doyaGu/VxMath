@@ -2,8 +2,9 @@
 #include <gtest/gtest.h>
 #include <fenv.h>
 #include <float.h>
-#include <xmmintrin.h>
 #include <windows.h>
+
+#include "SharedLibraryFloatingControl.h"
 
 // A failing implementation must report a test failure rather than crash the suite.
 static INSTANCE_HANDLE ReloadBorrowedName(VxSharedLibrary *library, const char *name, DWORD *exception) {
@@ -32,10 +33,10 @@ protected:
         unsigned beforeX87, afterX87;
         __control87_2(_PC_53, _MCW_PC, &beforeX87, nullptr);
 #endif
-        const unsigned beforeSSE = _mm_getcsr();
+        const uint64_t beforeControl = SharedLibraryGetFloatingControl();
         const int beforeExceptions = fetestexcept(FE_ALL_EXCEPT);
         INSTANCE_HANDLE handle = Library.Load(destination);
-        const unsigned afterSSE = _mm_getcsr();
+        const uint64_t afterControl = SharedLibraryGetFloatingControl();
         const int afterExceptions = fetestexcept(FE_ALL_EXCEPT);
 #if defined(_M_IX86)
         __control87_2(0, 0, &afterX87, nullptr);
@@ -43,7 +44,7 @@ protected:
 #endif
         EXPECT_EQ(success, handle != nullptr);
         EXPECT_EQ(FE_UPWARD, fegetround());
-        EXPECT_EQ(beforeSSE, afterSSE);
+        EXPECT_EQ(beforeControl, afterControl);
         EXPECT_EQ(beforeExceptions, afterExceptions);
         EXPECT_EQ(nullptr, GetModuleHandleA(VX_SHARED_TEST_SWITCH));
         Library.ReleaseLibrary();
