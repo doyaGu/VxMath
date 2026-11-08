@@ -61,6 +61,13 @@ option(VXMATH_BUILD_SHARED "Build shared library" ON)
 option(VXMATH_BUILD_STATIC "Build static library" OFF)
 option(VXMATH_INSTALL "Generate install target" ${VXMATH_IS_TOP_LEVEL})
 
+# Bitmap allocation-failure tests replace the implementation's operator new[].
+# Build their static dependency even when the runtime uses the shared library.
+if (VXMATH_BUILD_TESTS AND NOT VXMATH_BUILD_STATIC)
+    message(STATUS "[VxMath] Enabling VxMathStatic for bitmap allocation tests")
+    set(VXMATH_BUILD_STATIC ON CACHE BOOL "Build static library" FORCE)
+endif ()
+
 # =============================================================================
 # SIMD options
 # =============================================================================

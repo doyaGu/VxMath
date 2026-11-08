@@ -277,11 +277,7 @@ target_compile_definitions(AnsiPathEncodingTest PRIVATE
 # Static linkage lets the allocation-failure test intercept the pixel copy's
 # operator new[] on Windows as well as Unix.
 add_executable(BitmapOwnershipTest BitmapOwnershipTest.cpp)
-if (TARGET VxMathStatic AND NOT TEST_TARGET STREQUAL "VxMath_GroundTruth")
-    target_link_libraries(BitmapOwnershipTest PRIVATE VxMathStatic gtest_main)
-else ()
-    target_link_libraries(BitmapOwnershipTest PRIVATE ${TEST_TARGET} gtest_main)
-endif ()
+target_link_libraries(BitmapOwnershipTest PRIVATE VxMathStatic gtest_main)
 set_target_properties(BitmapOwnershipTest PROPERTIES
         FOLDER "Tests"
         RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"

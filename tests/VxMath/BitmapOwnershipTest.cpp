@@ -11,9 +11,7 @@
 #include <Windows.h>
 #endif
 
-#ifdef VX_LIB
 static bool FailArrayAllocation = false;
-#endif
 
 static const XDWORD Colors[] = {
     0xff102030, 0xffabcdef, 0xff334455, 0xffa0b0c0, 0xff778899, 0xfffedcba
@@ -48,7 +46,6 @@ static void ExpectColors(const VxImageDescEx &desc) {
     EXPECT_EQ(0, std::memcmp(Colors, desc.Image, sizeof(Colors)));
 }
 
-#ifdef VX_LIB
 static int BitmapResources() {
 #ifdef _WIN32
     return static_cast<int>(GetGuiResources(GetCurrentProcess(), GR_GDIOBJECTS));
@@ -56,9 +53,7 @@ static int BitmapResources() {
     return SDL_GetNumAllocations();
 #endif
 }
-#endif
 
-#ifdef VX_LIB
 void *operator new[](std::size_t bytes) {
     if (FailArrayAllocation) {
         FailArrayAllocation = false;
@@ -70,7 +65,6 @@ void *operator new[](std::size_t bytes) {
 }
 void operator delete[](void *address) noexcept { std::free(address); }
 void operator delete[](void *address, std::size_t) noexcept { std::free(address); }
-#endif
 
 TEST(BitmapOwnershipTest, ConversionsOwnIndependentTopDownPixelsAfterBitmapDeletion) {
     BitmapOwnershipTestBitmap bitmap;
@@ -104,7 +98,6 @@ TEST(BitmapOwnershipTest, CopyReadsBitmapWithoutChangingItAndConvertsColorMasks)
     ExpectColors(unchanged);
 }
 
-#ifdef VX_LIB
 TEST(BitmapOwnershipTest, PixelAllocationFailureReleasesTemporaryBitmapAndRetainsSource) {
     BitmapOwnershipTestBitmap bitmap;
     ASSERT_NE(nullptr, bitmap.handle);
@@ -139,4 +132,3 @@ TEST(BitmapOwnershipTest, PixelAllocationFailureReleasesTemporaryBitmapAndRetain
     XAP<XBYTE> retained(VxConvertBitmap(bitmap.handle, desc));
     ExpectColors(desc);
 }
-#endif
