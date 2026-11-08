@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 #include "VxMath.h"
 #include "XP.h"
+#include "FontTestLocale.h"
 #include <SDL3/SDL.h>
 #include <cstring>
 #include <climits>
@@ -8,20 +9,10 @@
 #define WIN32_LEAN_AND_MEAN
 #include <Windows.h>
 #else
-#include <locale.h>
-#include <wchar.h>
 #define STBTT_STATIC
 #define STB_TRUETYPE_IMPLEMENTATION
 #include "stb_truetype.h"
 #include <cmath>
-
-struct FontTestLocale {
-    XString previous;
-    explicit FontTestLocale(const char *name) : previous(setlocale(LC_CTYPE, NULL)) {
-        if (!setlocale(LC_CTYPE, name)) throw "test locale unavailable";
-    }
-    ~FontTestLocale() { setlocale(LC_CTYPE, previous.CStr()); }
-};
 #endif
 
 static const int Width = 320, Height = 100;
@@ -119,7 +110,7 @@ TEST(FontTest, MatchesNativeAnsiGdiFontSelectionStylesAndDrawing) {
 }
 #else
 TEST(FontTest, NativeCjkGlyphFallbackMatchesTheActualCjkFaceAndKeepsRawNames) {
-    FontTestLocale locale("");
+    FontTestUtf8Locale locale;
     FontTestFont fallback("Missing Original Family"), cjk("Noto Sans SC");
     ASSERT_NE(nullptr, fallback.handle); ASSERT_NE(nullptr, cjk.handle);
     char text[64] = {};
@@ -156,7 +147,7 @@ TEST(FontTest, NativeCjkGlyphFallbackMatchesTheActualCjkFaceAndKeepsRawNames) {
 }
 
 TEST(FontTest, InvalidNativeTextAndMissingGlyphLeaveTheBitmapUntouched) {
-    FontTestLocale locale("C");
+    FontTestUtf8Locale locale;
     FontTestFont font("Noto Sans");
     ASSERT_NE(nullptr, font.handle);
     FontTestBitmap actual, original;
@@ -169,7 +160,7 @@ TEST(FontTest, InvalidNativeTextAndMissingGlyphLeaveTheBitmapUntouched) {
 }
 
 TEST(FontTest, NativeCharactersRenderTheExpectedGlyphPixels) {
-    FontTestLocale locale("");
+    FontTestUtf8Locale locale;
     size_t length = 0;
     void *bytes = SDL_LoadFile(TEST_REGULAR_FONT_FILE, &length);
     ASSERT_NE(nullptr, bytes);

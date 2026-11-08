@@ -1,17 +1,8 @@
 #include <gtest/gtest.h>
 #include "VxFontSearch.h"
+#include "FontTestLocale.h"
 #include <SDL3/SDL.h>
-#include <locale.h>
-#include <wchar.h>
 #include <limits.h>
-
-struct FontTestLocale {
-    XString previous;
-    explicit FontTestLocale(const char *name) : previous(setlocale(LC_CTYPE, NULL)) {
-        if (!setlocale(LC_CTYPE, name)) throw "test locale unavailable";
-    }
-    ~FontTestLocale() { setlocale(LC_CTYPE, previous.CStr()); }
-};
 
 static VxFontFace MakeFace(const char *family, const char *path, int directory, int weight = 400, int index = 0) {
     VxFontFace face;
@@ -76,12 +67,23 @@ TEST(FontSearchTest, AnsiNamesRoundTripWithoutChangingInputOrReplacingFailures) 
     ASSERT_TRUE(VxEncodeAnsiFontName(unicode.CStr(), ansi));
     EXPECT_STREQ(name, ansi.CStr());
     EXPECT_STREQ("Original Family", name);
-    unicode = "unchanged";
-    EXPECT_FALSE(VxDecodeAnsiFontName("\x81", unicode));
-    EXPECT_STREQ("unchanged", unicode.CStr());
     ansi = "unchanged";
     EXPECT_FALSE(VxEncodeAnsiFontName("\xf0\x9f\x98\x80", ansi));
     EXPECT_STREQ("unchanged", ansi.CStr());
+}
+
+TEST(FontSearchTest, InvalidUtf8NativeNamesLeaveTheResultUntouched) {
+    FontTestUtf8Locale locale;
+    const char *invalid[] = {"\x81", "\xC0\xAF", "\xED\xA0\x80", "\xF4\x90\x80\x80", "\xE2\x82"};
+    for (int i = 0; i < 5; ++i) {
+        XString name = "unchanged";
+        EXPECT_FALSE(VxDecodeAnsiFontName(invalid[i], name));
+        EXPECT_STREQ("unchanged", name.CStr());
+        XArray<wchar_t> text;
+        text.PushBack('x'); text.PushBack(0);
+        EXPECT_FALSE(VxDecodeAnsiFontText(invalid[i], text));
+        EXPECT_STREQ(L"x", text.Begin());
+    }
 }
 
 TEST(FontSearchTest, TextNamesAndAtlasFollowTheCurrentRuntimeCharacterSet) {
