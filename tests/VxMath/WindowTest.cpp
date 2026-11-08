@@ -166,6 +166,7 @@ TEST_F(VxWindowFunctionsTest, CreateFileTreeRejectsEmptyInput) {
 
 #ifdef _WIN32
 TEST_F(VxWindowFunctionsTest, CreateFileTreeAcceptsRootRelativePath) {
+    ASSERT_TRUE(VxSetCurrentDirectory(m_tempDir.string().c_str()));
     const std::filesystem::path target = m_tempDir / "root-relative" / "child" / "leaf.txt";
     const std::string absolute = std::filesystem::absolute(target).string();
     ASSERT_GE(absolute.size(), 3u);
