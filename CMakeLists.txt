@@ -300,9 +300,17 @@ if (VXMATH_INSTALL)
             COMPONENT Development
     )
 
+    set(VXMATH_LIBX87_PACKAGE_HINT "HINTS \"${libx87_BINARY_DIR}\"")
     configure_package_config_file(
             "${CMAKE_CURRENT_SOURCE_DIR}/cmake/VxMathConfig.cmake.in"
             "${CMAKE_CURRENT_BINARY_DIR}/VxMathConfig.cmake"
+            INSTALL_DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/VxMath
+    )
+
+    set(VXMATH_LIBX87_PACKAGE_HINT "")
+    configure_package_config_file(
+            "${CMAKE_CURRENT_SOURCE_DIR}/cmake/VxMathConfig.cmake.in"
+            "${CMAKE_CURRENT_BINARY_DIR}/install/VxMathConfig.cmake"
             INSTALL_DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/VxMath
     )
 
@@ -313,7 +321,7 @@ if (VXMATH_INSTALL)
     )
 
     install(FILES
-            "${CMAKE_CURRENT_BINARY_DIR}/VxMathConfig.cmake"
+            "${CMAKE_CURRENT_BINARY_DIR}/install/VxMathConfig.cmake"
             "${CMAKE_CURRENT_BINARY_DIR}/VxMathConfigVersion.cmake"
             DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/VxMath
             COMPONENT Development

@@ -463,12 +463,4 @@ if (VXMATH_INSTALL)
 
     # Install headers to include root
     install(FILES ${VXMATH_PUBLIC_HEADERS} DESTINATION include COMPONENT Development)
-    if (VXMATH_ENABLE_X87_EMULATION)
-        install(FILES
-                "${PROJECT_SOURCE_DIR}/deps/softfloat/BOCHS-COPYING"
-                "${PROJECT_SOURCE_DIR}/deps/softfloat/BOCHS-LICENSE"
-                "${PROJECT_SOURCE_DIR}/deps/softfloat/cpu/softfloat3e/COPYING.txt"
-                "${PROJECT_SOURCE_DIR}/deps/softfloat/UPSTREAM.json"
-                DESTINATION share/licenses/VxMath/softfloat COMPONENT Development)
-    endif ()
 endif ()

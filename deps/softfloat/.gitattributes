@@ -1,3 +1,0 @@
-* text eol=lf
-cpu/** -text -whitespace
-BOCHS-* -text -whitespace

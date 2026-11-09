@@ -4,3 +4,6 @@
 [submodule "deps/simde"]
 	path = deps/simde
 	url = https://github.com/simd-everywhere/simde.git
+[submodule "deps/libx87"]
+	path = deps/libx87
+	url = https://github.com/doyaGu/libx87.git

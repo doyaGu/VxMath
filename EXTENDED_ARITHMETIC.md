@@ -9,17 +9,21 @@ cmake -S . -B build -DVXMATH_ENABLE_X87_EMULATION=ON
 cmake --build build --config Release
 ```
 
-The numerical sources are pinned in `deps/softfloat/UPSTREAM.json`, with their
-licenses retained alongside the sources. VxMath owns its dependency and builds
-independently of IVP. The IVP and VxMath build options remain separate; both
+The numerical sources are pinned in `deps/libx87/third_party/softfloat/UPSTREAM.json`, with their
+licenses retained alongside the sources. The `deps/libx87` submodule supplies
+the numerical implementation shared with IVP. VxMath builds independently of IVP. The IVP and VxMath build options remain separate; both
 must be enabled for the original physics replay checks.
 
 Coverage is intentionally limited to the scalar interface, the selected matrix
 operations, free vector magnitude/normalization and OBB intersection routines
 described below. Enabling the option does not rewrite ordinary floating-point
 expressions, vector members or every other mathematical routine. Third-party
-implementations are outside this coverage. IVP owns its independent arithmetic
+implementations are outside this coverage. IVP owns its arithmetic interface
 and option; neither library selects the other's mode.
+
+Initialize dependencies with `git submodule update --init --recursive`.
+Installed CMake packages resolve the shared `libx87::x87` target with
+`find_dependency(libx87 CONFIG)`.
 
 ## Interface and state
 

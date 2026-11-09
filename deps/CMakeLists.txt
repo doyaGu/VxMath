@@ -42,8 +42,9 @@ if (VXMATH_ENABLE_SIMD AND
 endif ()
 
 if (VXMATH_ENABLE_X87_EMULATION)
-    add_subdirectory(softfloat)
-    list(APPEND VXMATH_DEP_EXPORTED_TARGETS vx_softfloat)
+    if(NOT TARGET libx87::x87)
+        add_subdirectory(libx87)
+    endif()
 endif ()
 
 # Export dep targets to parent scope so the top-level CMakeLists.txt can include

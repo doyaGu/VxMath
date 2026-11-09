@@ -4,6 +4,9 @@
 
 include(CMakeFindDependencyMacro)
 find_dependency(SDL3 CONFIG REQUIRED)
+if(@VXMATH_ENABLE_X87_EMULATION@)
+    find_dependency(libx87 CONFIG REQUIRED @VXMATH_LIBX87_PACKAGE_HINT@)
+endif()
 
 # Include targets
 if(NOT TARGET VxMath::VxMath AND NOT TARGET VxMath::VxMathStatic)

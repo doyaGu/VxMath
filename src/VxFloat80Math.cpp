@@ -4,33 +4,13 @@
 #include "VxSIMD.h"
 
 #if !defined(VX_SIMD_SSE)
-#include "vx_softfloat.h"
-#include <string.h>
+#include <libx87/x87.hxx>
 
 static float VxFloat32Add(float first, float second) {
-    softfloat_status_t status = {};
-    status.softfloat_exceptionMasks = softfloat_all_exceptions_mask;
-    status.softfloat_roundingMode = softfloat_round_near_even;
-    uint32_t a, b;
-    memcpy(&a, &first, sizeof(a));
-    memcpy(&b, &second, sizeof(b));
-    const uint32_t bits = f32_add(a, b, &status);
-    float result;
-    memcpy(&result, &bits, sizeof(result));
-    return result;
+    return x87_add_float(first, second);
 }
-
 static float VxFloat32Multiply(float first, float second) {
-    softfloat_status_t status = {};
-    status.softfloat_exceptionMasks = softfloat_all_exceptions_mask;
-    status.softfloat_roundingMode = softfloat_round_near_even;
-    uint32_t a, b;
-    memcpy(&a, &first, sizeof(a));
-    memcpy(&b, &second, sizeof(b));
-    const uint32_t bits = f32_mul(a, b, &status);
-    float result;
-    memcpy(&result, &bits, sizeof(result));
-    return result;
+    return x87_multiply_float(first, second);
 }
 #endif
 
