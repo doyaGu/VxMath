@@ -1,11 +1,14 @@
 #include <stdio.h>
 #include <string.h>
+#include <limits.h>
 
 #if defined(_WIN32)
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
 #endif
 #include <Windows.h>
+#include <powrprof.h>
+#include <vector>
 #else
 #include <time.h>
 #include <unistd.h>
@@ -255,6 +258,23 @@ static void DetectInstructionSets() {
 }
 
 #if defined(_WIN32)
+static int QueryProcessorFrequency() {
+    // PROCESSOR_POWER_INFORMATION is omitted from some Windows SDK headers.
+    // Its documented layout contains six ULONGs, one record per processor.
+    struct ProcessorPowerInformation {
+        ULONG number, maxMhz, currentMhz, mhzLimit, maxIdleState, currentIdleState;
+    };
+    SYSTEM_INFO systemInfo = {};
+    ::GetSystemInfo(&systemInfo);
+    std::vector<ProcessorPowerInformation> processors(systemInfo.dwNumberOfProcessors);
+    if (processors.empty() || ::CallNtPowerInformation(ProcessorInformation, nullptr, 0,
+            processors.data(), static_cast<ULONG>(processors.size() * sizeof(processors[0]))) != 0) {
+        return 0;
+    }
+    const ULONG frequency = processors[0].maxMhz;
+    return frequency <= INT_MAX ? static_cast<int>(frequency) : 0;
+}
+
 static void MeasureProcessorTiming() {
     HANDLE hThread = ::GetCurrentThread();
     int priority = ::GetThreadPriority(hThread);
@@ -277,13 +297,14 @@ static void MeasureProcessorTiming() {
         g_ProcessorFrequency = (int) (t2 / t1 / 1000000.0);
     } else {
         g_MSecondsPerCycle = (float) (1000.0 / (double) freq.QuadPart);
-        g_ProcessorFrequency = (int) ((double) freq.QuadPart / 1000000.0);
+        g_ProcessorFrequency = QueryProcessorFrequency();
     }
 #else
     LARGE_INTEGER freq;
     ::QueryPerformanceFrequency(&freq);
     g_MSecondsPerCycle = (float) (1000.0 / (double) freq.QuadPart);
-    g_ProcessorFrequency = (int) ((double) freq.QuadPart / 1000000.0);
+    // QPC ticks are a timer rate, independent of the processor's clock speed.
+    g_ProcessorFrequency = QueryProcessorFrequency();
 #endif
     ::SetThreadPriority(hThread, priority);
 }

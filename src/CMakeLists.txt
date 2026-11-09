@@ -246,7 +246,7 @@ function(vx_configure_target TARGET_NAME)
     endif ()
     target_link_libraries(${TARGET_NAME} PUBLIC SDL3::SDL3)
     if (WIN32)
-        target_link_libraries(${TARGET_NAME} PRIVATE user32)
+        target_link_libraries(${TARGET_NAME} PRIVATE user32 powrprof)
     endif ()
     target_compile_definitions(${TARGET_NAME} PUBLIC VX_BACKEND_SDL3=1)
 

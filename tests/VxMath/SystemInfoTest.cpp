@@ -31,11 +31,15 @@ TEST_F(SystemInfoTest, GetProcessorDescription_ReturnsNonEmptyString) {
     // ASSERT_TRUE(has_known_vendor);
 }
 
-// Test to ensure processor frequency is a plausible positive number.
+// Check the reported processor clock, allowing an unavailable Windows ARM clock.
 TEST_F(SystemInfoTest, GetProcessorFrequency_ReturnsPlausibleValue) {
     int frequency = GetProcessorFrequency();
-    // The frequency should be a positive number, likely over 100 MHz.
+    // Windows ARM can leave the processor clock unavailable in a virtual machine.
+#if defined(_WIN32) && !defined(_M_IX86) && !defined(_M_X64) && !defined(__i386__) && !defined(__x86_64__)
+    EXPECT_GE(frequency, 0);
+#else
     EXPECT_GT(frequency, 100);
+#endif
     std::cout << "Processor Frequency: " << frequency << " MHz" << std::endl;
 }
 

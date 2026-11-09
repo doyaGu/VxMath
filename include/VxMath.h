@@ -332,7 +332,7 @@ VX_EXPORT const char *GetProcessorDescription();
 
 /**
  * @brief Gets the frequency of the processor in MHz.
- * @return The processor frequency.
+ * @return The processor frequency, or zero when it is unavailable.
  */
 VX_EXPORT int GetProcessorFrequency();
 
