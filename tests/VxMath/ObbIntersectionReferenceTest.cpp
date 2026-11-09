@@ -171,12 +171,17 @@ static AOResults OOFootprint(OOFunction fn) {
 #if VXMATH_ENABLE_X87_EMULATION
 // Snapshots from the specified original DLL, including finite overflow and
 // contact rounding; the vertex oracle intentionally has different boundaries.
-static void OOCheckOriginal(OOFunction function)
+static void OOCheckOriginal(OOFunction function,
+        decltype(&VxGetFPUControlWord) getWord = &VxGetFPUControlWord,
+        decltype(&VxSetFPUControlWord) setWord = &VxSetFPUControlWord)
 {
     const XWORD saved = VxGetFPUControlWord();
+    const XWORD savedModule = getWord();
     const XWORD words[] = {0x007f, 0x027f, 0x037f};
     for (int mode = 0; mode < 3; ++mode) {
         VxSetFPUControlWord(words[mode]);
+        setWord(words[mode]);
+        EXPECT_EQ(words[mode], getWord());
         const AOResults grid = OOGrid(function);
         EXPECT_EQ(51450, grid.samples);
         EXPECT_EQ(mode == 0 ? 49 : 112, grid.errors);
@@ -190,6 +195,7 @@ static void OOCheckOriginal(OOFunction function)
             EXPECT_EQ(digests[i], results[i].digest);
         }
     }
+    setWord(savedModule);
     VxSetFPUControlWord(saved);
 }
 TEST(ObbIntersectionReference, ScalarMatchesOriginalSnapshots) { OOCheckOriginal(OBBOBBCore<false>); }
@@ -208,7 +214,15 @@ TEST(ObbIntersectionReference, ActualCurrentDllExport) {
 #endif
     OOFunction function = reinterpret_cast<OOFunction>(GetProcAddress(dll, symbol));
     ASSERT_NE(nullptr, function);
-    OOCheckOriginal(function);
+    // Software x87 control words are module-local on ARM. Configure the DLL's
+    // state as well as the statically linked fixture's state.
+    const auto getWord = reinterpret_cast<decltype(&VxGetFPUControlWord)>(
+        GetProcAddress(dll, "?VxGetFPUControlWord@@YAGXZ"));
+    const auto setWord = reinterpret_cast<decltype(&VxSetFPUControlWord)>(
+        GetProcAddress(dll, "?VxSetFPUControlWord@@YAXG@Z"));
+    ASSERT_NE(nullptr, getWord);
+    ASSERT_NE(nullptr, setWord);
+    OOCheckOriginal(function, getWord, setWord);
     EXPECT_NE(0, FreeLibrary(dll));
 }
 #endif
