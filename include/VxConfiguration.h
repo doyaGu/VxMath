@@ -363,6 +363,8 @@ public:
     /// @brief Default constructor.
     VX_EXPORT VxConfig();
     VX_EXPORT VxConfig(VxConfigRoot root, const char *baseSection);
+    /// @brief Uses an owned explicit registry filename; NULL retains the application profile.
+    VX_EXPORT VxConfig(VxConfigRoot root, const char *baseSection, const char *registryFile);
     /// @brief Destructor.
     VX_EXPORT ~VxConfig();
 
@@ -395,6 +397,7 @@ public:
     VX_EXPORT static XBOOL GetRegistryFilePath(char *oPath, size_t iSize);
 
 private:
+    XBOOL ResolveRegistryFilePath(XString &path) const;
     XBOOL WriteRawEntry(const char *iKey, const char *iValue, VxConfigValueType iType);
     XBOOL ReadRawEntry(const char *iKey, char *oData, size_t iSize, VxConfigValueType *oType, size_t *oLength = NULL);
     XBOOL ReadEntryValue(const char *iKey, XString &value, VxConfigValueType *oType);
@@ -405,6 +408,7 @@ private:
     XString m_BaseSection; ///< Owned base path within the selected logical root.
     XString m_CurrentSectionName; ///< Owned section path; empty also represents an explicitly opened base.
     Mode m_CurrentMode; ///< Access bits; zero means no section is open.
+    XString m_RegistryFile; ///< Optional per-instance file, independent of the process profile.
 };
 
 #endif // VXCONFIGURATION_H

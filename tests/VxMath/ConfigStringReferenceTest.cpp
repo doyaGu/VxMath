@@ -10,7 +10,7 @@ protected:
     XString Home, PreviousHome;
     char File[2048] = {};
     bool HadHome = false, ChangedHome = false, OwnFile = false;
-    const char *Section = "BallanceStringReference";
+    const char *Section = "ConfigStringReference";
 
     void SetUp() override {
         HadHome = VxGetEnvironmentVariable("NEMO_USER_CONFIG_HOME", PreviousHome) != FALSE;

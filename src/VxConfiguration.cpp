@@ -1161,6 +1161,22 @@ VxConfig::~VxConfig() {
     m_VirtoolsSection = NULL;
 }
 
+VxConfig::VxConfig(VxConfigRoot root, const char *baseSection, const char *registryFile)
+    : m_VirtoolsSection(NULL), m_CurrentSection(NULL), m_Root(root),
+      m_BaseSection(baseSection ? baseSection : VxDefaultRegistryBase()),
+      m_CurrentSectionName(""), m_CurrentMode(READ),
+      m_RegistryFile(registryFile ? registryFile : "") {
+    OpenRoot(root, baseSection ? baseSection : VxDefaultRegistryBase());
+}
+
+XBOOL VxConfig::ResolveRegistryFilePath(XString &path) const {
+    if (m_RegistryFile.Length()) {
+        path = m_RegistryFile;
+        return TRUE;
+    }
+    return VxGetRegistryFilePathString(path);
+}
+
 XBOOL VxConfig::OpenRoot(VxConfigRoot root, const char *baseSection) {
     m_Root = root;
     m_BaseSection = baseSection ? baseSection : VxDefaultRegistryBase();
@@ -1175,7 +1191,7 @@ void VxConfig::OpenSection(const char *iSection, VxConfig::Mode iOpeningMode) {
     CloseSection(NULL);
     if (!iSection || *iSection == '\\') return;
     XString file;
-    if (!VxGetRegistryFilePathString(file)) return;
+    if (!ResolveRegistryFilePath(file)) return;
     VxConfiguration config;
     if (!VxLoadRegistryFile(config, file.CStr())) return;
     XString path = VxNormalizeRegistryPath(m_Root, m_BaseSection.CStr(), iSection);
@@ -1256,7 +1272,7 @@ XBOOL VxConfig::DeleteEntry(const char *iKey) {
     if (!(m_CurrentMode & WRITE))
         return FALSE;
     XString file;
-    if (!VxGetRegistryFilePathString(file))
+    if (!ResolveRegistryFilePath(file))
         return FALSE;
     VxConfiguration config;
     if (!VxLoadRegistryFile(config, file.CStr())) return FALSE;
@@ -1276,7 +1292,7 @@ XBOOL VxConfig::DeleteSection(const char *iSection) {
     if (!iSection && !(m_CurrentMode & WRITE)) return FALSE;
     XString sectionName = iSection ? iSection : m_CurrentSectionName.CStr();
     XString file;
-    if (!VxGetRegistryFilePathString(file))
+    if (!ResolveRegistryFilePath(file))
         return FALSE;
     VxConfiguration config;
     if (!VxLoadRegistryFile(config, file.CStr())) return FALSE;
@@ -1340,7 +1356,7 @@ XBOOL VxConfig::WriteRawEntry(const char *iKey, const char *iValue, VxConfigValu
     XString tail;
     if (encoded && length > first) tail = VxEncodeRegistryValue(iValue + first, length - first);
     XString file;
-    if (!VxGetRegistryFilePathString(file))
+    if (!ResolveRegistryFilePath(file))
         return FALSE;
     VxCreateFileTree(file.CStr());
     VxConfiguration config;
@@ -1377,7 +1393,7 @@ XBOOL VxConfig::ReadEntryValue(const char *iKey, XString &result, VxConfigValueT
     if (!(m_CurrentMode & READ))
         return FALSE;
     XString file;
-    if (!VxGetRegistryFilePathString(file))
+    if (!ResolveRegistryFilePath(file))
         return FALSE;
     VxConfiguration config;
     XString error;

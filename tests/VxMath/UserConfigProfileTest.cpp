@@ -45,6 +45,35 @@ TEST_F(UserConfigProfileTest, DefaultProfileUsesTheEngineNamespace) {
     EXPECT_STREQ(expected.CStr(), path);
 }
 
+TEST_F(UserConfigProfileTest, ExplicitRegistryFilesStayIndependentOfTheProcessProfile) {
+    XString firstFile = XString(Directory.Path()) + "/first.ini";
+    XString secondFile = XString(Directory.Path()) + "/second.ini";
+    VxConfig first(VXCONFIG_ROOT_CURRENT_USER, "Software\\Sample", firstFile.CStr());
+    VxConfig second(VXCONFIG_ROOT_CURRENT_USER, "Software\\Sample", secondFile.CStr());
+    first.OpenSection("Settings", VxConfig::WRITE);
+    second.OpenSection("Settings", VxConfig::WRITE);
+    first.WriteIntegerEntry("value", 11);
+    second.WriteIntegerEntry("value", 22);
+    second.OpenSection("Settings", VxConfig::READ);
+    ASSERT_TRUE(VxSetUserConfigProfile("Other", "SAMPLE_CONFIG_HOME"));
+    first.OpenRoot(VXCONFIG_ROOT_CURRENT_USER, "Software\\Sample");
+    first.OpenSection("Settings", VxConfig::READ);
+    int value = 0;
+    EXPECT_TRUE(first.ReadIntegerEntry("value", &value));
+    EXPECT_EQ(11, value);
+    EXPECT_TRUE(second.ReadIntegerEntry("value", &value));
+    EXPECT_EQ(22, value);
+    first.OpenSection("Settings", VxConfig::WRITE);
+    EXPECT_TRUE(first.DeleteEntry("value"));
+    first.OpenSection("Settings", VxConfig::READ);
+    EXPECT_FALSE(first.EntryExists("value"));
+    EXPECT_TRUE(second.EntryExists("value"));
+    second.OpenSection("Settings", VxConfig::WRITE);
+    EXPECT_TRUE(second.DeleteSection("Settings"));
+    second.OpenSection("Settings", VxConfig::READ);
+    EXPECT_FALSE(second.EntryExists("value"));
+}
+
 TEST_F(UserConfigProfileTest, ProfileCopiesNamesAndReadsTheSelectedEnvironmentOnEachLookup) {
     char app[] = "Sample", variable[] = "SAMPLE_CONFIG_HOME";
     ASSERT_TRUE(VxSetUserConfigProfile(app, variable));

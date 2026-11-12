@@ -1,4 +1,5 @@
 #include "VxConfiguration.h"
+#include "TemporaryDirectory.h"
 #include <gtest/gtest.h>
 #include <stddef.h>
 #include <stdio.h>
@@ -300,7 +301,11 @@ TEST_F(ConfigurationSectionReferenceTest, ClearReleasesDescendantsAndPreservesNa
 }
 
 TEST(ConfigurationSectionConsumerTest, RegistryWritesStillReplaceExistingValuesAndTypeMetadata) {
-    VxConfig config(VXCONFIG_ROOT_CURRENT_USER, "Software\\Virtools\\UserConfig\\BallanceSectionAudit");
+    TemporaryDirectory directory;
+    ASSERT_TRUE(directory.IsValid());
+    XString path = XString(directory.Path()) + "/sections.ini";
+    struct Cleanup { const char *Path; ~Cleanup() { remove(Path); } } cleanup{path.CStr()};
+    VxConfig config(VXCONFIG_ROOT_CURRENT_USER, "Software\\Virtools\\UserConfig\\SectionAudit", path.CStr());
     const char *section = sizeof(void *) == 4 ? "x86" : "x64";
     config.DeleteSection(section);
     config.OpenSection(section, VxConfig::WRITE);
