@@ -832,6 +832,9 @@ vx_copy_runtime_dependencies(ConfigurationEntryReferenceTest)
 
 vx_add_test(ConfigurationSectionReferenceTest SOURCES ConfigurationSectionReferenceTest.cpp)
 vx_copy_runtime_dependencies(ConfigurationSectionReferenceTest)
+set_tests_properties(ConfigurationSectionReferenceTest PROPERTIES
+        ENVIRONMENT "BALLANCE_USER_CONFIG_HOME=${VXMATH_TEST_HOME}/configuration-sections"
+)
 
 vx_add_test(ConfigurationReferenceTest SOURCES ConfigurationReferenceTest.cpp)
 vx_copy_runtime_dependencies(ConfigurationReferenceTest)
