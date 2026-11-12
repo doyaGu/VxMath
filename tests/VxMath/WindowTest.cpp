@@ -346,7 +346,7 @@ TEST_F(VxWindowFunctionsTest, DrawBitmapTextWritesPixelsBackToImage) {
     ASSERT_NE(font, nullptr);
 
     CKRECT rect = {0, 0, desc.Width, desc.Height};
-    EXPECT_TRUE(VxDrawBitmapText(bitmap, font, "Ballanced", &rect,
+    EXPECT_TRUE(VxDrawBitmapText(bitmap, font, "NeMo2", &rect,
                                  VXTEXT_LEFT | VXTEXT_VCENTER, 0x00000000, 0xFFFFFFFF));
     EXPECT_TRUE(VxCopyBitmap(bitmap, desc));
 
