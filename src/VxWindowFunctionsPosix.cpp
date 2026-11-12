@@ -1,4 +1,5 @@
 #include "VxWindowFunctions.h"
+#include "VxUserConfigInternal.h"
 
 #include <cerrno>
 #include <cstdio>
@@ -745,31 +746,36 @@ XBOOL VxGetUserConfigPath(const char *appName, char *path, size_t pathSize) {
 
 XBOOL VxGetUserConfigPath(const char *appName, XString &path) {
     path = "";
-    const char *name = (appName && *appName) ? appName : "Ballance";
-
-#if defined(__APPLE__)
-    const char *home = getenv("HOME");
-    if (!home || !*home) {
-        return FALSE;
-    }
-    path = home;
-    AppendPathComponent(path, "Library");
-    AppendPathComponent(path, "Application Support");
-    AppendPathComponent(path, name);
-#else
-    const char *xdg = getenv("XDG_CONFIG_HOME");
-    const char *home = getenv("HOME");
-    if (xdg && *xdg) {
-        path = xdg;
-        AppendPathComponent(path, name);
-    } else if (home && *home) {
-        path = home;
-        AppendPathComponent(path, ".config");
+    const char *name = (appName && *appName) ? appName : VxUserConfigApplicationName();
+    const char *overrideHome = getenv(VxUserConfigHomeEnvironmentVariable());
+    if (overrideHome && *overrideHome) {
+        path = overrideHome;
         AppendPathComponent(path, name);
     } else {
-        return FALSE;
-    }
+#if defined(__APPLE__)
+        const char *home = getenv("HOME");
+        if (!home || !*home) {
+            return FALSE;
+        }
+        path = home;
+        AppendPathComponent(path, "Library");
+        AppendPathComponent(path, "Application Support");
+        AppendPathComponent(path, name);
+#else
+        const char *xdg = getenv("XDG_CONFIG_HOME");
+        const char *home = getenv("HOME");
+        if (xdg && *xdg) {
+            path = xdg;
+            AppendPathComponent(path, name);
+        } else if (home && *home) {
+            path = home;
+            AppendPathComponent(path, ".config");
+            AppendPathComponent(path, name);
+        } else {
+            return FALSE;
+        }
 #endif
+    }
 
     if (path.Length() > 0 && path[path.Length() - 1] != '/') {
         path << '/';

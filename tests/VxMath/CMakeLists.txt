@@ -453,7 +453,7 @@ vx_copy_runtime_dependencies(MatrixDecompositionReferenceScalarTest)
 set(VXMATH_TEST_HOME "${CMAKE_CURRENT_BINARY_DIR}/test-home")
 file(MAKE_DIRECTORY "${VXMATH_TEST_HOME}")
 set_tests_properties(PlatformCompatibilityTest PROPERTIES
-        ENVIRONMENT "HOME=${VXMATH_TEST_HOME};BALLANCE_USER_CONFIG_HOME=${VXMATH_TEST_HOME}"
+        ENVIRONMENT "HOME=${VXMATH_TEST_HOME};NEMO_USER_CONFIG_HOME=${VXMATH_TEST_HOME}"
 )
 
 vx_add_test(
@@ -833,7 +833,7 @@ vx_copy_runtime_dependencies(ConfigurationEntryReferenceTest)
 vx_add_test(ConfigurationSectionReferenceTest SOURCES ConfigurationSectionReferenceTest.cpp)
 vx_copy_runtime_dependencies(ConfigurationSectionReferenceTest)
 set_tests_properties(ConfigurationSectionReferenceTest PROPERTIES
-        ENVIRONMENT "BALLANCE_USER_CONFIG_HOME=${VXMATH_TEST_HOME}/configuration-sections"
+        ENVIRONMENT "NEMO_USER_CONFIG_HOME=${VXMATH_TEST_HOME}/configuration-sections"
 )
 
 vx_add_test(ConfigurationReferenceTest SOURCES ConfigurationReferenceTest.cpp)
@@ -855,6 +855,11 @@ vx_copy_runtime_dependencies(ConfigTypeDeleteReferenceTest)
 
 vx_add_test(ConfigLifecycleReferenceTest SOURCES ConfigLifecycleReferenceTest.cpp)
 vx_copy_runtime_dependencies(ConfigLifecycleReferenceTest)
+
+if (NOT TEST_TARGET STREQUAL "VxMath_GroundTruth")
+    vx_add_test(UserConfigProfileTest SOURCES UserConfigProfileTest.cpp)
+    vx_copy_runtime_dependencies(UserConfigProfileTest)
+endif ()
 
 if (WIN32 AND MSVC)
     foreach (_native_test URLTest ConfigStateReferenceTest ConfigValueReferenceTest ConfigLifecycleReferenceTest)

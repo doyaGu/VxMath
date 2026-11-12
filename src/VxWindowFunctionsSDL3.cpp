@@ -9,6 +9,7 @@
 
 #include "VxWindowFunctions.h"
 #include "VxPathEncoding.h"
+#include "VxUserConfigInternal.h"
 
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_filesystem.h>
@@ -1142,7 +1143,7 @@ static XBOOL VxMakeNativeConfigPath(const XArray<char> &base, const char *prefix
 
 XBOOL VxGetUserConfigPath(const char *appName, XString &path) {
     path = "";
-    const char *name = (appName && *appName) ? appName : "Ballance";
+    const char *name = (appName && *appName) ? appName : VxUserConfigApplicationName();
     XArray<char> base;
 #ifdef _WIN32
     XArray<char> nativeName;
@@ -1151,7 +1152,7 @@ XBOOL VxGetUserConfigPath(const char *appName, XString &path) {
     name = nativeName.Begin();
 #endif
     XString native;
-    if (VxGetNativePathEnvironment("BALLANCE_USER_CONFIG_HOME", base)) {
+    if (VxGetNativePathEnvironment(VxUserConfigHomeEnvironmentVariable(), base)) {
         if (!VxMakeNativeConfigPath(base, "", name, native))
             return FALSE;
     } else {

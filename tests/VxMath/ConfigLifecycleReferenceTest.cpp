@@ -27,7 +27,7 @@ protected:
     bool HadHome = false, ChangedHome = false;
 
     void SetUp() override {
-        HadHome = VxGetEnvironmentVariable("BALLANCE_USER_CONFIG_HOME", PreviousHome) != FALSE;
+        HadHome = VxGetEnvironmentVariable("NEMO_USER_CONFIG_HOME", PreviousHome) != FALSE;
         ASSERT_TRUE(Directory.IsValid());
         Home = Directory.Path(); Home += "/config-lifecycle-home";
         ASSERT_FALSE(VxDirectoryExists(Home.CStr())); ASSERT_FALSE(VxFileExists(Home.CStr()));
@@ -35,19 +35,19 @@ protected:
     }
 
     void SetHome(const XString &home) {
-        ASSERT_TRUE(VxSetEnvironmentVariable("BALLANCE_USER_CONFIG_HOME", home.CStr()));
+        ASSERT_TRUE(VxSetEnvironmentVariable("NEMO_USER_CONFIG_HOME", home.CStr()));
         ChangedHome = true; Homes.PushBack(home);
     }
 
     void TearDown() override {
         Config.CloseSection(nullptr);
         for (int i = Homes.Size() - 1; i >= 0; --i) {
-            XString file = Homes[i] + "/Ballance/registry.ini"; remove(file.CStr());
-            XString directory = Homes[i] + "/Ballance"; VxRemoveDirectory(directory.CStr());
+            XString file = Homes[i] + "/NeMo2/registry.ini"; remove(file.CStr());
+            XString directory = Homes[i] + "/NeMo2"; VxRemoveDirectory(directory.CStr());
             remove(Homes[i].CStr()); VxRemoveDirectory(Homes[i].CStr());
         }
         if (ChangedHome)
-            EXPECT_TRUE(VxSetEnvironmentVariable("BALLANCE_USER_CONFIG_HOME", HadHome ? PreviousHome.CStr() : nullptr));
+            EXPECT_TRUE(VxSetEnvironmentVariable("NEMO_USER_CONFIG_HOME", HadHome ? PreviousHome.CStr() : nullptr));
     }
 
     void ExpectValue(VxConfig &config, const char *key, const char *expected) {
@@ -190,8 +190,8 @@ TEST_F(ConfigLifecycleReferenceTest, ImplicitAssignmentSurvivesTheSourceLifetime
 
 TEST_F(ConfigLifecycleReferenceTest, RegistryPathUsesTheOverrideAndDoesNotCreateTheRegistryFile) {
     char path[2048] = {}; ASSERT_TRUE(VxConfig::GetRegistryFilePath(path, sizeof(path)));
-    XString expected = Home + "/Ballance/registry.ini"; EXPECT_STREQ(expected.CStr(), path);
-    XString directory = Home + "/Ballance"; EXPECT_TRUE(VxDirectoryExists(directory.CStr()));
+    XString expected = Home + "/NeMo2/registry.ini"; EXPECT_STREQ(expected.CStr(), path);
+    XString directory = Home + "/NeMo2"; EXPECT_TRUE(VxDirectoryExists(directory.CStr()));
     EXPECT_FALSE(VxFileExists(path));
 }
 
@@ -220,7 +220,7 @@ TEST_F(ConfigLifecycleReferenceTest, RegistryPathDoesNotCacheTheEnvironmentOverr
     char before[2048] = {}, after[2048] = {};
     ASSERT_TRUE(VxConfig::GetRegistryFilePath(before, sizeof(before))); SetHome(Home + "/second");
     ASSERT_TRUE(VxConfig::GetRegistryFilePath(after, sizeof(after)));
-    XString expected = Home + "/second/Ballance/registry.ini";
+    XString expected = Home + "/second/NeMo2/registry.ini";
     EXPECT_STREQ(expected.CStr(), after); EXPECT_STRNE(before, after);
 }
 
@@ -235,14 +235,14 @@ TEST_F(ConfigLifecycleReferenceTest, AFileBlockingTheConfigurationDirectoryRepor
 TEST_F(ConfigLifecycleReferenceTest, AForwardTrailingSeparatorDoesNotDuplicateTheApplicationPath) {
     SetHome(Home + "/"); char path[2048] = {};
     ASSERT_TRUE(VxConfig::GetRegistryFilePath(path, sizeof(path)));
-    XString expected = Home + "/Ballance/registry.ini"; EXPECT_STREQ(expected.CStr(), path);
+    XString expected = Home + "/NeMo2/registry.ini"; EXPECT_STREQ(expected.CStr(), path);
 }
 
 #ifdef _WIN32
 TEST_F(ConfigLifecycleReferenceTest, ANativeTrailingSeparatorStillReturnsAUsablePath) {
     SetHome(Home + "\\"); char path[2048] = {};
     ASSERT_TRUE(VxConfig::GetRegistryFilePath(path, sizeof(path)));
-    XString expected = Home + "\\Ballance/registry.ini"; EXPECT_STREQ(expected.CStr(), path);
+    XString expected = Home + "\\NeMo2/registry.ini"; EXPECT_STREQ(expected.CStr(), path);
     FILE *file = fopen(path, "wb"); ASSERT_NE(nullptr, file); EXPECT_EQ(0, fclose(file));
 }
 
@@ -252,7 +252,7 @@ TEST_F(ConfigLifecycleReferenceTest, RegistryPathReturnsNativeAnsiBytesForRepres
     const int length = int(strlen(native)) + 1;
     XString extra = Home + "/" + native; SetHome(extra);
     char path[2048] = {}; ASSERT_TRUE(VxConfig::GetRegistryFilePath(path, sizeof(path)));
-    XString expected = extra + "/Ballance/registry.ini"; EXPECT_STREQ(expected.CStr(), path);
+    XString expected = extra + "/NeMo2/registry.ini"; EXPECT_STREQ(expected.CStr(), path);
     FILE *file = fopen(path, "wb"); ASSERT_NE(nullptr, file); EXPECT_EQ(0, fclose(file));
     printf("ConfigPathACP: %u; UnicodeBytes: %d\n", GetACP(), length - 1);
 }

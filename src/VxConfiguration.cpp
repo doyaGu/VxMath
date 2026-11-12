@@ -1130,7 +1130,7 @@ static XString VxJoinConfigPath(const char *dir, const char *file) {
 static XBOOL VxGetRegistryFilePathString(XString &path) {
     path = "";
     XString dir;
-    if (!VxGetUserConfigPath("Ballance", dir))
+    if (!VxGetUserConfigPath(NULL, dir))
         return FALSE;
     path = VxJoinConfigPath(dir.CStr(), "registry.ini");
     return TRUE;

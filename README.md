@@ -1,6 +1,6 @@
 # VxMath
 
-VxMath is the Virtools-compatible math and platform utility library used by CK2 and the rest of Ballanced.
+VxMath provides Virtools-compatible math, containers, configuration, and platform utilities.
 
 ## Features
 
@@ -12,18 +12,19 @@ VxMath is the Virtools-compatible math and platform utility library used by CK2 
 
 ## Support scope
 
-The instructions in this document describe VxMath's `sdl` branch. That branch is continuously built through [Ballanced](https://github.com/doyaGu/Ballanced) on Windows, Linux, and macOS. The Ballanced root presets define the supported full-runtime architecture matrix.
+The instructions in this document describe VxMath's `sdl` branch, which supports
+Windows, Linux, and macOS. [NeMo2](https://github.com/doyaGu/NeMo2) assembles it
+with the other Virtools runtime modules.
 
 ## Building
 
-### Recommended: Ballanced superproject
+### NeMo2 engine
 
 ```bash
-git clone --recurse-submodules https://github.com/doyaGu/Ballanced.git
-cd Ballanced
-cmake --preset macos-arm64-tests # choose the preset for your host
-cmake --build --preset macos-arm64-tests-release
-ctest --preset macos-arm64-tests-release
+git clone --recurse-submodules https://github.com/doyaGu/NeMo2.git
+cd NeMo2
+cmake --preset macos-arm64-runtime # choose the preset for your host
+cmake --build --preset macos-arm64-runtime-release
 ```
 
 ### Standalone
@@ -39,10 +40,9 @@ Requirements:
 git clone --branch sdl --recurse-submodules https://github.com/doyaGu/VxMath.git
 cd VxMath
 cmake -S . -B build \
-  -DVXMATH_BUILD_TESTS=ON \
+  -DVXMATH_BUILD_TESTS=OFF \
   -DCMAKE_PREFIX_PATH=/path/to/SDL3
 cmake --build build --config Release
-ctest --test-dir build -C Release --output-on-failure
 ```
 
 For Ninja and other single-configuration generators, add `-DCMAKE_BUILD_TYPE=Release`.
@@ -58,7 +58,29 @@ For Ninja and other single-configuration generators, add `-DCMAKE_BUILD_TYPE=Rel
 
 ## Versioning
 
-VxMath is versioned independently. Ballanced releases pin an exact VxMath commit and its nested dependency revisions.
+VxMath is versioned independently. Engine assemblies pin its commit and nested
+dependency revisions.
+
+## Application configuration
+
+Include `VxUserConfig.h` and select the application's profile before using
+`VxConfig` or starting worker threads:
+
+```cpp
+VxSetUserConfigProfile("SampleApplication", "SAMPLE_CONFIG_HOME");
+```
+
+`VxGetUserConfigPath(NULL, path)` and `VxConfig::GetRegistryFilePath` use that
+profile. The named environment variable overrides the parent directory; the
+application directory is appended to it. Without an override, the platform's
+user configuration location is used. Names are copied and the environment is
+read on each lookup. An explicit name passed to `VxGetUserConfigPath` overrides
+the profile name.
+
+The defaults are `NeMo2` and `NEMO_USER_CONFIG_HOME`. Pass null or empty arguments
+to restore these defaults. `registry.ini` stores the logical registry roots
+inside the selected application directory; selecting a profile does not migrate
+existing files.
 
 ## License
 

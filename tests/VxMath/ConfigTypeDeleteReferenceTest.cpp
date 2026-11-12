@@ -20,9 +20,9 @@ protected:
     bool HadHome = false, ChangedHome = false, OwnFile = false;
 
     void SetUp() override {
-        HadHome = VxGetEnvironmentVariable("BALLANCE_USER_CONFIG_HOME", PreviousHome) != FALSE;
+        HadHome = VxGetEnvironmentVariable("NEMO_USER_CONFIG_HOME", PreviousHome) != FALSE;
         Home = VxGetCurrentDirectory(); Home += "/config-type-delete-home";
-        ASSERT_TRUE(VxSetEnvironmentVariable("BALLANCE_USER_CONFIG_HOME", Home.CStr()));
+        ASSERT_TRUE(VxSetEnvironmentVariable("NEMO_USER_CONFIG_HOME", Home.CStr()));
         ChangedHome = true;
         ASSERT_TRUE(VxConfig::GetRegistryFilePath(File, sizeof(File)));
         FILE *existing = fopen(File, "rb");
@@ -35,11 +35,11 @@ protected:
         Config.CloseSection(nullptr);
         if (OwnFile) {
             remove(File);
-            XString directory = Home + "/Ballance";
+            XString directory = Home + "/NeMo2";
             VxRemoveDirectory(directory.CStr()); VxRemoveDirectory(Home.CStr());
         }
         if (ChangedHome)
-            EXPECT_TRUE(VxSetEnvironmentVariable("BALLANCE_USER_CONFIG_HOME", HadHome ? PreviousHome.CStr() : nullptr));
+            EXPECT_TRUE(VxSetEnvironmentVariable("NEMO_USER_CONFIG_HOME", HadHome ? PreviousHome.CStr() : nullptr));
     }
 
     void ExpectText(const char *key, const char *expected) {

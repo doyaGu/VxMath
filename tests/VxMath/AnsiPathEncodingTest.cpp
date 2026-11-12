@@ -243,7 +243,7 @@ TEST_F(AnsiPathEncodingTest, TempPathKeepsPlatformBytes) {
 
 TEST_F(AnsiPathEncodingTest, ConfigurationDirectoryKeepsAnAnsiReturnValue) {
     if (!PrepareDirectory()) return;
-    PathTestEnvironment overridePath("BALLANCE_USER_CONFIG_HOME", NativeDirectory.CStr());
+    PathTestEnvironment overridePath("NEMO_USER_CONFIG_HOME", NativeDirectory.CStr());
     XString name, path;
     ASSERT_TRUE(EncodeTestPath(u8"VxAnsiTest-\u914D\u7F6E", name));
     ASSERT_TRUE(VxGetUserConfigPath(name.CStr(), path));
@@ -534,7 +534,7 @@ TEST_F(AnsiPathEncodingTest, NativeTempAndConfigurationPathsKeepUtf8Bytes) {
     XString native = Root; native << u8"Fran\u00E7ois";
     ASSERT_TRUE(SDL_CreateDirectory(native.CStr()));
     PathTestEnvironment tmp("TMP", native.CStr()), temp("TEMP", native.CStr()), tmpdir("TMPDIR", native.CStr());
-    PathTestEnvironment config("BALLANCE_USER_CONFIG_HOME", native.CStr());
+    PathTestEnvironment config("NEMO_USER_CONFIG_HOME", native.CStr());
     EXPECT_EQ(native, VxGetTempPath());
     XString previous = VxGetCurrentDirectory(); ASSERT_FALSE(previous.Empty());
     RestorePathTestDirectory restore(previous);

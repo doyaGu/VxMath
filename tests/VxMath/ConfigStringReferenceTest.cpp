@@ -13,10 +13,10 @@ protected:
     const char *Section = "BallanceStringReference";
 
     void SetUp() override {
-        HadHome = VxGetEnvironmentVariable("BALLANCE_USER_CONFIG_HOME", PreviousHome) != FALSE;
+        HadHome = VxGetEnvironmentVariable("NEMO_USER_CONFIG_HOME", PreviousHome) != FALSE;
         Home = VxGetCurrentDirectory();
         Home += "/config-string-reference-home";
-        ASSERT_TRUE(VxSetEnvironmentVariable("BALLANCE_USER_CONFIG_HOME", Home.CStr()));
+        ASSERT_TRUE(VxSetEnvironmentVariable("NEMO_USER_CONFIG_HOME", Home.CStr()));
         ChangedHome = true;
         ASSERT_TRUE(VxConfig::GetRegistryFilePath(File, sizeof(File)));
         FILE *existing = fopen(File, "rb");
@@ -32,12 +32,12 @@ protected:
         Config.CloseSection(Section);
         if (OwnFile) {
             remove(File);
-            XString directory = Home + "/Ballance";
+            XString directory = Home + "/NeMo2";
             VxRemoveDirectory(directory.CStr());
             VxRemoveDirectory(Home.CStr());
         }
         if (ChangedHome)
-            EXPECT_TRUE(VxSetEnvironmentVariable("BALLANCE_USER_CONFIG_HOME", HadHome ? PreviousHome.CStr() : nullptr));
+            EXPECT_TRUE(VxSetEnvironmentVariable("NEMO_USER_CONFIG_HOME", HadHome ? PreviousHome.CStr() : nullptr));
     }
 
     void Write(const char *value, const char *key = "value") {

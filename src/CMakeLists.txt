@@ -31,6 +31,7 @@ set(VXMATH_PUBLIC_HEADERS
         ${VX_INCLUDE_DIR}/CKPathSplitter.h
         ${VX_INCLUDE_DIR}/CKDirectoryParser.h
         ${VX_INCLUDE_DIR}/VxWindowFunctions.h
+        ${VX_INCLUDE_DIR}/VxUserConfig.h
         ${VX_INCLUDE_DIR}/VxMessageBox.h
         ${VX_INCLUDE_DIR}/VxVector.h
         ${VX_INCLUDE_DIR}/Vx2dVector.h
@@ -91,6 +92,7 @@ set(VXMATH_COMMON_SOURCES
         VxVector.cpp
         VxVectorMath.cpp
         VxConfiguration.cpp
+        VxUserConfig.cpp
         VxQuaternion.cpp
         VxIntersect_BoxBox.cpp
         VxIntersect_Plane.cpp

@@ -68,11 +68,11 @@ static std::filesystem::path BuildLongDirectory(const std::filesystem::path &roo
     return dir;
 }
 
-static const char *kVxConfigTestBase = "Software\\Virtools\\UserConfig\\BallanceTest";
+static const char *kVxConfigTestBase = "Software\\Virtools\\UserConfig\\NeMo2Test";
 
 static std::vector<char> MakeRegistryFilePathBuffer() {
     XString configPath;
-    if (!VxGetUserConfigPath("Ballance", configPath))
+    if (!VxGetUserConfigPath(nullptr, configPath))
         return std::vector<char>();
 
     XString registryPath = configPath;
@@ -94,7 +94,7 @@ TEST(VxConfigRegistryTest, TypedRoundTripAndDelete) {
     config.DeleteSection("Unit/Registry");
     config.DeleteSection("Unit\\Registry");
     config.OpenSection("Unit\\Registry", VxConfig::WRITE);
-    config.WriteStringEntry("StringValue", "Ballance");
+    config.WriteStringEntry("StringValue", "NeMo2");
     config.WriteIntegerEntry("IntegerValue", 42);
     config.WriteFloatEntry("FloatValue", 3.5f);
     config.WriteBooleanEntry("BooleanValue", TRUE);
@@ -106,7 +106,7 @@ TEST(VxConfigRegistryTest, TypedRoundTripAndDelete) {
     float floatValue = 0.0f;
     XBOOL booleanValue = FALSE;
     EXPECT_TRUE(config.ReadStringEntry("StringValue", stringValue, sizeof(stringValue)));
-    EXPECT_STREQ(stringValue, "Ballance");
+    EXPECT_STREQ(stringValue, "NeMo2");
     EXPECT_TRUE(config.ReadIntegerEntry("IntegerValue", &integerValue));
     EXPECT_EQ(integerValue, 42);
     EXPECT_TRUE(config.ReadFloatEntry("FloatValue", &floatValue));
@@ -182,7 +182,7 @@ TEST(VxConfigRegistryTest, DeletingEntryRemovesTypeMetadata) {
     VxConfiguration registry;
     ASSERT_TRUE(LoadRegistryConfig(registry));
     VxConfigurationSection *section = registry.GetSubSection(
-        "CurrentUser.Software.Virtools.UserConfig.BallanceTest.Unit%2FDeleteMetadata", TRUE);
+        "CurrentUser.Software.Virtools.UserConfig.NeMo2Test.Unit%2FDeleteMetadata", TRUE);
     ASSERT_NE(section, nullptr);
     ASSERT_NE(section->GetEntry("DeleteMetadataValue"), nullptr);
     ASSERT_NE(section->GetEntry("DeleteMetadataValue.type"), nullptr);
@@ -190,19 +190,19 @@ TEST(VxConfigRegistryTest, DeletingEntryRemovesTypeMetadata) {
     EXPECT_TRUE(config.DeleteEntry("DeleteMetadataValue"));
     ASSERT_TRUE(LoadRegistryConfig(registry));
     section = registry.GetSubSection(
-        "CurrentUser.Software.Virtools.UserConfig.BallanceTest.Unit%2FDeleteMetadata", TRUE);
+        "CurrentUser.Software.Virtools.UserConfig.NeMo2Test.Unit%2FDeleteMetadata", TRUE);
     ASSERT_NE(section, nullptr);
     EXPECT_EQ(section->GetEntry("DeleteMetadataValue"), nullptr);
     EXPECT_EQ(section->GetEntry("DeleteMetadataValue.type"), nullptr);
     config.DeleteSection("Unit/DeleteMetadata");
 }
 
-TEST(VxConfigRegistryTest, RegistryFilePathUsesBallanceName) {
+TEST(VxConfigRegistryTest, RegistryFilePathUsesDefaultProfile) {
     std::vector<char> path = MakeRegistryFilePathBuffer();
     ASSERT_FALSE(path.empty());
     ASSERT_TRUE(VxConfig::GetRegistryFilePath(path.data(), path.size()));
     const std::string registryPath(path.data());
-    EXPECT_NE(registryPath.find("Ballance"), std::string::npos);
+    EXPECT_NE(registryPath.find("NeMo2"), std::string::npos);
     EXPECT_NE(registryPath.find("registry.ini"), std::string::npos);
 }
 
